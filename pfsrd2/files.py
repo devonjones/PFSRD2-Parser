@@ -9,7 +9,8 @@ def char_replace(instr):
 	return instr.lower()
 
 def makedirs(output, game_obj, source):
-	game_obj_dir = os.path.abspath(output + "/" + char_replace(game_obj) + "/" + char_replace(source))
+	game_obj_dir = os.path.abspath(
+		output + "/" + char_replace(game_obj) + "/" + char_replace(source))
 	if not os.path.exists(game_obj_dir):
 		os.makedirs(game_obj_dir)
 	return game_obj_dir
