@@ -10,7 +10,7 @@ from pfsrd2.files import makedirs, char_replace
 
 def parse_creature(filename, output):
 	basename = os.path.basename(filename)
-	#sys.stderr.write("%s\n" % basename)
+	sys.stderr.write("%s\n" % basename)
 	details = parse_universal(filename, output, max_title=4)
 	struct = restructure_creature_pass(details)
 	creature_stat_block_pass(struct)
@@ -18,19 +18,12 @@ def parse_creature(filename, output):
 	sidebar_pass(struct)
 	index_pass(struct)
 	aon_pass(struct, basename)
+	#validate_dict_pass(struct)
+	remove_empty_sections_pass(struct)
 	basename.split("_")
 	jsondir = makedirs(output, struct['game-obj'], struct['source']['name'])
-	write_creature(jsondir, struct)
-	#print(json.dumps(struct, indent=2, sort_keys=True))
-	#if struct['type'] == 'section':
-	#	if not struct.has_key('name'):
-	#		struct['name'] = struct['sections'][0]['name']
-	#		struct['name'] = struct['name'].split(",")[0]
-	#	write_creature(output, book, struct)
-	#elif struct['type'] == 'creature':
-	#	write_creature(output, book, struct)
-	#else:
-	#	raise Exception("Uh Oh")
+	#print(json.dumps(struct, indent=2))
+	#write_creature(jsondir, struct)
 
 def restructure_creature_pass(details):
 	sb = None
@@ -159,6 +152,28 @@ def aon_pass(struct, basename):
 	struct["aonid"] = int(parts[1])
 	struct["game-obj"] = parts[0].split(".")[0]
 
+def validate_dict_pass(struct):
+	try:
+		if type(struct) is dict:
+			for k, v in struct.items():
+				validate_dict_pass(v)
+			if 'type' not in struct:
+				raise Exception("%s missing type" % struct)
+			if 'name' not in struct:
+				raise Exception("%s missing name" % struct)
+		if type(struct) is list:
+			for item in struct:
+				validate_dict_pass(item)
+	except Exception as e:
+		pprint(struct)
+		raise e
+
+def remove_empty_sections_pass(struct):
+	for section in struct['sections']:
+		remove_empty_sections_pass(section)
+		if len(section['sections']) == 0:
+			del section['sections']
+
 def parse_trait(span):
 	name = ''.join(span['alt']).replace(" Trait", "")
 	trait_class = ''.join(span['class'])
@@ -234,9 +249,12 @@ def process_stat_block(sb, sections):
 		sb['offense']['offensive_actions'] = attacks
 
 def process_source(sb, section):
-	def set_image(obj):
+	def set_image(obj, name):
 		link = obj['href']
-		sb['image'] = {'link': {'href': link.split("\\").pop()}}
+		image = link.split("\\").pop()
+		sb['image'] = {
+			'type': 'image', 'name': name, 'game-obj': 'Monster',
+			'image': image}
 
 	assert section[0] == "Source"
 	bs = BeautifulSoup(section[1], 'html.parser')
@@ -244,7 +262,7 @@ def process_source(sb, section):
 	if len(c) == 1:
 		sb['source'] = extract_source(c[0])
 	elif len(c) == 2:
-		set_image(c[0])
+		set_image(c[0], sb['name'])
 		sb['source'] = extract_source(c[1])
 	else:
 		raise Exception("Source should have only 1 or 2 pieces")
@@ -255,12 +273,14 @@ def process_perception(section):
 	parts = split_stat_block_line(section[1])
 	value = parts.pop(0)
 	value = int(value.replace("+", ""))
-	perception = {'value': value}
+	perception = {
+		'type': 'stat_block_section', 'subtype': 'perception',
+		'name': 'perception', 'value': value}
 	if len(parts) > 0:
 		if parts[0].startswith("("):
 			modifier = parts.pop(0)
 			modifier = modifier.replace("(", "").replace(")", "")
-			perception['modifier'] = modifier
+			perception['modifiers'] = [modifier]
 	if len(parts) > 0:
 		special_senses = []
 		for part in parts:
@@ -274,7 +294,10 @@ def process_perception(section):
 					'subtype': 'special_sense',
 					'link': link})
 			else:
-				special_senses.append({'name': part})
+				special_senses.append({
+					'type': 'stat_block_element',
+					'subtype': 'special_sense',
+					'name': part})
 		perception['special_senses'] = special_senses
 	return perception
 
@@ -298,12 +321,12 @@ def process_languages(section):
 		else:
 			assert len(c) == 1
 			if c[0].name == 'a':
+				link = extract_link(c[0])
 				languages.append({
 					'name': get_text(bs),
 					'type': 'stat_block_element',
 					'subtype': 'language',
-					'link': {
-						'game-obj': c[0]['game-obj'], 'aonid': c[0]['aonid']}})
+					'link': link})
 			else:
 				languages.append({
 					'name': get_text(bs),
@@ -340,32 +363,40 @@ def process_attr(section):
 	value = int(section[1].replace(",", "").replace("+", ""))
 	return value
 
+def unwrap_formatting(bs):
+	while bs.i:
+		bs.i.unwrap()
+	while bs.u:
+		bs.u.unwrap()
+	return bs
+
 def process_items(section):
 	assert section[0] == "Items"
 	assert section[2] == None
 	parts = rebuilt_split_modifiers(split_stat_block_line(section[1]))
 	items = []
 	for part in parts:
-		bs = BeautifulSoup(part, 'html.parser')
+		text, modifier = extract_modifier(part)
+		bs = unwrap_formatting(BeautifulSoup(text, 'html.parser'))
+		html = str(bs)
+		name = get_text(bs)
 		children = list(bs.children)
-		if children[0].name == 'a':
-			_, link = extract_link(children[0])
-			text = get_text(bs)
-			name, modifier = extract_modifier(text)
-			item = {
-				'type': 'stat_block_element',
-				'subtype': 'item',
-				'item': name,
-				'link': link}
-			if modifier:
-				modifiers = modifier.split(",")
-				item['modifiers'] = modifiers
-			items.append(item)
-		else:
-			items.append({
-				'type': 'stat_block_element',
-				'subtype': 'item',
-				'item': part})
+		item = {
+			'type': 'stat_block_element',
+			'subtype': 'item',
+			'name': name,
+			'html': html}
+		if modifier:
+			modifiers = modifier.split(",")
+			item['modifiers'] = modifiers
+		references = []
+		for a in bs.findAll("a"):
+			_, link = extract_link(a)
+			references.append(link)
+		if len(references) > 0:
+			item['references'] = references
+		items.append(item)
+		print(item)
 	return items
 
 def process_interaction_ability(section):
@@ -514,7 +545,7 @@ def process_speed(section):
 	speed = {
 		'type': 'stat_block_element',
 		'subtype': 'speed',
-		'movements': speeds
+		'movement': speeds
 	}
 	if modifiers:
 		speed['modifiers'] = [modifiers]
@@ -580,7 +611,7 @@ def extract_source(obj):
 	assert len(parts) == 2
 	name = parts.pop(0)
 	page = int(parts.pop(0))
-	return {'name': name, 'link': link, 'page': page}
+	return {'type': 'source', 'name': name, 'link': link, 'page': page}
 
 def extract_traits(description):
 	traits = []
@@ -601,11 +632,13 @@ def extract_traits(description):
 
 def extract_modifier(text):
 	if text.find("(") > -1:
-		parts = text.split("(")
+		parts = text.split("(", 1)
 		assert len(parts) == 2
-		base = parts.pop(0).strip()
-		modifier = parts.pop(0).replace(")", "").strip()
-		return base, modifier
+		base = [parts.pop(0)]
+		newparts = parts.pop(0).split(")", 1)
+		modifier = newparts.pop(0).strip()
+		base.extend(newparts)
+		return ''.join([b.strip() for b in base]), modifier
 	else:
 		return text, None
 

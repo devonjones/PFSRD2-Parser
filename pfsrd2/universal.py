@@ -277,7 +277,7 @@ def img_details(detail):
 def extract_link(a):
 	assert a.name == "a"
 	name = get_text(a)
-	link = {}
+	link = {'type': 'link', 'name': name, 'alt': name}
 	if a.has_attr('game-obj'):
 		link['game-obj'] = a['game-obj']
 	if a.has_attr('aonid'):
