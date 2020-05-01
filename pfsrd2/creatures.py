@@ -163,7 +163,10 @@ def validate_dict_pass(struct):
 				raise Exception("%s missing name" % struct)
 		if type(struct) is list:
 			for item in struct:
-				validate_dict_pass(item)
+				if type(item) is dict:
+					validate_dict_pass(item)
+				else:
+					raise Exception("%s: lists should only have dicts" % struct)
 	except Exception as e:
 		pprint(struct)
 		raise e
@@ -282,7 +285,8 @@ def process_perception(section):
 		if parts[0].startswith("("):
 			modifier = parts.pop(0)
 			modifier = modifier.replace("(", "").replace(")", "")
-			perception['modifiers'] = [modifier]
+			perception['modifiers'] = build_objects(
+				'stat_block_section', 'modifier', [modifier])
 	if len(parts) > 0:
 		special_senses = []
 		for part in parts:
@@ -355,7 +359,8 @@ def process_skills(section):
 			'link': link,
 			'value': value}
 		if modifier:
-			skill['modifier'] = modifier
+			skill['modifiers'] = build_objects(
+				'stat_block_section', 'modifier', [modifier])
 		skills.append(skill)
 	return skills
 
@@ -390,7 +395,8 @@ def process_items(section):
 			'html': html}
 		if modifier:
 			modifiers = modifier.split(",")
-			item['modifiers'] = modifiers
+			item['modifiers'] = build_objects(
+				'stat_block_section', 'modifier', modifiers)
 		references = []
 		for a in bs.findAll("a"):
 			_, link = extract_link(a)
@@ -398,7 +404,6 @@ def process_items(section):
 		if len(references) > 0:
 			item['references'] = references
 		items.append(item)
-		print(item)
 	return items
 
 def process_interaction_ability(section):
@@ -437,7 +442,8 @@ def process_ac(section):
 		'value': int(value.strip())
 	}
 	if len(modifiers) > 0:
-		ac['modifiers'] = modifiers
+		ac['modifiers'] = build_objects(
+			'stat_block_section', 'modifier', modifiers)
 	return ac
 
 def process_saves(fort, ref, will):
@@ -459,7 +465,8 @@ def process_saves(fort, ref, will):
 				bonuses = [b.strip() for b in bonus.split(", ")]
 			else:
 				bonuses = [bonus.strip()]
-			saves['bonuses'] = bonuses
+			saves['modifiers'] = build_objects(
+				'stat_block_section', 'modifier', bonuses)
 		value, modifier = extract_modifier(value)
 		save = {
 			'type': "stat_block_section",
@@ -468,7 +475,8 @@ def process_saves(fort, ref, will):
 			'value': int(value.strip().replace("+", ""))}
 		if modifier:
 			modifiers = [m.strip() for m in modifier.split(",")]
-			save['modifiers'] = modifiers
+			save['modifiers'] = build_objects(
+				'stat_block_section', 'modifier', modifiers)
 		saves[name] = save
 
 	process_save(fort)
@@ -499,17 +507,25 @@ def process_hp(section, subtype):
 		'name': name,
 		'value': value}
 	if len(specials) > 0:
-		hp['special'] = specials
+		hp['automatic_abilities'] = build_objects(
+			'stat_block_section', 'ability', specials, {
+				'ability_type': 'automatic'})
 	return hp
 
 def process_defense(sb, section):
 	assert section[0] in ["Immunities", "Resistances", "Weaknesses"]
 	assert section[2] == None
 	text = section[1].strip()
+	subtype = {
+		"Immunities": "immunity",
+		"Resistances": "resistance",
+		"Weaknesses": "weakness"}
 	if(text.endswith(";")):
 		text = text[:-1].strip()
 	parts = rebuilt_split_modifiers(split_stat_block_line(text))
-	sb[section[0].lower()] = parts
+	sb[section[0].lower()] = [{'type': 'stat_block_section',
+		'subtype': subtype[section[0]],
+		'name': part} for part in parts]
 
 def process_defensive_ability(section, sections, sb):
 	assert section[0] not in ["Immunities", "Resistances", "Weaknesses"]
@@ -518,7 +534,8 @@ def process_defensive_ability(section, sections, sb):
 	sb_key = 'automatic_abilities'
 	ability = {
 		'type': 'stat_block_element',
-		'subtype': 'automatic_ability',
+		'subtype': 'ability',
+		'ability_type': 'automatic',
 		'name': section[0]
 	}
 	if link:
@@ -538,7 +555,8 @@ def process_defensive_ability(section, sections, sb):
 	description, action = extract_action(description)
 	if action:
 		ability['action'] = action
-		ability['subtype'] = 'reactive_ability'
+		ability['subtype'] = 'ability'
+		ability['ability_type'] = 'reactive'
 		sb_key = 'reactive_abilities'
 
 	if(len(description) > 0):
@@ -551,19 +569,17 @@ def process_speed(section):
 	text = section[1].strip()
 	parts = [t.strip() for t in text.split(";")]
 	text = parts.pop(0)
-	modifiers = None
+	modifier = None
 	if len(parts) > 0:
-		modifiers = parts.pop()
+		modifier = parts.pop()
 	assert len(parts) == 0
-	speeds = [t.strip() for t in text.split(",")]
-	speed = {
-		'type': 'stat_block_element',
-		'subtype': 'speed',
-		'name': 'Speed',
-		'movement': speeds
-	}
-	if modifiers:
-		speed['modifiers'] = [modifiers]
+	speeds = build_objects('stat_block_section', 'speed',
+		[t.strip() for t in text.split(",")])
+	speed = build_object(
+		'stat_block_element', 'speed', 'Speed', {'movement': speeds})
+	if modifier:
+		speed['modifiers'] = build_objects(
+				'stat_block_section', 'modifier', [modifier])
 	return speed
 
 def process_offensive_action(section):
@@ -638,11 +654,8 @@ def extract_traits(description):
 			children = list(bs.children)
 			assert len(children) == 1
 			name, trait_link = extract_link(children[0])
-			traits.append({
-				'type': 'stat_block_element',
-				'subtype': 'trait',
-				'name': name,
-				'link': trait_link})
+			traits.append(build_object(
+				'stat_block_element', 'trait', name, {'link': trait_link}))
 	return description.strip(), traits
 
 def extract_modifier(text):
@@ -670,11 +683,11 @@ def extract_action(text):
 			action_name = child['alt']
 			image = child['src'].split("\\").pop()
 			if not action:
-				action = {
-					'type': 'stat_block_section',
-					'subtype': 'action',
-					'name': action_name,
-					'image': image}
+				action = build_object(
+					'stat_block_section',
+					'action',
+					action_name,
+					{'image': image})
 		else:
 			newchildren.append(child)
 			newchildren.extend(children)
@@ -694,6 +707,23 @@ def rebuilt_split_modifiers(parts):
 		else:
 			newparts.append(part)
 	return newparts
+
+def build_objects(dtype, subtype, names, keys=None):
+	objects = []
+	for name in names:
+		objects.append(build_object(dtype, subtype, name, keys))
+	return objects
+
+def build_object(dtype, subtype, name, keys=None):
+	assert type(name) is str
+	obj = {
+		'type': dtype,
+		'subtype': subtype,
+		'name': name
+	}
+	if keys:
+		obj.update(keys)
+	return obj
 
 def write_creature(jsondir, struct):
 	print("%s: %s" %(struct['game-obj'], struct['name']))
