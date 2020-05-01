@@ -18,7 +18,7 @@ def parse_creature(filename, output):
 	sidebar_pass(struct)
 	index_pass(struct)
 	aon_pass(struct, basename)
-	#validate_dict_pass(struct)
+	validate_dict_pass(struct)
 	remove_empty_sections_pass(struct)
 	basename.split("_")
 	jsondir = makedirs(output, struct['game-obj'], struct['source']['name'])
@@ -216,7 +216,8 @@ def process_stat_block(sb, sections):
 
 	# Defense
 	defense = sections.pop(0)
-	sb['defense'] = {}
+	sb['defense'] = {
+		'type': 'stat_block_section', 'subtype': 'defense', 'name': "Defense"}
 	sb['defense']['ac'] = process_ac(defense.pop(0))
 	sb['defense']['saves'] = process_saves(
 		defense.pop(0), defense.pop(0), defense.pop(0))
@@ -235,7 +236,8 @@ def process_stat_block(sb, sections):
 
 	# Offense
 	offense = sections.pop(0)
-	sb['offense'] = {}
+	sb['offense'] = {
+		'type': 'stat_block_section', 'subtype': 'offense', 'name': "Offense"}
 	sb['offense']['speed'] = process_speed(offense.pop(0))
 	del sb['text']
 	assert len(offense) == 0
@@ -420,14 +422,21 @@ def process_ac(section):
 	assert section[1].endswith(",")
 	assert section[2] == None
 	text = section[1][:-1]
+	modifiers = []
 	value, modifier = extract_modifier(text)
+	if modifier:
+		modifiers = [m.strip() for m in modifier.split(";")]
+	if value.find(";") > -1:
+		parts = value.split(";")
+		value = parts.pop(0)
+		modifiers.extend([m.strip() for m in parts])
 	ac = {
 		'type': 'stat_block_element',
 		'subtype': 'armor_class',
+		'name': "AC",
 		'value': int(value.strip())
 	}
-	if modifier:
-		modifiers = [m.strip() for m in modifier.split(";")]
+	if len(modifiers) > 0:
 		ac['modifiers'] = modifiers
 	return ac
 
@@ -435,6 +444,7 @@ def process_saves(fort, ref, will):
 	saves = {
 		'type': 'stat_block_element',
 		'subtype': 'saves',
+		'name': "Saves"
 	}
 	def process_save(section):
 		assert section[0] in ["Fort", "Ref", "Will"]
@@ -452,6 +462,8 @@ def process_saves(fort, ref, will):
 			saves['bonuses'] = bonuses
 		value, modifier = extract_modifier(value)
 		save = {
+			'type': "stat_block_section",
+			'subtype': "save",
 			'name': section[0],
 			'value': int(value.strip().replace("+", ""))}
 		if modifier:
@@ -464,10 +476,11 @@ def process_saves(fort, ref, will):
 	process_save(will)
 	return saves
 
-def process_hp(section, name):
+def process_hp(section, subtype):
 	assert section[0] in ["HP", "Hardness"]
 	assert section[2] == None
 	text = section[1].strip()
+	name = section[0]
 	value, text = re.search("^(\d*)(.*)", text).groups()
 	value = int(value)
 	if(text.startswith(",")):
@@ -482,7 +495,8 @@ def process_hp(section, name):
 		specials.extend([t.strip() for t in text.split(",")])
 	hp = {
 		'type': 'stat_block_element',
-		'subtype': name,
+		'subtype': subtype,
+		'name': name,
 		'value': value}
 	if len(specials) > 0:
 		hp['special'] = specials
@@ -545,6 +559,7 @@ def process_speed(section):
 	speed = {
 		'type': 'stat_block_element',
 		'subtype': 'speed',
+		'name': 'Speed',
 		'movement': speeds
 	}
 	if modifiers:
@@ -655,7 +670,11 @@ def extract_action(text):
 			action_name = child['alt']
 			image = child['src'].split("\\").pop()
 			if not action:
-				action = {'action': action_name, 'image': image}
+				action = {
+					'type': 'stat_block_section',
+					'subtype': 'action',
+					'name': action_name,
+					'image': image}
 		else:
 			newchildren.append(child)
 			newchildren.extend(children)
