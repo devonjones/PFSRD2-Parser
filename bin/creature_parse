@@ -6,7 +6,7 @@ from pfsrd2.warnings import WarningReporting
 from pfsrd2.options import exec_main, option_parser
 
 def main():
-	usage = "usage: %prog [options] [filenames]\nParses creatures from psrd html to json and writes them to the specified directory"
+	usage = "usage: %prog [options] [filenames]\nParses creatures from pfsrd2 html to json and writes them to the specified directory"
 	parser = option_parser(usage)
 	exec_main(parser, parse_creature, "creatures")
 

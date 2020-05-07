@@ -206,7 +206,7 @@ def parse_body(div, book=False, title=False, max_title=5):
 		newlines.append(section)
 	return newlines
 
-def parse_universal(filename, output, title=False, max_title=5):
+def parse_universal(filename, title=False, max_title=5):
 	fp = open(filename)
 	try:
 		soup = BeautifulSoup(fp, "lxml")
@@ -277,7 +277,7 @@ def img_details(detail):
 def extract_link(a):
 	assert a.name == "a"
 	name = get_text(a)
-	link = {'type': 'link', 'name': name, 'alt': name}
+	link = {'type': 'link', 'name': name.strip(), 'alt': name.strip()}
 	if a.has_attr('game-obj'):
 		link['game-obj'] = a['game-obj']
 	if a.has_attr('aonid'):

@@ -3,27 +3,31 @@ import json
 import sys
 import re
 from pprint import pprint
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 from pfsrd2.universal import parse_universal, print_struct
 from pfsrd2.universal import is_trait, get_text, extract_link
 from pfsrd2.files import makedirs, char_replace
 
-def parse_creature(filename, output):
+def parse_creature(filename, options):
 	basename = os.path.basename(filename)
-	sys.stderr.write("%s\n" % basename)
-	details = parse_universal(filename, output, max_title=4)
+	if not options.stdout:
+		sys.stderr.write("%s\n" % basename)
+	details = parse_universal(filename, max_title=4)
 	struct = restructure_creature_pass(details)
 	creature_stat_block_pass(struct)
 	source_pass(struct)
 	sidebar_pass(struct)
 	index_pass(struct)
 	aon_pass(struct, basename)
-	validate_dict_pass(struct)
+	#validate_dict_pass(struct, struct, None, "")
 	remove_empty_sections_pass(struct)
 	basename.split("_")
-	jsondir = makedirs(output, struct['game-obj'], struct['source']['name'])
-	#print(json.dumps(struct, indent=2))
-	#write_creature(jsondir, struct)
+	if not options.dryrun:
+		output = options.output
+		jsondir = makedirs(output, struct['game-obj'], struct['source']['name'])
+		write_creature(jsondir, struct)
+	elif options.stdout:
+		print(json.dumps(struct, indent=2))
 
 def restructure_creature_pass(details):
 	sb = None
@@ -152,21 +156,38 @@ def aon_pass(struct, basename):
 	struct["aonid"] = int(parts[1])
 	struct["game-obj"] = parts[0].split(".")[0]
 
-def validate_dict_pass(struct):
+def validate_dict_pass(top, struct, parent, field):
 	try:
 		if type(struct) is dict:
 			for k, v in struct.items():
-				validate_dict_pass(v)
+				validate_dict_pass(top, v, struct, k)
 			if 'type' not in struct:
 				raise Exception("%s missing type" % struct)
 			if 'name' not in struct:
 				raise Exception("%s missing name" % struct)
-		if type(struct) is list:
+		elif type(struct) is list:
 			for item in struct:
 				if type(item) is dict:
-					validate_dict_pass(item)
+					validate_dict_pass(top, item, struct, "")
 				else:
 					raise Exception("%s: lists should only have dicts" % struct)
+		elif type(struct) is str:
+			#if field == "name" and struct.startswith(top.get("name", "")):
+			#	pass
+			if type(parent) is dict and parent['type'] in ['section', 'sidebar']:
+				pass
+			elif type(parent) is dict and parent.get('subtype') in ['modifier']:
+				pass
+			elif type(parent) is dict and parent.get(
+					'subtype') == 'ability' and field in [
+					"frequency", "trigger", "effect", "duration", "requirement",
+					"critical success", "success", "failure",
+					"critical failure"]:
+				pass
+			elif struct.find("(") > -1:
+				bs = BeautifulSoup(struct, 'html.parser')
+				if not bs.table:
+					raise Exception("%s: '(' should have been parsed out" % struct)
 	except Exception as e:
 		pprint(struct)
 		raise e
@@ -204,7 +225,7 @@ def process_stat_block(sb, sections):
 	process_source(sb, stats.pop(0))
 	sb['perception'] = process_perception(stats.pop(0))
 	if(stats[0][0] == "Languages"):
-		sb['language'] = process_languages(stats.pop(0))
+		sb['languages'] = process_languages(stats.pop(0))
 	if(stats[0][0] == "Skills"):
 		sb['skills'] = process_skills(stats.pop(0))
 	for _ in range(6):
@@ -290,54 +311,93 @@ def process_perception(section):
 	if len(parts) > 0:
 		special_senses = []
 		for part in parts:
+			part, modifier = extract_modifier(part)
 			bs = BeautifulSoup(part, 'html.parser')
 			children = list(bs.children)
+			sense = None
 			if children[0].name == "a":
 				name, link = extract_link(children[0])
-				special_senses.append({
-					'name': name,
-					'type': 'stat_block_element',
-					'subtype': 'special_sense',
-					'link': link})
+				sense = build_object(
+					'stat_block_section', 'special_sense', name, {'link': link})
 			else:
-				special_senses.append({
-					'type': 'stat_block_element',
-					'subtype': 'special_sense',
-					'name': part})
+				sense = build_object(
+					'stat_block_section', 'special_sense', part)
+			if modifier:
+				sense['modifiers'] = build_objects(
+					'stat_block_section', 'modifier', [modifier])
+			special_senses.append(sense)
 		perception['special_senses'] = special_senses
 	return perception
 
 def process_languages(section):
 	assert section[0] == "Languages"
 	assert section[2] == None
-	parts = split_stat_block_line(section[1])
-	languages = []
-	for language in parts:
-		bs = BeautifulSoup(language, 'html.parser')
+	text = section[1]
+	languages = build_object(
+		'stat_block_element', 'languages', 'Languages', {'languages': []})
+	if text.find(";") > -1:
+		parts = text.split(";")
+		text = parts.pop(0)
+		assert len(parts) == 1
+		parts = rebuilt_split_modifiers(split_stat_block_line(parts.pop()))
+		abilities = []
+		for part in parts:
+			newtext, modifier = extract_modifier(part.strip())
+			if newtext.strip() == "":
+				languages['modifiers'] = build_objects(
+						'stat_block_section', 'modifier',
+						[m.strip() for m in modifier.split(",")])
+			else:
+				bs = BeautifulSoup(newtext, 'html.parser')
+				link = None
+				if bs.a:
+					newtext, link = extract_link(bs.a)
+
+				ability = build_object(
+				'stat_block_section', 'ability', newtext, {
+					'ability_type': 'communication'})
+				if link:
+					ability['link'] = link
+				if(modifier):
+					ability['modifiers'] = build_objects(
+						'stat_block_section', 'modifier',
+						[m.strip() for m in modifier.split(",")])
+				abilities.append(ability)
+		if len(abilities) > 0:
+			languages['communication_abilities'] = abilities
+	parts = rebuilt_split_modifiers(split_stat_block_line(text))
+	for text in parts:
+		text, modifier = extract_modifier(text)
+		bs = BeautifulSoup(text, 'html.parser')
 		c = list(bs.children)
+
 		if len(c) > 1:
 			assert c[0].name == 'a'
 			assert len(c) == 2
 			name, link = extract_link(c[0])
-			languages.append({
+			language = {
 				'name': name,
 				'type': 'stat_block_element',
 				'subtype': 'language',
-				'link': link})
+				'link': link}
 		else:
 			assert len(c) == 1
 			if c[0].name == 'a':
 				link = extract_link(c[0])
-				languages.append({
+				language = {
 					'name': get_text(bs),
 					'type': 'stat_block_element',
 					'subtype': 'language',
-					'link': link})
+					'link': link}
 			else:
-				languages.append({
+				language = {
 					'name': get_text(bs),
 					'type': 'stat_block_element',
-					'subtype': 'language'})
+					'subtype': 'language'}
+		if modifier:
+			language['modifiers'] = build_objects(
+				'stat_block_section', 'modifier', [modifier])
+		languages['languages'].append(language)
 	return languages
 
 def process_skills(section):
@@ -375,6 +435,10 @@ def unwrap_formatting(bs):
 		bs.i.unwrap()
 	while bs.u:
 		bs.u.unwrap()
+	for a in bs.find_all("a"):
+		for child in a.children:
+			if isinstance(child, NavigableString):
+				child.replace_with(child.strip())
 	return bs
 
 def process_items(section):
@@ -391,8 +455,8 @@ def process_items(section):
 		item = {
 			'type': 'stat_block_element',
 			'subtype': 'item',
-			'name': name,
-			'html': html}
+			'name': name.strip(),
+			'html': html.strip()}
 		if modifier:
 			modifiers = modifier.split(",")
 			item['modifiers'] = build_objects(
@@ -414,7 +478,7 @@ def process_interaction_ability(section):
 		'name': ability_name,
 		'type': 'stat_block_element',
 		'subtype': 'interaction_ability'}
-	description, traits = extract_traits(description)
+	description, traits = extract_all_traits(description)
 	if len(traits) > 0:
 		ability['traits'] = traits
 	ability['text'] = description
@@ -507,9 +571,15 @@ def process_hp(section, subtype):
 		'name': name,
 		'value': value}
 	if len(specials) > 0:
-		hp['automatic_abilities'] = build_objects(
+		special_sections = build_objects(
 			'stat_block_section', 'ability', specials, {
 				'ability_type': 'automatic'})
+		for section in special_sections:
+			parse_section_modifiers(section, 'name')
+			parse_section_value(section, 'name')
+		hp['automatic_abilities'] = special_sections
+
+
 	return hp
 
 def process_defense(sb, section):
@@ -523,9 +593,18 @@ def process_defense(sb, section):
 	if(text.endswith(";")):
 		text = text[:-1].strip()
 	parts = rebuilt_split_modifiers(split_stat_block_line(text))
-	sb[section[0].lower()] = [{'type': 'stat_block_section',
-		'subtype': subtype[section[0]],
-		'name': part} for part in parts]
+	defense = build_object(
+						'stat_block_section', section[0].lower(), section[0],
+						{section[0].lower(): []})
+	for part in parts:
+		d = {
+			'type': 'stat_block_section',
+			'subtype': subtype[section[0]],
+			'name': part}
+		d = parse_section_modifiers(d, 'name')
+		d = parse_section_value(d, 'name')
+		defense[section[0].lower()].append(d)
+	sb[section[0].lower()] = defense
 
 def process_defensive_ability(section, sections, sb):
 	assert section[0] not in ["Immunities", "Resistances", "Weaknesses"]
@@ -546,7 +625,7 @@ def process_defensive_ability(section, sections, sb):
 		addon = sections.pop(0)
 		assert addon[2] == None
 		ability[addon[0].lower()] = addon[1]
-	description, traits = extract_traits(description)
+	description, traits = extract_starting_traits(description)
 	description = description.strip()
 
 	if len(traits) > 0:
@@ -564,6 +643,25 @@ def process_defensive_ability(section, sections, sb):
 	sb.setdefault(sb_key, []).append(ability)
 
 def process_speed(section):
+	def build_movement(text):
+		movements = build_objects('stat_block_section', 'speed',
+			[t.strip() for t in text.split(",")])
+		for movement in movements:
+			name, modifier = extract_modifier(movement['name'])
+			if modifier:
+				movement['name'] = name
+				bs = BeautifulSoup(modifier, 'html.parser')
+				if bs.a:
+					_, link = extract_link(bs.a)
+					modifier = get_text(bs)
+					movement['modifiers'] = build_objects(
+						'stat_block_section', 'modifier',
+						[modifier], {'link': link})
+				else:
+					movement['modifiers'] = build_objects(
+						'stat_block_section', 'modifier', [modifier])
+		return movements
+	
 	assert section[0] == "Speed"
 	assert section[2] == None
 	text = section[1].strip()
@@ -573,10 +671,9 @@ def process_speed(section):
 	if len(parts) > 0:
 		modifier = parts.pop()
 	assert len(parts) == 0
-	speeds = build_objects('stat_block_section', 'speed',
-		[t.strip() for t in text.split(",")])
+	movement = build_movement(text)
 	speed = build_object(
-		'stat_block_element', 'speed', 'Speed', {'movement': speeds})
+		'stat_block_element', 'speed', 'Speed', {'movement': movement})
 	if modifier:
 		speed['modifiers'] = build_objects(
 				'stat_block_section', 'modifier', [modifier])
@@ -586,14 +683,14 @@ def process_offensive_action(section):
 	if len(section['sections']) == 0:
 		del section['sections']
 	section['type'] = 'offensive_action'
-	text = section['text']
+	text = section['text'].strip()
 	text, action = extract_action(text)
 	if action:
 		section['action'] = action
-	text, traits = extract_traits(text)
+	text, traits = extract_starting_traits(text)
 	if len(traits) > 0:
 		section['traits'] = traits
-	section['text'] = text
+	section['text'] = text.strip()
 	if section['name'] == "Melee":
 		section['subtype'] = "melee"
 	elif section['name'] == "Ranged":
@@ -644,19 +741,65 @@ def extract_source(obj):
 	page = int(parts.pop(0))
 	return {'type': 'source', 'name': name, 'link': link, 'page': page}
 
-def extract_traits(description):
+def extract_starting_traits(description):
+	if description.strip().startswith("("):
+		return _extract_trait(description)
+	return description, []
+
+def extract_all_traits(description):
 	traits = []
-	if(description.startswith('(')):
-		text, description = description.split(")", 1)
-		parts = [p.strip() for p in text.replace("(", "").split(",")]
-		for part in parts:
-			bs = BeautifulSoup(part, 'html.parser')
-			children = list(bs.children)
-			assert len(children) == 1
-			name, trait_link = extract_link(children[0])
-			traits.append(build_object(
-				'stat_block_element', 'trait', name, {'link': trait_link}))
-	return description.strip(), traits
+	while description.find("(") > -1:
+		description, ts = _extract_trait(description)
+		traits.extend(ts)
+	return description, traits
+
+def _extract_trait(description):
+	traits = []
+	newdescription = []
+	if description.find("(") > -1:
+		front, middle = description.split("(", 1)
+		newdescription.append(front)
+		text, back = middle.split(")", 1)
+		bs = BeautifulSoup(text, 'html.parser')
+		if bs.a and bs.a.has_attr('game-obj') and bs.a['game-obj'] == 'Traits':
+			if text.find(" or ") > -1:
+				# TODO - need to solve or cases on traits, Monster ID 518
+				return description, []
+			parts = [p.strip() for p in text.replace("(", "").split(",")]
+			for part in parts:
+				bs = BeautifulSoup(part, 'html.parser')
+				children = list(bs.children)
+				assert len(children) == 1
+				name, trait_link = extract_link(children[0])
+				traits.append(build_object(
+					'stat_block_element', 'trait', name, {'link': trait_link}))
+		else:
+			newdescription.append(text)
+			newdescription.append(")")
+		description = back
+	newdescription.append(description)
+	return ''.join(newdescription).strip(), traits
+
+def parse_section_modifiers(section, key):
+	text = section[key]
+	text, modifier = extract_modifier(text)
+	if modifier:
+		modifiers = modifier.split(",")		
+		section['modifiers'] = build_objects(
+				'stat_block_section', 'modifier', [modifier])
+	section[key] = text
+	return section
+
+def parse_section_value(section, key):
+	text = section[key]
+	m = re.search("(.*) (\d*)$", text)
+	value = None
+	if m:
+		text, value = m.groups()
+	if value:
+		section['value'] = int(value)
+	section[key] = text
+	return section
 
 def extract_modifier(text):
 	if text.find("(") > -1:
@@ -666,7 +809,7 @@ def extract_modifier(text):
 		newparts = parts.pop(0).split(")", 1)
 		modifier = newparts.pop(0).strip()
 		base.extend(newparts)
-		return ''.join([b.strip() for b in base]), modifier
+		return ' '.join([b.strip() for b in base]).strip(), modifier
 	else:
 		return text, None
 
