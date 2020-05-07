@@ -1,3 +1,4 @@
 old
 .*.sw[po]
 .vscode
+__pycache__
