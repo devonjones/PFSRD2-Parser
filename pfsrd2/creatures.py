@@ -583,6 +583,15 @@ def process_hp(section, subtype):
 	return hp
 
 def process_defense(sb, section):
+	def create_defense(defense):
+		d = {
+			'type': 'stat_block_section',
+			'subtype': subtype[section[0]],
+			'name': part}
+		d = parse_section_modifiers(d, 'name')
+		d = parse_section_value(d, 'name')
+		return d
+
 	assert section[0] in ["Immunities", "Resistances", "Weaknesses"]
 	assert section[2] == None
 	text = section[1].strip()
@@ -597,13 +606,7 @@ def process_defense(sb, section):
 						'stat_block_section', section[0].lower(), section[0],
 						{section[0].lower(): []})
 	for part in parts:
-		d = {
-			'type': 'stat_block_section',
-			'subtype': subtype[section[0]],
-			'name': part}
-		d = parse_section_modifiers(d, 'name')
-		d = parse_section_value(d, 'name')
-		defense[section[0].lower()].append(d)
+		defense[section[0].lower()].append(create_defense(part))
 	sb[section[0].lower()] = defense
 
 def process_defensive_ability(section, sections, sb):
@@ -814,6 +817,17 @@ def extract_modifier(text):
 		return text, None
 
 def extract_action(text):
+	def build_action(child, action):
+		action_name = child['alt']
+		image = child['src'].split("\\").pop()
+		if not action:
+			action = build_object(
+				'stat_block_section',
+				'action',
+				action_name,
+				{'image': image})
+		return action
+
 	children = list(BeautifulSoup(text.strip(), 'html.parser').children)
 	action = None
 	newchildren = []
@@ -823,14 +837,7 @@ def extract_action(text):
 	while len(children) > 0:
 		child = children.pop(0)
 		if child.name == "img" and child['alt'] in action_names:
-			action_name = child['alt']
-			image = child['src'].split("\\").pop()
-			if not action:
-				action = build_object(
-					'stat_block_section',
-					'action',
-					action_name,
-					{'image': image})
+			action = build_action(child, action)
 		else:
 			newchildren.append(child)
 			newchildren.extend(children)
