@@ -5,9 +5,6 @@ from optparse import OptionParser
 
 def exec_main(parser, function, localdir):
 	(options, args) = parser.parse_args()
-	title = False
-	if hasattr(options, 'title'):
-		title = True
 
 	if not options.output and not options.dryrun:
 		sys.stderr.write("-o/--output required")
@@ -24,7 +21,6 @@ def exec_main(parser, function, localdir):
 
 def exec_load_main(parser, function):
 	(options, args) = parser.parse_args()
-	title = False
 	if not options.db:
 		sys.stderr.write("-d/--db required")
 		sys.exit(1)
