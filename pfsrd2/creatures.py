@@ -24,8 +24,9 @@ def parse_creature(filename, options):
 	basename.split("_")
 	if not options.dryrun:
 		output = options.output
-		jsondir = makedirs(output, struct['game-obj'], struct['source']['name'])
-		write_creature(jsondir, struct)
+		for source in struct['source']:
+			jsondir = makedirs(output, struct['game-obj'], source['name'])
+			write_creature(jsondir, struct, source['name'])
 	elif options.stdout:
 		print(json.dumps(struct, indent=2))
 
@@ -208,7 +209,7 @@ def parse_trait(span):
 		'name': name,
 		'class': trait_class,
 		'text': text,
-		'type': 'stat_block_element',
+		'type': 'stat_block_section',
 		'subtype': 'trait'}
 	c = list(span.children)
 	if len(c) == 1:
@@ -275,6 +276,15 @@ def process_stat_block(sb, sections):
 		sb['offense']['offensive_actions'] = attacks
 
 def process_source(sb, section):
+	# 5
+	# <a target="_blank" href="Images\Monsters\Alghollthu_VeiledMaster.png"><img class="thumbnail" src="Images\Monsters\Alghollthu_VeiledMaster.png"></a>
+	# <b>Source</b> <a href="https://paizo.com/products/btq01y0m?Pathfinder-Bestiary" target="_blank" class="external-link"><i>Bestiary pg. 14</i></a>
+	# 447
+	# <a target="_blank" href="Images\Monsters\Grippli.png"><img class="thumbnail" src="Images\Monsters\Grippli.png"></a>
+	# <b>Source</b> <a href="https://paizo.com/products/btq01znt?Pathfinder-Adventure-Path-146-Cult-of-Cinders" target="_blank" class="external-link"><i>Pathfinder #146: Cult of Cinders pg. 86</i></a>, <a href="https://paizo.com/products/btq022yq" target="_blank"><i>Bestiary 2 pg. 139</i></a>; <strong><u><a href="Monsters.aspx?ID=693">There is a more recent version of this monster. Click here to view.</a></u></strong>
+	# 861
+	# <a target="_blank" href="Images\Monsters\Witchwyrd.png"><img class="thumbnail" src="Images\Monsters\Witchwyrd.png"></a>
+	# <b>Source</b> <a href="https://paizo.com/products/btq022yq" target="_blank" class="external-link"><i>Bestiary 2 pg. 294</i></a>, <a href="https://paizo.com/products/btq02065" target="_blank"><i>Pathfinder #149: Against the Scarlet Triad pg. 90</i></a>
 	def set_image(obj, name):
 		link = obj['href']
 		image = link.split("\\").pop()
@@ -284,14 +294,31 @@ def process_source(sb, section):
 
 	assert section[0] == "Source"
 	bs = BeautifulSoup(section[1], 'html.parser')
-	c = list(bs.children)
-	if len(c) == 1:
-		sb['source'] = extract_source(c[0])
-	elif len(c) == 2:
-		set_image(c[0], sb['name'])
-		sb['source'] = extract_source(c[1])
-	else:
-		raise Exception("Source should have only 1 or 2 pieces")
+	c = [c for c in list(bs.children)] # if c.name != "sup"]
+	sources = []
+	if c[0].find("img"):
+		set_image(c.pop(0), sb['name'])
+	note = None
+	errata = None
+	while len(c) > 0:
+		if c[0].name == "a":
+			sources.append(extract_source(c.pop(0)))
+		elif c[0].name == "sup":
+			assert not errata, "Should be no more than one errata."
+			errata = extract_link(c.pop(0).find("a"))
+		elif c[0].name == "strong":
+			assert not note, "Should be no more than one note."
+			note = extract_link(c.pop(0).find("a"))
+		elif isinstance(c[0], str) and c[0].strip() in [",", ";"]:
+			c.pop(0)
+		else:
+			raise Exception("Source has unexpected text: %s" % c[0])
+	for source in sources:
+		if note:
+			source['note'] = note[1]
+		if errata:
+			source['errata'] = errata[1]
+	sb['source'] = sources
 
 def process_perception(section):
 	assert section[0] == "Perception"
@@ -334,7 +361,7 @@ def process_languages(section):
 	assert section[2] == None
 	text = section[1]
 	languages = build_object(
-		'stat_block_element', 'languages', 'Languages', {'languages': []})
+		'stat_block_section', 'languages', 'Languages', {'languages': []})
 	if text.find(";") > -1:
 		parts = text.split(";")
 		text = parts.pop(0)
@@ -377,7 +404,7 @@ def process_languages(section):
 			name, link = extract_link(c[0])
 			language = {
 				'name': name,
-				'type': 'stat_block_element',
+				'type': 'stat_block_section',
 				'subtype': 'language',
 				'link': link}
 		else:
@@ -386,13 +413,13 @@ def process_languages(section):
 				link = extract_link(c[0])
 				language = {
 					'name': get_text(bs),
-					'type': 'stat_block_element',
+					'type': 'stat_block_section',
 					'subtype': 'language',
 					'link': link}
 			else:
 				language = {
 					'name': get_text(bs),
-					'type': 'stat_block_element',
+					'type': 'stat_block_section',
 					'subtype': 'language'}
 		if modifier:
 			language['modifiers'] = build_objects(
@@ -413,7 +440,7 @@ def process_skills(section):
 		value, modifier = extract_modifier(''.join([str(c) for c in children]))
 		value = int(value.replace("+", ""))
 		skill = {
-			'type': 'stat_block_element',
+			'type': 'stat_block_section',
 			'subtype': 'skill',
 			'name': name,
 			'link': link,
@@ -451,9 +478,8 @@ def process_items(section):
 		bs = unwrap_formatting(BeautifulSoup(text, 'html.parser'))
 		html = str(bs)
 		name = get_text(bs)
-		children = list(bs.children)
 		item = {
-			'type': 'stat_block_element',
+			'type': 'stat_block_section',
 			'subtype': 'item',
 			'name': name.strip(),
 			'html': html.strip()}
@@ -476,7 +502,7 @@ def process_interaction_ability(section):
 	link = section[2]
 	ability = {
 		'name': ability_name,
-		'type': 'stat_block_element',
+		'type': 'stat_block_section',
 		'subtype': 'interaction_ability'}
 	description, traits = extract_all_traits(description)
 	if len(traits) > 0:
@@ -487,20 +513,46 @@ def process_interaction_ability(section):
 	return ability
 
 def process_ac(section):
+	def extract_ac_modifier(text):
+		#22 <b>AC</b> 26 (22 when broken); construct armor;
+		#303 <b>AC</b> 37 all-around vision; 
+		#333 <b>AC</b> 23 (25 with shield raised); 
+		text, modifier = extract_modifier(text)
+		if modifier:
+			modifiers = [modifier]
+		else:
+			modifiers = []
+		if text.find(";") > -1:
+			parts = [p.strip() for p in text.split(";", 1)]
+			text = parts.pop(0)
+			modifiers.extend(parts)
+		if text.find(" ") > -1:
+			parts = text.split(" ", 1)
+			base = [parts.pop(0)]
+			newparts = parts.pop(0).split(")", 1)
+			modifier = newparts.pop(0).strip()
+			base.extend(newparts)
+			modifiers.append(modifier)
+			return ' '.join([b.strip() for b in base]).strip(), modifiers
+		else:
+			return text, modifiers
+	
 	assert section[0] == "AC"
-	assert section[1].endswith(",")
+	assert section[1].endswith(";")
 	assert section[2] == None
 	text = section[1][:-1]
 	modifiers = []
-	value, modifier = extract_modifier(text)
+	value, modifiers = extract_ac_modifier(text)
+	modifier = ';'.join(modifiers)
 	if modifier:
 		modifiers = [m.strip() for m in modifier.split(";")]
 	if value.find(";") > -1:
 		parts = value.split(";")
 		value = parts.pop(0)
 		modifiers.extend([m.strip() for m in parts])
+
 	ac = {
-		'type': 'stat_block_element',
+		'type': 'stat_block_section',
 		'subtype': 'armor_class',
 		'name': "AC",
 		'value': int(value.strip())
@@ -512,7 +564,7 @@ def process_ac(section):
 
 def process_saves(fort, ref, will):
 	saves = {
-		'type': 'stat_block_element',
+		'type': 'stat_block_section',
 		'subtype': 'saves',
 		'name': "Saves"
 	}
@@ -553,7 +605,7 @@ def process_hp(section, subtype):
 	assert section[2] == None
 	text = section[1].strip()
 	name = section[0]
-	value, text = re.search("^(\d*)(.*)", text).groups()
+	value, text = re.search(r"^(\d*)(.*)", text).groups()
 	value = int(value)
 	if(text.startswith(",")):
 		text = text[1:]
@@ -566,7 +618,7 @@ def process_hp(section, subtype):
 	elif len(text.strip()) > 0:
 		specials.extend([t.strip() for t in text.split(",")])
 	hp = {
-		'type': 'stat_block_element',
+		'type': 'stat_block_section',
 		'subtype': subtype,
 		'name': name,
 		'value': value}
@@ -615,7 +667,7 @@ def process_defensive_ability(section, sections, sb):
 	link = section[2]
 	sb_key = 'automatic_abilities'
 	ability = {
-		'type': 'stat_block_element',
+		'type': 'stat_block_section',
 		'subtype': 'ability',
 		'ability_type': 'automatic',
 		'name': section[0]
@@ -676,7 +728,7 @@ def process_speed(section):
 	assert len(parts) == 0
 	movement = build_movement(text)
 	speed = build_object(
-		'stat_block_element', 'speed', 'Speed', {'movement': movement})
+		'stat_block_section', 'speed', 'Speed', {'movement': movement})
 	if modifier:
 		speed['modifiers'] = build_objects(
 				'stat_block_section', 'modifier', [modifier])
@@ -775,7 +827,7 @@ def _extract_trait(description):
 				assert len(children) == 1
 				name, trait_link = extract_link(children[0])
 				traits.append(build_object(
-					'stat_block_element', 'trait', name, {'link': trait_link}))
+					'stat_block_section', 'trait', name, {'link': trait_link}))
 		else:
 			newdescription.append(text)
 			newdescription.append(")")
@@ -787,7 +839,6 @@ def parse_section_modifiers(section, key):
 	text = section[key]
 	text, modifier = extract_modifier(text)
 	if modifier:
-		modifiers = modifier.split(",")		
 		section['modifiers'] = build_objects(
 				'stat_block_section', 'modifier', [modifier])
 	section[key] = text
@@ -795,7 +846,7 @@ def parse_section_modifiers(section, key):
 
 def parse_section_value(section, key):
 	text = section[key]
-	m = re.search("(.*) (\d*)$", text)
+	m = re.search(r"(.*) (\d*)$", text)
 	value = None
 	if m:
 		text, value = m.groups()
@@ -875,8 +926,8 @@ def build_object(dtype, subtype, name, keys=None):
 		obj.update(keys)
 	return obj
 
-def write_creature(jsondir, struct):
-	print("%s: %s" %(struct['game-obj'], struct['name']))
+def write_creature(jsondir, struct, source):
+	print("%s (%s): %s" %(struct['game-obj'], source, struct['name']))
 	filename = create_creature_filename(jsondir, struct)
 	fp = open(filename, 'w')
 	json.dump(struct, fp, indent=4)
