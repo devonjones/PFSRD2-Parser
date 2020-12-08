@@ -64,6 +64,13 @@ def creature_stat_block_pass(struct):
 			link = None
 		return key, value, data, link
 
+	def add_remnants(value, data):
+		k,v,_ = data.pop()
+		newvalue = [v]
+		newvalue.extend(value)
+		data.append((k, ''.join([str(v) for v in newvalue]).strip(), link))
+		return [], data
+
 	sb = find_stat_block(struct)
 	bs = BeautifulSoup(sb["text"], 'html.parser')
 	objs = list(bs.children)
@@ -77,9 +84,14 @@ def creature_stat_block_pass(struct):
 			trait = parse_trait(obj)
 			sb.setdefault('traits', []).append(trait)
 		elif obj.name == "br":
+			value.append(obj)
 			key, value, data, link = add_to_data(key, value, data, link)
 		elif obj.name == 'hr':
 			key, value, data, link = add_to_data(key, value, data, link)
+			if len(value) > 0:
+				assert link == None
+				value, data = add_remnants(value, data)
+			data = strip_br(data)
 			sections.append(data)
 			data = []
 		elif obj.name == "b":
@@ -91,9 +103,20 @@ def creature_stat_block_pass(struct):
 			value.append(obj)
 	if key:
 		key, value, data, link = add_to_data(key, value, data, link)
+	data = strip_br(data)
 	sections.append(data)
 	assert len(sections) == 3
 	process_stat_block(sb, sections)
+
+def strip_br(data):
+	newdata = []
+	for k,v,l in data:
+		bs = BeautifulSoup(v, 'html.parser')
+		children = list(bs.children)
+		while len(children) > 0 and children[-1].name == "br":
+			children.pop()
+		newdata.append((k, ''.join([str(c) for c in children]).strip(), l))
+	return newdata
 
 def source_pass(struct):
 	def _extract_source(section):
@@ -208,7 +231,7 @@ def parse_trait(span):
 	trait = {
 		'name': name,
 		'class': trait_class,
-		'text': text,
+		'text': text.strip(),
 		'type': 'stat_block_section',
 		'subtype': 'trait'}
 	c = list(span.children)
@@ -311,6 +334,8 @@ def process_source(sb, section):
 			note = extract_link(c.pop(0).find("a"))
 		elif isinstance(c[0], str) and c[0].strip() in [",", ";"]:
 			c.pop(0)
+		elif c[0].name == "br":
+			c.pop(0)
 		else:
 			raise Exception("Source has unexpected text: %s" % c[0])
 	for source in sources:
@@ -357,6 +382,21 @@ def process_perception(section):
 	return perception
 
 def process_languages(section):
+	# 1, Unseen Servant
+	#  <b>Languages</b> - (understands its creator)
+	# 2, Alghollthu Master
+	#  <b>Languages</b> <a href="Languages.aspx?ID=13"><u>Aklo</a></u>, <a href="Languages.aspx?ID=24"><u>Alghollthu</a></u>, <a href="Languages.aspx?ID=14"><u>Aquan</a></u>, <a href="Languages.aspx?ID=1"><u>Common</a></u>, <a href="Languages.aspx?ID=11"><u>Undercommon</a></u>
+	# 204
+	#  <b>Languages</b> pidgin of <a style="text-decoration:underline" href="Languages.aspx?ID=6">Goblin</a>, <a style="text-decoration:underline" href="Languages.aspx?ID=8">Jotun</a>, and <a style="text-decoration:underline" href="Languages.aspx?ID=9">Orcish</a>
+	# 211
+	#  <b>Languages</b> <a href="Languages.aspx?ID=1"><u>Common</a></u>; one elemental language (Aquan, Auran, Ignan, or Terran), one planar language (Abyssal, Celestial, or Infernal); telepathy 100 feet
+	# 343, Quelaunt
+	#  <b>Languages</b> <a href="Languages.aspx?ID=13"><u>Aklo</a></u>; (can't speak any language); telepathy 100 feet
+	# 639, Drainberry Bush
+	#  <b>Languages</b> <a href="Languages.aspx?ID=13"><u>Aklo</a></u>, <a href="Languages.aspx?ID=1"><u>Common</a></u>, <a href="Languages.aspx?ID=10"><u>Sylvan</a></u>; <a style="text-decoration:underline" href="Spells.aspx?ID=340"><i>tongues</i></a>
+	# 98, Succubus
+	#  <b>Languages</b> <a href="Languages.aspx?ID=12"><u>Abyssal</a></u>, <a href="Languages.aspx?ID=16"><u>Celestial</a></u>, <a href="Languages.aspx?ID=1"><u>Common</a></u>, <a href="Languages.aspx?ID=2"><u>Draconic</a></u>; three additional mortal languages; telepathy 100 feet, <a style="text-decoration:underline" href="Spells.aspx?ID=340"><i>tongues</i></a>
+
 	assert section[0] == "Languages"
 	assert section[2] == None
 	text = section[1]
@@ -365,8 +405,8 @@ def process_languages(section):
 	if text.find(";") > -1:
 		parts = text.split(";")
 		text = parts.pop(0)
-		assert len(parts) == 1
-		parts = rebuilt_split_modifiers(split_stat_block_line(parts.pop()))
+		assert len(parts) in [1,2], parts
+		parts = rebuilt_split_modifiers(split_stat_block_line(";".join(parts)))
 		abilities = []
 		for part in parts:
 			newtext, modifier = extract_modifier(part.strip())
@@ -379,7 +419,6 @@ def process_languages(section):
 				link = None
 				if bs.a:
 					newtext, link = extract_link(bs.a)
-
 				ability = build_object(
 				'stat_block_section', 'ability', newtext, {
 					'ability_type': 'communication'})
@@ -387,8 +426,7 @@ def process_languages(section):
 					ability['link'] = link
 				if(modifier):
 					ability['modifiers'] = build_objects(
-						'stat_block_section', 'modifier',
-						[m.strip() for m in modifier.split(",")])
+						'stat_block_section', 'modifier', [modifier.strip()])
 				abilities.append(ability)
 		if len(abilities) > 0:
 			languages['communication_abilities'] = abilities
@@ -399,11 +437,15 @@ def process_languages(section):
 		c = list(bs.children)
 
 		if len(c) > 1:
-			assert c[0].name == 'a'
-			assert len(c) == 2
-			name, link = extract_link(c[0])
+			text = []
+			for child in c:
+				if child.name == "a":
+					name, link = extract_link(child)
+					text.append(name)
+				elif isinstance(child, str):
+					text.append(child)
 			language = {
-				'name': name,
+				'name': ''.join(text),
 				'type': 'stat_block_section',
 				'subtype': 'language',
 				'link': link}
@@ -524,6 +566,10 @@ def process_ac(section):
 			modifiers = []
 		if text.find(";") > -1:
 			parts = [p.strip() for p in text.split(";", 1)]
+			text = parts.pop(0)
+			modifiers.extend(parts)
+		if text.find(",") > -1:
+			parts = [p.strip() for p in text.split(",", 1)]
 			text = parts.pop(0)
 			modifiers.extend(parts)
 		if text.find(" ") > -1:
@@ -662,7 +708,7 @@ def process_defense(sb, section):
 	sb[section[0].lower()] = defense
 
 def process_defensive_ability(section, sections, sb):
-	assert section[0] not in ["Immunities", "Resistances", "Weaknesses"]
+	assert section[0] not in ["Immunities", "Resistances", "Weaknesses"], section[0]
 	description = section[1]
 	link = section[2]
 	sb_key = 'automatic_abilities'
@@ -698,6 +744,8 @@ def process_defensive_ability(section, sections, sb):
 	sb.setdefault(sb_key, []).append(ability)
 
 def process_speed(section):
+	# 538
+	#  <b>Speed</b> 25 feet; <a style="text-decoration:underline" href="Spells.aspx?ID=6"><i>air walk</i></a>
 	def build_movement(text):
 		movements = build_objects('stat_block_section', 'speed',
 			[t.strip() for t in text.split(",")])
@@ -827,7 +875,7 @@ def _extract_trait(description):
 				assert len(children) == 1
 				name, trait_link = extract_link(children[0])
 				traits.append(build_object(
-					'stat_block_section', 'trait', name, {'link': trait_link}))
+					'stat_block_section', 'trait', name.strip(), {'link': trait_link}))
 		else:
 			newdescription.append(text)
 			newdescription.append(")")
