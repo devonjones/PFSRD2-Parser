@@ -281,7 +281,7 @@ def extract_link(a):
 	if a.has_attr('game-obj'):
 		link['game-obj'] = a['game-obj']
 	if a.has_attr('aonid'):
-		link['aonid'] = a['aonid']
+		link['aonid'] = int(a['aonid'])
 	if a.has_attr('href'):
 		link['href'] = a['href']
 	return name, link

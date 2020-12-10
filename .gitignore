@@ -3,3 +3,4 @@ old
 .vscode
 __pycache__
 bin/errors*
+bin/*.validation*

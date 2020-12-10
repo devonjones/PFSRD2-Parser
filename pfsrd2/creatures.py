@@ -19,16 +19,22 @@ def parse_creature(filename, options):
 	sidebar_pass(struct)
 	index_pass(struct)
 	aon_pass(struct, basename)
+	sb_restructure_pass(struct)
 	#validate_dict_pass(struct, struct, None, "")
 	remove_empty_sections_pass(struct)
 	basename.split("_")
 	if not options.dryrun:
 		output = options.output
-		for source in struct['source']:
+		for source in struct['sources']:
 			jsondir = makedirs(output, struct['game-obj'], source['name'])
 			write_creature(jsondir, struct, source['name'])
 	elif options.stdout:
 		print(json.dumps(struct, indent=2))
+
+def sb_restructure_pass(struct):
+	sb = find_stat_block(struct)
+	struct['stat_block'] = sb
+	struct['sections'].remove(sb)
 
 def restructure_creature_pass(details):
 	sb = None
@@ -132,23 +138,23 @@ def source_pass(struct):
 				section['text'] = ''.join([str(c) for c in children])
 				return source
 	
-	def propagate_source(section, source):
+	def propagate_sources(section, sources):
 		retval = _extract_source(section)
 		if retval:
-			source = retval
-		if 'source' in section:
-			source = section['source']
+			sources = retval
+		if 'sources' in section:
+			sources = section['sources']
 		else:
-			section['source'] = source
+			section['sources'] = sources
 		for s in section['sections']:
-			propagate_source(s, source)
+			propagate_sources(s, sources)
 
-	if 'source' not in struct:
+	if 'sources' not in struct:
 		sb = find_stat_block(struct)
-		struct['source'] = sb['source']
-	source = struct['source']
+		struct['sources'] = sb['sources']
+	sources = struct['sources']
 	for section in struct['sections']:
-		propagate_source(section, source)
+		propagate_sources(section, sources)
 
 def sidebar_pass(struct):
 	for section in struct['sections']:
@@ -162,8 +168,9 @@ def sidebar_pass(struct):
 			children.pop(0)
 			image = c['src'].split("\\").pop()
 			subtype = c['alt'].split("-").pop().strip()
-			struct['type'] = "sidebar"
-			struct['subtype'] = subtype.lower().replace(" ", "_")
+			struct['type'] = "section"
+			struct['subtype'] = "sidebar"
+			struct['sidebar_type'] = subtype.lower().replace(" ", "_")
 			struct['sidebar_heading'] = subtype
 			struct['image'] = image
 			struct['text'] = ''.join([str(c) for c in children])
@@ -172,7 +179,8 @@ def index_pass(struct):
 	for section in struct['sections']:
 		index_pass(section)
 	if struct['name'].startswith("All Monsters"):
-		struct['type'] = "index"
+		struct['type'] = "section"
+		struct['subtype'] = "index"
 
 def aon_pass(struct, basename):
 	parts = basename.split("_")
@@ -286,7 +294,7 @@ def process_stat_block(sb, sections):
 	offense = sections.pop(0)
 	sb['offense'] = {
 		'type': 'stat_block_section', 'subtype': 'offense', 'name': "Offense"}
-	sb['offense']['speed'] = process_speed(offense.pop(0))
+	sb['offense']['speeds'] = process_speed(offense.pop(0))
 	del sb['text']
 	assert len(offense) == 0
 
@@ -343,7 +351,7 @@ def process_source(sb, section):
 			source['note'] = note[1]
 		if errata:
 			source['errata'] = errata[1]
-	sb['source'] = sources
+	sb['sources'] = sources
 
 def process_perception(section):
 	assert section[0] == "Perception"
@@ -452,7 +460,7 @@ def process_languages(section):
 		else:
 			assert len(c) == 1
 			if c[0].name == 'a':
-				link = extract_link(c[0])
+				name, link = extract_link(c[0])
 				language = {
 					'name': get_text(bs),
 					'type': 'stat_block_section',
@@ -545,7 +553,8 @@ def process_interaction_ability(section):
 	ability = {
 		'name': ability_name,
 		'type': 'stat_block_section',
-		'subtype': 'interaction_ability'}
+		'subtype': 'ability',
+		'ability_type': 'interaction'}
 	description, traits = extract_all_traits(description)
 	if len(traits) > 0:
 		ability['traits'] = traits
@@ -705,7 +714,7 @@ def process_defense(sb, section):
 						{section[0].lower(): []})
 	for part in parts:
 		defense[section[0].lower()].append(create_defense(part))
-	sb[section[0].lower()] = defense
+	sb['defense'][section[0].lower()] = defense
 
 def process_defensive_ability(section, sections, sb):
 	assert section[0] not in ["Immunities", "Resistances", "Weaknesses"], section[0]
@@ -725,7 +734,8 @@ def process_defensive_ability(section, sections, sb):
 	while len(sections) > 0 and sections[0][0] in addons:
 		addon = sections.pop(0)
 		assert addon[2] == None
-		ability[addon[0].lower()] = addon[1]
+		addon_name = addon[0].lower().replace(" ", "_")
+		ability[addon_name] = addon[1]
 	description, traits = extract_starting_traits(description)
 	description = description.strip()
 
@@ -776,7 +786,7 @@ def process_speed(section):
 	assert len(parts) == 0
 	movement = build_movement(text)
 	speed = build_object(
-		'stat_block_section', 'speed', 'Speed', {'movement': movement})
+		'stat_block_section', 'speeds', 'Speed', {'movement': movement})
 	if modifier:
 		speed['modifiers'] = build_objects(
 				'stat_block_section', 'modifier', [modifier])
@@ -785,7 +795,8 @@ def process_speed(section):
 def process_offensive_action(section):
 	if len(section['sections']) == 0:
 		del section['sections']
-	section['type'] = 'offensive_action'
+	section['type'] = 'stat_block_section'
+	section['subtype'] = 'offensive_action'
 	text = section['text'].strip()
 	text, action = extract_action(text)
 	if action:
@@ -795,11 +806,11 @@ def process_offensive_action(section):
 		section['traits'] = traits
 	section['text'] = text.strip()
 	if section['name'] == "Melee":
-		section['subtype'] = "melee"
+		section['offensive_action_type'] = "melee"
 	elif section['name'] == "Ranged":
-		section['subtype'] = "ranged"
+		section['offensive_action_type'] = "ranged"
 	elif section['name'].endswith("Spells"):
-		section['subtype'] = "spells"
+		section['offensive_action_type'] = "spells"
 	return section
 
 def split_stat_block_line(line):
