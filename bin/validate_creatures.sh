@@ -9,7 +9,7 @@ if test -f "creatures.validation"; then
     cat creatures.validation | while read i
     do
         echo $i
-        OUTPUT=$(jsonschema -i $i ../pfsrd2/creature.schema.json 2>&1)
+        OUTPUT=$(jsonschema -i $i ../pfsrd2/schema/creature.schema.json 2>&1)
         if [ ! -z "$OUTPUT" ]
         then
             echo $OUTPUT
@@ -20,7 +20,7 @@ else
     for i in `find $DATA_DIR -type f -name "*.json"`
     do
         echo $i
-        OUTPUT=$(jsonschema -i $i ../pfsrd2/creature.schema.json 2>&1)
+        OUTPUT=$(jsonschema -i $i ../pfsrd2/schema/creature.schema.json 2>&1)
         if [ ! -z "$OUTPUT" ]
         then
             echo $OUTPUT
