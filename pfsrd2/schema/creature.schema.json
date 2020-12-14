@@ -9,7 +9,8 @@
                 "type": {"enum": ["source"]},
                 "link": {"$ref": "#/definitions/link"},
                 "page": {"type": "integer"},
-                "errata": {"$ref": "#/definitions/link"}
+                "errata": {"$ref": "#/definitions/link"},
+                "note": {"$ref": "#/definitions/link"}
             },
             "required": ["name", "type", "link", "page"],
             "additionalProperties": false
@@ -29,7 +30,8 @@
                 "game-obj": {"enum": [
                     "Spells", "Sources", "Skills", "Traits", "MonsterAbilities",
                     "Conditions", "Languages", "Weapons", "Armor", "Shields",
-                    "Equipment", "Deities", "Feats", "Actions"
+                    "Equipment", "Deities", "Feats", "Actions", "Monsters",
+                    "Heritages"
                 ]},
                 "aonid": {"type": "integer"}
             },
@@ -41,18 +43,29 @@
             "properties": {
                 "name": {"type": "string"},
                 "type": {"enum": ["image"]},
-                "game-obj": {"enum": ["Sources"]},
+                "game-obj": {"type": "string"},
                 "image": {"type": "string"}
             },
-            "required": ["name", "type", "game-obj", "image"],
+            "required": ["name", "type", "image"],
             "additionalProperties": false
         },
         "section": {
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "type": {"enum": ["section"]}
-            }
+                "type": {"enum": ["section"]},
+                "text": {"type": "string"},
+                "sections": {"$ref": "#/definitions/sections"},
+                "sources": {"$ref": "#/definitions/sources"},
+                "subtype": {"enum": ["sidebar", "index"]},
+                "sidebar_type": {"enum": [
+                    "treasure_and_rewards", "related_creatures", "locations",
+                    "additional_lore", "advice_and_rules"
+                ]},
+                "sidebar_heading": {"type": "string"},
+                "image": {"$ref": "#/definitions/image"}
+            },
+            "additionalProperties": false
         },
         "sections": {
             "type": "array",
@@ -374,7 +387,7 @@
                     "Reaction", "Free Action", "Single Action",
                     "Two Actions", "Three Actions"
                 ]},
-                "image": {"type": "string"}
+                "image": {"$ref": "#/definitions/image"}
             },
             "required": ["name", "type", "subtype", "image"],
             "additionalProperties": false
@@ -445,10 +458,7 @@
         "game-obj": {"enum": ["Monsters", "NPCs"]},
         "stat_block": {"$ref": "#/definitions/stat_block"},
         "sources": {"$ref": "#/definitions/sources"},
-        "sections": {
-            "type": "array",
-            "items": { "$ref": "#/definitions/section" }
-        }
+        "sections": {"$ref": "#/definitions/sections"}
     },
     "required": ["name", "type", "aonid", "game-obj", "sources", "sections"],
     "additionalProperties": false

@@ -139,7 +139,7 @@ def source_pass(struct):
 				if children[0].name == "br":
 					children.pop(0)
 				section['text'] = ''.join([str(c) for c in children])
-				return source
+				return [source]
 	
 	def propagate_sources(section, sources):
 		retval = _extract_source(section)
@@ -175,7 +175,7 @@ def sidebar_pass(struct):
 			struct['subtype'] = "sidebar"
 			struct['sidebar_type'] = subtype.lower().replace(" ", "_")
 			struct['sidebar_heading'] = subtype
-			struct['image'] = image
+			struct['image'] = {'type': "image", "name": subtype, "image": image}
 			struct['text'] = ''.join([str(c) for c in children])
 
 def index_pass(struct):
@@ -933,12 +933,14 @@ def extract_action(text):
 	def build_action(child, action):
 		action_name = child['alt']
 		image = child['src'].split("\\").pop()
+		image_name = image.split(".")[0]
 		if not action:
 			action = build_object(
 				'stat_block_section',
 				'action',
 				action_name,
-				{'image': image})
+				{'image': {
+					"type": "image", "name": image_name, "image": image}})
 		return action
 
 	children = list(BeautifulSoup(text.strip(), 'html.parser').children)
