@@ -763,6 +763,7 @@ def process_speed(section):
 		movements = build_objects('stat_block_section', 'speed',
 			[t.strip() for t in text.split(",")])
 		for movement in movements:
+			break_out_movement(movement)
 			name, modifier = extract_modifier(movement['name'])
 			if modifier:
 				movement['name'] = name
@@ -778,6 +779,63 @@ def process_speed(section):
 						'stat_block_section', 'modifier', [modifier])
 		return movements
 	
+	def break_out_movement(movement):
+		def get_link(bs):
+			if bs.i:
+				bs.i.unwrap()
+			c = list(bs.children)
+			if len(c) == 1 and c[0].name == "a":
+				from_link = extract_link(c[0])
+				return from_link
+			return None
+
+		data = movement['name']
+		m = re.match(r"^([a-zA-Z0-9 ]*) \((.*)\)$", data)
+		if m:
+			# climb 30 feet (<a aonid="299" game-obj="Spells"><i>spider climb</i></a>)
+			# burrow 20 feet (snow only)
+			data = m.groups()[0]
+			content = m.groups()[1]
+			content = content.replace("from ", "")
+			bs = BeautifulSoup(content, 'html.parser')
+			link = get_link(bs)
+			if link:
+				movement['from'] = link[1]
+			else:
+				movement['modifiers'] = build_objects(
+					'stat_block_section', 'modifier', [content])
+		movement['name'] = data
+		if data == "can't move":
+			# can't move
+			movement['movement_type'] = data
+			return
+		m = re.match(r"^(\d*) feet$", data)
+		if m:
+			# 30 feet
+			speed = int(m.groups()[0])
+			movement['movement_type'] = 'walk'
+			movement['value'] = speed
+			return
+		m = re.match(r"^([a-zA-Z ]*) (\d*) feet$", data)
+		if m:
+			# fly 30 feet
+			mtype = m.groups()[0]
+			speed = int(m.groups()[1])
+			movement['movement_type'] = mtype
+			movement['value'] = speed
+			return
+		bs = BeautifulSoup(data, 'html.parser')
+		if bs.i:
+			bs.i.unwrap()
+		c = list(bs.children)
+		if len(c) == 1 and c[0].name == "a":
+			name, link = get_link(bs)
+			movement['name'] = name
+			movement['from'] = link
+			return
+		log_element("speed.log")(data)
+		assert False, data
+
 	assert section[0] == "Speed"
 	assert section[2] == None
 	text = section[1].strip()
@@ -1000,3 +1058,10 @@ def write_creature(jsondir, struct, source):
 def create_creature_filename(jsondir, struct):
 	title = jsondir + "/" + char_replace(struct['name']) + ".json"
 	return os.path.abspath(title)
+
+def log_element(fn):
+	fp = open(fn, "a+")
+	def log_e(element):
+		fp.write(element)
+		fp.write("\n")
+	return log_e

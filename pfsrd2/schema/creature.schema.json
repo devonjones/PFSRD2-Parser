@@ -275,8 +275,11 @@
             "properties": {
                 "name": {"type": "string"},
                 "type": {"enum": ["stat_block_section"]},
+                "movement_type": {"type": "string"},
+                "value": {"type": "integer"},
                 "subtype": {"enum": ["speed"]},
-                "modifiers": {"$ref": "#/definitions/modifiers"}
+                "modifiers": {"$ref": "#/definitions/modifiers"},
+                "from": {"$ref": "#/definitions/link"}
             },
             "required": ["name", "type", "subtype"],
             "additionalProperties": false
