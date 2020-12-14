@@ -353,8 +353,11 @@
                     "type": "array",
                     "items": {"$ref": "#/definitions/language"},
                     "additionalItems": false
-                }
-            }
+                },
+                "communication_abilities": {"$ref": "#/definitions/abilities"},
+                "modifiers": {"$ref": "#/definitions/modifiers"}
+            },
+            "additionalProperties": false
         },
         "ability": {
             "type": "object",
