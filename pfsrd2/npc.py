@@ -10,6 +10,7 @@ from pfsrd2.creatures import creature_stat_block_pass, sb_restructure_pass
 from pfsrd2.universal import parse_universal, print_struct
 from pfsrd2.universal import is_trait, get_text, extract_link
 from pfsrd2.files import makedirs, char_replace
+from pfsrd2.schema import validate_against_schema
 
 def parse_npc(filename, options):
 	basename = os.path.basename(filename)
@@ -26,6 +27,8 @@ def parse_npc(filename, options):
 	#validate_dict_pass(struct, struct, None, "")
 	remove_empty_sections_pass(struct)
 	basename.split("_")
+	if not options.skip_schema:
+		validate_against_schema(struct, "creature.schema.json")
 	if not options.dryrun:
 		output = options.output
 		for source in struct['sources']:
