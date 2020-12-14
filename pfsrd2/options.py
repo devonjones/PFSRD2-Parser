@@ -35,6 +35,9 @@ def option_parser(usage):
 		"-d", "--dry-run", dest="dryrun", default=False, action="store_true",
 		help="Dry run (no actual output)")
 	parser.add_option(
+		"-k", "--skip-schema", dest="skip_schema", default=False, action="store_true",
+		help="Skip schema validation")
+	parser.add_option(
 		"-s", "--stdout", dest="stdout", default=False, action="store_true",
 		help="Write json to stdout")
 	return parser
