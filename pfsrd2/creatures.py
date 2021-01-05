@@ -925,14 +925,8 @@ def process_offensive_action(section):
 		}
 		
 		damage = attack_data.pop().split(" ")
-		result = damage.pop(0)
-		if result == "<b>Damage</b>":
-			section['damage'] = parse_attack_damage(" ".join(damage).strip())
-		elif result == "<b>Effect</b>":
-			section['damage'] = [parse_attack_effect(damage)]
-
-		else:
-			assert False, "Failed to parse: %s" % (text)
+		_ = damage.pop(0)
+		section['damage'] = parse_attack_damage(" ".join(damage).strip())
 
 		if len(attack_data) > 0:
 			_, traits = extract_starting_traits("(%s)" %(attack_data.pop()))
