@@ -9,6 +9,9 @@ from pfsrd2.universal import is_trait, get_text, extract_link
 from pfsrd2.files import makedirs, char_replace
 from pfsrd2.schema import validate_against_schema
 
+# TODO: range on perceptions
+# pleroma, 11, lifesense 120 feet
+
 def parse_creature(filename, options):
 	basename = os.path.basename(filename)
 	if not options.stdout:
@@ -23,6 +26,7 @@ def parse_creature(filename, options):
 	sb_restructure_pass(struct)
 	#validate_dict_pass(struct, struct, None, "")
 	remove_empty_sections_pass(struct)
+	trait_pass(struct)
 	basename.split("_")
 	if not options.skip_schema:
 		validate_against_schema(struct, "creature.schema.json")
@@ -63,6 +67,22 @@ def find_stat_block(struct):
 			return s
 	for s in struct['sections']:
 		return creature_stat_block_pass(s)
+
+def trait_pass(struct):
+	sb = struct['stat_block']
+	if struct['name'] == "Unseen Servant":
+		sb['traits'].append({ 
+			"name": "Construct", "class": "trait", 
+			"text": "A construct is an artificial creature empowered by a force other than necromancy. Constructs are often mindless; they are immune to bleed damage, death effects, disease, healing, necromancy, nonlethal attacks, poison, and the doomed, drained, fatigued, paralyzed, sickened, and unconscious conditions; and they may have Hardness based on the materials used to construct their bodies. Constructs are not living creatures, nor are they undead. When reduced to 0 Hit Points, a construct creature is destroyed.",
+			"type": "stat_block_section", "subtype": "trait", "class": "creature_type",
+			"link": {"type": "link", "name": "Construct", "alt": "Construct", "game-obj": "Traits", "aonid": 35}
+		})
+	traits = sb['traits']
+	for trait in traits:
+		if trait['class'] == 'creature_type':
+			return
+	assert False, "Has no creature type"
+	
 
 def creature_stat_block_pass(struct):
 	def add_to_data(key, value, data, link):
@@ -234,10 +254,24 @@ def remove_empty_sections_pass(struct):
 			del section['sections']
 
 def parse_trait(span):
+	def check_type_trait(trait_class, name):
+		types = [
+			"Aberration", "Animal", "Astral", "Beast", "Celestial", "Construct",
+			"Dragon", "Dream", "Elemental", "Ethereal", "Fey", "Fiend",
+			"Fungus", "Giant", "Humanoid", "Monitor", "Ooze", "Petitioner",
+			"Plant", "Undead"
+		]
+		if name in types:
+			return "creature_type"
+		else:
+			return trait_class
+
 	name = ''.join(span['alt']).replace(" Trait", "")
 	trait_class = ''.join(span['class'])
 	if trait_class != 'trait':
 		trait_class = trait_class.replace('trait', '')
+	if trait_class == 'trait':
+		trait_class = check_type_trait(trait_class, name)
 	text = ''.join(span['title'])
 	trait = {
 		'name': name,
@@ -853,7 +887,119 @@ def process_speed(section):
 				'stat_block_section', 'modifier', [modifier])
 	return speed
 
+def split_list(text, splits):
+	elements = text.split(splits[0])
+	newelements = []
+	if len(splits) > 1:
+		for element in elements:
+			newelements.extend(split_list(element, splits[1:]))
+	else:
+		newelements.extend(elements)
+	return newelements
+
 def process_offensive_action(section):
+	def parse_attack_action(section):
+		# tentacle +16 [<a aonid="322" game-obj="Rules"><u>+12/+8</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>, <a aonid="192" game-obj="Traits"><u>reach 15 feet</u></a>), <b>Damage</b> 2d8+10 bludgeoning plus slime
+		# trident +10 [<a aonid="322" game-obj="Rules"><u>+5/+0</u></a>], <b>Damage</b> 1d8+4 piercing
+		# trident +7 [<a aonid="322" game-obj="Rules"><u>+2/-3</u></a>] (<a aonid="195" game-obj="Traits"><u>thrown 20 feet</u></a>), <b>Damage</b> 1d8+3 piercing
+		# Sphere of Oblivion +37 [<a aonid="322" game-obj="Rules"><u>+32/+27</u></a>] (<a aonid="103" game-obj="Traits"><u>magical</u></a>), <b>Effect</b> see Sphere of Oblivion
+		# piercing hymn +17 [<a aonid="322" game-obj="Rules"><u>+12/+7</u></a>] (<a aonid="83" game-obj="Traits"><u>good</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>, <a aonid="248" game-obj="Traits"><u>range 90 feet</u></a>, <a aonid="147" game-obj="Traits"><u>sonic</u></a>), <b>Damage</b> 4d6 sonic damage plus 1d6 good and deafening aria
+		# crossbow +14 [<a aonid="322" game-obj="Rules"><u>+9/+4</u></a>] (<a aonid="248" game-obj="Traits"><u>range increment 120 feet</u></a>, <a aonid=\"254\" game-obj="Traits"><u>reload 1</u></a>), <b>Damage</b> 1d8+2 piercing plus crossbow precision
+		text = section['text']
+		m = re.search(r"^(.*) ([+-]\d*) \[(.*)\] \((.*)\), (.*)$", text)
+		if not m:
+			m = re.search(r"^(.*) ([+-]\d*) \[(.*)\], (.*)$", text)
+		assert m, "Failed to parse: %s" % (text)
+		attack_data = list(m.groups())
+		section['weapon'] = attack_data.pop(0)
+		attacks = [attack_data.pop(0)]
+		bs = BeautifulSoup(attack_data.pop(0), 'html.parser')
+		children = list(bs.children)
+		assert len(children) == 1, "Failed to parse: %s" % (text)
+		data, link = extract_link(children[0])
+		attacks.extend(data.split("/"))
+		attacks = [int(a) for a in attacks]
+		section['bonus'] = {
+			"type": "stat_block_section", "subtype": "attack_bonus",
+			"link": link, "bonuses": attacks
+		}
+		
+		damage = attack_data.pop().split(" ")
+		result = damage.pop(0)
+		if result == "<b>Damage</b>":
+			section['damage'] = parse_attack_damage(" ".join(damage).strip())
+		elif result == "<b>Effect</b>":
+			section['damage'] = [parse_attack_effect(damage)]
+
+		else:
+			assert False, "Failed to parse: %s" % (text)
+
+		if len(attack_data) > 0:
+			_, traits = extract_starting_traits("(%s)" %(attack_data.pop()))
+			section['traits'] = traits
+		assert len(attack_data) == 0, "Failed to parse: %s" % (text)
+
+	def parse_attack_damage(text):
+		ds = split_list(text.strip(), [" plus ", " and "])
+		damages = []
+		for d in ds:
+			damage = {
+				"type": "stat_block_section", "subtype": "attack_damage"
+			}
+			parts = d.split(" ")
+			dice = parts.pop(0).strip()
+			m = re.match(r"^\d*d\d*.?[0-9]*?$", dice)
+			if not m:
+				m = re.match(r"^\d*$", dice)
+			if m: #damage
+				damage["formula"] = dice
+				damage_type = ' '.join(parts)
+				if damage_type.find("(") > -1:
+					parts = damage_type.split("(")
+					damage_type = parts.pop(0).strip()
+					notes = parts.pop(0).replace(")", "").strip()
+					assert len(parts) == 0, "Failed to parse damage: %s" % (text)
+					damage["notes"] = notes
+				if damage_type.find("damage") > -1:
+					# energy touch +36 [<a aonid="322" game-obj="Rules"><u>+32/+28</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="99" game-obj="Traits"><u>lawful</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>), <b>Damage</b> 5d8+18 positive or negative damage plus 1d6 lawful
+					damage_type = damage_type.replace(" damage", "")
+				bs = BeautifulSoup(damage_type, 'html.parser')
+				allA = bs.find_all("a")
+				links = []
+				for a in allA:
+					_, link = extract_link(a)
+					links.append(link)
+				if links:
+					damage["links"] = links
+				damage_type = get_text(bs).strip()
+				if damage_type.startswith("persistent"):
+					damage_type = damage_type.replace("persistent ", "")
+					damage["persistent"] = True
+				if damage_type.find("splash") > -1:
+					damage_type = damage_type.replace("splash", "").strip()
+					damage["splash"] = True
+				damage["damage_type"] = damage_type
+			else: #effect
+				parts.insert(0, dice)
+				damage = parse_attack_effect(parts)
+			damages.append(damage)
+		return damages
+
+	def parse_attack_effect(parts):
+		effect = {
+			"type": "stat_block_section", "subtype": "attack_damage"
+		}
+		bs = BeautifulSoup(' '.join(parts), 'html.parser')
+		allA = bs.find_all("a")
+		links = []
+		for a in allA:
+			_, link = extract_link(a)
+			links.append(link)
+		if links:
+			effect["links"] = links
+		effect["effect"] = get_text(bs).strip()
+		return effect
+
 	if len(section['sections']) == 0:
 		del section['sections']
 	section['type'] = 'stat_block_section'
@@ -868,8 +1014,10 @@ def process_offensive_action(section):
 	section['text'] = text.strip()
 	if section['name'] == "Melee":
 		section['offensive_action_type'] = "melee"
+		parse_attack_action(section)
 	elif section['name'] == "Ranged":
 		section['offensive_action_type'] = "ranged"
+		parse_attack_action(section)
 	elif section['name'].endswith("Spells"):
 		section['offensive_action_type'] = "spells"
 	return section

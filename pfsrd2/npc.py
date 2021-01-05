@@ -5,7 +5,7 @@ import re
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
 from pfsrd2.creatures import remove_empty_sections_pass, source_pass
-from pfsrd2.creatures import sidebar_pass, index_pass, aon_pass
+from pfsrd2.creatures import sidebar_pass, index_pass, aon_pass, trait_pass
 from pfsrd2.creatures import creature_stat_block_pass, sb_restructure_pass
 from pfsrd2.universal import parse_universal, print_struct
 from pfsrd2.universal import is_trait, get_text, extract_link
@@ -26,6 +26,7 @@ def parse_npc(filename, options):
 	sb_restructure_pass(struct)
 	#validate_dict_pass(struct, struct, None, "")
 	remove_empty_sections_pass(struct)
+	trait_pass(struct)
 	basename.split("_")
 	if not options.skip_schema:
 		validate_against_schema(struct, "creature.schema.json")

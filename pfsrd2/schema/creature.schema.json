@@ -31,7 +31,7 @@
                     "Spells", "Sources", "Skills", "Traits", "MonsterAbilities",
                     "Conditions", "Languages", "Weapons", "Armor", "Shields",
                     "Equipment", "Deities", "Feats", "Actions", "Monsters",
-                    "Heritages"
+                    "Heritages", "Rules", "Diseases"
                 ]},
                 "aonid": {"type": "integer"}
             },
@@ -309,7 +309,14 @@
                 "text": {"type": "string"},
                 "offensive_action_type": {"enum": ["melee", "ranged", "spells"]},
                 "action": {"$ref": "#/definitions/action"},
-                "traits": {"$ref": "#/definitions/traits"}
+                "traits": {"$ref": "#/definitions/traits"},
+                "weapon": {"type": "string"},
+                "bonus": {"$ref": "#/definitions/attack_bonus"},
+                "damage": {
+                    "type": "array",
+                    "items": {"$ref": "#/definitions/attack_damage"},
+                    "additionalItems": false
+                }
             },
             "required": ["name", "type", "subtype"],
             "additionalProperties": false
@@ -318,6 +325,50 @@
             "type": "array",
             "items": {"$ref": "#/definitions/offensive_action"},
             "additionalItems": false
+        },
+        "attack_bonus": {
+            "type": "object",
+            "properties": {
+                "type": {"enum": ["stat_block_section"]},
+                "subtype": {"enum": ["attack_bonus"]},
+                "link": {"$ref": "#/definitions/link"},
+                "bonuses": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "additionalItems": false
+                }
+            },
+            "required": ["link", "type", "subtype", "bonuses"],
+            "additionalProperties": false
+        },
+        "attack_damage": {
+            "type": "object",
+            "properties": {
+                "type": {"enum": ["stat_block_section"]},
+                "subtype": {"enum": ["attack_damage"]},
+                "formula": {"type": "string"},
+                "damage_type": {"enum": [
+                    "slashing", "piercing", "bludgeoning",
+                    "acid", "sonic", "fire", "electricity", "cold",
+                    "mental", "poison", "force",
+                    "positive", "negative", "positive or negative",
+                    "chaotic", "lawful", "good", "evil",
+                    "other", "energy", "bleed",
+                    "cold iron slashing", "piercing or slashing",
+                    "bludgeoning, piercing, or slashing"]},
+                "damage_plus": {"type": "string"},
+                "effect": {"type": "string"},
+                "notes": {"type": "string"},
+                "links": {
+                    "type": "array",
+                    "items": {"$ref": "#/definitions/link"},
+                    "additionalItems": false
+                },
+                "persistent": {"type": "boolean"},
+                "splash": {"type": "boolean"}
+            },
+            "required": ["type", "subtype"],
+            "additionalProperties": false
         },
         "special_senses": {
             "type": "object",
