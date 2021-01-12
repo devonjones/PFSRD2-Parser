@@ -6,6 +6,7 @@ from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
 from pfsrd2.universal import parse_universal, print_struct
 from pfsrd2.universal import is_trait, get_text, extract_link
+from pfsrd2.universal import split_maintain_parens
 from pfsrd2.files import makedirs, char_replace
 from pfsrd2.schema import validate_against_schema
 
@@ -82,7 +83,6 @@ def trait_pass(struct):
 		if trait['class'] == 'creature_type':
 			return
 	assert False, "Has no creature type"
-	
 
 def creature_stat_block_pass(struct):
 	def add_to_data(key, value, data, link):
@@ -994,6 +994,79 @@ def process_offensive_action(section):
 		effect["effect"] = get_text(bs).strip()
 		return effect
 
+	def parse_spells(section):
+		text = section['text']
+		name_parts = section['name'].split(" ")
+		section["spell_tradition"] = name_parts.pop(0)
+		section["spell_type"] = " ".join(name_parts)
+		parts = split_maintain_parens(text, ";")
+		tt_parts = split_maintain_parens(parts.pop(0), ",")
+		for tt in tt_parts:
+			chunks = tt.split(" ")
+			if tt.startswith("DC"):
+				section["spell_dc"] = int(chunks.pop())
+			elif tt.startswith("attack") or tt.startswith("spell attack"):
+				section["spell_attack"] = int(chunks.pop())
+		spell_lists = []
+		for p in parts:
+			spell_lists.append(parse_spell_list(p))
+		section['spell_list'] = spell_lists
+
+	def parse_spell_list(part):
+		spell_list = {"type": "stat_block_section", "subtype": "spell_list"}
+		bs = BeautifulSoup(part, 'html.parser')
+		level_text = get_text(bs.b.extract())
+		if level_text == "Constant":
+			spell_list["constant"] = True
+			level_text = get_text(bs.b.extract())
+		if level_text == "Cantrips":
+			spell_list["cantrips"] = True
+			level_text = get_text(bs.b.extract())
+		m = re.match(r"^\(?(\d*)[snrt][tdh]\)?$", level_text)
+		assert m, "Failed to parse spells: %s" % (part)
+		spell_list["level"] = int(m.groups()[0])
+		spell_list["level_text"] = level_text
+		spells_html = split_maintain_parens(str(bs), ",")
+		spells = []
+		for html in spells_html:
+			spells.append(parse_spell(html))
+		spell_list["spells"] = spells
+		return spell_list
+
+	def parse_spell(html):
+		spell = {"type": "stat_block_section", "subtype": "spell"}
+		bsh = BeautifulSoup(html, 'html.parser')
+		hrefs = bsh.find_all("a")
+		links = []
+		for a in hrefs:
+			_, link = extract_link(a)
+			links.append(link)
+		spell['links'] = links
+		text = get_text(bsh)
+		if text.find("(") > -1:
+			parts = [t.strip() for t in text.split("(")]
+			assert len(parts) == 2, "Failed to parse spell: %s" % (html)
+			spell['name'] = parts.pop(0)
+			count_text = parts.pop().replace(")", "")
+			spell["count_text"] = count_text
+			count = None
+			for split in [";", ","]:
+				remainder = []
+				for part in count_text.split(split):
+					m = re.match(r"^x\d*$", part.strip())
+					if m:
+						assert count == None, "Failed to parse spell: %s" % (html)
+						count = int(part.strip()[1:])
+					else:
+						remainder.append(part)
+					count_text = split.join(remainder)
+			if count:
+				spell["count"] = count
+		else:
+			spell['name'] = text
+			spell['count'] = 1
+		return spell
+
 	if len(section['sections']) == 0:
 		del section['sections']
 	section['type'] = 'stat_block_section'
@@ -1012,8 +1085,9 @@ def process_offensive_action(section):
 	elif section['name'] == "Ranged":
 		section['offensive_action_type'] = "ranged"
 		parse_attack_action(section)
-	elif section['name'].endswith("Spells"):
+	elif section['name'].endswith("Spells") or section['name'].endswith("Rituals"):
 		section['offensive_action_type'] = "spells"
+		parse_spells(section)
 	return section
 
 def split_stat_block_line(line):
@@ -1044,7 +1118,27 @@ def get_attacks(sb):
 	attacks = []
 	for section in sections:
 		if is_attack(section):
-			attacks.append(section)
+			if section['name'].endswith("Spells") or section['name'].endswith("Rituals"):
+				text = section['text']
+				bs = BeautifulSoup(text.strip(), 'html.parser')
+				if bs.br:
+					parts = re.split(r" *?\<br ?\/\> *?", text)
+					section['text'] = parts.pop(0)
+					attacks.append(section)
+					for part in parts:
+						if part.strip() != "":
+							newsection = section.copy()
+							for k, v in section.items():
+								newsection[k] = v
+							bs = BeautifulSoup(part, 'html.parser')
+							name = get_text(bs.b.extract())
+							newsection["sections"] = []
+							newsection["name"] = name
+							newsection["text"] = str(bs)
+							attacks.append(newsection)
+				pass
+			else:
+				attacks.append(section)
 		else:
 			newsections.append(section)
 	sb['sections'] = newsections

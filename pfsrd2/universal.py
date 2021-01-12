@@ -200,6 +200,7 @@ def parse_body(div, book=False, title=False, max_title=5):
 		lines = title_collapse_pass(lines, 2)
 	if max_title >= 1:
 		lines = title_collapse_pass(lines, 1)
+
 	newlines = []
 	for line in lines:
 		section = section_pass(line)
@@ -285,3 +286,17 @@ def extract_link(a):
 	if a.has_attr('href'):
 		link['href'] = a['href']
 	return name, link
+
+def split_maintain_parens(text, split):
+	parts = [t.strip() for t in text.split(split)]
+	newparts = []
+	while len(parts) > 0:
+		part = parts.pop(0)
+		if part.find("(") > -1 and part.rfind(")") < part.rfind("("):
+			newpart = part
+			while newpart.find("(") > -1 and newpart.rfind(")") < newpart.rfind("("):
+				newpart = newpart + split + " " + parts.pop(0)
+			newparts.append(newpart)
+		else:
+			newparts.append(part)
+	return newparts

@@ -31,7 +31,8 @@
                     "Spells", "Sources", "Skills", "Traits", "MonsterAbilities",
                     "Conditions", "Languages", "Weapons", "Armor", "Shields",
                     "Equipment", "Deities", "Feats", "Actions", "Monsters",
-                    "Heritages", "Rules", "Diseases"
+                    "Heritages", "Rules", "Diseases", "Rituals", "Planes",
+                    "MonsterFamilies"
                 ]},
                 "aonid": {"type": "integer"}
             },
@@ -316,6 +317,21 @@
                     "type": "array",
                     "items": {"$ref": "#/definitions/attack_damage"},
                     "additionalItems": false
+                },
+                "spell_tradition": {"enum": [
+                    "Occult", "Arcane", "Divine", "Primal"]},
+                "spell_type": {"enum": [
+                    "Spells", "Innate Spells", "Focus Spells",
+                    "Spontaneous Spells", "Prepared Spells", "Rituals",
+                    "Druid Order Spells", "Cleric Domain Spells", 
+                    "Sorcerer Bloodline Spells", "Champion Devotion Spells",
+                    "Bard Composition Spells", "Wizard School Spells"]},
+                "spell_dc": {"type": "integer"},
+                "spell_attack": {"type": "integer"},
+                "spell_list": {
+                    "type": "array",
+                    "items": {"$ref": "#/definitions/spell_list"},
+                    "additionalItems": false
                 }
             },
             "required": ["name", "type", "subtype"],
@@ -325,6 +341,41 @@
             "type": "array",
             "items": {"$ref": "#/definitions/offensive_action"},
             "additionalItems": false
+        },
+        "spell_list": {
+            "type": "object",
+            "properties": {
+                "type": {"enum": ["stat_block_section"]},
+                "subtype": {"enum": ["spell_list"]},
+                "level": {"type": "integer"},
+                "level_text": {"type": "string"},
+                "spells": {
+                    "type": "array",
+                    "items": {"$ref": "#/definitions/spell"},
+                    "additionalItems": false
+                },
+                "constant": {"type": "boolean"},
+                "cantrips": {"type": "boolean"}
+            },
+            "required": ["type", "subtype", "level"],
+            "additionalProperties": false
+        },
+        "spell": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "type": {"enum": ["stat_block_section"]},
+                "subtype": {"enum": ["spell"]},
+                "count": {"type": "integer"},
+                "count_text": {"type": "string"},
+                "links": {
+                    "type": "array",
+                    "items": {"$ref": "#/definitions/link"},
+                    "additionalItems": false
+                }
+            },
+            "required": ["name", "type", "subtype"],
+            "additionalProperties": false
         },
         "attack_bonus": {
             "type": "object",
@@ -348,7 +399,7 @@
                 "subtype": {"enum": ["attack_damage"]},
                 "formula": {"type": "string"},
                 "damage_type": {"enum": [
-                    "slashing", "piercing", "bludgeoning",
+                    "slashing", "piercing", "bludgeoning", "nonlethal",
                     "acid", "sonic", "fire", "electricity", "cold",
                     "mental", "poison", "force",
                     "positive", "negative", "positive or negative",
