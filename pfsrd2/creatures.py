@@ -403,8 +403,10 @@ def process_perception(section):
 		if parts[0].startswith("("):
 			modifier = parts.pop(0)
 			modifier = modifier.replace("(", "").replace(")", "")
-			perception['modifiers'] = build_objects(
-				'stat_block_section', 'modifier', [modifier])
+			#TODO: fix []
+			perception['modifiers'] = link_modifiers(
+				build_objects(
+					'stat_block_section', 'modifier', [modifier]))
 	if len(parts) > 0:
 		special_senses = []
 		for part in parts:
@@ -420,8 +422,10 @@ def process_perception(section):
 				sense = build_object(
 					'stat_block_section', 'special_sense', part)
 			if modifier:
-				sense['modifiers'] = build_objects(
-					'stat_block_section', 'modifier', [modifier])
+				#TODO: fix []
+				sense['modifiers'] = link_modifiers(
+					build_objects(
+						'stat_block_section', 'modifier', [modifier]))
 			special_senses.append(sense)
 		perception['special_senses'] = special_senses
 	return perception
@@ -456,9 +460,10 @@ def process_languages(section):
 		for part in parts:
 			newtext, modifier = extract_modifier(part.strip())
 			if newtext.strip() == "":
-				languages['modifiers'] = build_objects(
+				languages['modifiers'] = link_modifiers(
+					build_objects(
 						'stat_block_section', 'modifier',
-						[m.strip() for m in modifier.split(",")])
+						[m.strip() for m in modifier.split(",")]))
 			else:
 				bs = BeautifulSoup(newtext, 'html.parser')
 				link = None
@@ -470,8 +475,11 @@ def process_languages(section):
 				if link:
 					ability['link'] = link
 				if(modifier):
-					ability['modifiers'] = build_objects(
-						'stat_block_section', 'modifier', [modifier.strip()])
+					#TODO: fix []
+					ability['modifiers'] = link_modifiers(
+						build_objects(
+							'stat_block_section', 'modifier', [
+								modifier.strip()]))
 				abilities.append(ability)
 		if len(abilities) > 0:
 			languages['communication_abilities'] = abilities
@@ -509,8 +517,10 @@ def process_languages(section):
 					'type': 'stat_block_section',
 					'subtype': 'language'}
 		if modifier:
-			language['modifiers'] = build_objects(
-				'stat_block_section', 'modifier', [modifier])
+			#TODO: fix []
+			language['modifiers'] = link_modifiers(
+				build_objects(
+					'stat_block_section', 'modifier', [modifier]))
 		languages['languages'].append(language)
 	return languages
 
@@ -533,8 +543,10 @@ def process_skills(section):
 			'link': link,
 			'value': value}
 		if modifier:
-			skill['modifiers'] = build_objects(
-				'stat_block_section', 'modifier', [modifier])
+			#TODO: fix []
+			skill['modifiers'] = link_modifiers(
+				build_objects(
+					'stat_block_section', 'modifier', [modifier]))
 		skills.append(skill)
 	return skills
 
@@ -571,9 +583,9 @@ def process_items(section):
 			'name': name.strip(),
 			'html': html.strip()}
 		if modifier:
-			modifiers = modifier.split(",")
-			item['modifiers'] = build_objects(
-				'stat_block_section', 'modifier', modifiers)
+			item['modifiers'] = link_modifiers(
+				build_objects(
+					'stat_block_section', 'modifier', modifier.split(",")))
 		references = []
 		for a in bs.findAll("a"):
 			_, link = extract_link(a)
@@ -650,8 +662,9 @@ def process_ac(section):
 		'value': int(value.strip())
 	}
 	if len(modifiers) > 0:
-		ac['modifiers'] = build_objects(
-			'stat_block_section', 'modifier', modifiers)
+		ac['modifiers'] = link_modifiers(
+			build_objects(
+				'stat_block_section', 'modifier', modifiers))
 	return ac
 
 def process_saves(fort, ref, will):
@@ -673,8 +686,9 @@ def process_saves(fort, ref, will):
 				bonuses = [b.strip() for b in bonus.split(", ")]
 			else:
 				bonuses = [bonus.strip()]
-			saves['modifiers'] = build_objects(
-				'stat_block_section', 'modifier', bonuses)
+			saves['modifiers'] = link_modifiers(
+				build_objects(
+					'stat_block_section', 'modifier', bonuses))
 		value, modifier = extract_modifier(value)
 		save = {
 			'type': "stat_block_section",
@@ -683,8 +697,9 @@ def process_saves(fort, ref, will):
 			'value': int(value.strip().replace("+", ""))}
 		if modifier:
 			modifiers = [m.strip() for m in modifier.split(",")]
-			save['modifiers'] = build_objects(
-				'stat_block_section', 'modifier', modifiers)
+			save['modifiers'] = link_modifiers(
+				build_objects(
+					'stat_block_section', 'modifier', modifiers))
 		saves[name] = save
 
 	process_save(fort)
@@ -793,6 +808,7 @@ def process_defensive_ability(section, sections, sb):
 def process_speed(section):
 	# 538
 	#  <b>Speed</b> 25 feet; <a style="text-decoration:underline" href="Spells.aspx?ID=6"><i>air walk</i></a>
+
 	def build_movement(text):
 		movements = build_objects('stat_block_section', 'speed',
 			[t.strip() for t in text.split(",")])
@@ -801,28 +817,14 @@ def process_speed(section):
 			name, modifier = extract_modifier(movement['name'])
 			if modifier:
 				movement['name'] = name
-				bs = BeautifulSoup(modifier, 'html.parser')
-				if bs.a:
-					_, link = extract_link(bs.a)
-					modifier = get_text(bs)
-					movement['modifiers'] = build_objects(
+				#TODO: fix []
+				movement['modifiers'] = link_modifiers(
+					build_objects(
 						'stat_block_section', 'modifier',
-						[modifier], {'link': link})
-				else:
-					movement['modifiers'] = build_objects(
-						'stat_block_section', 'modifier', [modifier])
+						[modifier]))
 		return movements
 	
 	def break_out_movement(movement):
-		def get_link(bs):
-			if bs.i:
-				bs.i.unwrap()
-			c = list(bs.children)
-			if len(c) == 1 and c[0].name == "a":
-				from_link = extract_link(c[0])
-				return from_link
-			return None
-
 		data = movement['name']
 		m = re.match(r"^([a-zA-Z0-9 ]*) \((.*)\)$", data)
 		if m:
@@ -832,12 +834,15 @@ def process_speed(section):
 			content = m.groups()[1]
 			content = content.replace("from ", "")
 			bs = BeautifulSoup(content, 'html.parser')
-			link = get_link(bs)
-			if link:
-				movement['from'] = link[1]
+			links = get_links(bs)
+			if links:
+				assert len(links) == 1, movement
+				movement['from'] = links[0]
 			else:
-				movement['modifiers'] = build_objects(
-					'stat_block_section', 'modifier', [content])
+				#TODO: fix []
+				movement['modifiers'] = link_modifiers(
+					build_objects(
+						'stat_block_section', 'modifier', [content]))
 		movement['name'] = data
 		if data == "can't move":
 			# can't move
@@ -863,39 +868,32 @@ def process_speed(section):
 			bs.i.unwrap()
 		c = list(bs.children)
 		if len(c) == 1 and c[0].name == "a":
-			name, link = get_link(bs)
-			movement['name'] = name
-			movement['from'] = link
+			links = get_links(bs)
+			movement['name'] = get_text(bs)
+			assert len(links) == 1, movement
+			movement['from'] = links[0]
 			return
 		log_element("speed.log")(data)
 		assert False, data
 
-	assert section[0] == "Speed"
-	assert section[2] == None
+	assert section[0] == "Speed", section
+	assert section[2] == None, section
 	text = section[1].strip()
 	parts = [t.strip() for t in text.split(";")]
 	text = parts.pop(0)
-	modifier = None
+	modifiers = None
 	if len(parts) > 0:
-		modifier = parts.pop()
-	assert len(parts) == 0
+		modifiers = [p.strip() for p in parts.pop().split(",")]
+	assert len(parts) == 0, section
 	movement = build_movement(text)
 	speed = build_object(
 		'stat_block_section', 'speeds', 'Speed', {'movement': movement})
-	if modifier:
-		speed['modifiers'] = build_objects(
-				'stat_block_section', 'modifier', [modifier])
+	if modifiers:
+		speed['modifiers'] = link_modifiers(
+			build_objects('stat_block_section', 'modifier', modifiers))
+		for m in speed['modifiers']:
+			assert m['name'].find("feet") == -1, modifiers
 	return speed
-
-def split_list(text, splits):
-	elements = text.split(splits[0])
-	newelements = []
-	if len(splits) > 1:
-		for element in elements:
-			newelements.extend(split_list(element, splits[1:]))
-	else:
-		newelements.extend(elements)
-	return newelements
 
 def process_offensive_action(section):
 	def parse_attack_action(section):
@@ -1195,8 +1193,10 @@ def parse_section_modifiers(section, key):
 	text = section[key]
 	text, modifier = extract_modifier(text)
 	if modifier:
-		section['modifiers'] = build_objects(
-				'stat_block_section', 'modifier', [modifier])
+		#TODO: fix []
+		section['modifiers'] = link_modifiers(
+			build_objects(
+				'stat_block_section', 'modifier', [modifier]))
 	section[key] = text
 	return section
 
@@ -1301,3 +1301,31 @@ def log_element(fn):
 		fp.write(element)
 		fp.write("\n")
 	return log_e
+
+def link_modifiers(modifiers):
+	for m in modifiers:
+		bs = BeautifulSoup(m['name'], 'html.parser')
+		links = get_links(bs)
+		if links:
+			m['name'] = get_text(bs)
+			m['links'] = links
+	return modifiers
+
+def get_links(bs):
+	all_a = bs.find_all("a")
+	links = []
+	for a in all_a:
+		_, link = extract_link(a)
+		links.append(link)
+	return links
+
+def split_list(text, splits):
+	elements = text.split(splits[0])
+	newelements = []
+	if len(splits) > 1:
+		for element in elements:
+			newelements.extend(split_list(element, splits[1:]))
+	else:
+		newelements.extend(elements)
+	return newelements
+
