@@ -733,12 +733,13 @@ def process_hp(section, subtype):
 		special_sections = build_objects(
 			'stat_block_section', 'ability', specials, {
 				'ability_type': 'automatic'})
-		for section in special_sections:
-			parse_section_modifiers(section, 'name')
-			parse_section_value(section, 'name')
+		for s in special_sections:
+			parse_section_modifiers(s, 'name')
+		special_sections = link_abilities(special_sections)
+		for s in special_sections:
+			parse_section_value(s, 'name')
+			assert s['name'] != "", section
 		hp['automatic_abilities'] = special_sections
-
-
 	return hp
 
 def process_defense(sb, section):
@@ -1310,6 +1311,17 @@ def link_modifiers(modifiers):
 			m['name'] = get_text(bs)
 			m['links'] = links
 	return modifiers
+
+def link_abilities(abilities):
+	for a in abilities:
+		bs = BeautifulSoup(a['name'], 'html.parser')
+		links = get_links(bs)
+		if len(links) == 1:
+			a['name'] = get_text(bs)
+			a['link'] = links[0]
+		elif len(links) > 0:
+			assert False, abilities
+	return abilities
 
 def get_links(bs):
 	all_a = bs.find_all("a")
