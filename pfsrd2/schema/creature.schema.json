@@ -15,12 +15,18 @@
                 "effect": {"type": "string"},
                 "frequency": {"type": "string"},
                 "requirement": {"type": "string"},
+                "prerequisite": {"type": "string"},
+                "range": {"type": "string"},
                 "failure": {"type": "string"},
                 "success": {"type": "string"},
                 "critical_failure": {"type": "string"},
                 "critical_success": {"type": "string"},
                 "action": {"$ref": "#/definitions/action"},
-                "link": {"$ref": "#/definitions/link"},
+                "links": {
+                    "type": "array",
+                    "items": {"$ref": "#/definitions/link"},
+                    "additionalItems": false
+                },
                 "traits": {"$ref": "#/definitions/traits"},
                 "modifiers": {"$ref": "#/definitions/modifiers"}
             },
@@ -56,6 +62,52 @@
                 "image": {"$ref": "#/definitions/image"}
             },
             "required": ["name", "type", "subtype", "image"],
+            "additionalProperties": false
+        },
+        "affliction": {
+            "type": "object",
+            "properties": {
+                "type": {"enum": ["stat_block_section"]},
+                "subtype": {"enum": ["affliction"]},
+                "name": {"type": "string"},
+                "text": {"type": "string"},
+                "action": {"$ref": "#/definitions/action"},
+                "traits": {"$ref": "#/definitions/traits"},
+                "saving_throw": {"type": "string"},
+                "onset": {"type": "string"},
+                "maximum_duration": {"type": "string"},
+                "stages": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "additionalItems": false
+                },
+                "links": {
+                    "type": "array",
+                    "items": {"$ref": "#/definitions/link"},
+                    "additionalItems": false
+                }
+            },
+            "required": ["name", "type", "subtype"],
+            "additionalProperties": false
+        },
+        "attack": {
+            "type": "object",
+            "properties": {
+                "type": {"enum": ["stat_block_section"]},
+                "subtype": {"enum": ["attack"]},
+                "name": {"type": "string"},
+                "attack_type": {"enum": ["melee", "ranged"]},
+                "action": {"$ref": "#/definitions/action"},
+                "traits": {"$ref": "#/definitions/traits"},
+                "weapon": {"type": "string"},
+                "bonus": {"$ref": "#/definitions/attack_bonus"},
+                "damage": {
+                    "type": "array",
+                    "items": {"$ref": "#/definitions/attack_damage"},
+                    "additionalItems": false
+                }
+            },
+            "required": ["name", "type", "subtype"],
             "additionalProperties": false
         },
         "attack_bonus": {
@@ -159,8 +211,7 @@
                 "type": {"enum": ["stat_block_section"]},
                 "subtype": {"enum": ["item"]},
                 "name": {"type": "string"},
-                "html": {"type": "string"},
-                "references": {
+                "links": {
                     "type": "array",
                     "items": {"$ref": "#/definitions/link"},
                     "additionalItems": false
@@ -215,7 +266,7 @@
                     "Conditions", "Languages", "Weapons", "Armor", "Shields",
                     "Equipment", "Deities", "Feats", "Actions", "Monsters",
                     "Heritages", "Rules", "Diseases", "Rituals", "Planes",
-                    "MonsterFamilies"
+                    "MonsterFamilies", "Domains", "Classes"
                 ]},
                 "aonid": {"type": "integer"}
             },
@@ -261,31 +312,13 @@
                 "subtype": {"enum": ["offensive_action"]},
                 "name": {"type": "string"},
                 "text": {"type": "string"},
-                "offensive_action_type": {"enum": ["melee", "ranged", "spells"]},
+                "offensive_action_type": {"enum": ["attack", "spells", "affliction"]},
                 "action": {"$ref": "#/definitions/action"},
                 "traits": {"$ref": "#/definitions/traits"},
-                "weapon": {"type": "string"},
-                "bonus": {"$ref": "#/definitions/attack_bonus"},
-                "damage": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/attack_damage"},
-                    "additionalItems": false
-                },
-                "spell_tradition": {"enum": [
-                    "Occult", "Arcane", "Divine", "Primal"]},
-                "spell_type": {"enum": [
-                    "Spells", "Innate Spells", "Focus Spells",
-                    "Spontaneous Spells", "Prepared Spells", "Rituals",
-                    "Druid Order Spells", "Cleric Domain Spells", 
-                    "Sorcerer Bloodline Spells", "Champion Devotion Spells",
-                    "Bard Composition Spells", "Wizard School Spells"]},
-                "spell_dc": {"type": "integer"},
-                "spell_attack": {"type": "integer"},
-                "spell_list": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/spell_list"},
-                    "additionalItems": false
-                }
+                "attack": {"$ref": "#/definitions/attack"},
+                "spells": {"$ref": "#/definitions/spells"},
+                "ability": {"$ref": "#/definitions/ability"},
+                "affliction": {"$ref": "#/definitions/affliction"}
             },
             "required": ["name", "type", "subtype"],
             "additionalProperties": false
@@ -318,8 +351,9 @@
                 "type": {"enum": ["stat_block_section"]},
                 "subtype": {"enum": ["immunity", "resistance", "weakness"]},
                 "name": {"type": "string"},
+                "value": {"type": "integer"},
                 "modifiers": {"$ref": "#/definitions/modifiers"},
-                "value": {"type": "integer"}
+                "link": {"$ref": "#/definitions/link"}
             },
             "required": ["name", "type", "subtype"],
             "additionalProperties": false
@@ -379,7 +413,7 @@
             "properties": {
                 "name": {"type": "string"},
                 "type": {"enum": ["section"]},
-                "text": {"type": "string"},
+                "html": {"type": "string"},
                 "sections": {"$ref": "#/definitions/sections"},
                 "sources": {"$ref": "#/definitions/sources"},
                 "subtype": {"enum": ["sidebar", "index"]},
@@ -471,6 +505,39 @@
                 "name": {"type": "string"},
                 "link": {"$ref": "#/definitions/link"},
                 "modifiers": {"$ref": "#/definitions/modifiers"}
+            },
+            "required": ["name", "type", "subtype"],
+            "additionalProperties": false
+        },
+        "spells": {
+            "type": "object",
+            "properties": {
+                "type": {"enum": ["stat_block_section"]},
+                "subtype": {"enum": ["spells"]},
+                "name": {"type": "string"},
+                "text": {"type": "string"},
+                "spell_tradition": {"enum": [
+                    "Occult", "Arcane", "Divine", "Primal"]},
+                "spell_type": {"enum": [
+                    "Spells", "Innate Spells", "Focus Spells",
+                    "Spontaneous Spells", "Prepared Spells", "Rituals",
+                    "Druid Order Spells", "Cleric Domain Spells", 
+                    "Sorcerer Bloodline Spells", "Champion Devotion Spells",
+                    "Bard Composition Spells", "Wizard School Spells",
+                    "Alchemical Formulas", "Spells Known"]},
+                "spell_dc": {"type": "integer"},
+                "focus_points": {"type": "integer"},
+                "spell_attack": {"type": "integer"},
+                "spell_list": {
+                    "type": "array",
+                    "items": {"$ref": "#/definitions/spell_list"},
+                    "additionalItems": false
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "additionalItems": false
+                }
             },
             "required": ["name", "type", "subtype"],
             "additionalProperties": false

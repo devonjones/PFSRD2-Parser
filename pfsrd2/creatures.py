@@ -28,14 +28,16 @@ def parse_creature(filename, options):
 	#validate_dict_pass(struct, struct, None, "")
 	remove_empty_sections_pass(struct)
 	trait_pass(struct)
+	html_pass(struct)
 	basename.split("_")
 	if not options.skip_schema:
 		validate_against_schema(struct, "creature.schema.json")
 	if not options.dryrun:
 		output = options.output
 		for source in struct['sources']:
-			jsondir = makedirs(output, struct['game-obj'], source['name'])
-			write_creature(jsondir, struct, source['name'])
+			name = source['name'].replace('#', '')
+			jsondir = makedirs(output, struct['game-obj'], name)
+			write_creature(jsondir, struct, name)
 	elif options.stdout:
 		print(json.dumps(struct, indent=2))
 
@@ -43,6 +45,16 @@ def sb_restructure_pass(struct):
 	sb = find_stat_block(struct)
 	struct['stat_block'] = sb
 	struct['sections'].remove(sb)
+
+def html_pass(section):
+	if 'sections' in section:
+		for s in section['sections']:
+			html_pass(s)
+	if 'stat_block' in section:
+		html_pass(section['stat_block'])
+	if 'text' in section:
+		section['html'] = section['text']
+		del section['text']
 
 def restructure_creature_pass(details):
 	sb = None
@@ -473,7 +485,8 @@ def process_languages(section):
 				'stat_block_section', 'ability', newtext, {
 					'ability_type': 'communication'})
 				if link:
-					ability['link'] = link
+					#TODO: fix []
+					ability['links'] = [link]
 				if(modifier):
 					#TODO: fix []
 					ability['modifiers'] = link_modifiers(
@@ -575,23 +588,23 @@ def process_items(section):
 	for part in parts:
 		text, modifier = extract_modifier(part)
 		bs = unwrap_formatting(BeautifulSoup(text, 'html.parser'))
-		html = str(bs)
 		name = get_text(bs)
 		item = {
 			'type': 'stat_block_section',
 			'subtype': 'item',
-			'name': name.strip(),
-			'html': html.strip()}
+			'name': name.strip()}
 		if modifier:
 			item['modifiers'] = link_modifiers(
 				build_objects(
 					'stat_block_section', 'modifier', modifier.split(",")))
-		references = []
-		for a in bs.findAll("a"):
-			_, link = extract_link(a)
-			references.append(link)
-		if len(references) > 0:
-			item['references'] = references
+		links = []
+		while bs.a:
+		#for a in bs.findAll("a"):
+			_, link = extract_link(bs.a)
+			links.append(link)
+			bs.a.unwrap()
+		if len(links) > 0:
+			item['links'] = links
 		items.append(item)
 	return items
 
@@ -609,7 +622,8 @@ def process_interaction_ability(section):
 		ability['traits'] = traits
 	ability['text'] = description
 	if link:
-		ability['link'] = link
+		#TODO: fix []
+		ability['links'] = [link]
 	return ability
 
 def process_ac(section):
@@ -767,9 +781,11 @@ def process_defense(sb, section):
 						{section[0].lower(): []})
 	for part in parts:
 		defense[section[0].lower()].append(create_defense(part))
+	link_objects(defense[section[0].lower()])
 	sb['defense'][section[0].lower()] = defense
 
 def process_defensive_ability(section, sections, sb):
+	#TODO: parse error on 71, Catfolk Pouncer
 	assert section[0] not in ["Immunities", "Resistances", "Weaknesses"], section[0]
 	description = section[1]
 	link = section[2]
@@ -781,7 +797,8 @@ def process_defensive_ability(section, sections, sb):
 		'name': section[0]
 	}
 	if link:
-		ability['link'] = link
+		# TODO: fix []
+		ability['links'] = [link]
 	addons = ["Frequency", "Trigger", "Effect", "Duration", "Requirement",
 			"Critical Success", "Success", "Failure", "Critical Failure"]
 	while len(sections) > 0 and sections[0][0] in addons:
@@ -789,21 +806,20 @@ def process_defensive_ability(section, sections, sb):
 		assert addon[2] == None
 		addon_name = addon[0].lower().replace(" ", "_")
 		ability[addon_name] = addon[1]
-	description, traits = extract_starting_traits(description)
-	description = description.strip()
 
-	if len(traits) > 0:
-		ability['traits'] = traits
-	
-	description, action = extract_action(description)
+	description, action = extract_action(description.strip())
 	if action:
 		ability['action'] = action
 		ability['subtype'] = 'ability'
 		ability['ability_type'] = 'reactive'
 		sb_key = 'reactive_abilities'
 
+	description, traits = extract_starting_traits(description.strip())
+	if len(traits) > 0:
+		ability['traits'] = traits
+
 	if(len(description) > 0):
-		ability['text'] = description
+		ability['text'] = description.strip()
 	sb.setdefault(sb_key, []).append(ability)
 
 def process_speed(section):
@@ -897,14 +913,26 @@ def process_speed(section):
 	return speed
 
 def process_offensive_action(section):
-	def parse_attack_action(section):
+	def parse_attack_action(parent_section, attack_type):
 		# tentacle +16 [<a aonid="322" game-obj="Rules"><u>+12/+8</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>, <a aonid="192" game-obj="Traits"><u>reach 15 feet</u></a>), <b>Damage</b> 2d8+10 bludgeoning plus slime
 		# trident +10 [<a aonid="322" game-obj="Rules"><u>+5/+0</u></a>], <b>Damage</b> 1d8+4 piercing
 		# trident +7 [<a aonid="322" game-obj="Rules"><u>+2/-3</u></a>] (<a aonid="195" game-obj="Traits"><u>thrown 20 feet</u></a>), <b>Damage</b> 1d8+3 piercing
 		# Sphere of Oblivion +37 [<a aonid="322" game-obj="Rules"><u>+32/+27</u></a>] (<a aonid="103" game-obj="Traits"><u>magical</u></a>), <b>Effect</b> see Sphere of Oblivion
 		# piercing hymn +17 [<a aonid="322" game-obj="Rules"><u>+12/+7</u></a>] (<a aonid="83" game-obj="Traits"><u>good</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>, <a aonid="248" game-obj="Traits"><u>range 90 feet</u></a>, <a aonid="147" game-obj="Traits"><u>sonic</u></a>), <b>Damage</b> 4d6 sonic damage plus 1d6 good and deafening aria
 		# crossbow +14 [<a aonid="322" game-obj="Rules"><u>+9/+4</u></a>] (<a aonid="248" game-obj="Traits"><u>range increment 120 feet</u></a>, <a aonid=\"254\" game-obj="Traits"><u>reload 1</u></a>), <b>Damage</b> 1d8+2 piercing plus crossbow precision
-		text = section['text']
+		text = parent_section['text']
+		del parent_section['text']
+		section = {
+			'type': "stat_block_section", "subtype": "attack",
+			'attack_type': attack_type, 'name': parent_section['name']
+		}
+		if 'action' in parent_section:
+			section['action'] = parent_section['action']
+			del parent_section['action']
+		if 'traits' in parent_section:
+			section['traits'] = parent_section['traits']
+			del parent_section['traits']
+
 		m = re.search(r"^(.*) ([+-]\d*) \[(.*)\] \((.*)\), (.*)$", text)
 		if not m:
 			m = re.search(r"^(.*) ([+-]\d*) \[(.*)\], (.*)$", text)
@@ -929,8 +957,10 @@ def process_offensive_action(section):
 
 		if len(attack_data) > 0:
 			_, traits = extract_starting_traits("(%s)" %(attack_data.pop()))
+			assert 'traits' not in section
 			section['traits'] = traits
 		assert len(attack_data) == 0, "Failed to parse: %s" % (text)
+		parent_section['attack'] = section
 
 	def parse_attack_damage(text):
 		ds = split_list(text.strip(), [" plus ", " and "])
@@ -993,23 +1023,52 @@ def process_offensive_action(section):
 		effect["effect"] = get_text(bs).strip()
 		return effect
 
-	def parse_spells(section):
-		text = section['text']
+	def parse_spells(parent_section):
+		text = parent_section['text']
+		del parent_section['text']
+		section = {
+			'type': "stat_block_section", "subtype": "spells",
+			'name': parent_section['name']
+		}
+		if 'action' in parent_section:
+			section['action'] = parent_section['action']
+			del parent_section['action']
+		if 'traits' in parent_section:
+			section['traits'] = parent_section['traits']
+			del parent_section['traits']
+
 		name_parts = section['name'].split(" ")
-		section["spell_tradition"] = name_parts.pop(0)
+		if name_parts[-1] != "Formulas":
+			section["spell_tradition"] = name_parts.pop(0)
 		section["spell_type"] = " ".join(name_parts)
 		parts = split_maintain_parens(text, ";")
 		tt_parts = split_maintain_parens(parts.pop(0), ",")
+		remains = []
 		for tt in tt_parts:
+			if tt == '':
+				continue
 			chunks = tt.split(" ")
 			if tt.startswith("DC"):
 				section["spell_dc"] = int(chunks.pop())
 			elif tt.startswith("attack") or tt.startswith("spell attack"):
 				section["spell_attack"] = int(chunks.pop())
+			elif tt.endswith("Focus Points"):
+				section["focus_points"] = int(tt.replace(" Focus Points", "").strip())
+			elif tt.endswith("Focus Point"):
+				section["focus_points"] = int(tt.replace(" Focus Point", "").strip())
+			else:
+				remains.append(tt)
+		if len(remains) > 0 and remains != tt_parts:
+			section['notes'] = remains
+			remains = []
+		if len(remains) > 0:
+			parts.insert(0, ', '.join(remains))
 		spell_lists = []
+		assert len(parts) > 0, section
 		for p in parts:
 			spell_lists.append(parse_spell_list(p))
 		section['spell_list'] = spell_lists
+		parent_section['spells'] = section	
 
 	def parse_spell_list(part):
 		spell_list = {"type": "stat_block_section", "subtype": "spell_list"}
@@ -1066,6 +1125,99 @@ def process_offensive_action(section):
 			spell['count'] = 1
 		return spell
 
+	def parse_affliction(parent_section):
+		text = parent_section['text']
+		del parent_section['text']
+		section = {
+			'type': "stat_block_section", "subtype": "affliction",
+			'name': parent_section['name']
+		}
+		if 'action' in parent_section:
+			section['action'] = parent_section['action']
+			del parent_section['action']
+		if 'traits' in parent_section:
+			section['traits'] = parent_section['traits']
+			del parent_section['traits']
+		bs = BeautifulSoup(text, 'html.parser')
+		section['links'] = get_links(bs)
+		while bs.a:
+			bs.a.unwrap()
+		text = str(bs)
+		parts = [p.strip() for p in text.split(";")]
+		for p in parts:
+			bs = BeautifulSoup(p, 'html.parser')
+			if(bs.b):
+				title = get_text(bs.b.extract()).strip()
+				newtext = get_text(bs).strip()
+				if title == 'Saving Throw':
+					assert 'saving_throw' not in section, text
+					section['saving_throw'] = newtext
+				elif title == 'Onset':
+					assert 'onset' not in section, text
+					section['onset'] = newtext
+				elif title == 'Maximum Duration':
+					assert 'maximum_duration' not in section, text
+					section['maximum_duration'] = newtext
+				elif title.startswith('Stage'):
+					section.setdefault("stages", []).append(newtext)
+				else:
+					assert False, text
+			else:
+				section.setdefault('text', []).append(get_text(bs))
+		if 'text' in section:
+			section['text'] = '; '.join(section['text'])
+		parent_section['affliction'] = section
+
+	def parse_offensive_ability(parent_section):
+		text = parent_section['text']
+		del parent_section['text']
+		section = {
+			'type': "stat_block_section", "subtype": "ability",
+			'name': parent_section['name'], "ability_type": "offensive"
+		}
+		if 'action' in parent_section:
+			section['action'] = parent_section['action']
+			del parent_section['action']
+		if 'traits' in parent_section:
+			section['traits'] = parent_section['traits']
+			del parent_section['traits']
+		bs = BeautifulSoup(text, 'html.parser')
+		links = get_links(bs)
+		if len(links) > 0:
+			section['links'] = links
+		while bs.a:
+			bs.a.unwrap()
+		
+		children = list(bs)
+		addons = {}
+		current = None
+		parts = []
+		addon_names = ["Frequency", "Trigger", "Effect", "Duration",
+			"Requirement", "Requirements", "Prerequisite", "Critical Success",
+			"Success", "Failure", "Critical Failure", "Range"]		
+		if section['name'] == "Planar Incarnation":
+			parts = [str(c) for c in children]
+		else: 
+			while len(children) > 0:
+				child = children.pop(0)
+				if child.name == 'b':
+					current = get_text(child).strip()
+					if current == "Requirements":
+						current = "Requirement"
+					if current == "Prerequisites":
+						current = "Prerequisite"
+				elif current:
+					assert current in addon_names, "%s, %s" % (current, text)
+					addons.setdefault(current.lower().replace(" ", "_"), [])\
+						.append(str(child))
+				else:
+					parts.append(str(child))
+		for k, v in addons.items():
+			section[k] = ''.join(v)
+		if len(parts) > 0:
+			section['text'] = ''.join(parts)
+		parent_section['ability'] = section
+	
 	if len(section['sections']) == 0:
 		del section['sections']
 	section['type'] = 'stat_block_section'
@@ -1078,15 +1230,27 @@ def process_offensive_action(section):
 	if len(traits) > 0:
 		section['traits'] = traits
 	section['text'] = text.strip()
-	if section['name'] == "Melee":
-		section['offensive_action_type'] = "melee"
-		parse_attack_action(section)
-	elif section['name'] == "Ranged":
-		section['offensive_action_type'] = "ranged"
-		parse_attack_action(section)
-	elif section['name'].endswith("Spells") or section['name'].endswith("Rituals"):
+	if section['name'] in ["Melee", "Ranged"]:
+		section['offensive_action_type'] = "attack"
+		parse_attack_action(section, section['name'].lower())
+	elif section['name'].find("Spells") > -1 \
+			or section['name'].endswith("Rituals") \
+			or section['name'].endswith("Formulas"):
 		section['offensive_action_type'] = "spells"
 		parse_spells(section)
+	else:
+		bs = BeautifulSoup(section['text'], 'html.parser')
+		if bs.b:
+			title = get_text(bs.b)
+			if title.strip() in ['Saving Throw']:
+				section['offensive_action_type'] = "affliction"
+				parse_affliction(section)
+			else:
+				pass
+				parse_offensive_ability(section)
+		else:
+			pass
+			parse_offensive_ability(section)
 	return section
 
 def split_stat_block_line(line):
@@ -1312,15 +1476,25 @@ def link_modifiers(modifiers):
 			m['links'] = links
 	return modifiers
 
+def link_objects(objects):
+	for o in objects:
+		bs = BeautifulSoup(o['name'], 'html.parser')
+		links = get_links(bs)
+		if len(links) > 0:
+			o['name'] = get_text(bs)
+			o['link'] = links[0]
+			if len(links) > 1:
+				# TODO: fix []
+				assert False, objects
+	return objects
+
 def link_abilities(abilities):
 	for a in abilities:
 		bs = BeautifulSoup(a['name'], 'html.parser')
 		links = get_links(bs)
-		if len(links) == 1:
+		if len(links) > 0:
 			a['name'] = get_text(bs)
-			a['link'] = links[0]
-		elif len(links) > 0:
-			assert False, abilities
+			a['links'] = links
 	return abilities
 
 def get_links(bs):

@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup, NavigableString
 from pfsrd2.creatures import remove_empty_sections_pass, source_pass
 from pfsrd2.creatures import sidebar_pass, index_pass, aon_pass, trait_pass
 from pfsrd2.creatures import creature_stat_block_pass, sb_restructure_pass
+from pfsrd2.creatures import html_pass
 from pfsrd2.universal import parse_universal, print_struct
 from pfsrd2.universal import is_trait, get_text, extract_link
 from pfsrd2.files import makedirs, char_replace
@@ -27,14 +28,16 @@ def parse_npc(filename, options):
 	#validate_dict_pass(struct, struct, None, "")
 	remove_empty_sections_pass(struct)
 	trait_pass(struct)
+	html_pass(struct)
 	basename.split("_")
 	if not options.skip_schema:
 		validate_against_schema(struct, "creature.schema.json")
 	if not options.dryrun:
 		output = options.output
 		for source in struct['sources']:
-			jsondir = makedirs(output, struct['game-obj'], source['name'])
-			write_npc(jsondir, struct, source['name'])
+			name = source['name'].replace('#', '')
+			jsondir = makedirs(output, struct['game-obj'], name)
+			write_npc(jsondir, struct, name)
 	elif options.stdout:
 		print(json.dumps(struct, indent=2))
 
