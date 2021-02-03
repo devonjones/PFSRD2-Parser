@@ -820,7 +820,7 @@ def process_defensive_ability(section, sections, sb):
 
 	if(len(description) > 0):
 		ability['text'] = description.strip()
-	sb.setdefault(sb_key, []).append(ability)
+	sb['defense'].setdefault(sb_key, []).append(ability)
 
 def process_speed(section):
 	# 538
@@ -975,7 +975,7 @@ def process_offensive_action(section):
 			if not m:
 				m = re.match(r"^\d*$", dice)
 			if m: #damage
-				damage["formula"] = dice
+				damage["formula"] = dice.replace('–', '-')
 				damage_type = ' '.join(parts)
 				if damage_type.find("(") > -1:
 					parts = damage_type.split("(")
@@ -1246,10 +1246,10 @@ def process_offensive_action(section):
 				section['offensive_action_type'] = "affliction"
 				parse_affliction(section)
 			else:
-				pass
+				section['offensive_action_type'] = "ability"
 				parse_offensive_ability(section)
 		else:
-			pass
+			section['offensive_action_type'] = "ability"
 			parse_offensive_ability(section)
 	return section
 

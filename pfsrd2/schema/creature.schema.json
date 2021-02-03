@@ -140,7 +140,6 @@
                     "other", "energy", "bleed",
                     "cold iron slashing", "piercing or slashing",
                     "bludgeoning, piercing, or slashing"]},
-                "damage_plus": {"type": "string"},
                 "effect": {"type": "string"},
                 "notes": {"type": "string"},
                 "links": {
@@ -166,7 +165,9 @@
                 "hardness": {"$ref": "#/definitions/hardness"},
                 "immunities": {"$ref": "#/definitions/protections"},
                 "resistances": {"$ref": "#/definitions/protections"},
-                "weaknesses": {"$ref": "#/definitions/protections"}
+                "weaknesses": {"$ref": "#/definitions/protections"},
+                "automatic_abilities": {"$ref": "#/definitions/abilities"},
+                "reactive_abilities": {"$ref": "#/definitions/abilities"}
             },
             "required": ["name", "type", "subtype", "ac", "saves", "hp"],
             "additionalProperties": false
@@ -311,14 +312,12 @@
                 "type": {"enum": ["stat_block_section"]},
                 "subtype": {"enum": ["offensive_action"]},
                 "name": {"type": "string"},
-                "text": {"type": "string"},
-                "offensive_action_type": {"enum": ["attack", "spells", "affliction"]},
-                "action": {"$ref": "#/definitions/action"},
-                "traits": {"$ref": "#/definitions/traits"},
+                "offensive_action_type": {"enum": [
+                    "attack", "spells", "affliction", "ability"]},
                 "attack": {"$ref": "#/definitions/attack"},
                 "spells": {"$ref": "#/definitions/spells"},
-                "ability": {"$ref": "#/definitions/ability"},
-                "affliction": {"$ref": "#/definitions/affliction"}
+                "affliction": {"$ref": "#/definitions/affliction"},
+                "ability": {"$ref": "#/definitions/ability"}
             },
             "required": ["name", "type", "subtype"],
             "additionalProperties": false
@@ -545,9 +544,9 @@
         "spell": {
             "type": "object",
             "properties": {
-                "name": {"type": "string"},
                 "type": {"enum": ["stat_block_section"]},
                 "subtype": {"enum": ["spell"]},
+                "name": {"type": "string"},
                 "count": {"type": "integer"},
                 "count_text": {"type": "string"},
                 "links": {
@@ -595,9 +594,7 @@
                 "int": {"type": "integer"},
                 "wis": {"type": "integer"},
                 "cha": {"type": "integer"},
-                "automatic_abilities": {"$ref": "#/definitions/abilities"},
                 "interaction_abilities": {"$ref": "#/definitions/abilities"},
-                "reactive_abilities": {"$ref": "#/definitions/abilities"},
                 "defense": {"$ref": "#/definitions/defense"},
                 "offense": {"$ref": "#/definitions/offense"},
                 "items": {"$ref": "#/definitions/items"},
