@@ -105,6 +105,11 @@
 					"type": "array",
 					"items": {"$ref": "#/definitions/attack_damage"},
 					"additionalItems": false
+				},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
 				}
 			},
 			"required": ["name", "type", "subtype"],

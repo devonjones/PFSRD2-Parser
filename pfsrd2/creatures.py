@@ -35,8 +35,9 @@ def parse_creature(filename, options):
 	remove_empty_sections_pass(struct)
 	trait_pass(struct)
 	html_pass(struct)
-	basename.split("_")
 	db_pass(struct)
+	log_html_pass(struct, basename)
+	basename.split("_")
 	if not options.skip_schema:
 		validate_against_schema(struct, "creature.schema.json")
 	if not options.dryrun:
@@ -47,6 +48,22 @@ def parse_creature(filename, options):
 			write_creature(jsondir, struct, name)
 	elif options.stdout:
 		print(json.dumps(struct, indent=2))
+
+def log_html_pass(struct, path):
+	for k, v in struct.items():
+		if k not in ["sections"]:
+			if isinstance(v, dict):
+				log_html_pass(v, "%s.%s" % (path, k))
+			elif isinstance(v, list):
+				for item in v:
+					if isinstance(item, dict):
+						log_html_pass(item, "%s.%s" % (path, k))
+					elif isinstance(item, str):
+						if item.find("<") > -1:
+							log_element("html.log")("%s: %s" % (path, item))
+			elif isinstance(v, str):
+				if v.find("<") > -1:
+					log_element("html.log")("%s: %s" % (path, v))
 
 def db_pass(struct):
 	db_path = get_db_path("traits.db")
@@ -875,6 +892,16 @@ def process_speed(section):
 	return speed
 
 def process_offensive_action(section):
+	def remove_html_weapon(text, section):
+		bs = BeautifulSoup(text, 'html.parser')
+		if list(bs.children)[0].name == "i":
+			bs.i.unwrap()
+		while bs.a:
+			_, link = extract_link(bs.a)
+			section.setdefault("links", []).append(link)
+			bs.a.unwrap()
+		return str(bs)
+	
 	def parse_attack_action(parent_section, attack_type):
 		# tentacle +16 [<a aonid="322" game-obj="Rules"><u>+12/+8</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>, <a aonid="192" game-obj="Traits"><u>reach 15 feet</u></a>), <b>Damage</b> 2d8+10 bludgeoning plus slime
 		# trident +10 [<a aonid="322" game-obj="Rules"><u>+5/+0</u></a>], <b>Damage</b> 1d8+4 piercing
@@ -900,7 +927,7 @@ def process_offensive_action(section):
 			m = re.search(r"^(.*) ([+-]\d*) \[(.*)\], (.*)$", text)
 		assert m, "Failed to parse: %s" % (text)
 		attack_data = list(m.groups())
-		section['weapon'] = attack_data.pop(0)
+		section['weapon'] = remove_html_weapon(attack_data.pop(0), section)
 		attacks = [attack_data.pop(0)]
 		bs = BeautifulSoup(attack_data.pop(0), 'html.parser')
 		children = list(bs.children)
