@@ -1,5 +1,6 @@
 import sys
 import re
+from hashlib import md5
 from pprint import pprint
 from urllib.parse import urlparse, parse_qs
 from bs4 import BeautifulSoup, BeautifulStoneSoup, Tag, NavigableString
@@ -300,3 +301,105 @@ def split_maintain_parens(text, split):
 		else:
 			newparts.append(part)
 	return newparts
+
+def source_pass(struct, find_object_fxn):
+	def _extract_source(section):
+		if 'text' in section:
+			bs = BeautifulSoup(section['text'], 'html.parser')
+			children = list(bs.children)
+			if children[0].name == "b" and get_text(children[0]) == "Source":
+				children.pop(0)
+				book = children.pop(0)
+				source = extract_source(book)
+				if children[0].name == "br":
+					children.pop(0)
+				section['text'] = ''.join([str(c) for c in children])
+				return [source]
+	
+	def propagate_sources(section, sources):
+		retval = _extract_source(section)
+		if retval:
+			sources = retval
+		if 'sources' in section:
+			sources = section['sources']
+		else:
+			section['sources'] = sources
+		for s in section['sections']:
+			propagate_sources(s, sources)
+
+	if 'sources' not in struct:
+		sb = find_object_fxn(struct)
+		struct['sources'] = sb['sources']
+	sources = struct['sources']
+	for section in struct['sections']:
+		propagate_sources(section, sources)
+
+def extract_source(obj):
+	text, link = extract_link(obj)
+	parts = text.split(" pg. ")
+	assert len(parts) == 2
+	name = parts.pop(0)
+	page = int(parts.pop(0))
+	return {'type': 'source', 'name': name, 'link': link, 'page': page}
+
+def aon_pass(struct, basename):
+	parts = basename.split("_")
+	assert len(parts) == 2
+	struct["aonid"] = int(parts[1])
+	struct["game-obj"] = parts[0].split(".")[0]
+
+def restructure_pass(struct, obj_name, find_object_fxn):
+	sb = find_object_fxn(struct)
+	struct[obj_name] = sb
+	struct['sections'].remove(sb)
+
+def html_pass(section):
+	if 'sections' in section:
+		for s in section['sections']:
+			html_pass(s)
+	if 'stat_block' in section:
+		html_pass(section['stat_block'])
+	if 'text' in section:
+		section['html'] = section['text']
+		del section['text']
+
+def remove_empty_sections_pass(struct):
+	for section in struct['sections']:
+		remove_empty_sections_pass(section)
+		if len(struct.get('sections', [])) == 0:
+			del section['sections']
+	if len(struct.get('sections', [])) == 0:
+		del struct['sections']
+
+def walk(struct, test, function, parent=None):
+	if test(struct):
+		function(struct, parent)
+	if isinstance(struct, dict):
+		for k,v in struct.items():
+			walk(v, test, function, struct)
+	elif isinstance(struct, list):
+		for i in struct:
+			walk(i, test, function, struct)
+
+def test_key_is_value(k, v):
+	def test(struct):
+		if isinstance(struct, dict):
+			if 'type' in struct:
+				if struct.get(k) == v:
+					return True
+		return False
+	return test
+
+def game_id_pass(struct):
+	source = struct['sources'][0]
+	name = struct['name']
+	pre_id = "%s: %s: %s" % (source['name'], source['page'], name)
+	struct['game-id'] = md5(str.encode(pre_id)).hexdigest()
+
+def get_links(bs):
+	all_a = bs.find_all("a")
+	links = []
+	for a in all_a:
+		_, link = extract_link(a)
+		links.append(link)
+	return links

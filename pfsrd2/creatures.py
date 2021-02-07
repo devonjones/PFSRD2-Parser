@@ -7,8 +7,15 @@ from bs4 import BeautifulSoup, NavigableString
 from pfsrd2.universal import parse_universal, print_struct
 from pfsrd2.universal import is_trait, get_text, extract_link
 from pfsrd2.universal import split_maintain_parens
+from pfsrd2.universal import source_pass, extract_source
+from pfsrd2.universal import aon_pass, restructure_pass, html_pass
+from pfsrd2.universal import remove_empty_sections_pass, get_links
+from pfsrd2.universal import walk, test_key_is_value
 from pfsrd2.files import makedirs, char_replace
 from pfsrd2.schema import validate_against_schema
+from pfsrd2.trait import trait_parse
+from pfsrd2.sql import get_db_path, get_db_connection
+from pfsrd2.sql.traits import fetch_trait_by_name
 
 # TODO: range on perceptions
 # pleroma, 11, lifesense 120 feet
@@ -20,41 +27,79 @@ def parse_creature(filename, options):
 	details = parse_universal(filename, max_title=4)
 	struct = restructure_creature_pass(details)
 	creature_stat_block_pass(struct)
-	source_pass(struct)
+	source_pass(struct, find_stat_block)
 	sidebar_pass(struct)
 	index_pass(struct)
 	aon_pass(struct, basename)
-	sb_restructure_pass(struct)
-	#validate_dict_pass(struct, struct, None, "")
+	restructure_pass(struct, 'stat_block', find_stat_block)
 	remove_empty_sections_pass(struct)
 	trait_pass(struct)
 	html_pass(struct)
 	basename.split("_")
+	db_pass(struct)
 	if not options.skip_schema:
 		validate_against_schema(struct, "creature.schema.json")
 	if not options.dryrun:
 		output = options.output
 		for source in struct['sources']:
-			name = source['name'].replace('#', '')
+			name = char_replace(source['name'])
 			jsondir = makedirs(output, struct['game-obj'], name)
 			write_creature(jsondir, struct, name)
 	elif options.stdout:
 		print(json.dumps(struct, indent=2))
 
-def sb_restructure_pass(struct):
-	sb = find_stat_block(struct)
-	struct['stat_block'] = sb
-	struct['sections'].remove(sb)
+def db_pass(struct):
+	db_path = get_db_path("traits.db")
+	conn = get_db_connection(db_path)
+	curs = conn.cursor()
+	def _check_trait(trait, parent):
+		_handle_value(trait)
+		if trait.get('class') == "alignment" and trait['name'] != "No Alignment":
+			_handle_alignment_trait(trait, parent)
+		else: 
+			fetch_trait_by_name(curs, trait['name'])
+			data = curs.fetchone()
+			assert data, trait
+			db_trait = json.loads(data['trait'])
+			if "link" in trait:
+				assert trait['link']['aonid'] == db_trait['aonid'], trait
+			assert isinstance(parent, list), parent
+			index = parent.index(trait)
+			if 'value' in trait:
+				db_trait['value'] = trait['value']
+			if "aonid" in db_trait:
+				del db_trait["aonid"]
+			parent[index] = db_trait
 
-def html_pass(section):
-	if 'sections' in section:
-		for s in section['sections']:
-			html_pass(s)
-	if 'stat_block' in section:
-		html_pass(section['stat_block'])
-	if 'text' in section:
-		section['html'] = section['text']
-		del section['text']
+	def _handle_value(trait):
+		m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait['name'])
+		if trait['name'].startswith("range increment"):
+			value = trait['name'].replace("range ", "")
+			trait['name'] = "range"
+			trait['value'] = value
+		elif m:
+			name, value = m.groups()
+			trait['name'] = name
+			trait['value'] = value
+		elif trait['name'].startswith("versatile "):
+			value = trait['name'].replace("versatile ", "")
+			trait['name'] = "versatile"
+			trait['value'] = value
+
+	def _handle_alignment_trait(trait, parent):
+		index = parent.index(trait)
+		parent.remove(trait)
+		parts = trait['name'].split(" ")
+		for part in parts:
+			fetch_trait_by_name(curs, part)
+			data = curs.fetchone()
+			db_trait = json.loads(data['trait'])
+			if "aonid" in db_trait:
+				del db_trait["aonid"]
+			parent.insert(index, db_trait)
+			index += 1
+
+	walk(struct, test_key_is_value('subtype', 'trait'), _check_trait)
 
 def restructure_creature_pass(details):
 	sb = None
@@ -83,14 +128,10 @@ def find_stat_block(struct):
 
 def trait_pass(struct):
 	sb = struct['stat_block']
-	if struct['name'] == "Unseen Servant":
-		sb['traits'].append({ 
-			"name": "Construct", "class": "trait", 
-			"text": "A construct is an artificial creature empowered by a force other than necromancy. Constructs are often mindless; they are immune to bleed damage, death effects, disease, healing, necromancy, nonlethal attacks, poison, and the doomed, drained, fatigued, paralyzed, sickened, and unconscious conditions; and they may have Hardness based on the materials used to construct their bodies. Constructs are not living creatures, nor are they undead. When reduced to 0 Hit Points, a construct creature is destroyed.",
-			"type": "stat_block_section", "subtype": "trait", "class": "creature_type",
-			"link": {"type": "link", "name": "Construct", "alt": "Construct", "game-obj": "Traits", "aonid": 35}
-		})
 	traits = sb['traits']
+	for trait in traits:
+		if trait['class'] == 'alignment':
+			sb['alignment'] = trait['name']
 	for trait in traits:
 		if trait['class'] == 'creature_type':
 			return
@@ -122,7 +163,7 @@ def creature_stat_block_pass(struct):
 	link = None
 	for obj in objs:
 		if obj.name == 'span' and is_trait(obj):
-			trait = parse_trait(obj)
+			trait = trait_parse(obj)
 			sb.setdefault('traits', []).append(trait)
 		elif obj.name == "br":
 			value.append(obj)
@@ -159,38 +200,6 @@ def strip_br(data):
 		newdata.append((k, ''.join([str(c) for c in children]).strip(), l))
 	return newdata
 
-def source_pass(struct):
-	def _extract_source(section):
-		if 'text' in section:
-			bs = BeautifulSoup(section['text'], 'html.parser')
-			children = list(bs.children)
-			if children[0].name == "b" and get_text(children[0]) == "Source":
-				children.pop(0)
-				book = children.pop(0)
-				source = extract_source(book)
-				if children[0].name == "br":
-					children.pop(0)
-				section['text'] = ''.join([str(c) for c in children])
-				return [source]
-	
-	def propagate_sources(section, sources):
-		retval = _extract_source(section)
-		if retval:
-			sources = retval
-		if 'sources' in section:
-			sources = section['sources']
-		else:
-			section['sources'] = sources
-		for s in section['sections']:
-			propagate_sources(s, sources)
-
-	if 'sources' not in struct:
-		sb = find_stat_block(struct)
-		struct['sources'] = sb['sources']
-	sources = struct['sources']
-	for section in struct['sections']:
-		propagate_sources(section, sources)
-
 def sidebar_pass(struct):
 	for section in struct['sections']:
 		sidebar_pass(section)
@@ -216,12 +225,6 @@ def index_pass(struct):
 	if struct['name'].startswith("All Monsters"):
 		struct['type'] = "section"
 		struct['subtype'] = "index"
-
-def aon_pass(struct, basename):
-	parts = basename.split("_")
-	assert len(parts) == 2
-	struct["aonid"] = int(parts[1])
-	struct["game-obj"] = parts[0].split(".")[0]
 
 def validate_dict_pass(top, struct, parent, field):
 	try:
@@ -258,47 +261,6 @@ def validate_dict_pass(top, struct, parent, field):
 	except Exception as e:
 		pprint(struct)
 		raise e
-
-def remove_empty_sections_pass(struct):
-	for section in struct['sections']:
-		remove_empty_sections_pass(section)
-		if len(section['sections']) == 0:
-			del section['sections']
-
-def parse_trait(span):
-	def check_type_trait(trait_class, name):
-		types = [
-			"Aberration", "Animal", "Astral", "Beast", "Celestial", "Construct",
-			"Dragon", "Dream", "Elemental", "Ethereal", "Fey", "Fiend",
-			"Fungus", "Giant", "Humanoid", "Monitor", "Ooze", "Petitioner",
-			"Plant", "Undead"
-		]
-		if name in types:
-			return "creature_type"
-		else:
-			return trait_class
-
-	name = ''.join(span['alt']).replace(" Trait", "")
-	trait_class = ''.join(span['class'])
-	if trait_class != 'trait':
-		trait_class = trait_class.replace('trait', '')
-	if trait_class == 'trait':
-		trait_class = check_type_trait(trait_class, name)
-	text = ''.join(span['title'])
-	trait = {
-		'name': name,
-		'class': trait_class,
-		'text': text.strip(),
-		'type': 'stat_block_section',
-		'subtype': 'trait'}
-	c = list(span.children)
-	if len(c) == 1:
-		if c[0].name == "a":
-			_, link = extract_link(c[0])
-			trait['link'] = link
-	else:
-		raise Exception("You should not be able to get here")
-	return trait
 
 def process_stat_block(sb, sections):
 	# Stats
@@ -1496,14 +1458,6 @@ def link_abilities(abilities):
 			a['name'] = get_text(bs)
 			a['links'] = links
 	return abilities
-
-def get_links(bs):
-	all_a = bs.find_all("a")
-	links = []
-	for a in all_a:
-		_, link = extract_link(a)
-		links.append(link)
-	return links
 
 def split_list(text, splits):
 	elements = text.split(splits[0])

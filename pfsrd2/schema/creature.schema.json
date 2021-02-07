@@ -1,641 +1,654 @@
 {
-    "$schema": "http://json-schema.org/draft-07/schema#",
+	"$schema": "http://json-schema.org/draft-07/schema#",
 
-    "definitions": {
-        "ability": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["ability"]},
-                "name": {"type": "string"},
-                "ability_type": {"type": "string"},
-                "value": {"type": "integer"},
-                "text": {"type": "string"},
-                "trigger": {"type": "string"},
-                "effect": {"type": "string"},
-                "frequency": {"type": "string"},
-                "requirement": {"type": "string"},
-                "prerequisite": {"type": "string"},
-                "range": {"type": "string"},
-                "failure": {"type": "string"},
-                "success": {"type": "string"},
-                "critical_failure": {"type": "string"},
-                "critical_success": {"type": "string"},
-                "action": {"$ref": "#/definitions/action"},
-                "links": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/link"},
-                    "additionalItems": false
-                },
-                "traits": {"$ref": "#/definitions/traits"},
-                "modifiers": {"$ref": "#/definitions/modifiers"}
-            },
-            "required": ["name", "type", "subtype", "ability_type"],
-            "additionalProperties": false
-        },
-        "abilities": {
-            "type": "array",
-            "items": {"$ref": "#/definitions/ability"},
-            "additionalItems": false
-        },
-        "ac": {
-            "type": "object",
-            "properties": {
-                "name": {"enum": ["AC"]},
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["armor_class"]},
-                "value": {"type": "integer"},
-                "modifiers": {"$ref": "#/definitions/modifiers"}
-            },
-            "required": ["name", "type", "subtype", "value"],
-            "additionalProperties": false
-        },
-        "action": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["action"]},
-                "name": {"enum": [
-                    "Reaction", "Free Action", "Single Action",
-                    "Two Actions", "Three Actions"
-                ]},
-                "image": {"$ref": "#/definitions/image"}
-            },
-            "required": ["name", "type", "subtype", "image"],
-            "additionalProperties": false
-        },
-        "affliction": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["affliction"]},
-                "name": {"type": "string"},
-                "text": {"type": "string"},
-                "action": {"$ref": "#/definitions/action"},
-                "traits": {"$ref": "#/definitions/traits"},
-                "saving_throw": {"type": "string"},
-                "onset": {"type": "string"},
-                "maximum_duration": {"type": "string"},
-                "stages": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "additionalItems": false
-                },
-                "links": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/link"},
-                    "additionalItems": false
-                }
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "attack": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["attack"]},
-                "name": {"type": "string"},
-                "attack_type": {"enum": ["melee", "ranged"]},
-                "action": {"$ref": "#/definitions/action"},
-                "traits": {"$ref": "#/definitions/traits"},
-                "weapon": {"type": "string"},
-                "bonus": {"$ref": "#/definitions/attack_bonus"},
-                "damage": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/attack_damage"},
-                    "additionalItems": false
-                }
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "attack_bonus": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["attack_bonus"]},
-                "link": {"$ref": "#/definitions/link"},
-                "bonuses": {
-                    "type": "array",
-                    "items": {"type": "integer"},
-                    "additionalItems": false
-                }
-            },
-            "required": ["link", "type", "subtype", "bonuses"],
-            "additionalProperties": false
-        },
-        "attack_damage": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["attack_damage"]},
-                "formula": {"type": "string"},
-                "damage_type": {"enum": [
-                    "slashing", "piercing", "bludgeoning", "nonlethal",
-                    "acid", "sonic", "fire", "electricity", "cold",
-                    "mental", "poison", "force",
-                    "positive", "negative", "positive or negative",
-                    "chaotic", "lawful", "good", "evil",
-                    "other", "energy", "bleed",
-                    "cold iron slashing", "piercing or slashing",
-                    "bludgeoning, piercing, or slashing"]},
-                "effect": {"type": "string"},
-                "notes": {"type": "string"},
-                "links": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/link"},
-                    "additionalItems": false
-                },
-                "persistent": {"type": "boolean"},
-                "splash": {"type": "boolean"}
-            },
-            "required": ["type", "subtype"],
-            "additionalProperties": false
-        },
-        "defense": {
-            "type": "object",
-            "properties": {
-                "name": {"enum": ["Defense"]},
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["defense"]},
-                "ac": {"$ref": "#/definitions/ac"},
-                "saves": {"$ref": "#/definitions/saves"},
-                "hp": {"$ref": "#/definitions/hp"},
-                "hardness": {"$ref": "#/definitions/hardness"},
-                "immunities": {"$ref": "#/definitions/protections"},
-                "resistances": {"$ref": "#/definitions/protections"},
-                "weaknesses": {"$ref": "#/definitions/protections"},
-                "automatic_abilities": {"$ref": "#/definitions/abilities"},
-                "reactive_abilities": {"$ref": "#/definitions/abilities"}
-            },
-            "required": ["name", "type", "subtype", "ac", "saves", "hp"],
-            "additionalProperties": false
-        },
-        "hardness": {
-            "type": "object",
-            "properties": {
-                "name": {"enum": ["Hardness"]},
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["hardness"]},
-                "value": {"type": "integer"}
-            },
-            "required": ["name", "type", "subtype", "value"],
-            "additionalProperties": false
-        },
-        "hp": {
-            "type": "object",
-            "properties": {
-                "name": {"enum": ["HP"]},
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["hitpoints"]},
-                "value": {"type": "integer"},
-                "automatic_abilities": {"$ref": "#/definitions/abilities"}
-            },
-            "required": ["name", "type", "subtype", "value"],
-            "additionalProperties": false
-        },
-        "image": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "type": {"enum": ["image"]},
-                "game-obj": {"type": "string"},
-                "image": {"type": "string"}
-            },
-            "required": ["name", "type", "image"],
-            "additionalProperties": false
-        },
-        "item": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["item"]},
-                "name": {"type": "string"},
-                "links": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/link"},
-                    "additionalItems": false
-                },
-                "modifiers": {"$ref": "#/definitions/modifiers"}
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "items": {
-            "type": "array",
-            "items": {"$ref": "#/definitions/item"},
-            "additionalItems": false
-        },
-        "language": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["language"]},
-                "name": {"type": "string"},
-                "link": {"$ref": "#/definitions/link"},
-                "modifiers": {"$ref": "#/definitions/modifiers"}
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "languages": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["languages"]},
-                "name": {"enum": ["Languages"]},
-                "languages": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/language"},
-                    "additionalItems": false
-                },
-                "communication_abilities": {"$ref": "#/definitions/abilities"},
-                "modifiers": {"$ref": "#/definitions/modifiers"}
-            },
-            "additionalProperties": false
-        },
-        "link": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "type": {"enum": ["link"]},
-                "alt": {"type": "string"},
-                "href": {"type": "string"},
-                "game-obj": {"enum": [
-                    "Spells", "Sources", "Skills", "Traits", "MonsterAbilities",
-                    "Conditions", "Languages", "Weapons", "Armor", "Shields",
-                    "Equipment", "Deities", "Feats", "Actions", "Monsters",
-                    "Heritages", "Rules", "Diseases", "Rituals", "Planes",
-                    "MonsterFamilies", "Domains", "Classes"
-                ]},
-                "aonid": {"type": "integer"}
-            },
-            "required": ["name", "type", "alt"],
-            "additionalProperties": false
-        },
-        "modifier": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["modifier"]},
-                "name": {"type": "string"},
-                "links": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/link"},
-                    "additionalItems": false
-                }
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "modifiers": {
-            "type": "array",
-            "items": {"$ref": "#/definitions/modifier"},
-            "additionalItems": false
-        },
-        "offense": {
-            "type": "object",
-            "properties": {
-                "name": {"enum": ["Offense"]},
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["offense"]},
-                "speeds": {"$ref": "#/definitions/speeds"},
-                "offensive_actions": {"$ref": "#/definitions/offensive_actions"}
-            },
-            "required": ["name", "type", "subtype", "speeds", "offensive_actions"],
-            "additionalProperties": false
-        },
-        "offensive_action": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["offensive_action"]},
-                "name": {"type": "string"},
-                "offensive_action_type": {"enum": [
-                    "attack", "spells", "affliction", "ability"]},
-                "attack": {"$ref": "#/definitions/attack"},
-                "spells": {"$ref": "#/definitions/spells"},
-                "affliction": {"$ref": "#/definitions/affliction"},
-                "ability": {"$ref": "#/definitions/ability"}
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "offensive_actions": {
-            "type": "array",
-            "items": {"$ref": "#/definitions/offensive_action"},
-            "additionalItems": false
-        },
-        "perception": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["perception"]},
-                "name": {"enum": ["perception"]},
-                "value": {"type": "integer"},
-                "special_senses": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/special_senses"},
-                    "additionalItems": false
-                },
-                "modifiers": {"$ref": "#/definitions/modifiers"}
-            },
-            "required": ["name", "type", "subtype", "value"],
-            "additionalProperties": false
-        },
-        "protection": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["immunity", "resistance", "weakness"]},
-                "name": {"type": "string"},
-                "value": {"type": "integer"},
-                "modifiers": {"$ref": "#/definitions/modifiers"},
-                "link": {"$ref": "#/definitions/link"}
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "protections": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["immunities", "resistances", "weaknesses"]},
-                "name": {"enum": ["Immunities", "Resistances", "Weaknesses"]},
-                "immunities": {
-                    "type":"array",
-                    "items": {"$ref": "#/definitions/protection"},
-                    "additionalItems": false
-                },
-                "resistances": {
-                    "type":"array",
-                    "items": {"$ref": "#/definitions/protection"},
-                    "additionalItems": false
-                },
-                "weaknesses": {
-                    "type":"array",
-                    "items": {"$ref": "#/definitions/protection"},
-                    "additionalItems": false
-                }
-            },
-            "additionalItems": false
-        },
-        "save": {
-            "type": "object",
-            "properties": {
-                "name": {"enum": ["Fort", "Ref", "Will"]},
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["save"]},
-                "value": {"type": "integer"},
-                "modifiers": {"$ref": "#/definitions/modifiers"}
-            },
-            "required": ["name", "type", "subtype", "value"],
-            "additionalProperties": false
-        },
-        "saves": {
-            "type": "object",
-            "properties": {
-                "name": {"enum": ["Saves"]},
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["saves"]},
-                "fort": {"$ref": "#/definitions/save"},
-                "ref": {"$ref": "#/definitions/save"},
-                "will": {"$ref": "#/definitions/save"},
-                "modifiers": {"$ref": "#/definitions/modifiers"}
-            },
-            "required": ["name", "type", "subtype", "fort", "ref", "will"],
-            "additionalProperties": false
-        },
-        "section": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "type": {"enum": ["section"]},
-                "html": {"type": "string"},
-                "sections": {"$ref": "#/definitions/sections"},
-                "sources": {"$ref": "#/definitions/sources"},
-                "subtype": {"enum": ["sidebar", "index"]},
-                "sidebar_type": {"enum": [
-                    "treasure_and_rewards", "related_creatures", "locations",
-                    "additional_lore", "advice_and_rules"
-                ]},
-                "sidebar_heading": {"type": "string"},
-                "image": {"$ref": "#/definitions/image"}
-            },
-            "additionalProperties": false
-        },
-        "sections": {
-            "type": "array",
-            "items": {"$ref": "#/definitions/section"},
-            "additionalItems": false
-        },
-        "skill": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["skill"]},
-                "name": {"type": "string"},
-                "value": {"type": "integer"},
-                "link": {"$ref": "#/definitions/link"},
-                "modifiers": {"$ref": "#/definitions/modifiers"}
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "skills": {
-            "type": "array",
-            "items": {"$ref": "#/definitions/skill"},
-            "additionalItems": false
-        },
-        "source": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "type": {"enum": ["source"]},
-                "link": {"$ref": "#/definitions/link"},
-                "page": {"type": "integer"},
-                "errata": {"$ref": "#/definitions/link"},
-                "note": {"$ref": "#/definitions/link"}
-            },
-            "required": ["name", "type", "link", "page"],
-            "additionalProperties": false
-        },
-        "sources": {
-            "type": "array",
-            "items": {"$ref": "#/definitions/source"},
-            "additionalItems": false
-        },
-        "speed": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "type": {"enum": ["stat_block_section"]},
-                "movement_type": {"type": "string"},
-                "value": {"type": "integer"},
-                "subtype": {"enum": ["speed"]},
-                "modifiers": {"$ref": "#/definitions/modifiers"},
-                "from": {"$ref": "#/definitions/link"}
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "speeds": {
-            "type": "object",
-            "properties": {
-                "name": {"enum": ["Speed"]},
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["speeds"]},
-                "movement": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/speed"},
-                    "additionalItems": false
-                },
-                "modifiers": {"$ref": "#/definitions/modifiers"}
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "special_senses": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["special_sense"]},
-                "name": {"type": "string"},
-                "link": {"$ref": "#/definitions/link"},
-                "modifiers": {"$ref": "#/definitions/modifiers"}
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "spells": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["spells"]},
-                "name": {"type": "string"},
-                "text": {"type": "string"},
-                "spell_tradition": {"enum": [
-                    "Occult", "Arcane", "Divine", "Primal"]},
-                "spell_type": {"enum": [
-                    "Spells", "Innate Spells", "Focus Spells",
-                    "Spontaneous Spells", "Prepared Spells", "Rituals",
-                    "Druid Order Spells", "Cleric Domain Spells", 
-                    "Sorcerer Bloodline Spells", "Champion Devotion Spells",
-                    "Bard Composition Spells", "Wizard School Spells",
-                    "Alchemical Formulas", "Spells Known"]},
-                "spell_dc": {"type": "integer"},
-                "focus_points": {"type": "integer"},
-                "spell_attack": {"type": "integer"},
-                "spell_list": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/spell_list"},
-                    "additionalItems": false
-                },
-                "notes": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "additionalItems": false
-                }
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "spell": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["spell"]},
-                "name": {"type": "string"},
-                "count": {"type": "integer"},
-                "count_text": {"type": "string"},
-                "links": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/link"},
-                    "additionalItems": false
-                }
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "spell_list": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["spell_list"]},
-                "level": {"type": "integer"},
-                "level_text": {"type": "string"},
-                "spells": {
-                    "type": "array",
-                    "items": {"$ref": "#/definitions/spell"},
-                    "additionalItems": false
-                },
-                "constant": {"type": "boolean"},
-                "cantrips": {"type": "boolean"}
-            },
-            "required": ["type", "subtype", "level"],
-            "additionalProperties": false
-        },
-        "stat_block": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "type": {"enum": ["stat_block"]},
-                "level": {"type": "integer"},
-                "traits": {"$ref": "#/definitions/traits"},
-                "image": { "items": {"$ref": "#/definitions/image"} },
-                "sources": {"$ref": "#/definitions/sources"},
-                "perception": {"$ref": "#/definitions/perception"},
-                "languages": {"$ref": "#/definitions/languages"},
-                "skills": {"$ref": "#/definitions/skills"},
-                "str": {"type": "integer"},
-                "dex": {"type": "integer"},
-                "con": {"type": "integer"},
-                "int": {"type": "integer"},
-                "wis": {"type": "integer"},
-                "cha": {"type": "integer"},
-                "interaction_abilities": {"$ref": "#/definitions/abilities"},
-                "defense": {"$ref": "#/definitions/defense"},
-                "offense": {"$ref": "#/definitions/offense"},
-                "items": {"$ref": "#/definitions/items"},
-                "sections": {"$ref": "#/definitions/sections"}
-            },
-            "required": [
-                "name", "type", "level", "traits", "sources", "perception",
-                "skills", "str", "dex", "con", "int", "wis", "cha", "defense",
-                "offense", "sections"
-            ],
-            "additionalProperties": false
-        },
-        "trait": {
-            "type": "object",
-            "properties": {
-                "type": {"enum": ["stat_block_section"]},
-                "subtype": {"enum": ["trait"]},
-                "name": {"type": "string"},
-                "class": {"type": "string"},
-                "text": {"type": "string"},
-                "link": {"$ref": "#/definitions/link"}
-            },
-            "required": ["name", "type", "subtype"],
-            "additionalProperties": false
-        },
-        "traits": {
-            "type": "array",
-            "items": {"$ref": "#/definitions/trait"},
-            "additionalItems": false
-        }
-    },
-    "type": "object",
-    "properties": {
-        "name": {"type": "string"},
-        "type": {"enum": ["creature", "npc"]},
-        "aonid": {"type": "integer"},
-        "game-obj": {"enum": ["Monsters", "NPCs"]},
-        "stat_block": {"$ref": "#/definitions/stat_block"},
-        "sources": {"$ref": "#/definitions/sources"},
-        "sections": {"$ref": "#/definitions/sections"}
-    },
-    "required": ["name", "type", "aonid", "game-obj", "sources", "sections"],
-    "additionalProperties": false
+	"definitions": {
+		"ability": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["ability"]},
+				"name": {"type": "string"},
+				"ability_type": {"type": "string"},
+				"value": {"type": "integer"},
+				"text": {"type": "string"},
+				"trigger": {"type": "string"},
+				"effect": {"type": "string"},
+				"frequency": {"type": "string"},
+				"requirement": {"type": "string"},
+				"prerequisite": {"type": "string"},
+				"range": {"type": "string"},
+				"failure": {"type": "string"},
+				"success": {"type": "string"},
+				"critical_failure": {"type": "string"},
+				"critical_success": {"type": "string"},
+				"action": {"$ref": "#/definitions/action"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				},
+				"traits": {"$ref": "#/definitions/traits"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype", "ability_type"],
+			"additionalProperties": false
+		},
+		"abilities": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/ability"},
+			"additionalItems": false
+		},
+		"ac": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["AC"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["armor_class"]},
+				"value": {"type": "integer"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype", "value"],
+			"additionalProperties": false
+		},
+		"action": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["action"]},
+				"name": {"enum": [
+					"Reaction", "Free Action", "Single Action",
+					"Two Actions", "Three Actions"
+				]},
+				"image": {"$ref": "#/definitions/image"}
+			},
+			"required": ["name", "type", "subtype", "image"],
+			"additionalProperties": false
+		},
+		"affliction": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["affliction"]},
+				"name": {"type": "string"},
+				"text": {"type": "string"},
+				"action": {"$ref": "#/definitions/action"},
+				"traits": {"$ref": "#/definitions/traits"},
+				"saving_throw": {"type": "string"},
+				"onset": {"type": "string"},
+				"maximum_duration": {"type": "string"},
+				"stages": {
+					"type": "array",
+					"items": {"type": "string"},
+					"additionalItems": false
+				},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"attack": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["attack"]},
+				"name": {"type": "string"},
+				"attack_type": {"enum": ["melee", "ranged"]},
+				"action": {"$ref": "#/definitions/action"},
+				"traits": {"$ref": "#/definitions/traits"},
+				"weapon": {"type": "string"},
+				"bonus": {"$ref": "#/definitions/attack_bonus"},
+				"damage": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/attack_damage"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"attack_bonus": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["attack_bonus"]},
+				"link": {"$ref": "#/definitions/link"},
+				"bonuses": {
+					"type": "array",
+					"items": {"type": "integer"},
+					"additionalItems": false
+				}
+			},
+			"required": ["link", "type", "subtype", "bonuses"],
+			"additionalProperties": false
+		},
+		"attack_damage": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["attack_damage"]},
+				"formula": {"type": "string"},
+				"damage_type": {"enum": [
+					"slashing", "piercing", "bludgeoning", "nonlethal",
+					"acid", "sonic", "fire", "electricity", "cold",
+					"mental", "poison", "force",
+					"positive", "negative", "positive or negative",
+					"chaotic", "lawful", "good", "evil",
+					"other", "energy", "bleed",
+					"cold iron slashing", "cold iron piercing",
+					"piercing or slashing", "bludgeoning, piercing, or slashing"]},
+				"effect": {"type": "string"},
+				"notes": {"type": "string"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				},
+				"persistent": {"type": "boolean"},
+				"splash": {"type": "boolean"}
+			},
+			"required": ["type", "subtype"],
+			"additionalProperties": false
+		},
+		"defense": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Defense"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["defense"]},
+				"ac": {"$ref": "#/definitions/ac"},
+				"saves": {"$ref": "#/definitions/saves"},
+				"hp": {"$ref": "#/definitions/hp"},
+				"hardness": {"$ref": "#/definitions/hardness"},
+				"immunities": {"$ref": "#/definitions/protections"},
+				"resistances": {"$ref": "#/definitions/protections"},
+				"weaknesses": {"$ref": "#/definitions/protections"},
+				"automatic_abilities": {"$ref": "#/definitions/abilities"},
+				"reactive_abilities": {"$ref": "#/definitions/abilities"}
+			},
+			"required": ["name", "type", "subtype", "ac", "saves", "hp"],
+			"additionalProperties": false
+		},
+		"hardness": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Hardness"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["hardness"]},
+				"value": {"type": "integer"}
+			},
+			"required": ["name", "type", "subtype", "value"],
+			"additionalProperties": false
+		},
+		"hp": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["HP"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["hitpoints"]},
+				"value": {"type": "integer"},
+				"automatic_abilities": {"$ref": "#/definitions/abilities"}
+			},
+			"required": ["name", "type", "subtype", "value"],
+			"additionalProperties": false
+		},
+		"image": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["image"]},
+				"game-obj": {"type": "string"},
+				"image": {"type": "string"}
+			},
+			"required": ["name", "type", "image"],
+			"additionalProperties": false
+		},
+		"item": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["item"]},
+				"name": {"type": "string"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"items": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/item"},
+			"additionalItems": false
+		},
+		"language": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["language"]},
+				"name": {"type": "string"},
+				"link": {"$ref": "#/definitions/link"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"languages": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["languages"]},
+				"name": {"enum": ["Languages"]},
+				"languages": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/language"},
+					"additionalItems": false
+				},
+				"communication_abilities": {"$ref": "#/definitions/abilities"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"additionalProperties": false
+		},
+		"link": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["link"]},
+				"alt": {"type": "string"},
+				"href": {"type": "string"},
+				"game-obj": {"enum": [
+					"Spells", "Sources", "Skills", "Traits", "MonsterAbilities",
+					"Conditions", "Languages", "Weapons", "Armor", "Shields",
+					"Equipment", "Deities", "Feats", "Actions", "Monsters",
+					"Heritages", "Rules", "Diseases", "Rituals", "Planes",
+					"MonsterFamilies", "Domains", "Classes", "Ancestries",
+					"Archetypes"
+				]},
+				"aonid": {"type": "integer"}
+			},
+			"required": ["name", "type", "alt"],
+			"additionalProperties": false
+		},
+		"modifier": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["modifier"]},
+				"name": {"type": "string"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"modifiers": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/modifier"},
+			"additionalItems": false
+		},
+		"offense": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Offense"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["offense"]},
+				"speeds": {"$ref": "#/definitions/speeds"},
+				"offensive_actions": {"$ref": "#/definitions/offensive_actions"}
+			},
+			"required": ["name", "type", "subtype", "speeds", "offensive_actions"],
+			"additionalProperties": false
+		},
+		"offensive_action": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["offensive_action"]},
+				"name": {"type": "string"},
+				"offensive_action_type": {"enum": [
+					"attack", "spells", "affliction", "ability"]},
+				"attack": {"$ref": "#/definitions/attack"},
+				"spells": {"$ref": "#/definitions/spells"},
+				"affliction": {"$ref": "#/definitions/affliction"},
+				"ability": {"$ref": "#/definitions/ability"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"offensive_actions": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/offensive_action"},
+			"additionalItems": false
+		},
+		"perception": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["perception"]},
+				"name": {"enum": ["perception"]},
+				"value": {"type": "integer"},
+				"special_senses": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/special_senses"},
+					"additionalItems": false
+				},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype", "value"],
+			"additionalProperties": false
+		},
+		"protection": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["immunity", "resistance", "weakness"]},
+				"name": {"type": "string"},
+				"value": {"type": "integer"},
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"link": {"$ref": "#/definitions/link"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"protections": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["immunities", "resistances", "weaknesses"]},
+				"name": {"enum": ["Immunities", "Resistances", "Weaknesses"]},
+				"immunities": {
+					"type":"array",
+					"items": {"$ref": "#/definitions/protection"},
+					"additionalItems": false
+				},
+				"resistances": {
+					"type":"array",
+					"items": {"$ref": "#/definitions/protection"},
+					"additionalItems": false
+				},
+				"weaknesses": {
+					"type":"array",
+					"items": {"$ref": "#/definitions/protection"},
+					"additionalItems": false
+				}
+			},
+			"additionalItems": false
+		},
+		"save": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Fort", "Ref", "Will"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["save"]},
+				"value": {"type": "integer"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype", "value"],
+			"additionalProperties": false
+		},
+		"saves": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Saves"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["saves"]},
+				"fort": {"$ref": "#/definitions/save"},
+				"ref": {"$ref": "#/definitions/save"},
+				"will": {"$ref": "#/definitions/save"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype", "fort", "ref", "will"],
+			"additionalProperties": false
+		},
+		"section": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["section"]},
+				"html": {"type": "string"},
+				"sections": {"$ref": "#/definitions/sections"},
+				"sources": {"$ref": "#/definitions/sources"},
+				"subtype": {"enum": ["sidebar", "index"]},
+				"sidebar_type": {"enum": [
+					"treasure_and_rewards", "related_creatures", "locations",
+					"additional_lore", "advice_and_rules"
+				]},
+				"sidebar_heading": {"type": "string"},
+				"image": {"$ref": "#/definitions/image"}
+			},
+			"additionalProperties": false
+		},
+		"sections": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/section"},
+			"additionalItems": false
+		},
+		"skill": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["skill"]},
+				"name": {"type": "string"},
+				"value": {"type": "integer"},
+				"link": {"$ref": "#/definitions/link"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"skills": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/skill"},
+			"additionalItems": false
+		},
+		"source": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["source"]},
+				"link": {"$ref": "#/definitions/link"},
+				"page": {"type": "integer"},
+				"errata": {"$ref": "#/definitions/link"},
+				"note": {"$ref": "#/definitions/link"}
+			},
+			"required": ["name", "type", "link", "page"],
+			"additionalProperties": false
+		},
+		"sources": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/source"},
+			"additionalItems": false
+		},
+		"speed": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["stat_block_section"]},
+				"movement_type": {"type": "string"},
+				"value": {"type": "integer"},
+				"subtype": {"enum": ["speed"]},
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"from": {"$ref": "#/definitions/link"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"speeds": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Speed"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["speeds"]},
+				"movement": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/speed"},
+					"additionalItems": false
+				},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"special_senses": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["special_sense"]},
+				"name": {"type": "string"},
+				"link": {"$ref": "#/definitions/link"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"spells": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["spells"]},
+				"name": {"type": "string"},
+				"text": {"type": "string"},
+				"spell_tradition": {"enum": [
+					"Occult", "Arcane", "Divine", "Primal"]},
+				"spell_type": {"enum": [
+					"Spells", "Innate Spells", "Focus Spells",
+					"Spontaneous Spells", "Prepared Spells", "Rituals",
+					"Druid Order Spells", "Cleric Domain Spells", 
+					"Sorcerer Bloodline Spells", "Champion Devotion Spells",
+					"Bard Composition Spells", "Wizard School Spells",
+					"Alchemical Formulas", "Spells Known"]},
+				"spell_dc": {"type": "integer"},
+				"focus_points": {"type": "integer"},
+				"spell_attack": {"type": "integer"},
+				"spell_list": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/spell_list"},
+					"additionalItems": false
+				},
+				"notes": {
+					"type": "array",
+					"items": {"type": "string"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"spell": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["spell"]},
+				"name": {"type": "string"},
+				"count": {"type": "integer"},
+				"count_text": {"type": "string"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"spell_list": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["spell_list"]},
+				"level": {"type": "integer"},
+				"level_text": {"type": "string"},
+				"spells": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/spell"},
+					"additionalItems": false
+				},
+				"constant": {"type": "boolean"},
+				"cantrips": {"type": "boolean"}
+			},
+			"required": ["type", "subtype", "level"],
+			"additionalProperties": false
+		},
+		"stat_block": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["stat_block"]},
+				"level": {"type": "integer"},
+				"alignment": {"enum": [
+					"Lawful Good", "Lawful Neutral", "Lawful Evil",
+					"Neutral Good", "Neutral", "Neutral Evil",
+					"Chaotic Good", "Chaotic Neutral", "Chaotic Evil",
+					"No Alignment", "Any"]},
+				"traits": {"$ref": "#/definitions/traits"},
+				"image": { "items": {"$ref": "#/definitions/image"} },
+				"sources": {"$ref": "#/definitions/sources"},
+				"perception": {"$ref": "#/definitions/perception"},
+				"languages": {"$ref": "#/definitions/languages"},
+				"skills": {"$ref": "#/definitions/skills"},
+				"str": {"type": "integer"},
+				"dex": {"type": "integer"},
+				"con": {"type": "integer"},
+				"int": {"type": "integer"},
+				"wis": {"type": "integer"},
+				"cha": {"type": "integer"},
+				"interaction_abilities": {"$ref": "#/definitions/abilities"},
+				"defense": {"$ref": "#/definitions/defense"},
+				"offense": {"$ref": "#/definitions/offense"},
+				"items": {"$ref": "#/definitions/items"},
+				"sections": {"$ref": "#/definitions/sections"}
+			},
+			"required": [
+				"name", "type", "level", "alignment", "traits", "sources",
+				"perception", "skills", "str", "dex", "con", "int", "wis",
+				"cha", "defense", "offense", "sections"
+			],
+			"additionalProperties": false
+		},
+		"trait": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["trait"]},
+				"game-id": {"type": "string"},
+				"game-obj": {"enum": ["Traits"]},
+				"value": {"type": "string"},
+				"text": {"type": "string"},
+				"class": {"type": "string"},
+				"sources": {"$ref": "#/definitions/sources"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "game-id", "game-obj", "sources"],
+			"additionalProperties": false
+		},
+		"traits": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/trait"},
+			"additionalItems": false
+		}
+	},
+	"type": "object",
+	"properties": {
+		"name": {"type": "string"},
+		"type": {"enum": ["creature", "npc"]},
+		"aonid": {"type": "integer"},
+		"game-obj": {"enum": ["Monsters", "NPCs"]},
+		"stat_block": {"$ref": "#/definitions/stat_block"},
+		"sources": {"$ref": "#/definitions/sources"},
+		"sections": {"$ref": "#/definitions/sections"}
+	},
+	"required": ["name", "type", "aonid", "game-obj", "sources", "sections"],
+	"additionalProperties": false
 }

@@ -1,0 +1,4 @@
+indent-string="t"
+
+[TYPECHECK]
+generated-members=sh
