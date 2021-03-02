@@ -3,9 +3,7 @@ import os
 import json
 from optparse import OptionParser
 
-def exec_main(parser, function, localdir):
-	(options, args) = parser.parse_args()
-
+def exec_main(options, args, function, localdir):
 	if not options.output and not options.dryrun:
 		sys.stderr.write("-o/--output required")
 		sys.exit(1)

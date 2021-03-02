@@ -8,7 +8,8 @@ from pfsrd2.options import exec_main, option_parser
 def main():
 	usage = "usage: %prog [options] [filenames]\nParses traits from pfsrd2 html to json and writes them to the specified directory"
 	parser = option_parser(usage)
-	exec_main(parser, parse_trait, "traits")
+	(options, args) = parser.parse_args()
+	exec_main(options, args, parse_trait, "traits")
 
 if __name__ == "__main__":
 	sys.exit(main())
