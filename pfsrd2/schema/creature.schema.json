@@ -614,7 +614,7 @@
 			"required": [
 				"name", "type", "level", "alignment", "traits", "sources",
 				"perception", "skills", "str", "dex", "con", "int", "wis",
-				"cha", "defense", "offense", "sections"
+				"cha", "defense", "offense"
 			],
 			"additionalProperties": false
 		},

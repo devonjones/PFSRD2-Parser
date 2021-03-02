@@ -2,6 +2,7 @@ import os
 import json
 import sys
 import re
+import html2markdown
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
 from pfsrd2.universal import parse_universal, print_struct
@@ -12,7 +13,6 @@ from pfsrd2.universal import aon_pass, restructure_pass, html_pass
 from pfsrd2.universal import remove_empty_sections_pass, game_id_pass
 from pfsrd2.files import makedirs, char_replace
 from pfsrd2.schema import validate_against_schema
-import html2markdown
 
 def parse_trait(filename, options):
 	basename = os.path.basename(filename)

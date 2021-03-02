@@ -368,6 +368,8 @@ def remove_empty_sections_pass(struct):
 		remove_empty_sections_pass(section)
 		if len(struct.get('sections', [])) == 0:
 			del section['sections']
+	if "stat_block" in struct:
+		remove_empty_sections_pass(struct['stat_block'])
 	if len(struct.get('sections', [])) == 0:
 		del struct['sections']
 

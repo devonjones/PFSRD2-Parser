@@ -2,6 +2,7 @@ import os
 import json
 import sys
 import re
+import html2markdown
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
 from pfsrd2.universal import parse_universal, print_struct
@@ -25,18 +26,18 @@ def parse_creature(filename, options):
 	if not options.stdout:
 		sys.stderr.write("%s\n" % basename)
 	details = parse_universal(filename, max_title=4)
-	struct = restructure_creature_pass(details)
+	struct = restructure_creature_pass(details, options.subtype)
 	creature_stat_block_pass(struct)
 	source_pass(struct, find_stat_block)
 	sidebar_pass(struct)
 	index_pass(struct)
 	aon_pass(struct, basename)
 	restructure_pass(struct, 'stat_block', find_stat_block)
-	remove_empty_sections_pass(struct)
 	trait_pass(struct)
-	html_pass(struct)
 	db_pass(struct)
+	html_pass(struct)
 	log_html_pass(struct, basename)
+	remove_empty_sections_pass(struct)
 	basename.split("_")
 	if not options.skip_schema:
 		validate_against_schema(struct, "creature.schema.json")
@@ -118,7 +119,7 @@ def db_pass(struct):
 
 	walk(struct, test_key_is_value('subtype', 'trait'), _check_trait)
 
-def restructure_creature_pass(details):
+def restructure_creature_pass(details, subtype):
 	sb = None
 	rest = []
 	for obj in details:
@@ -128,7 +129,7 @@ def restructure_creature_pass(details):
 			sb = obj
 		else:
 			rest.append(obj)
-	top = {'name': sb['name'], 'type': 'creature', 'sections': [sb]}
+	top = {'name': sb['name'], 'type': subtype, 'sections': [sb]}
 	level = int(sb['subname'].split(" ")[1])
 	sb["level"] = level
 	sb['type'] = 'stat_block'
@@ -237,11 +238,18 @@ def sidebar_pass(struct):
 			struct['text'] = ''.join([str(c) for c in children])
 
 def index_pass(struct):
+	remove = []
 	for section in struct['sections']:
-		index_pass(section)
+		keep = index_pass(section)
+		if not keep:
+			remove.append(section)
+	for s in remove:
+		struct['sections'].remove(section)
 	if struct['name'].startswith("All Monsters"):
 		struct['type'] = "section"
 		struct['subtype'] = "index"
+		return False
+	return True
 
 def validate_dict_pass(top, struct, parent, field):
 	try:
@@ -670,7 +678,7 @@ def process_saves(fort, ref, will):
 		assert section[0] in ["Fort", "Ref", "Will"]
 		assert section[2] == None
 		name = section[0].lower()
-		value = section[1]
+		value = section[1] 
 		if value.endswith(","):
 			value = value[:-1]
 		if(value.find(";")> -1):
