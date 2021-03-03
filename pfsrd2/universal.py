@@ -311,6 +311,10 @@ def source_pass(struct, find_object_fxn):
 				children.pop(0)
 				book = children.pop(0)
 				source = extract_source(book)
+				if children[0].name == "sup":
+					sup = children.pop(0)
+					errata = extract_link(sup.find("a"))
+					source['errata'] = errata[1]
 				if children[0].name == "br":
 					children.pop(0)
 				section['text'] = ''.join([str(c) for c in children])
@@ -345,7 +349,8 @@ def extract_source(obj):
 def aon_pass(struct, basename):
 	parts = basename.split("_")
 	assert len(parts) == 2
-	struct["aonid"] = int(parts[1])
+	id_text = parts[1].replace(".html", "")
+	struct["aonid"] = int(id_text)
 	struct["game-obj"] = parts[0].split(".")[0]
 
 def restructure_pass(struct, obj_name, find_object_fxn):

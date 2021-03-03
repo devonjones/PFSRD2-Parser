@@ -358,7 +358,6 @@ def process_source(sb, section):
 		sb['image'] = {
 			'type': 'image', 'name': name, 'game-obj': 'Monster',
 			'image': image}
-
 	assert section[0] == "Source"
 	bs = BeautifulSoup(section[1], 'html.parser')
 	c = [c for c in list(bs.children)] # if c.name != "sup"]
@@ -1309,14 +1308,6 @@ def get_attacks(sb):
 			newsections.append(section)
 	sb['sections'] = newsections
 	return attacks
-
-def extract_source(obj):
-	text, link = extract_link(obj)
-	parts = text.split(" pg. ")
-	assert len(parts) == 2
-	name = parts.pop(0)
-	page = int(parts.pop(0))
-	return {'type': 'source', 'name': name, 'link': link, 'page': page}
 
 def extract_starting_traits(description):
 	if description.strip().startswith("("):
