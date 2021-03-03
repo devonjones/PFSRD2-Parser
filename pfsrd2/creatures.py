@@ -205,7 +205,7 @@ def creature_stat_block_pass(struct):
 		key, value, data, link = add_to_data(key, value, data, link)
 	data = strip_br(data)
 	sections.append(data)
-	assert len(sections) == 3
+	assert len(sections) == 3, sections
 	process_stat_block(sb, sections)
 
 def strip_br(data):
@@ -1166,6 +1166,12 @@ def process_offensive_action(section):
 		parent_section['affliction'] = section
 
 	def parse_offensive_ability(parent_section):
+		def _oa_html_reduction(data):
+			bs = BeautifulSoup(''.join(data).strip(), 'html.parser')
+			if(list(bs.children)[-1].name == 'br'):
+				list(bs.children)[-1].unwrap()
+			return str(bs)
+
 		text = parent_section['text']
 		del parent_section['text']
 		section = {
@@ -1210,9 +1216,9 @@ def process_offensive_action(section):
 				else:
 					parts.append(str(child))
 		for k, v in addons.items():
-			section[k] = ''.join(v)
+			section[k] = _oa_html_reduction(v)
 		if len(parts) > 0:
-			section['text'] = ''.join(parts)
+			section['text'] = _oa_html_reduction(parts)
 		parent_section['ability'] = section
 	
 	if len(section['sections']) == 0:
@@ -1330,7 +1336,9 @@ def _extract_trait(description):
 	if description.find("(") > -1:
 		front, middle = description.split("(", 1)
 		newdescription.append(front)
-		text, back = middle.split(")", 1)
+		s = middle.split(")", 1)
+		assert len(s) == 2, s
+		text, back = s
 		bs = BeautifulSoup(text, 'html.parser')
 		if bs.a and bs.a.has_attr('game-obj') and bs.a['game-obj'] == 'Traits':
 			if text.find(" or ") > -1:
@@ -1340,7 +1348,7 @@ def _extract_trait(description):
 			for part in parts:
 				bs = BeautifulSoup(part, 'html.parser')
 				children = list(bs.children)
-				assert len(children) == 1
+				assert len(children) == 1, part
 				name, trait_link = extract_link(children[0])
 				traits.append(build_object(
 					'stat_block_section', 'trait', name.strip(), {'link': trait_link}))
