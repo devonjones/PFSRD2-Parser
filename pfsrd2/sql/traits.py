@@ -6,7 +6,7 @@ def create_traits_table(curs):
 		"  trait_id INTEGER PRIMARY KEY,",
 		"  game_id TEXT NOT NULL UNIQUE,",
 		"  name TEXT NOT NULL,",
-		"  class TEXT,",
+		"  classes TEXT,",
 		"  trait TEXT"
 		")"])
 	curs.execute(sql)
@@ -19,10 +19,10 @@ def create_traits_index(curs):
 
 def insert_trait(curs, trait):
 	text = json.dumps(trait)
-	values = [trait['game-id'], trait['name'].lower(), trait.get('class'), text]
+	values = [trait['game-id'], trait['name'].lower(), json.dumps(trait.get('classes', [])), text]
 	sql = '\n'.join([
 		"INSERT INTO traits",
-		" (game_id, name, class, trait)",
+		" (game_id, name, classes, trait)",
 		" VALUES",
 		" (?, ?, ?, ?)"])
 	curs.execute(sql, values)
