@@ -49,6 +49,28 @@ def noop_pass(details):
 			retdetails.append(detail)
 	return retdetails
 
+def entity_pass(details):
+	for detail in details:
+		if 'sections' in detail:
+			entity_pass(detail['sections'])
+		if "text" in detail:
+			detail['text'] = detail['text'].replace("\u00c2\u00ba", "º") # u00ba
+			detail['text'] = detail['text'].replace("\u00c3\u0097", "×")
+			detail['text'] = detail['text'].replace("\u00e2\u0080\u0091", "‑")
+			detail['text'] = detail['text'].replace("\u00e2\u0080\u0093", "–")
+			detail['text'] = detail['text'].replace("\u00e2\u0080\u0094", "—")
+			detail['text'] = detail['text'].replace("\u00e2\u0080\u0099", "’") # u2019
+			detail['text'] = detail['text'].replace("\u00e2\u0080\u009c", "“")
+			detail['text'] = detail['text'].replace("\u00e2\u0080\u009d", "”")
+			detail['text'] = detail['text'].replace("\u00e2\u0080\u00a6", "…") # u2026
+			detail['text'] = detail['text'].replace("%5C", "\\")
+			detail['text'] = detail['text'].replace("&amp;", "&")
+			detail['text'] = detail['text'].replace("\u00ca\u00bc", "’") # u2019 (was u02BC)
+			detail['text'] = detail['text'].replace("\u00c2\u00a0", " ")
+			detail['text'] = detail['text'].replace("\u00a0", " ")
+			detail['text'] = ''.join([part.strip() for part in detail['text'].split("\n")])
+	return details
+
 def title_pass(details, max_title):
 	retdetails = []
 	for detail in details:
@@ -157,7 +179,7 @@ def section_text_pass(struct):
 	if len(text) > 0:
 		if 'text' in struct:
 			newsections.append(section_text_pass(
-				{'type': 'section', 'text': text, 'sections': []}))
+				{'type': 'section', 'text': text.strip(), 'sections': []}))
 		else:
 			struct['text'] = ''.join(text)
 	if len(newsections) > 0:
@@ -365,7 +387,7 @@ def html_pass(section):
 	if 'stat_block' in section:
 		html_pass(section['stat_block'])
 	if 'text' in section:
-		section['html'] = section['text']
+		section['html'] = section['text'].strip()
 		del section['text']
 
 def remove_empty_sections_pass(struct):

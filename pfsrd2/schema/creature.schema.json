@@ -529,7 +529,7 @@
 					"Druid Order Spells", "Cleric Domain Spells", 
 					"Sorcerer Bloodline Spells", "Champion Devotion Spells",
 					"Bard Composition Spells", "Wizard School Spells",
-					"Alchemical Formulas", "Spells Known"]},
+					"Monk Focus Spells", "Alchemical Formulas", "Spells Known"]},
 				"spell_dc": {"type": "integer"},
 				"focus_points": {"type": "integer"},
 				"spell_attack": {"type": "integer"},
@@ -627,7 +627,11 @@
 				"game-obj": {"enum": ["Traits"]},
 				"value": {"type": "string"},
 				"text": {"type": "string"},
-				"class": {"type": "string"},
+				"classes": {
+					"type": "array",
+					"items": {"type": "string"},
+					"additionalItems": false
+				},
 				"sources": {"$ref": "#/definitions/sources"},
 				"links": {
 					"type": "array",

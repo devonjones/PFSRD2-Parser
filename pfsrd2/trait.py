@@ -5,7 +5,7 @@ import re
 import html2markdown
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
-from pfsrd2.universal import parse_universal, print_struct
+from pfsrd2.universal import parse_universal, print_struct, entity_pass
 from pfsrd2.universal import is_trait, get_text, extract_link
 from pfsrd2.universal import split_maintain_parens
 from pfsrd2.universal import source_pass, extract_source, get_links
@@ -19,6 +19,7 @@ def parse_trait(filename, options):
 	if not options.stdout:
 		sys.stderr.write("%s\n" % basename)
 	details = parse_universal(filename, max_title=4)
+	details = entity_pass(details)
 	struct = restructure_trait_pass(details)
 	trait_struct_pass(struct)
 	source_pass(struct, find_trait)
@@ -82,7 +83,7 @@ def trait_parse(span):
 	text = ''.join(span['title'])
 	trait = {
 		'name': name,
-		'class': trait_class,
+		'classes': [trait_class],
 		'text': text.strip(),
 		'type': 'stat_block_section',
 		'subtype': 'trait'}
@@ -124,7 +125,7 @@ def trait_struct_pass(struct):
 
 def trait_class_pass(struct, filename):
 	parts = filename.split(".")
-	parts.pop()
+	parts = parts[:-2]
 	fn = ".".join(parts)
 	details = parse_universal(fn, max_title=4)
 	top = details.pop(0)
@@ -136,8 +137,7 @@ def trait_class_pass(struct, filename):
 		links = soup.find_all("a") 
 		for link in links:
 			trait = get_text(link)
-			assert trait not in trait_classes, "%s: %s" % (name, trait)
-			trait_classes[trait.lower()] = name
+			trait_classes.setdefault(trait.lower(), []).append(name)
 	soup = BeautifulSoup(top, "html.parser")
 	links = soup.find_all("a")
 	for link in links:
@@ -148,7 +148,7 @@ def trait_class_pass(struct, filename):
 	assert t['name'].lower() in trait_classes, t
 	c = trait_classes[t['name'].lower()]
 	if c:
-		t['class'] = c
+		t['classes'] = c
 
 def trait_link_pass(struct):
 	trait = find_trait(struct)
@@ -197,8 +197,8 @@ def trait_cleanup_pass(struct):
 	if len(trait.get('sections', [])) > 0:
 		assert 'sections' not in struct, struct
 		struct['sections'] = trait['sections']
-	if trait.get('class'):
-		struct['class'] = trait['class']
+	if trait.get('classes'):
+		struct['classes'] = trait['classes']
 	if trait.get('links'):
 		assert 'links' not in struct, struct
 		struct['links'] = trait['links']

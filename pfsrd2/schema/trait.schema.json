@@ -73,7 +73,11 @@
 		"aonid": {"type": "integer"},
 		"value": {"type": "string"},
 		"text": {"type": "string"},
-		"class": {"type": "string"},
+		"classes": {
+			"type": "array",
+			"items": {"type": "string"},
+			"additionalItems": false
+		},
 		"sources": {"$ref": "#/definitions/sources"},
 		"links": {
 			"type": "array",

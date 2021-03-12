@@ -5,7 +5,7 @@ import re
 import html2markdown
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
-from pfsrd2.universal import parse_universal, print_struct
+from pfsrd2.universal import parse_universal, print_struct, entity_pass
 from pfsrd2.universal import is_trait, get_text, extract_link
 from pfsrd2.universal import split_maintain_parens
 from pfsrd2.universal import source_pass, extract_source
@@ -26,6 +26,7 @@ def parse_creature(filename, options):
 	if not options.stdout:
 		sys.stderr.write("%s\n" % basename)
 	details = parse_universal(filename, max_title=4)
+	details = entity_pass(details)
 	struct = restructure_creature_pass(details, options.subtype)
 	creature_stat_block_pass(struct)
 	source_pass(struct, find_stat_block)
@@ -72,7 +73,7 @@ def db_pass(struct):
 	curs = conn.cursor()
 	def _check_trait(trait, parent):
 		_handle_value(trait)
-		if trait.get('class') == "alignment" and trait['name'] != "No Alignment":
+		if "alignment" in trait.get('classes', []) and trait['name'] != "No Alignment":
 			_handle_alignment_trait(trait, parent)
 		else: 
 			fetch_trait_by_name(curs, trait['name'])
@@ -148,10 +149,10 @@ def trait_pass(struct):
 	sb = struct['stat_block']
 	traits = sb['traits']
 	for trait in traits:
-		if trait['class'] == 'alignment':
+		if "alignment" in trait['classes']:
 			sb['alignment'] = trait['name']
 	for trait in traits:
-		if trait['class'] == 'creature_type':
+		if "creature_type" in trait['classes']:
 			return
 	assert False, "Has no creature type"
 
@@ -228,7 +229,7 @@ def sidebar_pass(struct):
 			c = children[0]
 		if c.name == 'img' and c['alt'].startswith("Sidebar"):
 			children.pop(0)
-			image = c['src'].split("\\").pop()
+			image = c['src'].split("\\").pop().split("%5C").pop()
 			subtype = c['alt'].split("-").pop().strip()
 			struct['type'] = "section"
 			struct['subtype'] = "sidebar"
@@ -354,7 +355,7 @@ def process_source(sb, section):
 	# <b>Source</b> <a href="https://paizo.com/products/btq022yq" target="_blank" class="external-link"><i>Bestiary 2 pg. 294</i></a>, <a href="https://paizo.com/products/btq02065" target="_blank"><i>Pathfinder #149: Against the Scarlet Triad pg. 90</i></a>
 	def set_image(obj, name):
 		link = obj['href']
-		image = link.split("\\").pop()
+		image = link.split("\\").pop().split("%5C").pop()
 		sb['image'] = {
 			'type': 'image', 'name': name, 'game-obj': 'Monster',
 			'image': image}
@@ -713,6 +714,7 @@ def process_hp(section, subtype):
 	text = section[1].strip()
 	name = section[0]
 	value, text = re.search(r"^(\d*)(.*)", text).groups()
+	text = text.strip()
 	value = int(value)
 	if(text.startswith(",")):
 		text = text[1:]
@@ -791,7 +793,10 @@ def process_defensive_ability(section, sections, sb):
 		addon = sections.pop(0)
 		assert addon[2] == None
 		addon_name = addon[0].lower().replace(" ", "_")
-		ability[addon_name] = addon[1]
+		value = addon[1].strip()
+		if value.endswith(";"):
+			value = value[:-1]
+		ability[addon_name] = value
 
 	description, action = extract_action(description.strip())
 	if action:
@@ -1210,8 +1215,11 @@ def process_offensive_action(section):
 						current = "Prerequisite"
 				elif current:
 					assert current in addon_names, "%s, %s" % (current, text)
+					addon_text = str(child)
+					if addon_text.strip().endswith(";"):
+						addon_text = addon_text.strip()[:-1]
 					addons.setdefault(current.lower().replace(" ", "_"), [])\
-						.append(str(child))
+						.append(addon_text)
 				else:
 					parts.append(str(child))
 		for k, v in addons.items():
@@ -1387,7 +1395,7 @@ def extract_modifier(text):
 def extract_action(text):
 	def build_action(child, action):
 		action_name = child['alt']
-		image = child['src'].split("\\").pop()
+		image = child['src'].split("\\").pop().split("%5C").pop()
 		image_name = image.split(".")[0]
 		if not action:
 			action = build_object(
