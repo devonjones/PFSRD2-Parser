@@ -25,7 +25,7 @@ def parse_creature(filename, options):
 	basename = os.path.basename(filename)
 	if not options.stdout:
 		sys.stderr.write("%s\n" % basename)
-	details = parse_universal(filename, max_title=4)
+	details = parse_universal(filename, subtitle_text=True, max_title=4)
 	details = entity_pass(details)
 	struct = restructure_creature_pass(details, options.subtype)
 	creature_stat_block_pass(struct)

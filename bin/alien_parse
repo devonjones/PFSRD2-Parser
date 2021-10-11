@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+import sys
+import os
+from sfsrd.aliens import parse_alien
+from pfsrd2.warnings import WarningReporting
+from pfsrd2.options import exec_main, option_parser
+
+def main():
+	usage = "usage: %prog [options] [filenames]\nParses creatures from sfsrd html to json and writes them to the specified directory"
+	parser = option_parser(usage)
+	(options, args) = parser.parse_args()
+	options.subtype = "alien"
+	exec_main(options, args, parse_alien, "aliens")
+
+if __name__ == "__main__":
+	sys.exit(main())
+

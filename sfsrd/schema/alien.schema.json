@@ -1,0 +1,95 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+
+	"definitions": {
+		"section": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["section"]},
+				"html": {"type": "string"},
+				"sections": {"$ref": "#/definitions/sections"},
+				"sources": {"$ref": "#/definitions/sources"},
+				"subtype": {"enum": ["sidebar", "index"]},
+				"sidebar_type": {"enum": [
+					"treasure_and_rewards", "related_creatures", "locations",
+					"additional_lore", "advice_and_rules"
+				]},
+				"sidebar_heading": {"type": "string"},
+				"image": {"$ref": "#/definitions/image"}
+			},
+			"additionalProperties": false
+		},
+		"sections": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/section"},
+			"additionalItems": false
+		},
+		"source": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["source"]},
+				"link": {"$ref": "#/definitions/link"},
+				"page": {"type": "integer"},
+				"errata": {"$ref": "#/definitions/link"},
+				"note": {"$ref": "#/definitions/link"}
+			},
+			"required": ["name", "type", "link", "page"],
+			"additionalProperties": false
+		},
+		"sources": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/source"},
+			"additionalItems": false
+		},
+		"stat_block": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["stat_block"]},
+				"cr": {"type": "string"},
+				"alien_family": {"enum": ["Expert", "Combatant", "Spellcaster"]},
+
+				"alignment": {"enum": [
+					"Lawful Good", "Lawful Neutral", "Lawful Evil",
+					"Neutral Good", "Neutral", "Neutral Evil",
+					"Chaotic Good", "Chaotic Neutral", "Chaotic Evil",
+					"No Alignment", "Any"]},
+				"traits": {"$ref": "#/definitions/traits"},
+				"image": { "items": {"$ref": "#/definitions/image"} },
+				"sources": {"$ref": "#/definitions/sources"},
+				"perception": {"$ref": "#/definitions/perception"},
+				"languages": {"$ref": "#/definitions/languages"},
+				"skills": {"$ref": "#/definitions/skills"},
+				"str": {"type": "integer"},
+				"dex": {"type": "integer"},
+				"con": {"type": "integer"},
+				"int": {"type": "integer"},
+				"wis": {"type": "integer"},
+				"cha": {"type": "integer"},
+				"interaction_abilities": {"$ref": "#/definitions/abilities"},
+				"defense": {"$ref": "#/definitions/defense"},
+				"offense": {"$ref": "#/definitions/offense"},
+				"items": {"$ref": "#/definitions/items"},
+				"sections": {"$ref": "#/definitions/sections"}
+			},
+			"required": [
+				"name", "type", "level", "alignment", "traits", "sources",
+				"perception", "skills", "str", "dex", "con", "int", "wis",
+				"cha", "defense", "offense"
+			],
+			"additionalProperties": false
+		}
+	},
+	"type": "object",
+	"properties": {
+		"name": {"type": "string"},
+		"type": {"enum": ["creature", "npc"]},
+		"stat_block": {"$ref": "#/definitions/stat_block"},
+		"sources": {"$ref": "#/definitions/sources"},
+		"sections": {"$ref": "#/definitions/sections"}
+	},
+	"required": ["name", "type", "aonid", "game-obj", "sources", "sections"],
+	"additionalProperties": false
+}

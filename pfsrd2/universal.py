@@ -81,8 +81,10 @@ def title_pass(details, max_title):
 			elif len(detail.findAll("span")) == 1:
 				obj = detail.findAll("span")[0]
 				subname = "".join(obj.extract().strings).strip()
-			details = img_details(detail)
+			img = img_details(detail)
 			h = Heading(1, get_text(detail), subname)
+			if img:
+				h.details.extend(img)
 			retdetails.append(h)
 		elif has_name(detail, 'h2') and max_title >= 2:
 			details = img_details(detail)
@@ -136,7 +138,7 @@ def subtitle_text_pass(details, max_title):
 			bs = BeautifulSoup(detail, 'html.parser')
 			objs = list(bs.children)
 			fo = objs.pop(0)
-			if fo.name == "b" and get_text(fo) != "Source":
+			if fo.name == "b" and get_text(fo) != "Source" and max_title > 2:
 				h = Heading(3, get_text(fo))
 				h.details = ''.join([str(o) for o in objs])
 				retdetails.append(h)
@@ -202,17 +204,18 @@ def text_pass(lines):
 		elif line.__class__ == Tag or line.__class__ == NavigableString:
 			text.append(str(line))
 		else:
-			raise Exception("This should be unreachable")
+			assert False, line
 	if len(text) > 0:
 		newlines.append(''.join(text))
 	return newlines
 
-def parse_body(div, book=False, title=False, max_title=5):
+def parse_body(div, book=False, title=False, subtitle_text=False, max_title=5):
 	lines = noop_pass(div.contents)
 	lines = title_pass(lines, max_title)
 	lines = subtitle_pass(lines, max_title)
 	lines = text_pass(lines)
-	lines = subtitle_text_pass(lines, max_title)
+	if subtitle_text:
+		lines = subtitle_text_pass(lines, max_title)
 	if max_title >= 5:
 		lines = title_collapse_pass(lines, 5, add_statblocks=False)
 	if max_title >= 4:
@@ -230,14 +233,14 @@ def parse_body(div, book=False, title=False, max_title=5):
 		newlines.append(section)
 	return newlines
 
-def parse_universal(filename, title=False, max_title=5):
+def parse_universal(filename, title=False, subtitle_text=False, max_title=5, cssclass="ctl00_MainContent_DetailedOutput"):
 	fp = open(filename)
 	try:
 		soup = BeautifulSoup(fp, "lxml")
 		href_filter(soup)
-		content = soup.find(id="ctl00_MainContent_DetailedOutput")
+		content = soup.find(id=cssclass)
 		if content:
-			return parse_body(content, title, max_title)
+			return parse_body(content, title=title, subtitle_text=subtitle_text, max_title=max_title)
 	finally:
 		fp.close()
 
