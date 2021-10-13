@@ -435,3 +435,22 @@ def get_links(bs):
 		_, link = extract_link(a)
 		links.append(link)
 	return links
+
+def link_modifiers(modifiers):
+	for m in modifiers:
+		bs = BeautifulSoup(m['name'], 'html.parser')
+		links = get_links(bs)
+		if links:
+			m['name'] = get_text(bs)
+			m['links'] = links
+	return modifiers
+
+def modifiers_from_string_list(modlist, subtype="modifier"):
+	modifiers = []
+	for mpart in modlist:
+		modifiers.append({
+			"type": "stat_block_section",
+			"subtype": subtype,
+			"name": mpart
+		})
+	return modifiers

@@ -12,6 +12,7 @@ from pfsrd2.universal import source_pass, extract_source
 from pfsrd2.universal import aon_pass, restructure_pass, html_pass
 from pfsrd2.universal import remove_empty_sections_pass, get_links
 from pfsrd2.universal import walk, test_key_is_value
+from pfsrd2.universal import link_modifiers
 from pfsrd2.files import makedirs, char_replace
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
@@ -245,7 +246,7 @@ def index_pass(struct):
 		if not keep:
 			remove.append(section)
 	for s in remove:
-		struct['sections'].remove(section)
+		struct['sections'].remove(s)
 	if struct['name'].startswith("All Monsters"):
 		struct['type'] = "section"
 		struct['subtype'] = "index"
@@ -1470,15 +1471,6 @@ def log_element(fn):
 		fp.write(element)
 		fp.write("\n")
 	return log_e
-
-def link_modifiers(modifiers):
-	for m in modifiers:
-		bs = BeautifulSoup(m['name'], 'html.parser')
-		links = get_links(bs)
-		if links:
-			m['name'] = get_text(bs)
-			m['links'] = links
-	return modifiers
 
 def link_objects(objects):
 	for o in objects:
