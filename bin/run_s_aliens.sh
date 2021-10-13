@@ -9,7 +9,7 @@ source dir.conf
 rm errors.aliens.log
 
 if test -f "errors.aliens"; then
-	cat errors.creatures | while read i
+	cat errors.aliens | while read i
 	do
 		if ! ./alien_parse -o $SDATA_DIR $i ; then
 			echo $i >> errors.aliens.log
