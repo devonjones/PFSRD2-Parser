@@ -15,6 +15,66 @@
 			"required": ["name", "type", "subtype", "eac", "kac"],
 			"additionalProperties": false
 		},
+		"affliction": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["affliction"]},
+				"affliction_type": {"type": "string"},
+				"save": {"type": "string"},
+				"onset": {"type": "string"},
+				"track": {"type": "string"},
+				"frequency": {"type": "string"},
+				"effect": {"type": "string"},
+				"cure": {"type": "string"}
+			},
+			"required": ["name", "type", "subtype", "affliction_type"],
+			"additionalProperties": false
+		},
+		"afflictions": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/affliction"},
+			"additionalItems": false
+		},
+		"attack": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["attack"]},
+				"name": {"type": "string"},
+				"attack_type": {"enum": ["melee", "ranged", "multiattack"]},
+				"weapon": {"type": "string"},
+				"bonus": {"type": "integer"},
+				"count": {"type": "integer"},
+				"damage": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/attack_damage"},
+					"additionalItems": false
+				},
+				"explode": {"type": "boolean"},
+				"range": {"type": "string"},
+				"dc": {"type": "integer"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"attack_damage": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["attack_damage"]},
+				"formula": {"type": "string"},
+				"damage_type": {"type": "string"},
+				"damage_type_text": {"type": "string"},
+				"effect": {"type": "string"},
+				"notes": {"type": "string"},
+				"nonlethal": {"type": "boolean"},
+				"critical": {"type": "boolean"}
+			},
+			"required": ["type", "subtype"],
+			"additionalProperties": false
+		},
 		"creature_type": {
 			"type": "object",
 			"properties": {
@@ -69,6 +129,20 @@
 				"sr": {"type": "string"}
 			},
 			"required": ["name", "type", "subtype", "hp", "ac", "saves"],
+			"additionalProperties": false
+		},
+		"ecology": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Ecology"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["ecology"]},
+				"environment": {"type": "string"},
+				"organization": {"type": "string"}
+			},
+			"required": [
+				"name", "type", "subtype", "environment", "organization"
+			],
 			"additionalProperties": false
 		},
 		"language": {
@@ -149,6 +223,74 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["initiative", "perception"]},
 				"value": {"type": "integer"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype", "value"],
+			"additionalProperties": false
+		},
+		"string_with_modifiers": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Special Attack", "Offensive Ability"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["special_attack", "offensive_ability"]},
+				"value": {"type": "string"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype", "value"],
+			"additionalProperties": false
+		},
+		"offense": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Offense"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["offense"]},
+				"speed": {"$ref": "#/definitions/speeds"},
+				"space": {"type": "string"},
+				"reach": {"$ref": "#/definitions/reach"},
+				"melee": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/attack"},
+					"additionalItems": false
+				},
+				"ranged": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/attack"},
+					"additionalItems": false
+				},
+				"multiattack": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/attack"},
+					"additionalItems": false
+				},
+				"spells": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/spells"},
+					"additionalItems": false
+				},
+				"offensive_abilities":  {
+					"type": "array",
+					"items": {"$ref": "#/definitions/string_with_modifiers"},
+					"additionalItems": false
+				},
+				"special_attacks": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/string_with_modifiers"},
+					"additionalItems": false
+				},
+				"connection": {"type": "string"}
+			},
+			"required": ["name", "type", "subtype", "speed"],
+			"additionalProperties": false
+		},
+		"reach": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Reach"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["reach"]},
+				"value": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["name", "type", "subtype", "value"],
@@ -249,10 +391,121 @@
 			"items": {"$ref": "#/definitions/source"},
 			"additionalItems": false
 		},
-		"statistics": {
+		"special_ability": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["special_ability"]},
+				"name": {"type": "string"},
+				"ability_type": {"enum": [
+					"Extraordinary", "Spell-Like", "Supernatural"]},
+				"ability_type_abbrev": {"enum": ["Ex", "Sp", "Su"]},
+				"text": {"type": "string"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": [
+				"name", "type", "subtype", "ability_type",
+				"ability_type_abbrev", "text"],
+			"additionalProperties": false
+		},
+		"special_abilities": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/special_ability"},
+			"additionalItems": false
+		},
+		"speed": {
 			"type": "object",
 			"properties": {
 				"name": {"type": "string"},
+				"type": {"enum": ["stat_block_section"]},
+				"movement_type": {"type": "string"},
+				"value": {"type": "integer"},
+				"subtype": {"enum": ["speed"]},
+				"ability_type": {"enum": [
+					"Extraordinary", "Spell-Like", "Supernatural"]},
+				"ability_type_abbrev": {"enum": ["Ex", "Sp", "Su"]},
+				"maneuverability": {"type": "string"},
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"from": {"$ref": "#/definitions/link"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"speeds": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Speed"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["speeds"]},
+				"movement": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/speed"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"spells": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["spells"]},
+				"name": {"type": "string"},
+				"text": {"type": "string"},
+				"caster_level": {"type": "integer"},
+				"melee": {"type": "integer"},
+				"ranged": {"type": "integer"},
+				"spell_list": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/spell_list"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"spell": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["spell"]},
+				"name": {"type": "string"},
+				"spell_level": {"type": "integer"},
+				"spell_dc": {"type": "integer"},
+				"spell_range": {"type": "string"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"spell_list": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["spell_list"]},
+				"spell_level": {"type": "integer"},
+				"spell_level_text": {"type": "string"},
+				"spells": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/spell"},
+					"additionalItems": false
+				},
+				"count": {"type": "integer"},
+				"frequency": {"type": "string"},
+				"count_text": {"type": "string"}
+			},
+			"required": ["type", "subtype"],
+			"additionalProperties": false
+		},
+		"statistics": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Statistics"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["statistics"]},
 				"str": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
@@ -304,18 +557,14 @@
 				"defense": {"$ref": "#/definitions/defense"},
 				"offense": {"$ref": "#/definitions/offense"},
 				"statistics": {"$ref": "#/definitions/statistics"},
-
-				"traits": {"$ref": "#/definitions/traits"},
-				"image": { "items": {"$ref": "#/definitions/image"} },
-				"languages": {"$ref": "#/definitions/languages"},
-				"skills": {"$ref": "#/definitions/skills"},
-				"interaction_abilities": {"$ref": "#/definitions/abilities"},
-				"items": {"$ref": "#/definitions/items"},
-				"sections": {"$ref": "#/definitions/sections"}
+				"ecology": {"$ref": "#/definitions/ecology"},
+				"special_abilities": {"$ref": "#/definitions/special_abilities"},
+				"afflictions": {"$ref": "#/definitions/afflictions"}
 			},
 			"required": [
 				"name", "type", "cr", "role", "xp", "alignment",
-				"size", "creature_type", "initiative", "perception", "defense"
+				"size", "creature_type", "initiative", "perception", "defense",
+				"offense", "statistics", "ecology"
 			],
 			"additionalProperties": false
 		}
@@ -329,6 +578,6 @@
 		"sources": {"$ref": "#/definitions/sources"},
 		"sections": {"$ref": "#/definitions/sections"}
 	},
-	"required": ["name", "type", "game-obj", "sources", "sections", "stat_block"],
+	"required": ["name", "type", "game-obj", "sources", "stat_block"],
 	"additionalProperties": false
 }

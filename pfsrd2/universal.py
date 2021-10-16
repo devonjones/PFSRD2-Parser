@@ -313,14 +313,14 @@ def extract_link(a):
 		link['href'] = a['href']
 	return name, link
 
-def split_maintain_parens(text, split):
+def split_maintain_parens(text, split, parenleft="(", parenright=")"):
 	parts = [t.strip() for t in text.split(split)]
 	newparts = []
 	while len(parts) > 0:
 		part = parts.pop(0)
-		if part.find("(") > -1 and part.rfind(")") < part.rfind("("):
+		if part.find(parenleft) > -1 and part.rfind(parenright) < part.rfind(parenleft):
 			newpart = part
-			while newpart.find("(") > -1 and newpart.rfind(")") < newpart.rfind("("):
+			while newpart.find(parenleft) > -1 and newpart.rfind(parenright) < newpart.rfind(parenleft):
 				newpart = newpart + split + " " + parts.pop(0)
 			newparts.append(newpart)
 		else:
@@ -394,14 +394,16 @@ def html_pass(section):
 		del section['text']
 
 def remove_empty_sections_pass(struct):
-	for section in struct['sections']:
-		remove_empty_sections_pass(section)
-		if len(struct.get('sections', [])) == 0:
-			del section['sections']
+	if 'sections' in struct:
+		for section in struct['sections']:
+			remove_empty_sections_pass(section)
+			if len(struct.get('sections', [])) == 0:
+				del section['sections']
 	if "stat_block" in struct:
 		remove_empty_sections_pass(struct['stat_block'])
-	if len(struct.get('sections', [])) == 0:
-		del struct['sections']
+	if 'sections' in struct:
+		if len(struct.get('sections', [])) == 0:
+			del struct['sections']
 
 def walk(struct, test, function, parent=None):
 	if test(struct):
