@@ -271,7 +271,9 @@ def top_matter_pass(struct):
 		parts = [p.strip() for p in text.replace("<b>Senses</b>", "").split(",")]
 		return modifiers_from_string_list(parts, "sense")
 
-	text = struct.pop('text').split(";")
+	text = list(filter(
+		lambda e: e != "",
+		struct.pop('text').split(";")))
 	assert len(text) in [2,3], text
 
 	# Part 1
@@ -485,6 +487,7 @@ def offense_pass(struct):
 			}
 
 			text = text.replace("–", "—")
+			
 			deets, listtext = text.split("—")
 			_handle_spell_list_deets(deets)
 			spelltexts = split_maintain_parens(listtext, ",")
@@ -713,7 +716,7 @@ def offense_pass(struct):
 					text, modtext = text.split("(")
 					text = text.strip()
 					modtext = modtext.replace(")", "").strip()
-					modparts = split_comma_and_semicolon(modtext)
+					modparts = split_comma_and_semicolon(modtext, parenleft="[", parenright="]")
 					element['modifiers'] = modifiers_from_string_list(modparts)
 				element['value'] = text
 				retlist.append(element)
@@ -1034,7 +1037,7 @@ def log_element(fn):
 		fp.write("\n")
 	return log_e
 
-def split_comma_and_semicolon(text):
+def split_comma_and_semicolon(text, parenleft="(", parenright=")"):
 	parts = [
-		split_maintain_parens(t, ",") for t in split_maintain_parens(text, ";")]
+		split_maintain_parens(t, ",", parenleft, parenright) for t in split_maintain_parens(text, ";", parenleft, parenright)]
 	return [item for sublist in parts for item in sublist]
