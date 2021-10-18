@@ -2,8 +2,8 @@
 import sys
 import os
 from pfsrd2.creatures import parse_creature
-from pfsrd2.warnings import WarningReporting
-from pfsrd2.options import exec_main, option_parser
+from universal.warnings import WarningReporting
+from universal.options import exec_main, option_parser
 
 def main():
 	usage = "usage: %prog [options] [filenames]\nParses npcs from pfsrd2 html to json and writes them to the specified directory"

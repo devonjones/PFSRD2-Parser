@@ -1,5 +1,4 @@
 import sys
-import re
 from hashlib import md5
 from pprint import pprint
 from urllib.parse import urlparse, parse_qs

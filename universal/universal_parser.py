@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 import sys
 import os
-import re
-import json
-from psrd.options import option_parser
-from psrd.universal import parse_universal
+from universal.options import option_parser
+from universal.universal import parse_universal
 
 def exec_main(parser):
 	(options, args) = parser.parse_args()

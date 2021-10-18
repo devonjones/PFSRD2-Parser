@@ -5,27 +5,15 @@ import re
 import html2markdown
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString, Tag
-from pfsrd2.universal import parse_universal, print_struct, entity_pass
-from pfsrd2.universal import is_trait, get_text, extract_link
-from pfsrd2.universal import link_modifiers, modifiers_from_string_list
-from pfsrd2.universal import split_maintain_parens
-from pfsrd2.universal import source_pass, extract_source
-from pfsrd2.universal import aon_pass, restructure_pass, html_pass
-from pfsrd2.universal import remove_empty_sections_pass, get_links
-from pfsrd2.universal import walk, test_key_is_value
-from pfsrd2.files import makedirs, char_replace
+from universal.universal import parse_universal, entity_pass
+from universal.universal import get_text
+from universal.universal import link_modifiers, modifiers_from_string_list
+from universal.universal import split_maintain_parens
+from universal.universal import extract_source
+from universal.universal import html_pass
+from universal.universal import remove_empty_sections_pass
+from universal.files import makedirs, char_replace
 from sfsrd.schema import validate_against_schema
-from pfsrd2.trait import trait_parse
-from pfsrd2.sql import get_db_path, get_db_connection
-from pfsrd2.sql.traits import fetch_trait_by_name
-
-from pfsrd2.creatures import restructure_creature_pass
-from pfsrd2.creatures import creature_stat_block_pass
-from pfsrd2.creatures import sidebar_pass
-from pfsrd2.creatures import index_pass
-from pfsrd2.creatures import trait_pass
-from pfsrd2.creatures import db_pass
-from pfsrd2.creatures import log_html_pass
 from pfsrd2.creatures import write_creature
 
 def parse_alien(filename, options):
@@ -43,13 +31,6 @@ def parse_alien(filename, options):
 	ecology_pass(struct)
 	special_ability_pass(struct)
 	section_pass(struct)
-	#source_pass(struct, find_stat_block)
-	#sidebar_pass(struct)
-	#index_pass(struct)
-	#aon_pass(struct, basename)
-	#restructure_pass(struct, 'stat_block', find_stat_block)
-	#trait_pass(struct)
-	#db_pass(struct)
 	html_pass(struct)
 	#log_html_pass(struct, basename)
 	remove_empty_sections_pass(struct)

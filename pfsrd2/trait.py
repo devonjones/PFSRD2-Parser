@@ -5,13 +5,13 @@ import re
 import html2markdown
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
-from pfsrd2.universal import parse_universal, print_struct, entity_pass
-from pfsrd2.universal import is_trait, get_text, extract_link
-from pfsrd2.universal import split_maintain_parens
-from pfsrd2.universal import source_pass, extract_source, get_links
-from pfsrd2.universal import aon_pass, restructure_pass, html_pass
-from pfsrd2.universal import remove_empty_sections_pass, game_id_pass
-from pfsrd2.files import makedirs, char_replace
+from universal.universal import parse_universal, print_struct, entity_pass
+from universal.universal import is_trait, get_text, extract_link
+from universal.universal import split_maintain_parens
+from universal.universal import source_pass, extract_source, get_links
+from universal.universal import aon_pass, restructure_pass, html_pass
+from universal.universal import remove_empty_sections_pass, game_id_pass
+from universal.files import makedirs, char_replace
 from pfsrd2.schema import validate_against_schema
 
 def parse_trait(filename, options):

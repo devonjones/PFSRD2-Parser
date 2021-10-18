@@ -1,6 +1,5 @@
 import sys
 import os
-import json
 from optparse import OptionParser
 
 def exec_main(options, args, function, localdir):
