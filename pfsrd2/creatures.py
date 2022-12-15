@@ -7,13 +7,15 @@ from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
 from universal.universal import parse_universal, print_struct, entity_pass
 from universal.universal import is_trait, get_text, extract_link
-from universal.universal import split_maintain_parens
+from universal.utils import split_maintain_parens
 from universal.universal import source_pass, extract_source
 from universal.universal import aon_pass, restructure_pass, html_pass
 from universal.universal import remove_empty_sections_pass, get_links
 from universal.universal import walk, test_key_is_value
 from universal.universal import link_modifiers
 from universal.files import makedirs, char_replace
+from universal.creatures import write_creature
+from universal.utils import log_element
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
 from pfsrd2.sql import get_db_path, get_db_connection
@@ -1453,24 +1455,6 @@ def build_object(dtype, subtype, name, keys=None):
 	if keys:
 		obj.update(keys)
 	return obj
-
-def write_creature(jsondir, struct, source):
-	print("%s (%s): %s" %(struct['game-obj'], source, struct['name']))
-	filename = create_creature_filename(jsondir, struct)
-	fp = open(filename, 'w')
-	json.dump(struct, fp, indent=4)
-	fp.close()
-
-def create_creature_filename(jsondir, struct):
-	title = jsondir + "/" + char_replace(struct['name']) + ".json"
-	return os.path.abspath(title)
-
-def log_element(fn):
-	fp = open(fn, "a+")
-	def log_e(element):
-		fp.write(element)
-		fp.write("\n")
-	return log_e
 
 def link_objects(objects):
 	for o in objects:

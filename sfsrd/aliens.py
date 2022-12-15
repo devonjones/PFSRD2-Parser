@@ -6,15 +6,17 @@ import html2markdown
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString, Tag
 from universal.universal import parse_universal, entity_pass
-from universal.universal import get_text
+from universal.universal import get_text, break_out_subtitles
 from universal.universal import link_modifiers, modifiers_from_string_list
-from universal.universal import split_maintain_parens
 from universal.universal import extract_source
 from universal.universal import html_pass
 from universal.universal import remove_empty_sections_pass
 from universal.files import makedirs, char_replace
+from universal.utils import split_maintain_parens, split_comma_and_semicolon
+from universal.utils import filter_end
+from universal.utils import log_element
+from universal.creatures import write_creature
 from sfsrd.schema import validate_against_schema
-from pfsrd2.creatures import write_creature
 
 def parse_alien(filename, options):
 	basename = os.path.basename(filename)
@@ -117,6 +119,18 @@ def restructure_alien_pass(details, subtype):
 	return struct
 
 def top_matter_pass(struct):
+	def _handle_sb_image(sb, bs):
+		first = list(bs.children).pop(0)
+		if first.name == 'a' and first.find("img"):
+			img = first.find("img")
+			link = img['src']
+			image = link.split("\\").pop().split("%5C").pop()
+			sb['image'] = {
+				'type': 'image', 'name': sb['name'], 'game-obj': 'Monster',
+				'image': image
+			}
+			first.decompose()
+
 	def _handle_xp(bs):
 		xp = bs.find_all('b').pop(0)
 		text = get_text(xp)
@@ -259,8 +273,9 @@ def top_matter_pass(struct):
 
 	# Part 1
 	bs = BeautifulSoup(text.pop(0), 'html.parser')
-	assert len(list(bs.children)) in [6, 8], str(list(bs.children))
+	assert len(list(bs.children)) in [6, 7, 8, 9], str(list(bs.children))
 	sb = struct['stat_block']
+	_handle_sb_image(sb, bs)
 	sb['xp'] = _handle_xp(bs)
 	sb['initiative'] = _handle_initiative(bs)
 	_handle_creature_basics(bs, sb)
@@ -656,7 +671,7 @@ def offense_pass(struct):
 				if len(attackparts) == 1:
 					_handle_attack_damage(attackparts.pop().replace(")", "").strip())
 				melee.append(attack)
-			offense['melee'] = melee
+			offense[attack_type] = melee
 		return _handle_attack_impl
 
 	def _handle_multiattack(offense, name, text):
@@ -708,16 +723,7 @@ def offense_pass(struct):
 	offense_text = offense_section['text']
 	struct['sections'].remove(offense_section)
 	bs = BeautifulSoup(offense_text, 'html.parser')
-	parts = break_out_subtitles(bs)
-	output = []
-	for part in parts:
-		pname = part.pop(0).get_text()
-		text = ''.join([str(p) for p in part]).strip()
-		while text.endswith("<br/>"):
-			text = text[:-5].strip()
-		if text.endswith(";"):
-			text = text[:-1]
-		output.append((pname, text))
+	output = break_out_subtitles(bs, 'b')
 	offense = {
 		"name": "Offense",
 		"type": "stat_block_section",
@@ -725,7 +731,7 @@ def offense_pass(struct):
 	}
 	for o in output:
 		name, text = o
-		name = name.strip()
+		text = filter_end(text, ["<br/>", ";"])
 		if name.find("Spell") > -1:
 			_handle_spell(offense, name, text)
 		else:
@@ -744,7 +750,6 @@ def offense_pass(struct):
 			}
 			dispatch[name](offense, name, text)
 	struct['stat_block']['offense'] = offense
-
 
 def statistics_pass(struct):
 	def _handle_stats(statistics, text):
@@ -891,6 +896,9 @@ def ecology_pass(struct):
 		ecology['organization'] = str(bs).strip()
 
 	stats_section = find_section(struct, "Ecology")
+	if len(stats_section['sections']) == 0 and 'text' not in stats_section:
+		struct['sections'].remove(stats_section)
+		return
 	stats_text = stats_section['text']
 	struct['sections'].remove(stats_section)
 	parts = list(filter(lambda d: d != "",
@@ -919,17 +927,13 @@ def special_ability_pass(struct):
 			"type": "stat_block_section",
 			"subtype": "special_ability",
 		}
-		bs = BeautifulSoup(data, 'html.parser')
-		name_tag = list(bs.children)[0]
-		name = name_tag.get_text()
-		name_tag.extract()
-		text = str(bs).strip()
+		name, text = data
 		while text.endswith("<br/>"):
 			text = text[:-5]
 		sa['text'] = text
 		name_parts = name.split("(")
 		sa['name'] = name_parts.pop(0).strip()
-		assert len(name_parts) == 1, name_tag
+		assert len(name_parts) == 1, bs
 		sa_type = name_parts[0].replace(")", "").strip()
 		ability_types = {
 			"Ex": "Extraordinary",
@@ -946,11 +950,10 @@ def special_ability_pass(struct):
 		sa_text = sa_section['text']
 		struct['sections'].remove(sa_section)
 		bs = BeautifulSoup(sa_text, 'html.parser')
-		parts = break_out_subtitles(bs)
-		parts = [''.join([str(t) for t in p]) for p in parts]
+		output = break_out_subtitles(bs, 'b')
 		special_abilities = []
-		for part in parts:
-			special_abilities.append(_handle_special_ability(part))
+		for o in output:
+			special_abilities.append(_handle_special_ability(o))
 		struct['stat_block']['special_abilities'] = special_abilities
 
 def section_pass(struct):
@@ -961,19 +964,11 @@ def section_pass(struct):
 		del section['sections']
 		struct['sections'].remove(section)
 		bs = BeautifulSoup(sec_text, 'html.parser')
-		parts = break_out_subtitles(bs)
-		output = []
-		for part in parts:
-			pname = part.pop(0).get_text()
-			text = ''.join([str(p) for p in part]).strip()
-			while text.endswith("<br/>"):
-				text = text[:-5]
-			if text.endswith(";"):
-				text = text[:-1]
-			output.append((pname, text))
+		output = break_out_subtitles(bs, 'b')
 		for element in output:
 			name, text = element
 			name = name.lower().strip()
+			text = filter_end(text, ["<br/>", ";"])
 			if name == "type":
 				name = "affliction_type"
 			section[name] = text
@@ -993,32 +988,8 @@ def section_pass(struct):
 	if len(afflictions) > 0:
 		struct['stat_block']['afflictions'] = afflictions
 
-def break_out_subtitles(bs):
-	parts = []
-	part = []
-	for tag in bs.children:
-		if tag.name == 'b':
-			if len(part) > 0:
-				parts.append(part)
-				part = []
-		part.append(tag)
-	if len(part) > 0:
-		parts.append(part)
-	return parts
-
 def find_section(struct, name):
 	for s in struct['sections']:
 		if s['name'] == name:
 			return s
 
-def log_element(fn):
-	fp = open(fn, "a+")
-	def log_e(element):
-		fp.write(element)
-		fp.write("\n")
-	return log_e
-
-def split_comma_and_semicolon(text, parenleft="(", parenright=")"):
-	parts = [
-		split_maintain_parens(t, ",", parenleft, parenright) for t in split_maintain_parens(text, ";", parenleft, parenright)]
-	return [item for sublist in parts for item in sublist]

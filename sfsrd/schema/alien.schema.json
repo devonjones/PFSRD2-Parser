@@ -145,6 +145,17 @@
 			],
 			"additionalProperties": false
 		},
+		"image": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["image"]},
+				"game-obj": {"type": "string"},
+				"image": {"type": "string"}
+			},
+			"required": ["name", "type", "image"],
+			"additionalProperties": false
+		},
 		"language": {
 			"type": "object",
 			"properties": {
@@ -559,12 +570,13 @@
 				"statistics": {"$ref": "#/definitions/statistics"},
 				"ecology": {"$ref": "#/definitions/ecology"},
 				"special_abilities": {"$ref": "#/definitions/special_abilities"},
-				"afflictions": {"$ref": "#/definitions/afflictions"}
+				"afflictions": {"$ref": "#/definitions/afflictions"},
+				"image": { "items": {"$ref": "#/definitions/image"} }
 			},
 			"required": [
 				"name", "type", "cr", "role", "xp", "alignment",
 				"size", "creature_type", "initiative", "perception", "defense",
-				"offense", "statistics", "ecology"
+				"offense", "statistics"
 			],
 			"additionalProperties": false
 		}

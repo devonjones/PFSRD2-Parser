@@ -67,7 +67,7 @@ def entity_pass(details):
 			detail['text'] = detail['text'].replace("\u00ca\u00bc", "’") # u2019 (was u02BC)
 			detail['text'] = detail['text'].replace("\u00c2\u00a0", " ")
 			detail['text'] = detail['text'].replace("\u00a0", " ")
-			detail['text'] = ''.join([part.strip() for part in detail['text'].split("\n")])
+			detail['text'] = ' '.join([part.strip() for part in detail['text'].split("\n")])
 	return details
 
 def title_pass(details, max_title):
@@ -312,20 +312,6 @@ def extract_link(a):
 		link['href'] = a['href']
 	return name, link
 
-def split_maintain_parens(text, split, parenleft="(", parenright=")"):
-	parts = [t.strip() for t in text.split(split)]
-	newparts = []
-	while len(parts) > 0:
-		part = parts.pop(0)
-		if part.find(parenleft) > -1 and part.rfind(parenright) < part.rfind(parenleft):
-			newpart = part
-			while newpart.find(parenleft) > -1 and newpart.rfind(parenright) < newpart.rfind(parenleft):
-				newpart = newpart + split + " " + parts.pop(0)
-			newparts.append(newpart)
-		else:
-			newparts.append(part)
-	return newparts
-
 def source_pass(struct, find_object_fxn):
 	def _extract_source(section):
 		if 'text' in section:
@@ -455,3 +441,25 @@ def modifiers_from_string_list(modlist, subtype="modifier"):
 			"name": mpart
 		})
 	return modifiers
+
+def break_out_subtitles(bs, tagname):
+	parts = []
+	part = []
+	title = None
+	for tag in bs.children:
+		if tag.name == tagname:
+			if len(part) > 0:
+				if title:
+					title = title.get_text().strip()
+				parts.append((title, "".join([str(p) for p in part]).strip()))
+				part = []
+				title = None
+			title = tag
+		else:
+			part.append(tag)
+	if len(part) > 0:
+		if title:
+			title = title.get_text().strip()
+		parts.append((title, "".join([str(p) for p in part]).strip()))
+	return parts
+
