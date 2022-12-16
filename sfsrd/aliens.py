@@ -233,6 +233,14 @@ def top_matter_pass(struct):
 			"creature_subtype")
 		return link_modifiers(subtypes)
 
+	def _handle_senses():
+		senses = {
+			"name": "Senses",
+			"type": "stat_block_section",
+			"subtype": "senses",
+		}
+		return senses
+
 	def _handle_perception(title, value):
 		assert str(title) == "<b>Perception</b>", title
 		text = str(value).strip()
@@ -262,9 +270,9 @@ def top_matter_pass(struct):
 		assert str(title) == "<b>Aura</b>", title
 		return value.strip()
 
-	def _handle_senses(text):
+	def _handle_special_senses(text):
 		parts = [p.strip() for p in text.replace("<b>Senses</b>", "").split(",")]
-		return modifiers_from_string_list(parts, "sense")
+		return modifiers_from_string_list(parts, "special_sense")
 
 	text = list(filter(
 		lambda e: e != "",
@@ -285,13 +293,15 @@ def top_matter_pass(struct):
 	[b.extract() for b in bs.find_all("br")]
 	parts = list(bs.children)
 	assert len(parts) in [2,4], bs
-	sb['perception'] = _handle_perception(parts.pop(0), parts.pop(0))
+	senses = _handle_senses()
+	sb['senses'] = senses
+	senses['perception'] = _handle_perception(parts.pop(0), parts.pop(0))
 	if len(parts) > 0:
 		sb['aura'] = _handle_aura(parts.pop(0), parts.pop(0))
 
 	# Part 3
 	if (len(text) > 0):
-		sb['senses'] = _handle_senses(text.pop(0))
+		senses['special_senses'] = _handle_special_senses(text.pop(0))
 
 	assert len(text) == 0, text
 

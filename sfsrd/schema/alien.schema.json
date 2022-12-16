@@ -230,9 +230,9 @@
 		"number_with_modifiers": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Initiative", "Perception"]},
+				"name": {"enum": ["Initiative"]},
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["initiative", "perception"]},
+				"subtype": {"enum": ["initiative"]},
 				"value": {"type": "integer"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
@@ -295,6 +295,18 @@
 			"required": ["name", "type", "subtype", "speed"],
 			"additionalProperties": false
 		},
+		"perception": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Perception"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["perception"]},
+				"value": {"type": "integer"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype", "value"],
+			"additionalProperties": false
+		},		
 		"reach": {
 			"type": "object",
 			"properties": {
@@ -428,6 +440,35 @@
 			"items": {"$ref": "#/definitions/special_ability"},
 			"additionalItems": false
 		},
+		"senses": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["senses"]},
+				"name": {"enum": ["Senses"]},
+				"link": {"$ref": "#/definitions/link"},
+				"perception": {"$ref": "#/definitions/perception"},
+				"special_senses": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/special_sense"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},		
+		"special_sense": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["special_sense"]},
+				"name": {"type": "string"},
+				"link": {"$ref": "#/definitions/link"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},		
 		"speed": {
 			"type": "object",
 			"properties": {
@@ -562,9 +603,8 @@
 					"Fine", "Diminutive", "Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan", "Colossal"
 				]},
 				"initiative": {"$ref": "#/definitions/number_with_modifiers"},
-				"perception": {"$ref": "#/definitions/number_with_modifiers"},
+				"senses": {"$ref": "#/definitions/senses"},
 				"aura": {"type": "string"},
-				"senses": {"$ref": "#/definitions/modifiers"},
 				"defense": {"$ref": "#/definitions/defense"},
 				"offense": {"$ref": "#/definitions/offense"},
 				"statistics": {"$ref": "#/definitions/statistics"},
@@ -575,7 +615,7 @@
 			},
 			"required": [
 				"name", "type", "cr", "role", "xp", "alignment",
-				"size", "creature_type", "initiative", "perception", "defense",
+				"size", "creature_type", "initiative", "senses", "defense",
 				"offense", "statistics"
 			],
 			"additionalProperties": false
