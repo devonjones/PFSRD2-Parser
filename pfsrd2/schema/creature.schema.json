@@ -340,11 +340,6 @@
 				"subtype": {"enum": ["perception"]},
 				"name": {"enum": ["perception"]},
 				"value": {"type": "integer"},
-				"special_senses": {
-					"type": "array",
-					"items": {"$ref": "#/definitions/special_senses"},
-					"additionalItems": false
-				},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["name", "type", "subtype", "value"],
@@ -436,6 +431,23 @@
 			"items": {"$ref": "#/definitions/section"},
 			"additionalItems": false
 		},
+		"senses": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["senses"]},
+				"name": {"enum": ["Senses"]},
+				"link": {"$ref": "#/definitions/link"},
+				"perception": {"$ref": "#/definitions/perception"},
+				"special_senses": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/special_sense"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype", "perception"],
+			"additionalProperties": false
+		},		
 		"skill": {
 			"type": "object",
 			"properties": {
@@ -472,6 +484,7 @@
 			"items": {"$ref": "#/definitions/source"},
 			"additionalItems": false
 		},
+
 		"speed": {
 			"type": "object",
 			"properties": {
@@ -502,7 +515,7 @@
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
 		},
-		"special_senses": {
+		"special_sense": {
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
@@ -596,7 +609,7 @@
 				"traits": {"$ref": "#/definitions/traits"},
 				"image": { "items": {"$ref": "#/definitions/image"} },
 				"sources": {"$ref": "#/definitions/sources"},
-				"perception": {"$ref": "#/definitions/perception"},
+				"senses": {"$ref": "#/definitions/senses"},
 				"languages": {"$ref": "#/definitions/languages"},
 				"skills": {"$ref": "#/definitions/skills"},
 				"str": {"type": "integer"},
@@ -613,7 +626,7 @@
 			},
 			"required": [
 				"name", "type", "level", "alignment", "traits", "sources",
-				"perception", "skills", "str", "dex", "con", "int", "wis",
+				"senses", "skills", "str", "dex", "con", "int", "wis",
 				"cha", "defense", "offense"
 			],
 			"additionalProperties": false

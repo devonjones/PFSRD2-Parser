@@ -295,7 +295,7 @@ def process_stat_block(sb, sections):
 	# Stats
 	stats = sections.pop(0)
 	process_source(sb, stats.pop(0))
-	sb['perception'] = process_perception(stats.pop(0))
+	sb['senses'] = process_senses(stats.pop(0))
 	if(stats[0][0] == "Languages"):
 		sb['languages'] = process_languages(stats.pop(0))
 	if(stats[0][0] == "Skills"):
@@ -392,15 +392,26 @@ def process_source(sb, section):
 			source['errata'] = errata[1]
 	sb['sources'] = sources
 
-def process_perception(section):
+def process_senses(section):
+	def _handle_senses():
+		senses = {
+			"name": "Senses",
+			"type": "stat_block_section",
+			"subtype": "senses",
+		}
+		return senses
+
 	assert section[0] == "Perception"
 	assert section[2] == None
+	senses = _handle_senses()
+
 	parts = split_stat_block_line(section[1])
 	value = parts.pop(0)
 	value = int(value.replace("+", ""))
 	perception = {
 		'type': 'stat_block_section', 'subtype': 'perception',
 		'name': 'perception', 'value': value}
+	senses['perception'] = perception
 	if len(parts) > 0:
 		if parts[0].startswith("("):
 			modifier = parts.pop(0)
@@ -429,8 +440,8 @@ def process_perception(section):
 					build_objects(
 						'stat_block_section', 'modifier', [modifier]))
 			special_senses.append(sense)
-		perception['special_senses'] = special_senses
-	return perception
+		senses['special_senses'] = special_senses
+	return senses
 
 def process_languages(section):
 	# 1, Unseen Servant

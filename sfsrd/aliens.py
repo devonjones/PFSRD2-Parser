@@ -173,11 +173,22 @@ def top_matter_pass(struct):
 		assert len(type_parts) in [1,2], str(type)
 		basics = type_parts.pop(0).strip().split(" ")
 		assert len(basics) in [3,4], basics
-		sb['alignment'] = _handle_alignment(basics.pop(0))
-		sb['size'] = _handle_size(basics.pop(0).capitalize())
+		alignment = _handle_alignment(basics.pop(0))
+		size = _handle_size(basics.pop(0).capitalize())
 		sb['creature_type'] = _handle_creature_type(
 			" ".join([b.capitalize() for b in basics]),
 			type_parts)
+		sb['creature_type']['alignment'] = alignment
+		sb['creature_type']['size'] = size
+		if 'alien_family' in sb:
+			sb['creature_type']['alien_family'] = sb['alien_family']
+			del sb['alien_family']
+		if 'cr' in sb:
+			sb['creature_type']['cr'] = sb['cr']
+			del sb['cr']
+		if 'role' in sb:
+			sb['creature_type']['role'] = sb['role']
+			del sb['role']
 		assert len(type_parts) == 0, type_parts
 
 		if len(parts) == 1:
@@ -186,7 +197,7 @@ def top_matter_pass(struct):
 			grafts = modifiers_from_string_list(
 				[g.strip().lower() for g in grafts.split(" ")],
 				"graft")
-			sb['grafts'] = link_modifiers(grafts)
+			sb['creature_type']['grafts'] = link_modifiers(grafts)
 
 	def _handle_alignment(abbrev):
 		alignments = {
@@ -284,9 +295,10 @@ def top_matter_pass(struct):
 	assert len(list(bs.children)) in [6, 7, 8, 9], str(list(bs.children))
 	sb = struct['stat_block']
 	_handle_sb_image(sb, bs)
-	sb['xp'] = _handle_xp(bs)
+	xp = _handle_xp(bs)
 	sb['initiative'] = _handle_initiative(bs)
 	_handle_creature_basics(bs, sb)
+	sb['creature_type']['xp'] = xp
 
 	# Part 2
 	bs = BeautifulSoup(text.pop().strip(), 'html.parser')
@@ -777,11 +789,11 @@ def statistics_pass(struct):
 			else:
 				statistics[name] = int(value)
 	
-	def _handle_feats(statistics, bs):
+	def _handle_feats(statistics, _, bs):
 		assert str(bs).find(";") == -1, bs
 		statistics['feats'] = [b.strip() for b in str(bs).split(",")]
 	
-	def _handle_skills(statistics, bs):
+	def _handle_skills(statistics, _, bs):
 		parts = str(bs).split(";")
 		assert len(parts) in [1,2], bs
 		skills = {
@@ -821,7 +833,7 @@ def statistics_pass(struct):
 			skills['skills'].append(skill)
 		statistics['skills'] = skills
 	
-	def _handle_languages(statistics, bs):
+	def _handle_languages(statistics, _, bs):
 		parts = str(bs).split(";")
 		languages = {
 			"type": "stat_block_section",
@@ -852,18 +864,19 @@ def statistics_pass(struct):
 			languages['languages'].append(language)
 		statistics['languages'] = languages
 
-	def _handle_other_abilities(statistics, bs):
+	def _handle_other_abilities(statistics, _, bs):
 		parts = split_maintain_parens(str(bs), ",")
 		abilities = modifiers_from_string_list(parts, "other_ability")
 		statistics['other_abilities'] = abilities
 	
-	def _handle_gear(statistics, bs):
+	def _handle_gear(_, sb, bs):
+		# TODO: Break out modifiers in gear
 		assert str(bs).find(";") == -1, bs
 		parts = split_maintain_parens(str(bs), ",")
-		gear = modifiers_from_string_list(parts, "gear")
-		statistics['gear'] = gear
+		gear = modifiers_from_string_list(parts, "item")
+		sb['gear'] = gear
 	
-	def _handle_augmentations(statistics, bs):
+	def _handle_augmentations(statistics, _, bs):
 		parts = split_maintain_parens(str(bs), ",")
 		augmentations = modifiers_from_string_list(parts, "augmentation")
 		statistics['augmentations'] = augmentations
@@ -892,7 +905,7 @@ def statistics_pass(struct):
 			"Gear": _handle_gear,
 			"Augmentations": _handle_augmentations
 		}
-		dispatch[name](statistics, bs)
+		dispatch[name](statistics, struct['stat_block'], bs)
 
 	struct['stat_block']['statistics'] = statistics
 

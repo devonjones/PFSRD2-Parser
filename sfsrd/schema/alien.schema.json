@@ -86,9 +86,24 @@
 					"Humanoid", "Magical Beast", "Monstrous Humanoid", "Ooze",
 					"Outsider", "Plant", "Undead", "Vermin"
 				]},
-				"creature_subtypes": {"$ref": "#/definitions/modifiers"}
+				"creature_subtypes": {"$ref": "#/definitions/modifiers"},
+				"alien_family": {"type": "string"},
+				"grafts": {"$ref": "#/definitions/modifiers"},
+				"role": {"enum": ["Expert", "Combatant", "Spellcaster"]},
+				"cr": {"type": "string"},
+				"xp": {"type": "integer"},
+				"alignment": {"enum": [
+					"Lawful Good", "Lawful Neutral", "Lawful Evil",
+					"Neutral Good", "Neutral", "Neutral Evil",
+					"Chaotic Good", "Chaotic Neutral", "Chaotic Evil",
+					"No Alignment", "Any"]},
+				"size": {"enum": [
+					"Fine", "Diminutive", "Tiny", "Small", "Medium", "Large",
+					"Huge", "Gargantuan", "Colossal"
+				]}
 			},
-			"required": ["name", "type", "subtype", "creature_type"],
+			"required": ["name", "type", "subtype", "creature_type", "cr",
+				"role", "xp", "alignment", "size"],
 			"additionalProperties": false
 		},
 		"defense": {
@@ -145,6 +160,11 @@
 			],
 			"additionalProperties": false
 		},
+		"gear": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/item"},
+			"additionalItems": false
+		},
 		"image": {
 			"type": "object",
 			"properties": {
@@ -156,6 +176,22 @@
 			"required": ["name", "type", "image"],
 			"additionalProperties": false
 		},
+		"item": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["item"]},
+				"name": {"type": "string"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},		
 		"language": {
 			"type": "object",
 			"properties": {
@@ -210,7 +246,7 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": [
 					"modifier", "graft", "sense", "creature_subtype",
-					 "communication_ability", "other_ability", "gear",
+					 "communication_ability", "other_ability",
 					 "augmentation"]},
 				"name": {"type": "string"},
 				"links": {
@@ -454,7 +490,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["name", "type", "subtype"],
+			"required": ["name", "type", "subtype", "perception"],
 			"additionalProperties": false
 		},		
 		"special_sense": {
@@ -574,7 +610,6 @@
 				"skills": {"$ref": "#/definitions/skills"},
 				"languages": {"$ref": "#/definitions/languages"},
 				"other_abilities": {"$ref": "#/definitions/modifiers"},
-				"gear": {"$ref": "#/definitions/modifiers"},
 				"augmentations": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": [
@@ -588,35 +623,22 @@
 			"properties": {
 				"name": {"type": "string"},
 				"type": {"enum": ["stat_block"]},
-				"alien_family": {"type": "string"},
-				"cr": {"type": "string"},
-				"role": {"enum": ["Expert", "Combatant", "Spellcaster"]},
-				"xp": {"type": "integer"},
 				"creature_type": {"$ref": "#/definitions/creature_type"},
-				"grafts": {"$ref": "#/definitions/modifiers"},
-				"alignment": {"enum": [
-					"Lawful Good", "Lawful Neutral", "Lawful Evil",
-					"Neutral Good", "Neutral", "Neutral Evil",
-					"Chaotic Good", "Chaotic Neutral", "Chaotic Evil",
-					"No Alignment", "Any"]},
-				"size": {"enum": [
-					"Fine", "Diminutive", "Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan", "Colossal"
-				]},
 				"initiative": {"$ref": "#/definitions/number_with_modifiers"},
 				"senses": {"$ref": "#/definitions/senses"},
-				"aura": {"type": "string"},
 				"defense": {"$ref": "#/definitions/defense"},
 				"offense": {"$ref": "#/definitions/offense"},
 				"statistics": {"$ref": "#/definitions/statistics"},
 				"ecology": {"$ref": "#/definitions/ecology"},
+				"aura": {"type": "string"},
 				"special_abilities": {"$ref": "#/definitions/special_abilities"},
 				"afflictions": {"$ref": "#/definitions/afflictions"},
+				"gear": {"$ref": "#/definitions/gear"},
 				"image": { "items": {"$ref": "#/definitions/image"} }
 			},
 			"required": [
-				"name", "type", "cr", "role", "xp", "alignment",
-				"size", "creature_type", "initiative", "senses", "defense",
-				"offense", "statistics"
+				"name", "type", "creature_type", "initiative", "senses",
+				"defense", "offense", "statistics"
 			],
 			"additionalProperties": false
 		}
