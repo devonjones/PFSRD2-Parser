@@ -111,7 +111,7 @@ def restructure_alien_pass(details, subtype):
 	struct['stat_block']['cr'] = cr
 	family = _handle_family(details)
 	if family:
-		struct['stat_block']['alien_family'] = family
+		struct['stat_block']['family'] = family
 	struct['stat_block']['role'] = _handle_role(top)
 	struct['sources'] = _handle_sources(top)
 	assert len(top) == 3, str(top)
@@ -180,9 +180,9 @@ def top_matter_pass(struct):
 			type_parts)
 		sb['creature_type']['alignment'] = alignment
 		sb['creature_type']['size'] = size
-		if 'alien_family' in sb:
-			sb['creature_type']['alien_family'] = sb['alien_family']
-			del sb['alien_family']
+		if 'family' in sb:
+			sb['creature_type']['family'] = sb['family']
+			del sb['family']
 		if 'cr' in sb:
 			sb['creature_type']['cr'] = sb['cr']
 			del sb['cr']

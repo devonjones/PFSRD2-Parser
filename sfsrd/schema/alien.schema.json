@@ -87,7 +87,7 @@
 					"Outsider", "Plant", "Undead", "Vermin"
 				]},
 				"creature_subtypes": {"$ref": "#/definitions/modifiers"},
-				"alien_family": {"type": "string"},
+				"family": {"type": "string"},
 				"grafts": {"$ref": "#/definitions/modifiers"},
 				"role": {"enum": ["Expert", "Combatant", "Spellcaster"]},
 				"cr": {"type": "string"},
