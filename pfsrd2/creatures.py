@@ -239,6 +239,11 @@ def creature_stat_block_pass(struct):
 	sections.append(data)
 	assert len(sections) == 3, sections
 	process_stat_block(sb, sections)
+	if 'sections' in sb:
+		s = struct.setdefault('sections', [])
+		while len(sb['sections']) > 0:
+			section = sb['sections'].pop(0)
+			s.append(section)
 
 def strip_br(data):
 	newdata = []

@@ -683,7 +683,6 @@
 				"statistics": {"$ref": "#/definitions/statistics"},
 				"gear": {"$ref": "#/definitions/gear"},
 				"interaction_abilities": {"$ref": "#/definitions/abilities"},
-				"sections": {"$ref": "#/definitions/sections"},
 				"image": { "items": {"$ref": "#/definitions/image"} }
 			},
 			"required": [
