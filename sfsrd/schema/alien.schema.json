@@ -112,8 +112,7 @@
 				"name": {"enum": ["Defense"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["defense"]},
-				"hp": {"type": "integer"},
-				"rp": {"type": "integer"},
+				"hp": {"$ref": "#/definitions/hp"},
 				"ac": {"$ref": "#/definitions/ac"}, 
 				"saves": {"$ref": "#/definitions/saves"},
 				"defensive_abilities": {
@@ -143,7 +142,7 @@
 				},
 				"sr": {"type": "string"}
 			},
-			"required": ["name", "type", "subtype", "hp", "ac", "saves"],
+			"required": ["name", "type", "subtype", "ac", "saves"],
 			"additionalProperties": false
 		},
 		"ecology": {
@@ -164,6 +163,18 @@
 			"type": "array",
 			"items": {"$ref": "#/definitions/item"},
 			"additionalItems": false
+		},
+		"hp": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["hitpoints"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["hitpoints"]},
+				"hp": {"type": "integer"},
+				"rp": {"type": "integer"}
+			},
+			"required": ["name", "type", "subtype", "hp"],
+			"additionalProperties": false
 		},
 		"image": {
 			"type": "object",
@@ -404,6 +415,23 @@
 			"items": {"$ref": "#/definitions/section"},
 			"additionalItems": false
 		},
+		"senses": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["senses"]},
+				"name": {"enum": ["Senses"]},
+				"link": {"$ref": "#/definitions/link"},
+				"perception": {"$ref": "#/definitions/perception"},
+				"special_senses": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/special_sense"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype", "perception"],
+			"additionalProperties": false
+		},		
 		"skill": {
 			"type": "object",
 			"properties": {
@@ -476,23 +504,6 @@
 			"items": {"$ref": "#/definitions/special_ability"},
 			"additionalItems": false
 		},
-		"senses": {
-			"type": "object",
-			"properties": {
-				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["senses"]},
-				"name": {"enum": ["Senses"]},
-				"link": {"$ref": "#/definitions/link"},
-				"perception": {"$ref": "#/definitions/perception"},
-				"special_senses": {
-					"type": "array",
-					"items": {"$ref": "#/definitions/special_sense"},
-					"additionalItems": false
-				}
-			},
-			"required": ["name", "type", "subtype", "perception"],
-			"additionalProperties": false
-		},		
 		"special_sense": {
 			"type": "object",
 			"properties": {

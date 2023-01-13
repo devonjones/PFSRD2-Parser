@@ -320,6 +320,11 @@ def top_matter_pass(struct):
 def defense_pass(struct):
 	def _handle_hp(defense, text):
 		parts = [t.strip() for t in text.split(";")]
+		hp = {
+			"name": "hitpoints",
+			"type": "stat_block_section",
+			"subtype": "hitpoints"
+		}
 		for part in parts:
 			bs = BeautifulSoup(part, 'html.parser')
 			bsparts = list(bs.children)
@@ -327,11 +332,12 @@ def defense_pass(struct):
 			name = bsparts.pop(0).get_text()
 			value = int(bsparts.pop().strip())
 			if name == "HP":
-				defense['hp'] = value
+				hp['hp'] = value
 			elif name == "RP":
-				defense['rp'] = value
+				hp['rp'] = value
 			else:
 				assert False, bs
+		defense['hp'] = hp
 	
 	def _handle_ac(defense, text):
 		parts = [t.strip() for t in text.split(";")]

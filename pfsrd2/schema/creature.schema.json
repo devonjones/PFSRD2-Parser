@@ -219,10 +219,9 @@
 				"name": {"enum": ["Defense"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["defense"]},
+				"hp": {"$ref": "#/definitions/hp"},
 				"ac": {"$ref": "#/definitions/ac"},
 				"saves": {"$ref": "#/definitions/saves"},
-				"hp": {"$ref": "#/definitions/hp"},
-				"hardness": {"$ref": "#/definitions/hardness"},
 				"immunities": {"$ref": "#/definitions/protections"},
 				"resistances": {"$ref": "#/definitions/protections"},
 				"weaknesses": {"$ref": "#/definitions/protections"},
@@ -237,27 +236,17 @@
 			"items": {"$ref": "#/definitions/item"},
 			"additionalItems": false
 		},
-		"hardness": {
-			"type": "object",
-			"properties": {
-				"name": {"enum": ["Hardness"]},
-				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["hardness"]},
-				"value": {"type": "integer"}
-			},
-			"required": ["name", "type", "subtype", "value"],
-			"additionalProperties": false
-		},
 		"hp": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["HP"]},
+				"name": {"enum": ["hitpoints"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["hitpoints"]},
-				"value": {"type": "integer"},
+				"hp": {"type": "integer"},
+				"hardness": {"type": "integer"},
 				"automatic_abilities": {"$ref": "#/definitions/abilities"}
 			},
-			"required": ["name", "type", "subtype", "value"],
+			"required": ["name", "type", "subtype", "hp"],
 			"additionalProperties": false
 		},
 		"image": {

@@ -348,8 +348,12 @@ def process_stat_block(sb, sections):
 	sb['defense']['saves'] = process_saves(
 		defense.pop(0), defense.pop(0), defense.pop(0))
 	sb['defense']['hp'] = process_hp(defense.pop(0), 'hitpoints')
+	sb['defense']['hp']['name'] = 'hitpoints'
 	if len(defense) > 0 and defense[0][0] == "Hardness":
-		sb['defense']['hardness'] = process_hp(defense.pop(0), 'hardness')
+		hardness = process_hp(defense.pop(0), 'hardness')
+		sb['defense']['hp']['hardness'] = hardness['hardness']
+		if 'automatic_abilities' in hardness:
+			assert False, "Hardness has automatic abilities: %s" % hardness
 	if len(defense) > 0 and defense[0][0] == "Immunities":
 		process_defense(sb, defense.pop(0))
 	if len(defense) > 0 and defense[0][0] == "Resistances":
@@ -788,8 +792,8 @@ def process_hp(section, subtype):
 	hp = {
 		'type': 'stat_block_section',
 		'subtype': subtype,
-		'name': name,
-		'value': value}
+		'name': name.lower(),
+		name.lower(): value}
 	if len(specials) > 0:
 		special_sections = build_objects(
 			'stat_block_section', 'ability', specials, {
