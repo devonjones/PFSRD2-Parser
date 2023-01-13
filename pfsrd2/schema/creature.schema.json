@@ -158,6 +158,60 @@
 			"required": ["type", "subtype"],
 			"additionalProperties": false
 		},
+		"creature_type": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["creature_type"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["creature_type"]},
+				"creature_types": {
+					"type": "array",
+					"items": {"enum": [
+						"Aasimar", "Aberration", "Acid", "Aeon", "Air", "Alchemical", "Amphibious", "Anadi", "Angel", "Animal", "Aphorite", "Aquatic", "Archon", "Astral", "Azata",
+						"Beast", "Beastkin", "Boggard", 
+						"Caligni", "Catfolk", "Celestial", "Changeling", "Charau-ka", "Clockwork", "Cold", "Construct", "Couatl",
+						"Daemon", "Demon", "Dero", "Devil", "Dhampir", "Dinosaur", "Dragon", "Dream", "Drow", "Duergar", "Duskwalker", "Dwarf", 
+						"Earth", "Electricity", "Elemental", "Elf", "Ethereal", "Evil",
+						"Fetchling", "Fey", "Fiend", "Fire", "Fungus",
+						"Genie", "Ghost", "Ghoul", "Giant", "Gnoll", "Gnome", "Goblin", "Golem", "Gremlin", "Grippli",  
+						"Hag", "Herald", "Human", "Humanoid",
+						"Ifrit", "Incorporeal", "Inevitable",
+						"Kobold", 
+						"Leshy", "Lizardfolk", 
+						"Merfolk", "Mindless", "Monitor", "Morlock", "Mummy", "Mutant",
+						"Negative", "Nymph", 
+						"Oni", "Ooze", "Orc", "Oread", 
+						"Petitioner", "Plant", "Positive", "Protean", "Psychopomp", 
+						"Qlippoth",
+						"Rakshasa", "Ratfolk",
+						"Sahkil", "Sea Devil", "Seugathi", "Serpentfolk", "Shadow", "Shoony", "Skeleton", "Skulk", "Soulbound", "Spirit", "Spriggan", "Sprite", "Suli", "Swarm", "Sylph",
+						"Tane", "Tengu", "Tiefling", "Time", "Titan", "Troll",
+						"Undead", "Undine", "Urdefhan", 
+						"Vampire", "Velstrac",
+						"Water", "Werecreature", "Wight", "Wraith",
+						"Xulgath",
+						"Zombie"
+					]},
+					"additionalItems": false
+				},
+				"size": {"enum": [
+					"Fine", "Diminutive", "Tiny", "Small", "Medium", "Large",
+					"Huge", "Gargantuan", "Colossal"
+				]},
+				"family":  {"type": "string"},
+				"level": {"type": "integer"},
+				"alignment": {"enum": [
+					"Lawful Good", "Lawful Neutral", "Lawful Evil",
+					"Neutral Good", "Neutral", "Neutral Evil",
+					"Chaotic Good", "Chaotic Neutral", "Chaotic Evil",
+					"No Alignment", "Any"]},
+				"rarity": {"enum": ["Common", "Uncommon", "Rare", "Unique"]},
+				"traits": {"$ref": "#/definitions/traits"}
+			},
+			"required": ["name", "type", "subtype", "creature_types", "size",
+				"level", "alignment", "traits"],
+			"additionalProperties": false
+		},
 		"defense": {
 			"type": "object",
 			"properties": {
@@ -176,6 +230,11 @@
 			},
 			"required": ["name", "type", "subtype", "ac", "saves", "hp"],
 			"additionalProperties": false
+		},
+		"gear": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/item"},
+			"additionalItems": false
 		},
 		"hardness": {
 			"type": "object",
@@ -226,11 +285,6 @@
 			},
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
-		},
-		"items": {
-			"type": "array",
-			"items": {"$ref": "#/definitions/item"},
-			"additionalItems": false
 		},
 		"language": {
 			"type": "object",
@@ -484,7 +538,6 @@
 			"items": {"$ref": "#/definitions/source"},
 			"additionalItems": false
 		},
-
 		"speed": {
 			"type": "object",
 			"properties": {
@@ -600,14 +653,7 @@
 			"properties": {
 				"name": {"type": "string"},
 				"type": {"enum": ["stat_block"]},
-				"level": {"type": "integer"},
-				"alignment": {"enum": [
-					"Lawful Good", "Lawful Neutral", "Lawful Evil",
-					"Neutral Good", "Neutral", "Neutral Evil",
-					"Chaotic Good", "Chaotic Neutral", "Chaotic Evil",
-					"No Alignment", "Any"]},
-				"traits": {"$ref": "#/definitions/traits"},
-				"image": { "items": {"$ref": "#/definitions/image"} },
+				"creature_type": {"$ref": "#/definitions/creature_type"},
 				"sources": {"$ref": "#/definitions/sources"},
 				"senses": {"$ref": "#/definitions/senses"},
 				"languages": {"$ref": "#/definitions/languages"},
@@ -621,13 +667,14 @@
 				"interaction_abilities": {"$ref": "#/definitions/abilities"},
 				"defense": {"$ref": "#/definitions/defense"},
 				"offense": {"$ref": "#/definitions/offense"},
-				"items": {"$ref": "#/definitions/items"},
-				"sections": {"$ref": "#/definitions/sections"}
+				"gear": {"$ref": "#/definitions/gear"},
+				"sections": {"$ref": "#/definitions/sections"},
+				"image": { "items": {"$ref": "#/definitions/image"} }
 			},
 			"required": [
-				"name", "type", "level", "alignment", "traits", "sources",
-				"senses", "skills", "str", "dex", "con", "int", "wis",
-				"cha", "defense", "offense"
+				"name", "type", "sources", "senses", "skills",
+				"str", "dex", "con", "int", "wis", "cha",
+				"defense", "offense"
 			],
 			"additionalProperties": false
 		},

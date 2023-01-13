@@ -7,7 +7,7 @@ from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
 from universal.universal import parse_universal, print_struct, entity_pass
 from universal.universal import is_trait, get_text, extract_link
-from universal.universal import split_maintain_parens
+from universal.utils import split_maintain_parens
 from universal.universal import source_pass, extract_source, get_links
 from universal.universal import aon_pass, restructure_pass, html_pass
 from universal.universal import remove_empty_sections_pass, game_id_pass

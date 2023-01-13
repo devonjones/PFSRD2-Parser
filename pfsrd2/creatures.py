@@ -29,12 +29,13 @@ def parse_creature(filename, options):
 	if not options.stdout:
 		sys.stderr.write("%s\n" % basename)
 	details = parse_universal(filename, subtitle_text=True, max_title=4)
+	#	cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
 	details = entity_pass(details)
 	struct = restructure_creature_pass(details, options.subtype)
 	creature_stat_block_pass(struct)
 	source_pass(struct, find_stat_block)
 	sidebar_pass(struct)
-	index_pass(struct)
+	index_pass(struct, find_stat_block(struct))
 	aon_pass(struct, basename)
 	restructure_pass(struct, 'stat_block', find_stat_block)
 	trait_pass(struct)
@@ -135,7 +136,11 @@ def restructure_creature_pass(details, subtype):
 			rest.append(obj)
 	top = {'name': sb['name'], 'type': subtype, 'sections': [sb]}
 	level = int(sb['subname'].split(" ")[1])
-	sb["level"] = level
+	sb['creature_type'] = {
+		'name': 'creature_type',
+		'type': 'stat_block_section',
+		'subtype': 'creature_type',
+		'level': level}
 	sb['type'] = 'stat_block'
 	del sb["subname"]
 	top['sections'].extend(rest)
@@ -150,14 +155,37 @@ def find_stat_block(struct):
 
 def trait_pass(struct):
 	sb = struct['stat_block']
-	traits = sb['traits']
+	traits = sb['creature_type']['traits']
 	for trait in traits:
+		consumed = False
 		if "alignment" in trait['classes']:
-			sb['alignment'] = trait['name']
-	for trait in traits:
+			sb['creature_type']['alignment'] = trait['name']
+			consumed = True
+		if "size" in trait['classes']:
+			sb['creature_type']['size'] = trait['name']
+			consumed = True
 		if "creature_type" in trait['classes']:
-			return
-	assert False, "Has no creature type"
+			ctlist = sb['creature_type'].setdefault('creature_types', [])
+			ctlist.append(trait['name'])
+			consumed = True
+		if trait['name'] in ['Common', 'Uncommon', 'Rare', 'Unique']:
+			sb['creature_type']['rarity'] = trait['name']
+			consumed = True
+		if "trait" in trait['classes']:
+			ctlist = sb['creature_type'].setdefault('creature_types', [])
+			ctlist.append(trait['name'])
+			consumed = True
+		if not consumed:
+			assert False, "Trait not consumed: %s" % trait
+
+	if 'rarity' not in sb['creature_type']:
+		sb['creature_type']['rarity'] = 'Common'
+	if 'creature_types' not in sb['creature_type']:
+		assert False, "Has no creature types"
+	if 'size' not in sb['creature_type']:
+		assert False, "Has no size"
+	if 'alignment' not in sb['creature_type']:
+		assert False, "Has no alignment"
 
 def creature_stat_block_pass(struct):
 	def add_to_data(key, value, data, link):
@@ -186,7 +214,7 @@ def creature_stat_block_pass(struct):
 	for obj in objs:
 		if obj.name == 'span' and is_trait(obj):
 			trait = trait_parse(obj)
-			sb.setdefault('traits', []).append(trait)
+			sb['creature_type'].setdefault('traits', []).append(trait)
 		elif obj.name == "br":
 			value.append(obj)
 			key, value, data, link = add_to_data(key, value, data, link)
@@ -241,15 +269,18 @@ def sidebar_pass(struct):
 			struct['image'] = {'type': "image", "name": subtype, "image": image}
 			struct['text'] = ''.join([str(c) for c in children])
 
-def index_pass(struct):
+def index_pass(struct, sb):
 	remove = []
 	for section in struct['sections']:
-		keep = index_pass(section)
+		keep = index_pass(section, sb)
 		if not keep:
 			remove.append(section)
 	for s in remove:
 		struct['sections'].remove(s)
 	if struct['name'].startswith("All Monsters"):
+		parts = struct['name'].split('"')
+		family_name = parts[1]
+		sb['creature_type']['family'] = family_name
 		struct['type'] = "section"
 		struct['subtype'] = "index"
 		return False
@@ -305,7 +336,7 @@ def process_stat_block(sb, sections):
 		sb[attr[0].lower()] = process_attr(attr)
 	while len(stats) > 0:
 		if stats[0][0] == "Items":
-			sb['items'] = process_items(stats.pop(0))
+			sb['gear'] = process_items(stats.pop(0))
 		else:
 			sb.setdefault('interaction_abilities', []).append(
 				process_interaction_ability(stats.pop(0)))

@@ -22,6 +22,9 @@ class Heading():
 def href_filter(soup):
 	hrefs = soup.findAll('a')
 	for href in hrefs:
+		if not href.has_attr('href'):
+			href.decompose()
+			continue
 		if (href["href"].find(".aspx?ID=") > -1):
 			o = urlparse(href["href"])
 			attrs = list(href.attrs)
@@ -40,6 +43,14 @@ def href_filter(soup):
 				href.replaceWith(body.contents[0])
 			else:
 				href.replaceWith(body.renderContents())
+
+def span_formatting_filter(soup):
+	spans = soup.findAll('span')
+	for span in spans:
+		if span.has_attr('style') and len(list(span.children)) == 1:
+			text = get_text(span)
+			if len(text.strip()) == 0:
+				span.decompose()
 
 def noop_pass(details):
 	retdetails = []
@@ -237,6 +248,7 @@ def parse_universal(filename, title=False, subtitle_text=False, max_title=5, css
 	try:
 		soup = BeautifulSoup(fp, "lxml")
 		href_filter(soup)
+		span_formatting_filter(soup)
 		content = soup.find(id=cssclass)
 		if content:
 			return parse_body(content, title=title, subtitle_text=subtitle_text, max_title=max_title)
@@ -282,7 +294,7 @@ def filter_name(name):
 	return name.strip()
 
 def is_trait(span):
-	if(hasattr(span, 'class')):
+	if(span.has_attr('class')):
 		c = span['class']
 		if "".join(c).startswith('trait'):
 			return True
