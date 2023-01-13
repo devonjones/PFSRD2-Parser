@@ -327,13 +327,7 @@ def process_stat_block(sb, sections):
 	stats = sections.pop(0)
 	process_source(sb, stats.pop(0))
 	sb['senses'] = process_senses(stats.pop(0))
-	if(stats[0][0] == "Languages"):
-		sb['languages'] = process_languages(stats.pop(0))
-	if(stats[0][0] == "Skills"):
-		sb['skills'] = process_skills(stats.pop(0))
-	for _ in range(6):
-		attr = stats.pop(0)
-		sb[attr[0].lower()] = process_attr(attr)
+	sb['statistics'] = process_statistics(stats)
 	while len(stats) > 0:
 		if stats[0][0] == "Items":
 			sb['gear'] = process_items(stats.pop(0))
@@ -473,6 +467,21 @@ def process_senses(section):
 			special_senses.append(sense)
 		senses['special_senses'] = special_senses
 	return senses
+
+def process_statistics(stats):
+	statistics = {
+		'name': 'Statistics',
+		'type': 'stat_block_section',
+		'subtype': 'statistics'
+	}
+	if(stats[0][0] == "Languages"):
+		statistics['languages'] = process_languages(stats.pop(0))
+	if(stats[0][0] == "Skills"):
+		statistics['skills'] = process_skills(stats.pop(0))
+	for _ in range(6):
+		attr = stats.pop(0)
+		statistics[attr[0].lower()] = process_attr(attr)
+	return statistics
 
 def process_languages(section):
 	# 1, Unseen Servant
