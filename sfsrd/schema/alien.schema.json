@@ -117,17 +117,17 @@
 				"saves": {"$ref": "#/definitions/saves"},
 				"defensive_abilities": {
 					"type": "array",
-					"items": {"type": "string"},
+					"items": {"$ref": "#/definitions/string_with_modifiers"},
 					"additionalItems": false
 				},
 				"immunities": {
 					"type": "array",
-					"items": {"type": "string"},
+					"items": {"$ref": "#/definitions/string_with_modifiers"},
 					"additionalItems": false
 				},
 				"resistances": {
 					"type": "array",
-					"items": {"type": "string"},
+					"items": {"$ref": "#/definitions/number_and_string_with_modifiers"},
 					"additionalItems": false
 				},
 				"weaknesses": {
@@ -135,12 +135,8 @@
 					"items": {"type": "string"},
 					"additionalItems": false
 				},
-				"dr": {
-					"type": "array",
-					"items": {"type": "string"},
-					"additionalItems": false
-				},
-				"sr": {"type": "string"}
+				"dr": {"$ref": "#/definitions/number_and_string_with_modifiers"},
+				"sr": {"$ref": "#/definitions/number_and_string_with_modifiers"}
 			},
 			"required": ["name", "type", "subtype", "ac", "saves"],
 			"additionalProperties": false
@@ -289,10 +285,23 @@
 		"string_with_modifiers": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Special Attack", "Offensive Ability"]},
+				"name": {"enum": ["Special Attack", "Offensive Ability", "Defensive Ability", "Immunity"]},
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["special_attack", "offensive_ability"]},
+				"subtype": {"enum": ["special_attack", "offensive_ability", "defensive_ability", "immunity"]},
 				"value": {"type": "string"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["name", "type", "subtype", "value"],
+			"additionalProperties": false
+		},
+		"number_and_string_with_modifiers": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["SR", "DR", "Resistance"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["sr", "dr", "resistance"]},
+				"value": {"type": "integer"},
+				"text": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["name", "type", "subtype", "value"],
@@ -353,7 +362,20 @@
 			},
 			"required": ["name", "type", "subtype", "value"],
 			"additionalProperties": false
-		},		
+		},
+		"protection": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["immunity", "resistance", "weakness"]},
+				"name": {"type": "string"},
+				"value": {"type": "integer"},
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"link": {"$ref": "#/definitions/link"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
 		"reach": {
 			"type": "object",
 			"properties": {

@@ -2,6 +2,7 @@ import os
 import json
 import sys
 import re
+import copy
 import html2markdown
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -394,6 +395,104 @@ def defense_pass(struct):
 		defense['saves'] = saves
 
 	def _handle_defensive_abilities(defense, daparts):
+		def _check_broken_text(names, value):
+			tests = copy.copy(names)
+			# Some mispellings found in the html
+			tests.append("Immune")
+			tests.append("Immunity")
+			tests.append("Weakness")
+			tests.append("Resistance")
+			for t in tests:
+				if t in value:
+					assert False, "Malformed %s: %s" % (name, value)
+		def _handle_sr(value):
+			sr = {
+				'name': "SR",
+				'type': 'stat_block_section',
+				'subtype': 'sr',
+			}
+			parts = value.split(" ")
+			sr['value'] = int(parts.pop(0))
+			if len(parts) > 0:
+				modifier_text = " ".join(parts)
+				assert modifier_text.find(",") < 0, "SR modifiers apparently do need to be split: %s" % modifier_text
+				assert modifier_text.find(";") < 0, "SR modifiers apparently do need to be split: %s" % modifier_text
+				sr['modifiers'] = modifiers_from_string_list(
+					[m.strip() for m in modifier_text.split(",")])
+			return sr
+		def _handle_dr(value):
+			parts = value.split("/")
+			assert len(parts) == 2, "Bad DR: %s" % value
+			num = int(parts[0])
+			text = parts[1].strip()
+			dr = {
+				"name": "DR",
+				"type": "stat_block_section",
+				"subtype": "dr",
+				"value": num
+			}
+			if text.find("(") > -1:
+				text, modtext = text.split("(")
+				modtext = modtext.replace(")", "").strip()
+				dr['modifiers'] = modifiers_from_string_list(
+					[m.strip() for m in modtext.split(",")])
+			dr["text"] = text.strip()
+			return dr
+		def _handle_weaknesses(value):
+			if re.search("\d", value):
+				log_element("%s.error.log" % name.lower())("%s" % (value))
+				assert False, "Bad weakness: %s" % value
+			return [v.strip() for v in value.split(",")]
+		def _handle_resistances(value):
+			values = split_maintain_parens(str(value), ",")
+			resistances = []
+			for value in values:
+				resistance = {
+					"name": "Resistance",
+					"type": "stat_block_section",
+					"subtype": "resistance"
+				}
+				if value.find("(") > -1:
+					portions = value.split("(")
+					assert len(portions) == 2, "Badly formatted resistance with modifier: %s" % value
+					value = portions[0].strip()
+					modtext = portions[1].strip()
+					assert modtext.endswith(")"), "Badly formatted resistance with modifier: %s" % value
+					modtext = modtext[:-1]
+					resistance["modifiers"] = modifiers_from_string_list(
+						[m.strip() for m in modtext.split(",")])
+				parts = value.split(" ")
+				assert len(parts) == 2, "Badly formatted resistance: %s" % value
+				resistance['text'] = parts[0].strip()
+				resistance['value'] = int(parts[1].strip())
+				resistances.append(resistance)
+			return resistances
+		def _handle_da_string(name, value):
+			values = split_maintain_parens(str(value), ",")
+			das_list = []
+			for value in values:
+				subtype = name.lower().replace(" ", "_")
+				das = {
+					"name": name,
+					"type": "stat_block_section",
+					"subtype": subtype
+				}
+				if value.find("(") > -1:
+					portions = value.split("(")
+					assert len(portions) == 2, "Badly formatted %s with modifier: %s" % (name, value)
+					value = portions[0].strip()
+					modtext = portions[1].strip()
+					assert modtext.endswith(")"), "Badly formatted %s with modifier: %s" % (name, value)
+					modtext = modtext[:-1]
+					das["modifiers"] = modifiers_from_string_list(
+						[m.strip() for m in modtext.split(",")])
+				if name in ["Immunity"]:
+					if re.search("\d", value):
+						assert False, "Bad %s: %s" % (name, value)
+				das['value'] = value.strip()
+				das_list.append(das)
+			return das_list
+
 		for dapart in daparts:
 			bs = BeautifulSoup(dapart, 'html.parser')
 			bsparts = list(bs.children)
@@ -404,12 +503,27 @@ def defense_pass(struct):
 				"Weaknesses"]
 			assert name in names, name
 			value = bsparts.pop().strip()
+			_check_broken_text(names, value)
 			if name == "SR":
-				defense['sr'] = value
+				defense['sr'] = _handle_sr(value)
+			elif name == "DR":
+				defense['dr'] = _handle_dr(value)
+			elif name == "Weaknesses":
+				defense['weaknesses'] = _handle_weaknesses(value)
+			elif name == "Resistances":
+				defense['resistances'] = _handle_resistances(value)
+			elif name == "Immunities":
+				defense['immunities'] = _handle_da_string("Immunity", value)
+			elif name == "Defensive Abilities":
+				defense['defensive_abilities'] = _handle_da_string("Defensive Ability", value)
 			else:
 				name = name.lower().replace(" ", "_")
-				values = [v.strip() for v in value.split(",")]
+				values = split_maintain_parens(str(value), ",")
 				defense[name] = values
+				for value in values:
+					log_element("%s.log" % name.lower())("%s" % (value))
+				assert False, "Unexpected section in Defensive Abilities: %s: %s" % (name, value)
+
 
 	defense_section = find_section(struct, "Defense")
 	defense_text = defense_section['text']
