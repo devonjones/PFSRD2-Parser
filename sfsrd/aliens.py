@@ -8,9 +8,10 @@ from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString, Tag
 from universal.universal import parse_universal, entity_pass
 from universal.universal import get_text, break_out_subtitles
+from universal.universal import link_values, string_with_modifiers_from_string_list
 from universal.universal import link_modifiers, modifiers_from_string_list
 from universal.universal import extract_source
-from universal.universal import html_pass
+from universal.universal import html_pass, filter_tag
 from universal.universal import remove_empty_sections_pass
 from universal.files import makedirs, char_replace
 from universal.utils import split_maintain_parens, split_comma_and_semicolon
@@ -195,10 +196,10 @@ def top_matter_pass(struct):
 		if len(parts) == 1:
 			# Grafts
 			grafts = parts.pop()
-			grafts = modifiers_from_string_list(
-				[g.strip().lower() for g in grafts.split(" ")],
-				"graft")
-			sb['creature_type']['grafts'] = link_modifiers(grafts)
+			grafts = string_with_modifiers_from_string_list(
+				split_maintain_parens(grafts, " "),
+				"graft", "Graft")
+			sb['creature_type']['grafts'] = grafts
 
 	def _handle_alignment(abbrev):
 		alignments = {
@@ -240,10 +241,11 @@ def top_matter_pass(struct):
 		assert ct in types, ct
 
 	def _handle_creature_subtypes(subtype):
-		subtypes = modifiers_from_string_list(
-			[s.strip() for s in subtype.replace(")", "").split(",")],
-			"creature_subtype")
-		return link_modifiers(subtypes)
+		subtypes = string_with_modifiers_from_string_list(
+			split_maintain_parens(subtype.replace(")", ""), ","),
+			"creature_subtype", "Creature Subtype")
+		subtypes = link_values(subtypes)
+		return subtypes
 
 	def _handle_senses():
 		senses = {
@@ -283,8 +285,39 @@ def top_matter_pass(struct):
 		return value.strip()
 
 	def _handle_special_senses(text):
-		parts = [p.strip() for p in text.replace("<b>Senses</b>", "").split(",")]
-		return modifiers_from_string_list(parts, "special_sense")
+		def __handle_range(part):
+			m = re.search(r'(.*) (\d*) (.*)', part)
+			if m:
+				groups = m.groups()
+				assert len(groups) == 3, groups
+				sense["range"] = int(groups[1])
+				assert groups[2] in ["ft.", "mile"], "Bad special sense range: %s" % part
+				sense["range_unit"] = groups[2]
+				part = groups[0].strip()
+			return part
+		text = text.replace("<b>Senses</b>", "")
+		parts = split_maintain_parens(text, ",")
+		senses = []
+		for part in parts:
+			sense = {
+				"type": "stat_block_section",
+				"subtype": "special_sense",
+				"name": "Special Sense"
+			}
+			part = __handle_range(part)
+			if part.find("(") > -1:
+				assert part.endswith(")"), part
+				parts = [p.strip() for p in part.split("(")]
+				assert len(parts) == 2, part
+				part = parts.pop(0)
+				mods = parts.pop()
+				mparts = [m.strip() for m in mods[0:-1].split(",")]
+				modifiers = modifiers_from_string_list(mparts)
+				sense["modifiers"] = link_modifiers(modifiers)
+			
+			sense["value"] = filter_tag(part, "i")
+			senses.append(sense)
+		return senses
 
 	text = list(filter(
 		lambda e: e != "",
@@ -468,6 +501,13 @@ def defense_pass(struct):
 				resistances.append(resistance)
 			return resistances
 		def _handle_da_string(name, value):
+			#subtype = name.lower().replace(" ", "_")
+			#das = string_with_modifiers_from_string_list(
+			#	split_maintain_parens(str(value), " "),
+			#	subtype, name)
+			#for da in das:
+
+
 			values = split_maintain_parens(str(value), ",")
 			das_list = []
 			for value in values:
@@ -489,7 +529,7 @@ def defense_pass(struct):
 				if name in ["Immunity"]:
 					if re.search("\d", value):
 						assert False, "Bad %s: %s" % (name, value)
-				das['value'] = value.strip()
+				das['text'] = value.strip()
 				das_list.append(das)
 			return das_list
 
@@ -856,7 +896,7 @@ def offense_pass(struct):
 					modtext = modtext.replace(")", "").strip()
 					modparts = split_comma_and_semicolon(modtext, parenleft="[", parenright="]")
 					element['modifiers'] = modifiers_from_string_list(modparts)
-				element['value'] = text
+				element['text'] = text
 				retlist.append(element)
 			offense[sbfield] = retlist
 		return __handle_default_list
@@ -985,8 +1025,9 @@ def statistics_pass(struct):
 		statistics['languages'] = languages
 
 	def _handle_other_abilities(statistics, _, bs):
-		parts = split_maintain_parens(str(bs), ",")
-		abilities = modifiers_from_string_list(parts, "other_ability")
+		abilities = string_with_modifiers_from_string_list(
+			split_maintain_parens(str(bs), ","),
+			"other_ability", "Other Ability")
 		statistics['other_abilities'] = abilities
 	
 	def _handle_gear(_, sb, bs):
@@ -996,10 +1037,10 @@ def statistics_pass(struct):
 		gear = modifiers_from_string_list(parts, "item")
 		sb['gear'] = gear
 	
-	def _handle_augmentations(statistics, _, bs):
+	def _handle_augmentations(_, sb, bs):
 		parts = split_maintain_parens(str(bs), ",")
 		augmentations = modifiers_from_string_list(parts, "augmentation")
-		statistics['augmentations'] = augmentations
+		sb['augmentations'] = augmentations
 
 	stats_section = find_section(struct, "Statistics")
 	stats_text = stats_section['text']

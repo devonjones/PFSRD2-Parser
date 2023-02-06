@@ -444,6 +444,43 @@ def link_modifiers(modifiers):
 			m['links'] = links
 	return modifiers
 
+def link_values(values):
+	for v in values:
+		bs = BeautifulSoup(v['text'], 'html.parser')
+		links = get_links(bs)
+		if links:
+			v['text'] = get_text(bs)
+			v['links'] = links
+	return values
+
+def filter_tag(text, tag):
+	bs = BeautifulSoup(text, 'html.parser')
+	replacelist = bs.findAll(tag)
+	for r in replacelist:
+		r.replace_with(''.join([i.decode() if type(i) is Tag else i for i in r.contents]))
+	return str(bs)
+
+def string_with_modifiers_from_string_list(strlist, subtype, name):
+	swms = []
+	for mpart in strlist:
+		swm = {
+			"type": "stat_block_section",
+			"subtype": subtype,
+			"name": name
+		}
+		if mpart.find("(") > -1:
+			assert mpart.endswith(")"), mpart
+			parts = [p.strip() for p in mpart.split("(")]
+			assert len(parts) == 2, mpart
+			mpart = parts.pop(0)
+			mods = parts.pop()
+			mparts = [m.strip() for m in mods[0:-1].split(",")]
+			modifiers = modifiers_from_string_list(mparts)
+			swm["modifiers"] = link_modifiers(modifiers)
+		swm["text"] = mpart
+		swms.append(swm)
+	return swms
+
 def modifiers_from_string_list(modlist, subtype="modifier"):
 	modifiers = []
 	for mpart in modlist:

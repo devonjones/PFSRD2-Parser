@@ -86,9 +86,17 @@
 					"Humanoid", "Magical Beast", "Monstrous Humanoid", "Ooze",
 					"Outsider", "Plant", "Undead", "Vermin"
 				]},
-				"creature_subtypes": {"$ref": "#/definitions/modifiers"},
+				"creature_subtypes": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/string_with_modifiers"},
+					"additionalItems": false
+				},
 				"family": {"type": "string"},
-				"grafts": {"$ref": "#/definitions/modifiers"},
+				"grafts": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/string_with_modifiers"},
+					"additionalItems": false
+				},
 				"role": {"enum": ["Expert", "Combatant", "Spellcaster"]},
 				"cr": {"type": "string"},
 				"xp": {"type": "integer"},
@@ -187,7 +195,7 @@
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["item"]},
+				"subtype": {"enum": ["item", "augmentation"]},
 				"name": {"type": "string"},
 				"links": {
 					"type": "array",
@@ -251,10 +259,7 @@
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": [
-					"modifier", "graft", "sense", "creature_subtype",
-					 "communication_ability", "other_ability",
-					 "augmentation"]},
+				"subtype": {"enum": ["modifier"]},
 				"name": {"type": "string"},
 				"links": {
 					"type": "array",
@@ -285,13 +290,24 @@
 		"string_with_modifiers": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Special Attack", "Offensive Ability", "Defensive Ability", "Immunity"]},
+				"name": {"enum": ["Special Attack", "Offensive Ability",
+					"Defensive Ability", "Immunity", "Creature Subtype",
+					"Graft", "Communication Ability", "Other Ability",
+					"Augmentation"]},
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["special_attack", "offensive_ability", "defensive_ability", "immunity"]},
-				"value": {"type": "string"},
-				"modifiers": {"$ref": "#/definitions/modifiers"}
+				"subtype": {"enum": ["special_attack", "offensive_ability",
+					"defensive_ability", "immunity", "creature_subtype",
+					"graft", "communication_ability", "other_ability",
+					"augmentation"]},
+				"text": {"type": "string"},
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
 			},
-			"required": ["name", "type", "subtype", "value"],
+			"required": ["name", "type", "subtype", "text"],
 			"additionalProperties": false
 		},
 		"number_and_string_with_modifiers": {
@@ -302,7 +318,12 @@
 				"subtype": {"enum": ["sr", "dr", "resistance"]},
 				"value": {"type": "integer"},
 				"text": {"type": "string"},
-				"modifiers": {"$ref": "#/definitions/modifiers"}
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
 			},
 			"required": ["name", "type", "subtype", "value"],
 			"additionalProperties": false
@@ -529,15 +550,17 @@
 		"special_sense": {
 			"type": "object",
 			"properties": {
+				"name": {"enum": ["Special Sense"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_sense"]},
-				"name": {"type": "string"},
-				"link": {"$ref": "#/definitions/link"},
+				"value": {"type": "string"},
+				"range": {"type": "integer"},
+				"range_unit": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
-			"required": ["name", "type", "subtype"],
+			"required": ["name", "type", "subtype", "value"],
 			"additionalProperties": false
-		},		
+		},
 		"speed": {
 			"type": "object",
 			"properties": {
@@ -642,8 +665,11 @@
 				},
 				"skills": {"$ref": "#/definitions/skills"},
 				"languages": {"$ref": "#/definitions/languages"},
-				"other_abilities": {"$ref": "#/definitions/modifiers"},
-				"augmentations": {"$ref": "#/definitions/modifiers"}
+				"other_abilities": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/string_with_modifiers"},
+					"additionalItems": false
+				}
 			},
 			"required": [
 				"name", "type", "subtype", "str", "dex", "con", "int", "wis",
@@ -667,6 +693,7 @@
 				"special_abilities": {"$ref": "#/definitions/special_abilities"},
 				"afflictions": {"$ref": "#/definitions/afflictions"},
 				"gear": {"$ref": "#/definitions/gear"},
+				"augmentations": {"$ref": "#/definitions/gear"},
 				"image": { "items": {"$ref": "#/definitions/image"} }
 			},
 			"required": [
