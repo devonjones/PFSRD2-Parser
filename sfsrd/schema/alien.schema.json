@@ -298,27 +298,22 @@
 		"number_with_modifiers": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Initiative"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["initiative"]},
 				"value": {"type": "integer"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
-			"required": ["name", "type", "subtype", "value"],
+			"required": ["type", "subtype", "value"],
 			"additionalProperties": false
 		},
 		"string_with_modifiers": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Special Attack", "Offensive Ability",
-					"Defensive Ability", "Immunity", "Weakness",
-					"Creature Subtype", "Graft", "Communication Ability",
-					"Other Ability", "Augmentation"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_attack", "offensive_ability",
 					"defensive_ability", "immunity", "weakness",
 					"creature_subtype", "graft", "communication_ability",
-					"other_ability", "augmentation"]},
+					"other_ability"]},
 				"text": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"},
 				"links": {
@@ -327,13 +322,12 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["name", "type", "subtype", "text"],
+			"required": ["type", "subtype", "text"],
 			"additionalProperties": false
 		},
 		"number_and_string_with_modifiers": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["SR", "DR", "Resistance"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["sr", "dr", "resistance"]},
 				"value": {"type": "integer"},
@@ -345,7 +339,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["name", "type", "subtype", "value"],
+			"required": ["type", "subtype", "value"],
 			"additionalProperties": false
 		},
 		"offense": {

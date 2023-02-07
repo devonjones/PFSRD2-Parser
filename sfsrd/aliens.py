@@ -158,7 +158,6 @@ def top_matter_pass(struct):
 		assert str(title) == "<b>Init</b>", title
 		title.extract()
 		init = {
-			"name": "Initiative",
 			"type": "stat_block_section",
 			"subtype": "initiative",
 			"value": int(text)
@@ -199,7 +198,7 @@ def top_matter_pass(struct):
 			grafts = parts.pop()
 			grafts = string_with_modifiers_from_string_list(
 				split_maintain_parens(grafts, " "),
-				"graft", "Graft")
+				"graft")
 			sb['creature_type']['grafts'] = grafts
 
 	def _handle_alignment(abbrev):
@@ -245,7 +244,7 @@ def top_matter_pass(struct):
 		# TODO: Check for parsables in modifiers
 		subtypes = string_with_modifiers_from_string_list(
 			split_maintain_parens(subtype.replace(")", ""), ","),
-			"creature_subtype", "Creature Subtype")
+			"creature_subtype")
 		subtypes = link_values(subtypes, "text")
 		return subtypes
 
@@ -555,7 +554,6 @@ def defense_pass(struct):
 		def _handle_sr(value):
 			# TODO: Check for parsables in modifiers
 			sr = {
-				'name': "SR",
 				'type': 'stat_block_section',
 				'subtype': 'sr',
 			}
@@ -575,7 +573,6 @@ def defense_pass(struct):
 			num = int(parts[0])
 			text = parts[1].strip()
 			dr = {
-				"name": "DR",
 				"type": "stat_block_section",
 				"subtype": "dr",
 				"value": num
@@ -591,7 +588,7 @@ def defense_pass(struct):
 			# TODO: Check for parsables in modifiers
 			weaknesses = string_with_modifiers_from_string_list(
 				split_maintain_parens(str(value), ","),
-				"weakness", "Weakness")
+				"weakness")
 			weaknesses = link_values(weaknesses, "text")
 			for weakness in weaknesses:
 				if re.search("\d", weakness["text"]):
@@ -603,7 +600,6 @@ def defense_pass(struct):
 			resistances = []
 			for value in values:
 				resistance = {
-					"name": "Resistance",
 					"type": "stat_block_section",
 					"subtype": "resistance"
 				}
@@ -626,7 +622,7 @@ def defense_pass(struct):
 			# TODO: Check for parsables in modifiers
 			immunities = string_with_modifiers_from_string_list(
 				split_maintain_parens(str(value), ","),
-				"immunity", "Immunity")
+				"immunity")
 			immunities = link_values(immunities, "text")
 			for immunity in immunities:
 				if re.search("\d", immunity["text"]):
@@ -637,7 +633,7 @@ def defense_pass(struct):
 			# TODO: Check for parsables in modifiers
 			das = string_with_modifiers_from_string_list(
 				split_maintain_parens(str(value), ","),
-				"defensive_ability", "Defensive Ability")
+				"defensive_ability")
 			das = link_values(das, "text")
 			return das
 
@@ -1002,14 +998,13 @@ def offense_pass(struct):
 	def _handle_default(offense, name, text):
 		offense[name.lower().strip()] = text
 
-	def _handle_default_list(sbname, sbsubtype, sbfield):
+	def _handle_default_list(sbsubtype, sbfield):
 		# TODO pull out dice
 		def __handle_default_list(offense, _, text):
 			retlist = []
 			parts = split_maintain_parens(text, ",")
 			for text in parts:
 				element = {
-					'name': sbname,
 					'type': 'stat_block_section',
 					'subtype': sbsubtype
 				}
@@ -1048,9 +1043,9 @@ def offense_pass(struct):
 				"Space": _handle_default,
 				"Reach": _handle_reach,
 				"Offensive Abilities": _handle_default_list(
-					"Offensive Ability", "offensive_ability", "offensive_abilities"),
+					"offensive_ability", "offensive_abilities"),
 				"Special Attacks": _handle_default_list(
-					"Special Attack", "special_attack", "special_attacks"),
+					"special_attack", "special_attacks"),
 				"Connection": _handle_default
 			}
 			dispatch[name](offense, name, text)
@@ -1127,6 +1122,7 @@ def statistics_pass(struct):
 		langs = parts.pop(0)
 		if len(parts) > 0:
 			modtext = ", ".join(parts)
+			# TODO: This should be a string with modifiers
 			languages['communication_abilities'] = modifiers_from_string_list(
 				[m.strip() for m in modtext.split(",")])
 		if langs.find("(") > -1:
@@ -1150,7 +1146,7 @@ def statistics_pass(struct):
 	def _handle_other_abilities(statistics, _, bs):
 		abilities = string_with_modifiers_from_string_list(
 			split_maintain_parens(str(bs), ","),
-			"other_ability", "Other Ability")
+			"other_ability")
 		statistics['other_abilities'] = abilities
 	
 	def _handle_gear(_, sb, bs):

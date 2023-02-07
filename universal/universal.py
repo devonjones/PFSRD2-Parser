@@ -460,13 +460,12 @@ def filter_tag(text, tag):
 		r.replace_with(''.join([i.decode() if type(i) is Tag else i for i in r.contents]))
 	return str(bs)
 
-def string_with_modifiers_from_string_list(strlist, subtype, name):
+def string_with_modifiers_from_string_list(strlist, subtype):
 	swms = []
 	for mpart in strlist:
 		swm = {
 			"type": "stat_block_section",
-			"subtype": subtype,
-			"name": name
+			"subtype": subtype
 		}
 		if mpart.find("(") > -1:
 			assert mpart.endswith(")"), mpart
