@@ -84,6 +84,7 @@
 				"text": {"type": "string"},
 				"range": {"$ref": "#/definitions/range"},
 				"saving_throw": {"$ref": "#/definitions/save_dc"},
+				"damage": {"$ref": "#/definitions/attack_damage"},
 				"modifiers": {"$ref": "#/definitions/modifiers"},
 				"links": {
 					"type": "array",

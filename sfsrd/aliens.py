@@ -314,9 +314,37 @@ def top_matter_pass(struct):
 					return None
 			return modifier
 		def _handle_aura_damage(aura, modifier):
+			if modifier:
+				m = re.search(r'^(\d*)d(\d*) (.*)', modifier["name"])
+				if m:
+					groups = m.groups()
+					assert len(groups) == 3, groups
+					damage = {
+						"type": "stat_block_section",
+						"subtype": "attack_damage",
+						"formula": "%sd%s" % (groups[0], groups[1])
+					}
+					damage_types = {
+						"A": "Acid",
+						"B": "Bludgeoning",
+						"C": "Cold",
+						"E": "Electricity",
+						"F": "Fire",
+						"force": "Force",
+						"P": "Piercing",
+						"S": "Slashing",
+						"So": "Sonic",
+						"random": "Random type"
+					}
+					assert groups[2] in damage_types, "Unknown damage type for aura: %s" % modifier['name']
+					damage["damage_type"] = damage_types[groups[2]]
+					damage["damage_type_text"] = groups[2]
+					aura["damage"] = damage
+					return None
 			return modifier
 		def _handle_aura_effect(aura, modifier):
 			return modifier
+		
 		assert str(title) == "<b>Aura</b>", title
 		auras = string_with_modifiers_from_string_list(
 			split_maintain_parens(str(value).strip(), ","),
