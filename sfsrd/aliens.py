@@ -141,6 +141,7 @@ def top_matter_pass(struct):
 		return int(text.replace("XP ", "").replace(",", ""))
 
 	def _handle_initiative(bs):
+		# TODO: Check for parsables in modifiers
 		text = list(bs.children)[-1]
 		text.extract()
 		modifiers = []
@@ -194,7 +195,7 @@ def top_matter_pass(struct):
 		assert len(type_parts) == 0, type_parts
 
 		if len(parts) == 1:
-			# Grafts
+			# TODO: Check for parsables in modifiers
 			grafts = parts.pop()
 			grafts = string_with_modifiers_from_string_list(
 				split_maintain_parens(grafts, " "),
@@ -241,6 +242,7 @@ def top_matter_pass(struct):
 		assert ct in types, ct
 
 	def _handle_creature_subtypes(subtype):
+		# TODO: Check for parsables in modifiers
 		subtypes = string_with_modifiers_from_string_list(
 			split_maintain_parens(subtype.replace(")", ""), ","),
 			"creature_subtype", "Creature Subtype")
@@ -281,7 +283,7 @@ def top_matter_pass(struct):
 	
 	def _handle_aura(title, value):
 		def _handle_aura_range(aura, modifier):
-			m = re.search(r'(\d*) (.*)', modifier["name"])
+			m = re.search(r'^(\d*) (.*)$', modifier["name"])
 			if m:
 				groups = m.groups()
 				assert len(groups) == 2, groups
@@ -315,15 +317,18 @@ def top_matter_pass(struct):
 			return modifier
 		def _handle_aura_damage(aura, modifier):
 			if modifier:
-				m = re.search(r'^(\d*)d(\d*) (.*)', modifier["name"])
+				m = re.search(r'^(\d*)d(\d*) (.*)$', modifier["name"])
 				if m:
 					groups = m.groups()
 					assert len(groups) == 3, groups
-					damage = {
-						"type": "stat_block_section",
-						"subtype": "attack_damage",
-						"formula": "%sd%s" % (groups[0], groups[1])
-					}
+					if "damage" in aura:
+						damage = aura["damage"]
+					else:
+						damage = {
+							"type": "stat_block_section",
+							"subtype": "attack_damage"
+						}
+					damage["formula"] = "%sd%s" % (groups[0], groups[1])
 					damage_types = {
 						"A": "Acid",
 						"B": "Bludgeoning",
@@ -343,6 +348,21 @@ def top_matter_pass(struct):
 					return None
 			return modifier
 		def _handle_aura_effect(aura, modifier):
+			if modifier:
+				m = re.search(r'^(.*) (\d*)d?(\d?) (.*)$', modifier["name"])
+				if m:
+					groups = m.groups()
+					assert len(groups) == 4, groups
+					if "damage" in aura:
+						damage = aura["damage"]
+					else:
+						damage = {
+							"type": "stat_block_section",
+							"subtype": "attack_damage"
+						}
+					damage["effect"] = modifier["name"]
+					aura["damage"] = damage
+					return None
 			return modifier
 		
 		assert str(title) == "<b>Aura</b>", title
@@ -359,13 +379,14 @@ def top_matter_pass(struct):
 				modifier = _handle_aura_effect(aura, modifier)
 				if modifier:
 					newmods.append(modifier)
-					log_element("%s.log" % "aura.modifier")("%s" % (modifier["name"]))
+					assert modifier["name"] in ["high", "medium", "rounds"], "Unrecognized aura modifier: %s" % modifier["name"]
 			aura["modifiers"] = newmods
 			if len(newmods) == 0:
 				del aura["modifiers"]
 		return auras
 
 	def _handle_special_senses(text):
+		# TODO: Check for parsables in modifiers
 		def __handle_range(part):
 			m = re.search(r'(.*) (\d*) (.*)', part)
 			if m:
@@ -532,6 +553,7 @@ def defense_pass(struct):
 				if t in value:
 					assert False, "Malformed %s: %s" % (name, value)
 		def _handle_sr(value):
+			# TODO: Check for parsables in modifiers
 			sr = {
 				'name': "SR",
 				'type': 'stat_block_section',
@@ -547,6 +569,7 @@ def defense_pass(struct):
 					[m.strip() for m in modifier_text.split(",")])
 			return sr
 		def _handle_dr(value):
+			# TODO: Check for parsables in modifiers
 			parts = value.split("/")
 			assert len(parts) == 2, "Bad DR: %s" % value
 			num = int(parts[0])
@@ -565,6 +588,7 @@ def defense_pass(struct):
 			dr["text"] = text.strip()
 			return dr
 		def _handle_weaknesses(value):
+			# TODO: Check for parsables in modifiers
 			weaknesses = string_with_modifiers_from_string_list(
 				split_maintain_parens(str(value), ","),
 				"weakness", "Weakness")
@@ -574,6 +598,7 @@ def defense_pass(struct):
 					assert False, "Bad Weakness: %s" % (name, weakness["text"])
 			return weaknesses
 		def _handle_resistances(value):
+			# TODO: Check for parsables in modifiers
 			values = split_maintain_parens(str(value), ",")
 			resistances = []
 			for value in values:
@@ -598,6 +623,7 @@ def defense_pass(struct):
 				resistances.append(resistance)
 			return resistances
 		def _handle_immunities(value):
+			# TODO: Check for parsables in modifiers
 			immunities = string_with_modifiers_from_string_list(
 				split_maintain_parens(str(value), ","),
 				"immunity", "Immunity")
@@ -608,6 +634,7 @@ def defense_pass(struct):
 			return immunities
 
 		def _handle_das(name, value):
+			# TODO: Check for parsables in modifiers
 			das = string_with_modifiers_from_string_list(
 				split_maintain_parens(str(value), ","),
 				"defensive_ability", "Defensive Ability")
