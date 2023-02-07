@@ -140,7 +140,7 @@
 				},
 				"weaknesses": {
 					"type": "array",
-					"items": {"type": "string"},
+					"items": {"$ref": "#/definitions/string_with_modifiers"},
 					"additionalItems": false
 				},
 				"dr": {"$ref": "#/definitions/number_and_string_with_modifiers"},
@@ -291,14 +291,14 @@
 			"type": "object",
 			"properties": {
 				"name": {"enum": ["Special Attack", "Offensive Ability",
-					"Defensive Ability", "Immunity", "Creature Subtype",
-					"Graft", "Communication Ability", "Other Ability",
-					"Augmentation"]},
+					"Defensive Ability", "Immunity", "Weakness",
+					"Creature Subtype", "Graft", "Communication Ability",
+					"Other Ability", "Augmentation"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_attack", "offensive_ability",
-					"defensive_ability", "immunity", "creature_subtype",
-					"graft", "communication_ability", "other_ability",
-					"augmentation"]},
+					"defensive_ability", "immunity", "weakness",
+					"creature_subtype", "graft", "communication_ability",
+					"other_ability", "augmentation"]},
 				"text": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"},
 				"links": {

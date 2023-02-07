@@ -244,7 +244,7 @@ def top_matter_pass(struct):
 		subtypes = string_with_modifiers_from_string_list(
 			split_maintain_parens(subtype.replace(")", ""), ","),
 			"creature_subtype", "Creature Subtype")
-		subtypes = link_values(subtypes)
+		subtypes = link_values(subtypes, "text")
 		return subtypes
 
 	def _handle_senses():
@@ -472,10 +472,14 @@ def defense_pass(struct):
 			dr["text"] = text.strip()
 			return dr
 		def _handle_weaknesses(value):
-			if re.search("\d", value):
-				log_element("%s.error.log" % name.lower())("%s" % (value))
-				assert False, "Bad weakness: %s" % value
-			return [v.strip() for v in value.split(",")]
+			weaknesses = string_with_modifiers_from_string_list(
+				split_maintain_parens(str(value), ","),
+				"weakness", "Weakness")
+			weaknesses = link_values(weaknesses, "text")
+			for weakness in weaknesses:
+				if re.search("\d", weakness["text"]):
+					assert False, "Bad Weakness: %s" % (name, weakness["text"])
+			return weaknesses
 		def _handle_resistances(value):
 			values = split_maintain_parens(str(value), ",")
 			resistances = []
@@ -500,38 +504,22 @@ def defense_pass(struct):
 				resistance['value'] = int(parts[1].strip())
 				resistances.append(resistance)
 			return resistances
-		def _handle_da_string(name, value):
-			#subtype = name.lower().replace(" ", "_")
-			#das = string_with_modifiers_from_string_list(
-			#	split_maintain_parens(str(value), " "),
-			#	subtype, name)
-			#for da in das:
+		def _handle_immunities(value):
+			immunities = string_with_modifiers_from_string_list(
+				split_maintain_parens(str(value), ","),
+				"immunity", "Immunity")
+			immunities = link_values(immunities, "text")
+			for immunity in immunities:
+				if re.search("\d", immunity["text"]):
+					assert False, "Bad Immunity: %s" % (name, immunity["text"])
+			return immunities
 
-
-			values = split_maintain_parens(str(value), ",")
-			das_list = []
-			for value in values:
-				subtype = name.lower().replace(" ", "_")
-				das = {
-					"name": name,
-					"type": "stat_block_section",
-					"subtype": subtype
-				}
-				if value.find("(") > -1:
-					portions = value.split("(")
-					assert len(portions) == 2, "Badly formatted %s with modifier: %s" % (name, value)
-					value = portions[0].strip()
-					modtext = portions[1].strip()
-					assert modtext.endswith(")"), "Badly formatted %s with modifier: %s" % (name, value)
-					modtext = modtext[:-1]
-					das["modifiers"] = modifiers_from_string_list(
-						[m.strip() for m in modtext.split(",")])
-				if name in ["Immunity"]:
-					if re.search("\d", value):
-						assert False, "Bad %s: %s" % (name, value)
-				das['text'] = value.strip()
-				das_list.append(das)
-			return das_list
+		def _handle_das(name, value):
+			das = string_with_modifiers_from_string_list(
+				split_maintain_parens(str(value), ","),
+				"defensive_ability", "Defensive Ability")
+			das = link_values(das, "text")
+			return das
 
 		for dapart in daparts:
 			bs = BeautifulSoup(dapart, 'html.parser')
@@ -553,9 +541,9 @@ def defense_pass(struct):
 			elif name == "Resistances":
 				defense['resistances'] = _handle_resistances(value)
 			elif name == "Immunities":
-				defense['immunities'] = _handle_da_string("Immunity", value)
+				defense['immunities'] = _handle_immunities(value)
 			elif name == "Defensive Abilities":
-				defense['defensive_abilities'] = _handle_da_string("Defensive Ability", value)
+				defense['defensive_abilities'] = _handle_das("Defensive Ability", value)
 			else:
 				name = name.lower().replace(" ", "_")
 				values = split_maintain_parens(str(value), ",")
@@ -563,7 +551,6 @@ def defense_pass(struct):
 				for value in values:
 					log_element("%s.log" % name.lower())("%s" % (value))
 				assert False, "Unexpected section in Defensive Abilities: %s: %s" % (name, value)
-
 
 	defense_section = find_section(struct, "Defense")
 	defense_text = defense_section['text']

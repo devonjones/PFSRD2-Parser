@@ -444,12 +444,12 @@ def link_modifiers(modifiers):
 			m['links'] = links
 	return modifiers
 
-def link_values(values):
+def link_values(values, field="value"):
 	for v in values:
 		bs = BeautifulSoup(v['text'], 'html.parser')
 		links = get_links(bs)
 		if links:
-			v['text'] = get_text(bs)
+			v[field] = get_text(bs)
 			v['links'] = links
 	return values
 
