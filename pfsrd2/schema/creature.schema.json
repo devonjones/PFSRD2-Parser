@@ -344,6 +344,17 @@
 			"items": {"$ref": "#/definitions/modifier"},
 			"additionalItems": false
 		},
+		"number_with_modifiers": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["perception"]},
+				"value": {"type": "integer"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["type", "subtype", "value"],
+			"additionalProperties": false
+		},
 		"offense": {
 			"type": "object",
 			"properties": {
@@ -377,18 +388,6 @@
 			"items": {"$ref": "#/definitions/offensive_action"},
 			"additionalItems": false
 		},
-		"perception": {
-			"type": "object",
-			"properties": {
-				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["perception"]},
-				"name": {"enum": ["perception"]},
-				"value": {"type": "integer"},
-				"modifiers": {"$ref": "#/definitions/modifiers"}
-			},
-			"required": ["name", "type", "subtype", "value"],
-			"additionalProperties": false
-		},
 		"protection": {
 			"type": "object",
 			"properties": {
@@ -403,27 +402,8 @@
 			"additionalProperties": false
 		},
 		"protections": {
-			"type": "object",
-			"properties": {
-				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["immunities", "resistances", "weaknesses"]},
-				"name": {"enum": ["Immunities", "Resistances", "Weaknesses"]},
-				"immunities": {
-					"type":"array",
-					"items": {"$ref": "#/definitions/protection"},
-					"additionalItems": false
-				},
-				"resistances": {
-					"type":"array",
-					"items": {"$ref": "#/definitions/protection"},
-					"additionalItems": false
-				},
-				"weaknesses": {
-					"type":"array",
-					"items": {"$ref": "#/definitions/protection"},
-					"additionalItems": false
-				}
-			},
+			"type": "array",
+			"items": {"$ref": "#/definitions/protection"},
 			"additionalItems": false
 		},
 		"save": {
@@ -482,7 +462,7 @@
 				"subtype": {"enum": ["senses"]},
 				"name": {"enum": ["Senses"]},
 				"link": {"$ref": "#/definitions/link"},
-				"perception": {"$ref": "#/definitions/perception"},
+				"perception": {"$ref": "#/definitions/number_with_modifiers"},
 				"special_senses": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/special_sense"},

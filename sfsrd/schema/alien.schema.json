@@ -78,7 +78,6 @@
 		"aura": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Aura"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["aura"]},
 				"text": {"type": "string"},
@@ -92,7 +91,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["name", "type", "subtype", "text"],
+			"required": ["type", "subtype", "text"],
 			"additionalProperties": false
 		},
 		"creature_type": {
@@ -299,7 +298,7 @@
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["initiative"]},
+				"subtype": {"enum": ["initiative", "perception"]},
 				"value": {"type": "integer"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
@@ -384,18 +383,6 @@
 				"connection": {"type": "string"}
 			},
 			"required": ["name", "type", "subtype", "speed"],
-			"additionalProperties": false
-		},
-		"perception": {
-			"type": "object",
-			"properties": {
-				"name": {"enum": ["Perception"]},
-				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["perception"]},
-				"value": {"type": "integer"},
-				"modifiers": {"$ref": "#/definitions/modifiers"}
-			},
-			"required": ["name", "type", "subtype", "value"],
 			"additionalProperties": false
 		},
 		"protection": {
@@ -503,7 +490,7 @@
 				"subtype": {"enum": ["senses"]},
 				"name": {"enum": ["Senses"]},
 				"link": {"$ref": "#/definitions/link"},
-				"perception": {"$ref": "#/definitions/perception"},
+				"perception": {"$ref": "#/definitions/number_with_modifiers"},
 				"special_senses": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/special_sense"},
@@ -730,11 +717,11 @@
 				"defense": {"$ref": "#/definitions/defense"},
 				"offense": {"$ref": "#/definitions/offense"},
 				"statistics": {"$ref": "#/definitions/statistics"},
+				"gear": {"$ref": "#/definitions/gear"},
+				"augmentations": {"$ref": "#/definitions/gear"},
 				"ecology": {"$ref": "#/definitions/ecology"},
 				"special_abilities": {"$ref": "#/definitions/special_abilities"},
 				"afflictions": {"$ref": "#/definitions/afflictions"},
-				"gear": {"$ref": "#/definitions/gear"},
-				"augmentations": {"$ref": "#/definitions/gear"},
 				"image": { "items": {"$ref": "#/definitions/image"} }
 			},
 			"required": [

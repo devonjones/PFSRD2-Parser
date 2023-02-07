@@ -443,8 +443,7 @@ def process_senses(section):
 	value = parts.pop(0)
 	value = int(value.replace("+", ""))
 	perception = {
-		'type': 'stat_block_section', 'subtype': 'perception',
-		'name': 'perception', 'value': value}
+		'type': 'stat_block_section', 'subtype': 'perception', 'value': value}
 	senses['perception'] = perception
 	if len(parts) > 0:
 		if parts[0].startswith("("):
@@ -833,7 +832,7 @@ def process_defense(sb, section):
 	for part in parts:
 		defense[section[0].lower()].append(create_defense(part))
 	link_objects(defense[section[0].lower()])
-	sb['defense'][section[0].lower()] = defense
+	sb['defense'][section[0].lower()] = defense[section[0].lower()]
 
 def process_defensive_ability(section, sections, sb):
 	#TODO: parse error on 71, Catfolk Pouncer

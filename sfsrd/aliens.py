@@ -271,7 +271,6 @@ def top_matter_pass(struct):
 			)
 			modifiers = link_modifiers(modifiers)
 		perception = {
-			"name": "Perception",
 			"type": "stat_block_section",
 			"subtype": "perception",
 			"value": int(text)
@@ -367,7 +366,7 @@ def top_matter_pass(struct):
 		assert str(title) == "<b>Aura</b>", title
 		auras = string_with_modifiers_from_string_list(
 			split_maintain_parens(str(value).strip(), ","),
-			"aura", "Aura")
+			"aura")
 		auras = link_values(auras, "text")
 		newmods = []
 		for aura in auras:
