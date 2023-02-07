@@ -11,10 +11,14 @@ from universal.utils import split_maintain_parens
 from universal.universal import source_pass, extract_source
 from universal.universal import aon_pass, restructure_pass, html_pass
 from universal.universal import remove_empty_sections_pass, get_links
-from universal.universal import walk, test_key_is_value
-from universal.universal import link_modifiers
+from universal.universal import walk, test_key_is_value, filter_tag
+from universal.universal import link_modifiers, modifiers_from_string_list
+from universal.universal import link_values
 from universal.files import makedirs, char_replace
 from universal.creatures import write_creature
+from universal.creatures import universal_handle_special_senses
+from universal.creatures import universal_handle_perception
+from universal.creatures import universal_handle_senses
 from universal.utils import log_element
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
@@ -427,53 +431,20 @@ def process_source(sb, section):
 	sb['sources'] = sources
 
 def process_senses(section):
-	def _handle_senses():
-		senses = {
-			"name": "Senses",
-			"type": "stat_block_section",
-			"subtype": "senses",
-		}
-		return senses
-
 	assert section[0] == "Perception"
 	assert section[2] == None
-	senses = _handle_senses()
+	senses = universal_handle_senses()
 
-	parts = split_stat_block_line(section[1])
-	value = parts.pop(0)
-	value = int(value.replace("+", ""))
-	perception = {
-		'type': 'stat_block_section', 'subtype': 'perception', 'value': value}
-	senses['perception'] = perception
+	parts = split_maintain_parens(section[1], ";")
+	assert len(parts) in [1,2,3], "Malformed senses line: %s" % section[1]
+	perc = parts.pop(0)
+	if len(parts) > 0 and parts[0].startswith("("):
+		perc = "%s %s" % (perc, parts.pop(0))
+	senses['perception'] = universal_handle_perception(perc)
+
 	if len(parts) > 0:
-		if parts[0].startswith("("):
-			modifier = parts.pop(0)
-			modifier = modifier.replace("(", "").replace(")", "")
-			#TODO: fix []
-			perception['modifiers'] = link_modifiers(
-				build_objects(
-					'stat_block_section', 'modifier', [modifier]))
-	if len(parts) > 0:
-		special_senses = []
-		for part in parts:
-			part, modifier = extract_modifier(part)
-			bs = BeautifulSoup(part, 'html.parser')
-			children = list(bs.children)
-			sense = None
-			if children[0].name == "a":
-				name, link = extract_link(children[0])
-				sense = build_object(
-					'stat_block_section', 'special_sense', name, {'link': link})
-			else:
-				sense = build_object(
-					'stat_block_section', 'special_sense', part)
-			if modifier:
-				#TODO: fix []
-				sense['modifiers'] = link_modifiers(
-					build_objects(
-						'stat_block_section', 'modifier', [modifier]))
-			special_senses.append(sense)
-		senses['special_senses'] = special_senses
+		sparts = split_maintain_parens(",".join(parts), ",")
+		senses['special_senses'] = universal_handle_special_senses(sparts)
 	return senses
 
 def process_statistics(stats):
@@ -1510,6 +1481,23 @@ def build_object(dtype, subtype, name, keys=None):
 		'type': dtype,
 		'subtype': subtype,
 		'name': name
+	}
+	if keys:
+		obj.update(keys)
+	return obj
+
+def build_value_objects(dtype, subtype, names, keys=None):
+	objects = []
+	for name in names:
+		objects.append(build_object(dtype, subtype, name, keys))
+	return objects
+
+def build_value_object(dtype, subtype, value, keys=None):
+	assert type(value) is str
+	obj = {
+		'type': dtype,
+		'subtype': subtype,
+		'value': value
 	}
 	if keys:
 		obj.update(keys)

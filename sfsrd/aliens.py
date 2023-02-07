@@ -18,6 +18,9 @@ from universal.utils import split_maintain_parens, split_comma_and_semicolon
 from universal.utils import filter_end
 from universal.utils import log_element
 from universal.creatures import write_creature
+from universal.creatures import universal_handle_special_senses
+from universal.creatures import universal_handle_perception
+from universal.creatures import universal_handle_senses
 from sfsrd.schema import validate_against_schema
 
 def parse_alien(filename, options):
@@ -248,37 +251,19 @@ def top_matter_pass(struct):
 		subtypes = link_values(subtypes, "text")
 		return subtypes
 
-	def _handle_senses():
-		senses = {
-			"name": "Senses",
-			"type": "stat_block_section",
-			"subtype": "senses",
-		}
-		return senses
-
 	def _handle_perception(title, value):
 		assert str(title) == "<b>Perception</b>", title
 		text = str(value).strip()
-		if text.startswith('+'):
-			text = text[1:].strip()
-		modifiers = []
-		if text.find("(") > -1:
-			parts = text.split("(")
-			text = parts.pop(0).strip()
-			mtext = "(".join(parts).replace(")", "")
-			modifiers = modifiers_from_string_list(
-				[m.strip() for m in mtext.split(",")]
-			)
-			modifiers = link_modifiers(modifiers)
-		perception = {
-			"type": "stat_block_section",
-			"subtype": "perception",
-			"value": int(text)
-		}
-		if len(modifiers) > 0:
-			perception['modifiers'] = modifiers
-		return perception
-	
+		return universal_handle_perception(text)
+
+	def _handle_special_senses(text):
+		# TODO: Check for parsables in modifiers
+		text = text.replace("<b>Senses</b>", "")
+		parts = split_maintain_parens(text, ",")
+		senses = []
+		special_senses = universal_handle_special_senses(parts)
+		return special_senses
+
 	def _handle_aura(title, value):
 		def _handle_aura_range(aura, modifier):
 			m = re.search(r'^(\d*) (.*)$', modifier["name"])
@@ -383,54 +368,6 @@ def top_matter_pass(struct):
 				del aura["modifiers"]
 		return auras
 
-	def _handle_special_senses(text):
-		# TODO: Check for parsables in modifiers
-		def __handle_range(part):
-			m = re.search(r'(.*) (\d*) (.*)', part)
-			if m:
-				range = {
-					"type": "stat_block_section",
-					"subtype": "range",
-					"text": part,
-				}
-
-				groups = m.groups()
-				assert len(groups) == 3, groups
-				range["range"] = int(groups[1])
-				assert groups[2] in ["ft.", "mile"], "Bad special sense range: %s" % part
-				unit = groups[2]
-				if unit == "ft.":
-					unit = "feet"
-				if unit == "mile":
-					unit = "miles"
-				range["unit"] = unit
-				sense["range"] = range
-				part = groups[0].strip()
-			return part
-		text = text.replace("<b>Senses</b>", "")
-		parts = split_maintain_parens(text, ",")
-		senses = []
-		for part in parts:
-			sense = {
-				"type": "stat_block_section",
-				"subtype": "special_sense",
-				"name": "Special Sense"
-			}
-			part = __handle_range(part)
-			if part.find("(") > -1:
-				assert part.endswith(")"), part
-				parts = [p.strip() for p in part.split("(")]
-				assert len(parts) == 2, part
-				part = parts.pop(0)
-				mods = parts.pop()
-				mparts = [m.strip() for m in mods[0:-1].split(",")]
-				modifiers = modifiers_from_string_list(mparts)
-				sense["modifiers"] = link_modifiers(modifiers)
-			
-			sense["value"] = filter_tag(part, "i")
-			senses.append(sense)
-		return senses
-
 	text = list(filter(
 		lambda e: e != "",
 		struct.pop('text').split(";")))
@@ -451,7 +388,7 @@ def top_matter_pass(struct):
 	[b.extract() for b in bs.find_all("br")]
 	parts = list(bs.children)
 	assert len(parts) in [2,4], bs
-	senses = _handle_senses()
+	senses = universal_handle_senses()
 	sb['senses'] = senses
 	senses['perception'] = _handle_perception(parts.pop(0), parts.pop(0))
 	if len(parts) > 0:

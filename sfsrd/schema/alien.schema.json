@@ -488,7 +488,6 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["senses"]},
-				"name": {"enum": ["Senses"]},
 				"link": {"$ref": "#/definitions/link"},
 				"perception": {"$ref": "#/definitions/number_with_modifiers"},
 				"special_senses": {
@@ -497,7 +496,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["name", "type", "subtype", "perception"],
+			"required": ["type", "subtype", "perception"],
 			"additionalProperties": false
 		},		
 		"skill": {
@@ -575,14 +574,14 @@
 		"special_sense": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Special Sense"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_sense"]},
 				"value": {"type": "string"},
 				"range": {"$ref": "#/definitions/range"},
+				"link": {"$ref": "#/definitions/link"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
-			"required": ["name", "type", "subtype", "value"],
+			"required": ["type", "subtype", "value"],
 			"additionalProperties": false
 		},
 		"speed": {

@@ -406,6 +406,18 @@
 			"items": {"$ref": "#/definitions/protection"},
 			"additionalItems": false
 		},
+		"range": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["range"]},
+				"text": {"type": "string"},
+				"range": {"type": "integer"},
+				"unit": {"enum": ["feet", "miles"]}
+			},
+			"required": ["type", "subtype", "text", "range", "unit"],
+			"additionalProperties": false
+		},
 		"save": {
 			"type": "object",
 			"properties": {
@@ -460,7 +472,6 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["senses"]},
-				"name": {"enum": ["Senses"]},
 				"link": {"$ref": "#/definitions/link"},
 				"perception": {"$ref": "#/definitions/number_with_modifiers"},
 				"special_senses": {
@@ -469,7 +480,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["name", "type", "subtype", "perception"],
+			"required": ["type", "subtype", "perception"],
 			"additionalProperties": false
 		},		
 		"skill": {
@@ -543,11 +554,12 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_sense"]},
-				"name": {"type": "string"},
+				"value": {"type": "string"},
+				"range": {"$ref": "#/definitions/range"},
 				"link": {"$ref": "#/definitions/link"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
-			"required": ["name", "type", "subtype"],
+			"required": ["value", "type", "subtype"],
 			"additionalProperties": false
 		},
 		"spells": {

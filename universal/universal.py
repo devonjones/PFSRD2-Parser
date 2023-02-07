@@ -444,13 +444,18 @@ def link_modifiers(modifiers):
 			m['links'] = links
 	return modifiers
 
-def link_values(values, field="value"):
+def link_values(values, field="value", singleton=False):
 	for v in values:
-		bs = BeautifulSoup(v['text'], 'html.parser')
+		bs = BeautifulSoup(v[field], 'html.parser')
 		links = get_links(bs)
 		if links:
-			v[field] = get_text(bs)
-			v['links'] = links
+			if singleton:
+				assert len(links) == 1, "Multiple links found where one expected: %s" % v[field]
+				v[field] = get_text(bs)
+				v['link'] = links[0]
+			else:
+				v[field] = get_text(bs)
+				v['links'] = links
 	return values
 
 def filter_tag(text, tag):
@@ -510,4 +515,3 @@ def break_out_subtitles(bs, tagname):
 			title = title.get_text().strip()
 		parts.append((title, "".join([str(p) for p in part]).strip()))
 	return parts
-
