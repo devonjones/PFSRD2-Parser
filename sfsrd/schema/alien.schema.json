@@ -53,8 +53,8 @@
 					"additionalItems": false
 				},
 				"explode": {"type": "boolean"},
-				"range": {"type": "string"},
-				"dc": {"type": "integer"}
+				"range": {"$ref": "#/definitions/range"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"}
 			},
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false

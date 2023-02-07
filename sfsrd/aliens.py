@@ -846,9 +846,27 @@ def offense_pass(struct):
 					for modpart in modparts:
 						if modpart.find("DC") > -1:
 							_, dc = modpart.split(" ")
-							attack['dc'] = int(dc)
+							log_element("%s.log" % "attack.dc")("%s" % (modpart))
+							save_dc = {
+								"type": "stat_block_section",
+								"subtype": "save_dc",
+								"text": modpart,
+								"dc": int(dc)
+							}
+							attack['saving_throw'] = save_dc
 						elif modpart.endswith("ft."):
-							attack['range'] = modpart
+							log_element("%s.log" % "attack.range")("%s" % (modpart))
+							parts = modpart.split(" ")
+							assert len(parts) == 2, "bad range: %s" % modpart
+							value = int(parts[0])
+							range = {
+								"type": "stat_block_section",
+								"subtype": "range",
+								"text": modpart,
+								"range": value,
+								"unit": "feet"
+							}
+							attack['range'] = range
 						else:
 							damagetext = damagetext + ";" + modpart
 
