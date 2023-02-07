@@ -423,7 +423,7 @@
 				"subtype": {"enum": ["range"]},
 				"text": {"type": "string"},
 				"range": {"type": "integer"},
-				"unit": {"enum": ["feet", "mile"]}
+				"unit": {"enum": ["feet", "miles"]}
 			},
 			"required": ["type", "subtype", "text", "range", "unit"],
 			"additionalProperties": false
@@ -597,8 +597,7 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_sense"]},
 				"value": {"type": "string"},
-				"range": {"type": "integer"},
-				"range_unit": {"type": "string"},
+				"range": {"$ref": "#/definitions/range"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["name", "type", "subtype", "value"],

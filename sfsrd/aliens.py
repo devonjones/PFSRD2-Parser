@@ -341,11 +341,23 @@ def top_matter_pass(struct):
 		def __handle_range(part):
 			m = re.search(r'(.*) (\d*) (.*)', part)
 			if m:
+				range = {
+					"type": "stat_block_section",
+					"subtype": "range",
+					"text": part,
+				}
+
 				groups = m.groups()
 				assert len(groups) == 3, groups
-				sense["range"] = int(groups[1])
+				range["range"] = int(groups[1])
 				assert groups[2] in ["ft.", "mile"], "Bad special sense range: %s" % part
-				sense["range_unit"] = groups[2]
+				unit = groups[2]
+				if unit == "ft.":
+					unit = "feet"
+				if unit == "mile":
+					unit = "miles"
+				range["unit"] = unit
+				sense["range"] = range
 				part = groups[0].strip()
 			return part
 		text = text.replace("<b>Senses</b>", "")
@@ -846,7 +858,6 @@ def offense_pass(struct):
 					for modpart in modparts:
 						if modpart.find("DC") > -1:
 							_, dc = modpart.split(" ")
-							log_element("%s.log" % "attack.dc")("%s" % (modpart))
 							save_dc = {
 								"type": "stat_block_section",
 								"subtype": "save_dc",
@@ -855,7 +866,6 @@ def offense_pass(struct):
 							}
 							attack['saving_throw'] = save_dc
 						elif modpart.endswith("ft."):
-							log_element("%s.log" % "attack.range")("%s" % (modpart))
 							parts = modpart.split(" ")
 							assert len(parts) == 2, "bad range: %s" % modpart
 							value = int(parts[0])
