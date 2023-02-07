@@ -280,9 +280,62 @@ def top_matter_pass(struct):
 		return perception
 	
 	def _handle_aura(title, value):
-		#TODO: Break out aura components, handle multiple auras
+		def _handle_aura_range(aura, modifier):
+			m = re.search(r'(\d*) (.*)', modifier["name"])
+			if m:
+				groups = m.groups()
+				assert len(groups) == 2, groups
+				if groups[1] in ["ft.", "feet"]:
+					aura['range'] = {
+						"type": "stat_block_section",
+						"subtype": "range",
+						"text": modifier["name"],
+						"range": int(groups[0]),
+						"unit": "feet"
+					}
+					return None
+			return modifier
+		def _handle_aura_dc(aura, modifier):
+			if modifier:
+				text = modifier["name"]
+				if "DC" in text:
+					parts = text.split(" ")
+					save_dc = {
+						"type": "stat_block_section",
+						"subtype": "save_dc",
+						"text": text
+					}
+					assert len(parts) in [2,3], "Broken DC: %s" % text
+					save_dc["dc"] = int(parts.pop())
+					assert parts.pop() == "DC",  "Broken DC: %s" % text
+					if len(parts) > 0:
+						save_dc["save_type"] = parts.pop()
+					aura["saving_throw"] = save_dc
+					return None
+			return modifier
+		def _handle_aura_damage(aura, modifier):
+			return modifier
+		def _handle_aura_effect(aura, modifier):
+			return modifier
 		assert str(title) == "<b>Aura</b>", title
-		return value.strip()
+		auras = string_with_modifiers_from_string_list(
+			split_maintain_parens(str(value).strip(), ","),
+			"aura", "Aura")
+		auras = link_values(auras, "text")
+		newmods = []
+		for aura in auras:
+			for modifier in aura['modifiers']:
+				modifier = _handle_aura_range(aura, modifier)
+				modifier = _handle_aura_dc(aura, modifier)
+				modifier = _handle_aura_damage(aura, modifier)
+				modifier = _handle_aura_effect(aura, modifier)
+				if modifier:
+					newmods.append(modifier)
+					log_element("%s.log" % "aura.modifier")("%s" % (modifier["name"]))
+			aura["modifiers"] = newmods
+			if len(newmods) == 0:
+				del aura["modifiers"]
+		return auras
 
 	def _handle_special_senses(text):
 		def __handle_range(part):
@@ -343,7 +396,7 @@ def top_matter_pass(struct):
 	sb['senses'] = senses
 	senses['perception'] = _handle_perception(parts.pop(0), parts.pop(0))
 	if len(parts) > 0:
-		sb['aura'] = _handle_aura(parts.pop(0), parts.pop(0))
+		sb['auras'] = _handle_aura(parts.pop(0), parts.pop(0))
 
 	# Part 3
 	if (len(text) > 0):

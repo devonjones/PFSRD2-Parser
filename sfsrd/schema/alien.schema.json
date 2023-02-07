@@ -75,6 +75,25 @@
 			"required": ["type", "subtype"],
 			"additionalProperties": false
 		},
+		"aura": {
+			"type": "object",
+			"properties": {
+				"name": {"enum": ["Aura"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["aura"]},
+				"text": {"type": "string"},
+				"range": {"$ref": "#/definitions/range"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype", "text"],
+			"additionalProperties": false
+		},
 		"creature_type": {
 			"type": "object",
 			"properties": {
@@ -397,16 +416,28 @@
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
 		},
+		"range": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["range"]},
+				"text": {"type": "string"},
+				"range": {"type": "integer"},
+				"unit": {"enum": ["feet", "mile"]}
+			},
+			"required": ["type", "subtype", "text", "range", "unit"],
+			"additionalProperties": false
+		},
 		"reach": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Reach"]},
+				"name": {"type": "string"},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["reach"]},
 				"value": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
-			"required": ["name", "type", "subtype", "value"],
+			"required": ["type", "subtype", "value"],
 			"additionalProperties": false
 		},
 		"save": {
@@ -433,6 +464,18 @@
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["name", "type", "subtype", "fort", "ref", "will"],
+			"additionalProperties": false
+		},
+		"save_dc": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["save_dc"]},
+				"text": {"type": "string"},
+				"dc": {"type": "integer"},
+				"save_type": {"type": "string"}
+			},
+			"required": ["type", "subtype", "text", "dc"],
 			"additionalProperties": false
 		},
 		"section": {
@@ -685,11 +728,15 @@
 				"creature_type": {"$ref": "#/definitions/creature_type"},
 				"initiative": {"$ref": "#/definitions/number_with_modifiers"},
 				"senses": {"$ref": "#/definitions/senses"},
+				"auras": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/aura"},
+					"additionalItems": false
+				},
 				"defense": {"$ref": "#/definitions/defense"},
 				"offense": {"$ref": "#/definitions/offense"},
 				"statistics": {"$ref": "#/definitions/statistics"},
 				"ecology": {"$ref": "#/definitions/ecology"},
-				"aura": {"type": "string"},
 				"special_abilities": {"$ref": "#/definitions/special_abilities"},
 				"afflictions": {"$ref": "#/definitions/afflictions"},
 				"gear": {"$ref": "#/definitions/gear"},
