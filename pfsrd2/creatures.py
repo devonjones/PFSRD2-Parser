@@ -11,9 +11,8 @@ from universal.utils import split_maintain_parens
 from universal.universal import source_pass, extract_source
 from universal.universal import aon_pass, restructure_pass, html_pass
 from universal.universal import remove_empty_sections_pass, get_links
-from universal.universal import walk, test_key_is_value, filter_tag
-from universal.universal import link_modifiers, modifiers_from_string_list
-from universal.universal import link_values
+from universal.universal import walk, test_key_is_value
+from universal.universal import link_modifiers
 from universal.files import makedirs, char_replace
 from universal.creatures import write_creature
 from universal.creatures import universal_handle_special_senses
