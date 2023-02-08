@@ -6,20 +6,20 @@ source dir.conf
 #./creature_parse -d $WEB_DIR/Monsters/Monsters.aspx.ID_*
 #./creature_parse -o $DATA_DIR $WEB_DIR/Monsters/Monsters.aspx.ID_*
 
-rm errors.pf.creatures.log
+rm errors.pf.monsters.log
 
-if test -f "errors.pf.creatures"; then
-	cat errors.pf.creatures | while read i
+if test -f "errors.pf.monsters"; then
+	cat errors.pf.monsters | while read i
 	do
-		if ! ./pf_creature_parse -o $PF_DATA_DIR $i ; then
-			echo $i >> errors.pf.creatures.log
+		if ! ./pf_monster_parse -o $PF_DATA_DIR $i ; then
+			echo $i >> errors.pf.monsters.log
 		fi
 	done
 else
-	for i in `ls $PF_WEB_DIR/AlienDisplay/AlienDisplay.aspx.ItemName_* | msort -j -q -l -n 1 -c hybrid`
+	for i in `ls $PF_WEB_DIR/MonsterDisplay/MonsterDisplay.aspx.ItemName_* | msort -j -q -l -n 1 -c hybrid`
 	do
-		if ! ./pf_creature_parse -o $PF_DATA_DIR $i ; then
-			echo $i >> errors.pf.creatures.log
+		if ! ./pf_monster_parse -o $PF_DATA_DIR $i ; then
+			echo $i >> errors.pf.monsters.log
 		fi
 	done
 fi
