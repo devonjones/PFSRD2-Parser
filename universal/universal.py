@@ -1,4 +1,5 @@
 import sys
+from universal.utils import split_maintain_parens, clear_tags, filter_entities
 from hashlib import md5
 from pprint import pprint
 from urllib.parse import urlparse, parse_qs
@@ -458,13 +459,6 @@ def link_values(values, field="name", singleton=False):
 				v['links'] = links
 	return values
 
-def filter_tag(text, tag):
-	bs = BeautifulSoup(text, 'html.parser')
-	replacelist = bs.findAll(tag)
-	for r in replacelist:
-		r.replace_with(''.join([i.decode() if type(i) is Tag else i for i in r.contents]))
-	return str(bs)
-
 def extract_modifiers(text):
 	if text.find("(") > -1:
 		assert text.endswith(")"), "Modifiers should be at the end only: %s" % text
@@ -472,7 +466,7 @@ def extract_modifiers(text):
 		assert len(parts) == 2, text
 		text = parts.pop(0)
 		mods = parts.pop()
-		mtext = [m.strip() for m in mods[0:-1].split(",")]
+		mtext = split_maintain_parens(mods[0:-1], ",", parenleft="[", parenright="]")
 		modifiers = modifiers_from_string_list(mtext)
 		return text, link_modifiers(modifiers)
 	return text, []
@@ -501,13 +495,14 @@ def string_with_modifiers_from_string_list(strlist, subtype):
 		mpart, modifiers = extract_modifiers(mpart)
 		if modifiers:
 			swm["modifiers"] = modifiers
-		swm["name"] = mpart
+		swm["name"] = clear_tags(mpart, ["i"])
 		swms.append(swm)
 	return swms
 
 def modifiers_from_string_list(modlist, subtype="modifier"):
 	modifiers = []
 	for mpart in modlist:
+		mpart = clear_tags(mpart, "i")
 		modifiers.append({
 			"type": "stat_block_section",
 			"subtype": subtype,

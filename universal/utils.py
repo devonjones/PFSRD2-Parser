@@ -34,6 +34,24 @@ def filter_end(text, tokens):
 		if testtext == text:
 			return text
 
+def filter_entities(text):
+	text = text.replace("\u00c2\u00ba", "º") # u00ba
+	text = text.replace("\u00c3\u0097", "×")
+	text = text.replace("\u00e2\u0080\u0091", "‑")
+	text = text.replace("\u00e2\u0080\u0093", "–")
+	text = text.replace("\u00e2\u0080\u0094", "—")
+	text = text.replace("\u00e2\u0080\u0099", "’") # u2019
+	text = text.replace("\u00e2\u0080\u009c", "“")
+	text = text.replace("\u00e2\u0080\u009d", "”")
+	text = text.replace("\u00e2\u0080\u00a6", "…") # u2026
+	text = text.replace("%5C", "\\")
+	text = text.replace("&amp;", "&")
+	text = text.replace("\u00ca\u00bc", "’") # u2019 (was u02BC)
+	text = text.replace("\u00c2\u00a0", " ")
+	text = text.replace("\u00a0", " ")
+	text = ' '.join([part.strip() for part in text.split("\n")])
+	return text
+
 def log_element(fn):
 	fp = open(fn, "a+")
 	def log_e(element):
@@ -46,7 +64,7 @@ def clear_tags(text, taglist):
 	for tag in taglist:
 		for t in bs.find_all(tag):
 			t.replace_with(t.get_text())
-	return str(bs)
+	return filter_entities(str(bs))
 
 def find_list(text, elements):
 	for element in elements:

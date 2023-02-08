@@ -13,11 +13,11 @@ from universal.universal import string_values_from_string_list
 from universal.universal import modifiers_from_string_list
 from universal.universal import link_values
 from universal.universal import extract_source
-from universal.universal import html_pass, filter_tag
+from universal.universal import html_pass
 from universal.universal import remove_empty_sections_pass
 from universal.files import makedirs, char_replace
 from universal.utils import split_maintain_parens, split_comma_and_semicolon
-from universal.utils import filter_end
+from universal.utils import filter_end, clear_tags
 from universal.utils import log_element
 from universal.creatures import write_creature
 from universal.creatures import universal_handle_special_senses
@@ -128,6 +128,8 @@ def restructure_alien_pass(details, subtype):
 
 def handle_modifier_breakout(section):
 	def _handle_modifier_range(section, modifier):
+		if "[" in modifier["name"]:
+			return modifier
 		m = re.search(r'^(\d*) (.*)$', modifier["name"])
 		if m:
 			groups = m.groups()
@@ -144,30 +146,21 @@ def handle_modifier_breakout(section):
 		return modifier
 	def _handle_modifier_dc(section, modifier):
 		if modifier:
+			if "[" in modifier["name"]:
+				return modifier
 			text = modifier["name"]
 			if "DC" in text:
 				section["saving_throw"] = universal_handle_save_dc(text)
 				return None
-				#parts = text.split(" ")
-				#save_dc = {
-				#	"type": "stat_block_section",
-				#	"subtype": "save_dc",
-				#	"text": text
-				#}
-				#assert len(parts) in [2,3], "Broken DC: %s" % text
-				#save_dc["dc"] = int(parts.pop())
-				#assert parts.pop() == "DC",  "Broken DC: %s" % text
-				#if len(parts) > 0:
-				#	save_dc["save_type"] = parts.pop()
-				#section["saving_throw"] = save_dc
-				#return None
 		return modifier
 	def _handle_modifier_damage(section, modifier):
 		if modifier:
-			m = re.search(r'^(\d*)d(\d*) (.*)$', modifier["name"])
+			if "[" in modifier["name"]:
+				return modifier
+			m = re.search(r'^(\d*d\d*\+?\d?) (.*)$', modifier["name"])
 			if m:
 				groups = m.groups()
-				assert len(groups) == 3, groups
+				assert len(groups) == 2, groups
 				if "damage" in section:
 					damage = section["damage"]
 				else:
@@ -175,7 +168,7 @@ def handle_modifier_breakout(section):
 						"type": "stat_block_section",
 						"subtype": "attack_damage"
 					}
-				damage["formula"] = "%sd%s" % (groups[0], groups[1])
+				damage["formula"] = groups[0]
 				damage_types = {
 					"A": "Acid",
 					"B": "Bludgeoning",
@@ -186,17 +179,22 @@ def handle_modifier_breakout(section):
 					"P": "Piercing",
 					"S": "Slashing",
 					"So": "Sonic",
+					"E & F": "Electricity & Fire",
+					"B & F": "Bludgeoning & Fire",
+					"P & F": "Piercing & Fire",
 					"random": "Random type"
 				}
-				if groups[2] not in damage_types:
+				if groups[1] not in damage_types:
 					return modifier
-				damage["damage_type"] = damage_types[groups[2]]
-				damage["damage_type_text"] = groups[2]
+				damage["damage_type"] = damage_types[groups[1]]
+				damage["damage_type_text"] = groups[1]
 				section["damage"] = damage
 				return None
 		return modifier
 	def _handle_modifier_effect(section, modifier):
 		if modifier:
+			if "[" in modifier["name"]:
+				return modifier
 			m = re.search(r'^(.*) (\d*)d?(\d?) (.*)$', modifier["name"])
 			if m:
 				groups = m.groups()
@@ -819,6 +817,7 @@ def offense_pass(struct):
 							"C": "Cold",
 							"E": "Electricity",
 							"F": "Fire",
+							"EF": "Electricity & Fire",
 							"force": "Force",
 							"P": "Piercing",
 							"S": "Slashing",
@@ -857,14 +856,6 @@ def offense_pass(struct):
 					for modpart in modparts:
 						if modpart.find("DC") > -1:
 							attack['saving_throw'] = universal_handle_save_dc(modpart)
-							#_, dc = modpart.split(" ")
-							#save_dc = {
-							#	"type": "stat_block_section",
-							#	"subtype": "save_dc",
-							#	"text": modpart,
-							#	"dc": int(dc)
-							#}
-							#attack['saving_throw'] = save_dc
 						elif modpart.endswith("ft."):
 							parts = modpart.split(" ")
 							assert len(parts) == 2, "bad range: %s" % modpart
@@ -1061,7 +1052,7 @@ def statistics_pass(struct):
 	
 	def _handle_languages(statistics, _, bs):
 		def _handle_communication_abilities(parts):
-			comtext = filter_tag(", ".join(parts), "i")
+			comtext = clear_tags(", ".join(parts), ["i"])
 			coms = string_with_modifiers_from_string_list(
 				[m.strip() for m in comtext.split(",")],
 				"communication_ability")
@@ -1111,16 +1102,25 @@ def statistics_pass(struct):
 		statistics['languages'] = languages
 
 	def _handle_other_abilities(statistics, _, bs):
+		# TODO: some minor value in parsing out modifiers
+		# TODO: some italics in modifiers
 		abilities = string_with_modifiers_from_string_list(
 			split_maintain_parens(str(bs), ","),
 			"other_ability")
+		for ability in abilities:
+			handle_modifier_breakout(ability)
+			if "modifiers" in ability:
+				for mod in ability["modifiers"]:
+					log_element("%s.log" % "other_ability.mod")("%s" % (mod["name"]))
 		statistics['other_abilities'] = abilities
 	
 	def _handle_gear(_, sb, bs):
 		# TODO: Break out modifiers in gear
 		assert str(bs).find(";") == -1, bs
-		parts = split_maintain_parens(str(bs), ",")
-		gear = modifiers_from_string_list(parts, "item")
+		text = str(bs)
+		text = text.replace(" with", ",")
+		parts = split_maintain_parens(text, ",")
+		gear = string_with_modifiers_from_string_list(parts, "item")
 		sb['gear'] = gear
 	
 	def _handle_augmentations(_, sb, bs):
@@ -1230,19 +1230,6 @@ def section_pass(struct):
 			if "save" not in affliction:
 				return affliction
 			save = affliction["save"]
-
-			#assert "DC" in save, "Afflictions saves must have DCs: %s" % affliction
-			#parts = save.split(" ")
-			#save_dc = {
-			#	"type": "stat_block_section",
-			#	"subtype": "save_dc",
-			#	"text": save
-			#}
-			#assert len(parts) in [2,3], "Broken DC: %s" % save
-			#save_dc["dc"] = int(parts.pop())
-			#assert parts.pop() == "DC",  "Broken DC: %s" % save
-			#if len(parts) > 0:
-			#	save_dc["save_type"] = parts.pop()
 			affliction["saving_throw"] = universal_handle_save_dc(save)
 			del affliction["save"]
 			return affliction

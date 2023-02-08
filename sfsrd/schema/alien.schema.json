@@ -426,6 +426,24 @@
 			"required": ["type", "subtype", "speed"],
 			"additionalProperties": false
 		},
+		"other_ability": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["other_ability"]},
+				"name": {"type": "string"},
+				"range": {"$ref": "#/definitions/range"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["type", "subtype", "name"],
+			"additionalProperties": false
+		},
+		"other_abilities": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/other_ability"},
+			"additionalItems": false
+		},
 		"range": {
 			"type": "object",
 			"properties": {
@@ -711,11 +729,7 @@
 				},
 				"skills": {"$ref": "#/definitions/skills"},
 				"languages": {"$ref": "#/definitions/languages"},
-				"other_abilities": {
-					"type": "array",
-					"items": {"$ref": "#/definitions/string_with_modifiers"},
-					"additionalItems": false
-				}
+				"other_abilities": {"$ref": "#/definitions/other_abilities"}
 			},
 			"required": [
 				"type", "subtype", "str", "dex", "con", "int", "wis", "cha"
