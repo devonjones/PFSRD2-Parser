@@ -98,6 +98,23 @@
 			"items": {"$ref": "#/definitions/aura"},
 			"additionalItems": false
 		},
+		"communication_ability": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["communication_ability"]},
+				"name": {"type": "string"},
+				"range": {"$ref": "#/definitions/range"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["type", "subtype", "name"],
+			"additionalProperties": false
+		},
+		"communication_abilities": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/communication_ability"},
+			"additionalItems": false
+		},
 		"creature_type": {
 			"type": "object",
 			"properties": {
@@ -264,7 +281,7 @@
 					"items": {"$ref": "#/definitions/language"},
 					"additionalItems": false
 				},
-				"communication_abilities": {"$ref": "#/definitions/modifiers"},
+				"communication_abilities": {"$ref": "#/definitions/communication_abilities"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["type", "subtype", "languages"],
@@ -661,8 +678,8 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["spell_list"]},
-				"spell_level": {"type": "integer"},
-				"spell_level_text": {"type": "string"},
+				"level": {"type": "integer"},
+				"level_text": {"type": "string"},
 				"spells": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/spell"},

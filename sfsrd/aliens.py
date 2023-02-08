@@ -659,11 +659,11 @@ def offense_pass(struct):
 					spell_list['count_text'] = deetparts[0].strip()
 				elif len(deetparts) == 2:
 					spell_level_text = deetparts[0].strip()
-					spell_list["spell_level_text"] = spell_level_text
+					spell_list["level_text"] = spell_level_text
 					if len(spell_level_text) == 1:
-						spell_list["spell_level"] = int(spell_level_text)
+						spell_list["level"] = int(spell_level_text)
 					elif len(spell_level_text) == 3:
-						spell_list["spell_level"] = int(spell_level_text[:-2])
+						spell_list["level"] = int(spell_level_text[:-2])
 					else:
 						assert False, deets
 					spell_list['count_text'] = deetparts[1].replace(")", "").strip()
@@ -1054,6 +1054,29 @@ def statistics_pass(struct):
 		statistics['skills'] = skills
 	
 	def _handle_languages(statistics, _, bs):
+		def _handle_communication_abilities(parts):
+			comtext = filter_tag(", ".join(parts), "i")
+			coms = string_with_modifiers_from_string_list(
+				[m.strip() for m in comtext.split(",")],
+				"communication_ability")
+			coms = [_handle_communication_ability_range(com) for com in coms]
+			return coms
+		def _handle_communication_ability_range(com):
+			m = re.search(r'^(.*) (\d*) (.*)$', com["name"])
+			if m:
+				groups = m.groups()
+				assert len(groups) == 3, groups
+				if groups[2] in ["ft.", "feet"]:
+					com['range'] = {
+						"type": "stat_block_section",
+						"subtype": "range",
+						"text": "%s %s" % (groups[1], groups[2]),
+						"range": int(groups[1]),
+						"unit": "feet"
+					}
+					com['name'] = groups[0]
+			return com
+
 		parts = str(bs).split(";")
 		languages = {
 			"type": "stat_block_section",
@@ -1062,10 +1085,14 @@ def statistics_pass(struct):
 		}
 		langs = parts.pop(0)
 		if len(parts) > 0:
-			modtext = ", ".join(parts)
-			# TODO: This should be a string with modifiers
-			languages['communication_abilities'] = modifiers_from_string_list(
-				[m.strip() for m in modtext.split(",")])
+#			modtext = filter_tag(", ".join(parts), "i")
+			# TODO: parse out ranges
+			# TODO: clear italics filter_tag(text, tag)
+#			languages['communication_abilities'] = string_values_from_string_list(
+#				[m.strip() for m in modtext.split(",")], "communication_ability")
+#			for com in languages['communication_abilities']:
+#				log_element("%s.log" % "com")("%s" % (com["name"]))
+			languages['communication_abilities'] = _handle_communication_abilities(parts)
 		if langs.find("(") > -1:
 			langparts = langs.split("(")
 			modtext = langparts.pop().replace(")", "")
