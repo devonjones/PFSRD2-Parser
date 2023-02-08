@@ -344,7 +344,7 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_attack", "offensive_ability",
 					"immunity", "weakness", "graft", "communication_ability",
-					"other_ability"]},
+					"other_ability", "feat"]},
 				"name": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"},
 				"links": {
@@ -705,7 +705,7 @@
 				"cha": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
 				"feats": {
 					"type": "array",
-					"items": {"type": "string"},
+					"items": {"$ref": "#/definitions/string_with_modifiers"},
 					"additionalItems": false
 				},
 				"skills": {"$ref": "#/definitions/skills"},

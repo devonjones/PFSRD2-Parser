@@ -1012,7 +1012,9 @@ def statistics_pass(struct):
 	
 	def _handle_feats(statistics, _, bs):
 		assert str(bs).find(";") == -1, bs
-		statistics['feats'] = [b.strip() for b in str(bs).split(",")]
+		feats = string_with_modifiers_from_string_list(
+				split_maintain_parens(str(str(bs)), ","), "feat")
+		statistics['feats'] = feats
 	
 	def _handle_skills(statistics, _, bs):
 		parts = str(bs).split(";")
@@ -1085,13 +1087,6 @@ def statistics_pass(struct):
 		}
 		langs = parts.pop(0)
 		if len(parts) > 0:
-#			modtext = filter_tag(", ".join(parts), "i")
-			# TODO: parse out ranges
-			# TODO: clear italics filter_tag(text, tag)
-#			languages['communication_abilities'] = string_values_from_string_list(
-#				[m.strip() for m in modtext.split(",")], "communication_ability")
-#			for com in languages['communication_abilities']:
-#				log_element("%s.log" % "com")("%s" % (com["name"]))
 			languages['communication_abilities'] = _handle_communication_abilities(parts)
 		if langs.find("(") > -1:
 			langparts = langs.split("(")
