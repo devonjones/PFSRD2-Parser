@@ -397,10 +397,10 @@
 				"name": {"enum": ["Offense"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["offense"]},
-				"speeds": {"$ref": "#/definitions/speeds"},
+				"speed": {"$ref": "#/definitions/speeds"},
 				"offensive_actions": {"$ref": "#/definitions/offensive_actions"}
 			},
-			"required": ["name", "type", "subtype", "speeds", "offensive_actions"],
+			"required": ["name", "type", "subtype", "speed", "offensive_actions"],
 			"additionalProperties": false
 		},
 		"offensive_action": {

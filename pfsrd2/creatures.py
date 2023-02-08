@@ -372,7 +372,7 @@ def process_stat_block(sb, sections):
 	offense = sections.pop(0)
 	sb['offense'] = {
 		'type': 'stat_block_section', 'subtype': 'offense', 'name': "Offense"}
-	sb['offense']['speeds'] = process_speed(offense.pop(0))
+	sb['offense']['speed'] = process_speed(offense.pop(0))
 	del sb['text']
 	assert len(offense) == 0
 
