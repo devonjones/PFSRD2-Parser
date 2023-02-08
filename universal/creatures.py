@@ -27,6 +27,34 @@ def universal_handle_senses():
 	}
 	return senses
 
+def universal_handle_save_dc(text):
+	# Fortitude DC 22
+	# DC 22
+
+	assert "DC" in text, "Saves must have DCs: %s" % text
+	parts = text.split(" ")
+	save_dc = {
+		"type": "stat_block_section",
+		"subtype": "save_dc",
+		"text": text
+	}
+	assert len(parts) in [2,3], "Broken DC: %s" % text
+	save_dc["dc"] = int(parts.pop())
+	assert parts.pop() == "DC",  "Broken DC: %s" % text
+	if len(parts) > 0:
+		type = parts.pop()
+		types = {
+			"Fortitude": "Fort",
+			"Fort": "Fort",
+			"Reflex": "Ref",
+			"Ref": "Ref",
+			"Will": "Will",
+			"Strength": "Str"
+		}
+		assert type in types, "Broken DC: %s" % text
+		save_dc["save_type"] = types[type]
+	return save_dc
+
 def universal_handle_perception(value):
 	# +10
 	# +13 (+15 with vision)

@@ -23,6 +23,7 @@ from universal.creatures import write_creature
 from universal.creatures import universal_handle_special_senses
 from universal.creatures import universal_handle_perception
 from universal.creatures import universal_handle_senses
+from universal.creatures import universal_handle_save_dc
 from sfsrd.schema import validate_against_schema
 
 def parse_alien(filename, options):
@@ -145,19 +146,21 @@ def handle_modifier_breakout(section):
 		if modifier:
 			text = modifier["name"]
 			if "DC" in text:
-				parts = text.split(" ")
-				save_dc = {
-					"type": "stat_block_section",
-					"subtype": "save_dc",
-					"text": text
-				}
-				assert len(parts) in [2,3], "Broken DC: %s" % text
-				save_dc["dc"] = int(parts.pop())
-				assert parts.pop() == "DC",  "Broken DC: %s" % text
-				if len(parts) > 0:
-					save_dc["save_type"] = parts.pop()
-				section["saving_throw"] = save_dc
+				section["saving_throw"] = universal_handle_save_dc(text)
 				return None
+				#parts = text.split(" ")
+				#save_dc = {
+				#	"type": "stat_block_section",
+				#	"subtype": "save_dc",
+				#	"text": text
+				#}
+				#assert len(parts) in [2,3], "Broken DC: %s" % text
+				#save_dc["dc"] = int(parts.pop())
+				#assert parts.pop() == "DC",  "Broken DC: %s" % text
+				#if len(parts) > 0:
+				#	save_dc["save_type"] = parts.pop()
+				#section["saving_throw"] = save_dc
+				#return None
 		return modifier
 	def _handle_modifier_damage(section, modifier):
 		if modifier:
@@ -853,14 +856,15 @@ def offense_pass(struct):
 					modparts = split_comma_and_semicolon(modtext)
 					for modpart in modparts:
 						if modpart.find("DC") > -1:
-							_, dc = modpart.split(" ")
-							save_dc = {
-								"type": "stat_block_section",
-								"subtype": "save_dc",
-								"text": modpart,
-								"dc": int(dc)
-							}
-							attack['saving_throw'] = save_dc
+							attack['saving_throw'] = universal_handle_save_dc(modpart)
+							#_, dc = modpart.split(" ")
+							#save_dc = {
+							#	"type": "stat_block_section",
+							#	"subtype": "save_dc",
+							#	"text": modpart,
+							#	"dc": int(dc)
+							#}
+							#attack['saving_throw'] = save_dc
 						elif modpart.endswith("ft."):
 							parts = modpart.split(" ")
 							assert len(parts) == 2, "bad range: %s" % modpart
@@ -1226,22 +1230,23 @@ def section_pass(struct):
 			if "save" not in affliction:
 				return affliction
 			save = affliction["save"]
-			assert "DC" in save, "Afflictions saves must have DCs: %s" % affliction
-			parts = save.split(" ")
-			save_dc = {
-				"type": "stat_block_section",
-				"subtype": "save_dc",
-				"text": save
-			}
-			assert len(parts) in [2,3], "Broken DC: %s" % save
-			save_dc["dc"] = int(parts.pop())
-			assert parts.pop() == "DC",  "Broken DC: %s" % save
-			if len(parts) > 0:
-				save_dc["save_type"] = parts.pop()
-			affliction["saving_throw"] = save_dc
+
+			#assert "DC" in save, "Afflictions saves must have DCs: %s" % affliction
+			#parts = save.split(" ")
+			#save_dc = {
+			#	"type": "stat_block_section",
+			#	"subtype": "save_dc",
+			#	"text": save
+			#}
+			#assert len(parts) in [2,3], "Broken DC: %s" % save
+			#save_dc["dc"] = int(parts.pop())
+			#assert parts.pop() == "DC",  "Broken DC: %s" % save
+			#if len(parts) > 0:
+			#	save_dc["save_type"] = parts.pop()
+			affliction["saving_throw"] = universal_handle_save_dc(save)
 			del affliction["save"]
 			return affliction
-		# TODO pull out dice
+
 		sec_text = section['text']
 		del section['text']
 		del section['sections']
