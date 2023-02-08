@@ -32,27 +32,33 @@ def universal_handle_save_dc(text):
 	# DC 22
 
 	assert "DC" in text, "Saves must have DCs: %s" % text
-	parts = text.split(" ")
 	save_dc = {
 		"type": "stat_block_section",
 		"subtype": "save_dc",
 		"text": text
 	}
+	text, modifiers = extract_modifiers(text)
+	if modifiers:
+		save_dc["modifiers"] = modifiers
+	parts = text.split(" ")
 	assert len(parts) in [2,3], "Broken DC: %s" % text
-	save_dc["dc"] = int(parts.pop())
-	assert parts.pop() == "DC",  "Broken DC: %s" % text
-	if len(parts) > 0:
-		type = parts.pop()
-		types = {
-			"Fortitude": "Fort",
-			"Fort": "Fort",
-			"Reflex": "Ref",
-			"Ref": "Ref",
-			"Will": "Will",
-			"Strength": "Str"
-		}
-		assert type in types, "Broken DC: %s" % text
-		save_dc["save_type"] = types[type]
+	types = {
+		"Fortitude": "Fort",
+		"Fort": "Fort",
+		"Reflex": "Ref",
+		"Ref": "Ref",
+		"Will": "Will",
+		"Strength": "Str"
+	}
+	for part in parts:
+		if part == "DC":
+			continue
+		elif part.isnumeric():
+			save_dc["dc"] = int(part)
+		elif part in types:
+			save_dc["save_type"] = types[part]
+		else:
+			assert False, "Broken DC: %s" % text
 	return save_dc
 
 def universal_handle_perception(value):

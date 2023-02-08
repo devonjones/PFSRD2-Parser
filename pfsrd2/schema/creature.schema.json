@@ -72,7 +72,7 @@
 				"text": {"type": "string"},
 				"action": {"$ref": "#/definitions/action"},
 				"traits": {"$ref": "#/definitions/traits"},
-				"saving_throw": {"type": "string"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"onset": {"type": "string"},
 				"maximum_duration": {"type": "string"},
 				"stages": {
@@ -100,7 +100,6 @@
 			"required": ["name", "type", "subtype", "text"],
 			"additionalProperties": false
 		},
-
 		"attack": {
 			"type": "object",
 			"properties": {
@@ -484,6 +483,19 @@
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["type", "subtype", "fort", "ref", "will"],
+			"additionalProperties": false
+		},
+		"save_dc": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["save_dc"]},
+				"text": {"type": "string"},
+				"dc": {"type": "integer"},
+				"save_type": {"enum": ["Fort", "Ref", "Will"]},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["type", "subtype", "text", "dc"],
 			"additionalProperties": false
 		},
 		"section": {

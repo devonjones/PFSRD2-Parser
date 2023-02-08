@@ -19,6 +19,7 @@ from universal.creatures import write_creature
 from universal.creatures import universal_handle_special_senses
 from universal.creatures import universal_handle_perception
 from universal.creatures import universal_handle_senses
+from universal.creatures import universal_handle_save_dc
 from universal.utils import log_element
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
@@ -1199,7 +1200,7 @@ def process_offensive_action(section):
 				newtext = get_text(bs).strip()
 				if title == 'Saving Throw':
 					assert 'saving_throw' not in section, text
-					section['saving_throw'] = newtext
+					section['saving_throw'] = universal_handle_save_dc(newtext)
 				elif title == 'Onset':
 					assert 'onset' not in section, text
 					section['onset'] = newtext

@@ -481,7 +481,8 @@
 				"subtype": {"enum": ["save_dc"]},
 				"text": {"type": "string"},
 				"dc": {"type": "integer"},
-				"save_type": {"enum": ["Fort", "Ref", "Will", "Str"]}
+				"save_type": {"enum": ["Fort", "Ref", "Will", "Str"]},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["type", "subtype", "text", "dc"],
 			"additionalProperties": false
