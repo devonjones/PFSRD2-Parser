@@ -335,7 +335,6 @@ def top_matter_pass(struct):
 			"Undead", "Vermin"]
 		if ct in types:
 			creature_type = {
-				"name": "creature_type",
 				"type": "stat_block_section",
 				"subtype": "creature_type",
 				"creature_type": ct
@@ -413,7 +412,6 @@ def defense_pass(struct):
 	def _handle_hp(defense, text):
 		parts = [t.strip() for t in text.split(";")]
 		hp = {
-			"name": "hitpoints",
 			"type": "stat_block_section",
 			"subtype": "hitpoints"
 		}
@@ -434,7 +432,6 @@ def defense_pass(struct):
 	def _handle_ac(defense, text):
 		parts = [t.strip() for t in text.split(";")]
 		ac = {
-			"name": "AC",
 			"type": "stat_block_section",
 			"subtype": "armor_class"
 		}
@@ -454,7 +451,6 @@ def defense_pass(struct):
 	def _handle_saves(defense, text):
 		parts = [t.strip() for t in text.split(";")]
 		saves = {
-			"name": "Saves",
 			"type": "stat_block_section",
 			"subtype": "saves"
 		}
@@ -586,9 +582,6 @@ def defense_pass(struct):
 			for da in das:
 				_handle_da_number(da)
 				handle_modifier_breakout(da)
-				if "modifiers" in da:
-					for modifier in da["modifiers"]:
-						log_element("%s.log" % "da.mods")("%s" % (modifier["name"]))
 			return das
 
 		for dapart in daparts:
@@ -628,7 +621,6 @@ def defense_pass(struct):
 	parts = list(filter(lambda d: d != "",
 		[d.strip() for d in defense_text.split("<br/>")]))
 	defense = {
-		"name": "Defense",
 		"type": "stat_block_section",
 		"subtype": "defense"
 	}
@@ -768,7 +760,7 @@ def offense_pass(struct):
 				if len(parts) > 0:
 					speed['modifiers'] = modifiers_from_string_list(parts)
 
-			speed['name'] = text
+			speed['text'] = text
 			if text.find(" ft.") > -1:
 				segments = text.replace(" ft.", "").split(" ")
 				assert len(segments) in [1,2], text
@@ -781,7 +773,6 @@ def offense_pass(struct):
 			return speed
 
 		speeds = {
-			"name": "Speed",
 			"type": "stat_block_section",
 			"subtype": "speeds",
 			"movement": []
@@ -978,7 +969,6 @@ def offense_pass(struct):
 	bs = BeautifulSoup(offense_text, 'html.parser')
 	output = break_out_subtitles(bs, 'b')
 	offense = {
-		"name": "Offense",
 		"type": "stat_block_section",
 		"subtype": "offense"
 	}
@@ -1030,7 +1020,6 @@ def statistics_pass(struct):
 		skills = {
 			"type": "stat_block_section",
 			"subtype": "skills",
-			"name": "Skills",
 			"skills": []
 		}
 		if len(parts) > 1:
@@ -1069,7 +1058,6 @@ def statistics_pass(struct):
 		languages = {
 			"type": "stat_block_section",
 			"subtype": "languages",
-			"name": "Languages",
 			"languages": []
 		}
 		langs = parts.pop(0)
@@ -1120,7 +1108,6 @@ def statistics_pass(struct):
 	parts = list(filter(lambda d: d != "",
 		[d.strip() for d in stats_text.split("<br/>")]))
 	statistics = {
-		"name": "Statistics",
 		"type": "stat_block_section",
 		"subtype": "statistics"
 	}
@@ -1160,7 +1147,6 @@ def ecology_pass(struct):
 	parts = list(filter(lambda d: d != "",
 		[d.strip() for d in stats_text.split("<br/>")]))
 	ecology = {
-		"name": "Ecology",
 		"type": "stat_block_section",
 		"subtype": "ecology"
 	}

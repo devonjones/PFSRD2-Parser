@@ -5,14 +5,13 @@
 		"ac": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["AC"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["armor_class"]},
 				"eac": {"type": "integer"},
 				"kac": {"type": "integer"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
-			"required": ["name", "type", "subtype", "eac", "kac"],
+			"required": ["type", "subtype", "eac", "kac"],
 			"additionalProperties": false
 		},
 		"affliction": {
@@ -102,7 +101,6 @@
 		"creature_type": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["creature_type"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["creature_type"]},
 				"creature_type": {"enum": [
@@ -134,14 +132,13 @@
 					"Huge", "Gargantuan", "Colossal"
 				]}
 			},
-			"required": ["name", "type", "subtype", "creature_type", "cr",
+			"required": ["type", "subtype", "creature_type", "cr",
 				"role", "xp", "alignment", "size"],
 			"additionalProperties": false
 		},
 		"defense": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Defense"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["defense"]},
 				"hp": {"$ref": "#/definitions/hp"},
@@ -166,7 +163,7 @@
 				"dr": {"$ref": "#/definitions/number_and_string_with_modifiers"},
 				"sr": {"$ref": "#/definitions/number_with_modifiers"}
 			},
-			"required": ["name", "type", "subtype", "ac", "saves"],
+			"required": ["type", "subtype", "ac", "saves"],
 			"additionalProperties": false
 		},
 		"defensive_ability": {
@@ -192,14 +189,13 @@
 		"ecology": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Ecology"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["ecology"]},
 				"environment": {"type": "string"},
 				"organization": {"type": "string"}
 			},
 			"required": [
-				"name", "type", "subtype", "environment", "organization"
+				"type", "subtype", "environment", "organization"
 			],
 			"additionalProperties": false
 		},
@@ -211,13 +207,12 @@
 		"hp": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["hitpoints"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["hitpoints"]},
 				"hp": {"type": "integer"},
 				"rp": {"type": "integer"}
 			},
-			"required": ["name", "type", "subtype", "hp"],
+			"required": ["type", "subtype", "hp"],
 			"additionalProperties": false
 		},
 		"image": {
@@ -264,7 +259,6 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["languages"]},
-				"name": {"enum": ["Languages"]},
 				"languages": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/language"},
@@ -273,6 +267,7 @@
 				"communication_abilities": {"$ref": "#/definitions/modifiers"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
+			"required": ["type", "subtype", "languages"],
 			"additionalProperties": false
 		},
 		"link": {
@@ -374,7 +369,6 @@
 		"offense": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Offense"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["offense"]},
 				"speed": {"$ref": "#/definitions/speeds"},
@@ -412,7 +406,7 @@
 				},
 				"connection": {"type": "string"}
 			},
-			"required": ["name", "type", "subtype", "speed"],
+			"required": ["type", "subtype", "speed"],
 			"additionalProperties": false
 		},
 		"range": {
@@ -453,7 +447,6 @@
 		"saves": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Saves"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["saves"]},
 				"fort": {"$ref": "#/definitions/save"},
@@ -461,7 +454,7 @@
 				"will": {"$ref": "#/definitions/save"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
-			"required": ["name", "type", "subtype", "fort", "ref", "will"],
+			"required": ["type", "subtype", "fort", "ref", "will"],
 			"additionalProperties": false
 		},
 		"save_dc": {
@@ -532,7 +525,6 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["skills"]},
-				"name": {"enum": ["Skills"]},
 				"skills": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/skill"},
@@ -603,9 +595,9 @@
 		"speed": {
 			"type": "object",
 			"properties": {
-				"name": {"type": "string"},
 				"type": {"enum": ["stat_block_section"]},
 				"movement_type": {"type": "string"},
+				"text": {"type": "string"},
 				"value": {"type": "integer"},
 				"subtype": {"enum": ["speed"]},
 				"ability_type": {"enum": [
@@ -614,13 +606,12 @@
 				"maneuverability": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
-			"required": ["name", "type", "subtype"],
+			"required": ["text", "type", "subtype"],
 			"additionalProperties": false
 		},
 		"speeds": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Speed"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["speeds"]},
 				"movement": {
@@ -629,7 +620,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["name", "type", "subtype"],
+			"required": ["type", "subtype"],
 			"additionalProperties": false
 		},
 		"spells": {
@@ -687,7 +678,6 @@
 		"statistics": {
 			"type": "object",
 			"properties": {
-				"name": {"enum": ["Statistics"]},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["statistics"]},
 				"str": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
@@ -710,8 +700,7 @@
 				}
 			},
 			"required": [
-				"name", "type", "subtype", "str", "dex", "con", "int", "wis",
-				"cha"
+				"type", "subtype", "str", "dex", "con", "int", "wis", "cha"
 			],
 			"additionalProperties": false
 		},

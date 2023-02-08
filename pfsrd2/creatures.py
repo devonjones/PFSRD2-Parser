@@ -347,12 +347,13 @@ def process_stat_block(sb, sections):
 	# Defense
 	defense = sections.pop(0)
 	sb['defense'] = {
-		'type': 'stat_block_section', 'subtype': 'defense', 'name': "Defense"}
+		'type': 'stat_block_section',
+		'subtype': 'defense'
+	}
 	sb['defense']['ac'] = process_ac(defense.pop(0))
 	sb['defense']['saves'] = process_saves(
 		defense.pop(0), defense.pop(0), defense.pop(0))
 	sb['defense']['hp'] = process_hp(defense.pop(0), 'hitpoints')
-	sb['defense']['hp']['name'] = 'hitpoints'
 	if len(defense) > 0 and defense[0][0] == "Hardness":
 		hardness = process_hp(defense.pop(0), 'hardness')
 		sb['defense']['hp']['hardness'] = hardness['hardness']
@@ -371,7 +372,9 @@ def process_stat_block(sb, sections):
 	# Offense
 	offense = sections.pop(0)
 	sb['offense'] = {
-		'type': 'stat_block_section', 'subtype': 'offense', 'name': "Offense"}
+		'type': 'stat_block_section',
+		'subtype': 'offense'
+	}
 	sb['offense']['speed'] = process_speed(offense.pop(0))
 	del sb['text']
 	assert len(offense) == 0
@@ -449,7 +452,6 @@ def process_senses(section):
 
 def process_statistics(stats):
 	statistics = {
-		'name': 'Statistics',
 		'type': 'stat_block_section',
 		'subtype': 'statistics'
 	}
@@ -481,8 +483,11 @@ def process_languages(section):
 	assert section[0] == "Languages"
 	assert section[2] == None
 	text = section[1]
-	languages = build_object(
-		'stat_block_section', 'languages', 'Languages', {'languages': []})
+	languages = {
+		'type': 'stat_block_section',
+		'subtype': 'languages',
+		'languages': []
+	}
 	if text.find(";") > -1:
 		parts = text.split(";")
 		text = parts.pop(0)
@@ -692,7 +697,6 @@ def process_ac(section):
 	ac = {
 		'type': 'stat_block_section',
 		'subtype': 'armor_class',
-		'name': "AC",
 		'value': int(value.strip())
 	}
 	if len(modifiers) > 0:
@@ -704,8 +708,7 @@ def process_ac(section):
 def process_saves(fort, ref, will):
 	saves = {
 		'type': 'stat_block_section',
-		'subtype': 'saves',
-		'name': "Saves"
+		'subtype': 'saves'
 	}
 	def process_save(section):
 		assert section[0] in ["Fort", "Ref", "Will"]
@@ -762,7 +765,6 @@ def process_hp(section, subtype):
 	hp = {
 		'type': 'stat_block_section',
 		'subtype': subtype,
-		'name': name.lower(),
 		name.lower(): value}
 	if len(specials) > 0:
 		special_sections = build_objects(
@@ -927,8 +929,11 @@ def process_speed(section):
 		modifiers = [p.strip() for p in parts.pop().split(",")]
 	assert len(parts) == 0, section
 	movement = build_movement(text)
-	speed = build_object(
-		'stat_block_section', 'speeds', 'Speed', {'movement': movement})
+	speed = {
+		'type': 'stat_block_section',
+		'subtype': 'speeds',
+		'movement': movement
+	}
 	if modifiers:
 		speed['modifiers'] = link_modifiers(
 			build_objects('stat_block_section', 'modifier', modifiers))
