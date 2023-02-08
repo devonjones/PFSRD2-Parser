@@ -1102,20 +1102,15 @@ def statistics_pass(struct):
 		statistics['languages'] = languages
 
 	def _handle_other_abilities(statistics, _, bs):
-		# TODO: some minor value in parsing out modifiers
-		# TODO: some italics in modifiers
 		abilities = string_with_modifiers_from_string_list(
 			split_maintain_parens(str(bs), ","),
 			"other_ability")
 		for ability in abilities:
 			handle_modifier_breakout(ability)
-			if "modifiers" in ability:
-				for mod in ability["modifiers"]:
-					log_element("%s.log" % "other_ability.mod")("%s" % (mod["name"]))
 		statistics['other_abilities'] = abilities
 	
 	def _handle_gear(_, sb, bs):
-		# TODO: Break out modifiers in gear
+		# TODO: We may want to handle with as a subitem
 		assert str(bs).find(";") == -1, bs
 		text = str(bs)
 		text = text.replace(" with", ",")
