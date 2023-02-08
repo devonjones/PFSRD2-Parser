@@ -1222,6 +1222,25 @@ def special_ability_pass(struct):
 
 def section_pass(struct):
 	def _handle_affliction(section):
+		def _handle_save_dc(affliction):
+			if "save" not in affliction:
+				return affliction
+			save = affliction["save"]
+			assert "DC" in save, "Afflictions saves must have DCs: %s" % affliction
+			parts = save.split(" ")
+			save_dc = {
+				"type": "stat_block_section",
+				"subtype": "save_dc",
+				"text": save
+			}
+			assert len(parts) in [2,3], "Broken DC: %s" % save
+			save_dc["dc"] = int(parts.pop())
+			assert parts.pop() == "DC",  "Broken DC: %s" % save
+			if len(parts) > 0:
+				save_dc["save_type"] = parts.pop()
+			affliction["saving_throw"] = save_dc
+			del affliction["save"]
+			return affliction
 		# TODO pull out dice
 		sec_text = section['text']
 		del section['text']
@@ -1238,7 +1257,7 @@ def section_pass(struct):
 			section[name] = text
 		section['type'] = 'stat_block_section'
 		section['subtype'] = 'affliction'
-		return section
+		return _handle_save_dc(section)
 
 	afflictions = []
 	for section in struct['sections']:

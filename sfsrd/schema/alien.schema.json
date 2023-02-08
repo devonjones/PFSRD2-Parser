@@ -17,11 +17,11 @@
 		"affliction": {
 			"type": "object",
 			"properties": {
-				"name": {"type": "string"},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["affliction"]},
+				"name": {"type": "string"},
 				"affliction_type": {"type": "string"},
-				"save": {"type": "string"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"onset": {"type": "string"},
 				"track": {"type": "string"},
 				"frequency": {"type": "string"},
