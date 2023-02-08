@@ -878,7 +878,7 @@ def process_speed(section):
 			links = get_links(bs)
 			if links:
 				assert len(links) == 1, movement
-				movement['from'] = links[0]
+				movement['link'] = links[0]
 			else:
 				#TODO: fix []
 				movement['modifiers'] = link_modifiers(
@@ -912,7 +912,7 @@ def process_speed(section):
 			links = get_links(bs)
 			movement['name'] = get_text(bs)
 			assert len(links) == 1, movement
-			movement['from'] = links[0]
+			movement['link'] = links[0]
 			return
 		log_element("speed.log")(data)
 		assert False, data

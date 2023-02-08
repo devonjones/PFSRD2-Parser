@@ -564,7 +564,7 @@
 				"value": {"type": "integer"},
 				"subtype": {"enum": ["speed"]},
 				"modifiers": {"$ref": "#/definitions/modifiers"},
-				"from": {"$ref": "#/definitions/link"}
+				"link": {"$ref": "#/definitions/link"}
 			},
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
