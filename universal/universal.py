@@ -465,6 +465,18 @@ def filter_tag(text, tag):
 		r.replace_with(''.join([i.decode() if type(i) is Tag else i for i in r.contents]))
 	return str(bs)
 
+def extract_modifiers(text):
+	if text.find("(") > -1:
+		assert text.endswith(")"), "Modifiers should be at the end only: %s" % text
+		parts = [p.strip() for p in text.split("(")]
+		assert len(parts) == 2, text
+		text = parts.pop(0)
+		mods = parts.pop()
+		mtext = [m.strip() for m in mods[0:-1].split(",")]
+		modifiers = modifiers_from_string_list(mtext)
+		return text, link_modifiers(modifiers)
+	return text, []
+
 def string_with_modifiers_from_string_list(strlist, subtype):
 	swms = []
 	for mpart in strlist:
@@ -472,15 +484,9 @@ def string_with_modifiers_from_string_list(strlist, subtype):
 			"type": "stat_block_section",
 			"subtype": subtype
 		}
-		if mpart.find("(") > -1:
-			assert mpart.endswith(")"), mpart
-			parts = [p.strip() for p in mpart.split("(")]
-			assert len(parts) == 2, mpart
-			mpart = parts.pop(0)
-			mods = parts.pop()
-			mparts = [m.strip() for m in mods[0:-1].split(",")]
-			modifiers = modifiers_from_string_list(mparts)
-			swm["modifiers"] = link_modifiers(modifiers)
+		mpart, modifiers = extract_modifiers(mpart)
+		if modifiers:
+			swm["modifiers"] = modifiers
 		swm["text"] = mpart
 		swms.append(swm)
 	return swms

@@ -2,9 +2,10 @@ import os
 import json
 import re
 from pprint import pprint
-from universal.universal import modifiers_from_string_list
+from universal.universal import modifiers_from_string_list, extract_modifiers
 from universal.universal import link_values, get_links, get_text
 from universal.files import char_replace
+from universal.utils import log_element
 from bs4 import BeautifulSoup
 
 
@@ -27,25 +28,25 @@ def universal_handle_senses():
 	return senses
 
 def universal_handle_perception(value):
+	# +10
+	# +13 (+15 with vision)
+	# +6 (–2 to hear things)
+	# +18 (+20 to detect lies and illusions)
+	# +22 (+30 in space)
+	# +8 (or +13)
+	# +28 (32 to detect illusions)
+
+	perception = {
+		"type": "stat_block_section",
+		"subtype": "perception"
+	}
 	text = str(value).strip()
 	if text.startswith('+'):
 		text = text[1:].strip()
-	modifiers = []
-	if text.find("(") > -1:
-		parts = text.split("(")
-		text = parts.pop(0).strip()
-		mtext = "(".join(parts).replace(")", "")
-		modifiers = modifiers_from_string_list(
-			[m.strip() for m in mtext.split(",")]
-		)
-		modifiers = link_values(modifiers, "name")
-	perception = {
-		"type": "stat_block_section",
-		"subtype": "perception",
-		"value": int(text)
-	}
-	if len(modifiers) > 0:
+	text, modifiers = extract_modifiers(text)
+	if modifiers:
 		perception['modifiers'] = modifiers
+	perception["value"] = int(text)
 	return perception
 
 def universal_handle_special_senses(parts):
@@ -82,6 +83,7 @@ def universal_handle_special_senses(parts):
 	
 	special_senses = []
 	for part in parts:
+		log_element("%s.log" % "special_senses")("%s" % (part))
 		sense = {
 			"type": "stat_block_section",
 			"subtype": "special_sense",
