@@ -105,9 +105,9 @@ def universal_handle_special_senses(parts):
 			mods = parts.pop()
 			mparts = [m.strip() for m in mods[0:-1].split(",")]
 			modifiers = modifiers_from_string_list(mparts)
-			sense["modifiers"] = link_values(modifiers, "name")
+			sense["modifiers"] = link_values(modifiers)
 		
-		sense["value"] = part
+		sense["name"] = part
 		special_senses.append(sense)
 	special_senses = link_values(special_senses, singleton=True)
 	return special_senses

@@ -80,7 +80,7 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["aura"]},
-				"text": {"type": "string"},
+				"name": {"type": "string"},
 				"range": {"$ref": "#/definitions/range"},
 				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"damage": {"$ref": "#/definitions/attack_damage"},
@@ -91,7 +91,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["type", "subtype", "text"],
+			"required": ["type", "subtype", "name"],
 			"additionalProperties": false
 		},
 		"auras": {
@@ -147,11 +147,7 @@
 				"hp": {"$ref": "#/definitions/hp"},
 				"ac": {"$ref": "#/definitions/ac"}, 
 				"saves": {"$ref": "#/definitions/saves"},
-				"defensive_abilities": {
-					"type": "array",
-					"items": {"$ref": "#/definitions/string_with_modifiers"},
-					"additionalItems": false
-				},
+				"defensive_abilities": {"$ref": "#/definitions/defensive_abilities"},
 				"immunities": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/string_with_modifiers"},
@@ -168,10 +164,30 @@
 					"additionalItems": false
 				},
 				"dr": {"$ref": "#/definitions/number_and_string_with_modifiers"},
-				"sr": {"$ref": "#/definitions/number_and_string_with_modifiers"}
+				"sr": {"$ref": "#/definitions/number_with_modifiers"}
 			},
 			"required": ["name", "type", "subtype", "ac", "saves"],
 			"additionalProperties": false
+		},
+		"defensive_ability": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["defensive_ability"]},
+				"name": {"type": "string"},
+				"value": {"type": "integer"},
+				"range": {"$ref": "#/definitions/range"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
+				"damage": {"$ref": "#/definitions/attack_damage"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["type", "subtype", "name"],
+			"additionalProperties": false
+		},
+		"defensive_abilities": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/defensive_ability"},
+			"additionalItems": false
 		},
 		"ecology": {
 			"type": "object",
@@ -303,7 +319,7 @@
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["initiative", "perception"]},
+				"subtype": {"enum": ["sr", "initiative", "perception"]},
 				"value": {"type": "integer"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
@@ -315,10 +331,9 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_attack", "offensive_ability",
-					"defensive_ability", "immunity", "weakness",
-					"graft", "communication_ability",
+					"immunity", "weakness", "graft", "communication_ability",
 					"other_ability"]},
-				"text": {"type": "string"},
+				"name": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"},
 				"links": {
 					"type": "array",
@@ -326,7 +341,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["type", "subtype", "text"],
+			"required": ["type", "subtype", "name"],
 			"additionalProperties": false
 		},
 		"string_value": {
@@ -334,18 +349,18 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["creature_subtype"]},
-				"value": {"type": "string"}
+				"name": {"type": "string"}
 			},
-			"required": ["type", "subtype", "value"],
+			"required": ["type", "subtype", "name"],
 			"additionalProperties": false
 		},
 		"number_and_string_with_modifiers": {
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["sr", "dr", "resistance"]},
+				"subtype": {"enum": ["dr", "resistance"]},
 				"value": {"type": "integer"},
-				"text": {"type": "string"},
+				"name": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"},
 				"links": {
 					"type": "array",
@@ -353,7 +368,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["type", "subtype", "value"],
+			"required": ["type", "subtype", "value", "name"],
 			"additionalProperties": false
 		},
 		"offense": {
@@ -591,12 +606,12 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_sense"]},
-				"value": {"type": "string"},
+				"name": {"type": "string"},
 				"range": {"$ref": "#/definitions/range"},
 				"link": {"$ref": "#/definitions/link"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
-			"required": ["type", "subtype", "value"],
+			"required": ["type", "subtype", "name"],
 			"additionalProperties": false
 		},
 		"speed": {

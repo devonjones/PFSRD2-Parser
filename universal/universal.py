@@ -444,7 +444,7 @@ def link_modifiers(modifiers):
 			m['links'] = links
 	return modifiers
 
-def link_values(values, field="value", singleton=False):
+def link_values(values, field="name", singleton=False):
 	for v in values:
 		bs = BeautifulSoup(v[field], 'html.parser')
 		links = get_links(bs)
@@ -487,7 +487,7 @@ def string_values_from_string_list(strlist, subtype):
 		part, modifiers = extract_modifiers(part)
 		if modifiers:
 			assert False, "String Values have no modifiers: %s" % part
-		sv["value"] = part
+		sv["name"] = part
 		svs.append(sv)
 	return svs
 
@@ -501,7 +501,7 @@ def string_with_modifiers_from_string_list(strlist, subtype):
 		mpart, modifiers = extract_modifiers(mpart)
 		if modifiers:
 			swm["modifiers"] = modifiers
-		swm["text"] = mpart
+		swm["name"] = mpart
 		swms.append(swm)
 	return swms
 

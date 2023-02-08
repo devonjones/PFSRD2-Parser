@@ -355,6 +355,42 @@
 			"required": ["type", "subtype", "value"],
 			"additionalProperties": false
 		},
+		"string_with_modifiers": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["special_attack", "offensive_ability",
+					"defensive_ability", "immunity", "weakness",
+					"graft", "communication_ability",
+					"other_ability"]},
+				"text": {"type": "string"},
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["type", "subtype", "text"],
+			"additionalProperties": false
+		},
+		"number_and_string_with_modifiers": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["sr", "dr", "resistance"]},
+				"value": {"type": "integer"},
+				"text": {"type": "string"},
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["type", "subtype", "value"],
+			"additionalProperties": false
+		},
 		"offense": {
 			"type": "object",
 			"properties": {
@@ -554,12 +590,12 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_sense"]},
-				"value": {"type": "string"},
+				"name": {"type": "string"},
 				"range": {"$ref": "#/definitions/range"},
 				"link": {"$ref": "#/definitions/link"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
-			"required": ["value", "type", "subtype"],
+			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
 		},
 		"spells": {

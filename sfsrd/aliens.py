@@ -125,6 +125,106 @@ def restructure_alien_pass(details, subtype):
 	struct['sections'].extend(top['sections'])
 	return struct
 
+def handle_modifier_breakout(section):
+	def _handle_modifier_range(section, modifier):
+		m = re.search(r'^(\d*) (.*)$', modifier["name"])
+		if m:
+			groups = m.groups()
+			assert len(groups) == 2, groups
+			if groups[1] in ["ft.", "feet"]:
+				section['range'] = {
+					"type": "stat_block_section",
+					"subtype": "range",
+					"text": modifier["name"],
+					"range": int(groups[0]),
+					"unit": "feet"
+				}
+				return None
+		return modifier
+	def _handle_modifier_dc(section, modifier):
+		if modifier:
+			text = modifier["name"]
+			if "DC" in text:
+				parts = text.split(" ")
+				save_dc = {
+					"type": "stat_block_section",
+					"subtype": "save_dc",
+					"text": text
+				}
+				assert len(parts) in [2,3], "Broken DC: %s" % text
+				save_dc["dc"] = int(parts.pop())
+				assert parts.pop() == "DC",  "Broken DC: %s" % text
+				if len(parts) > 0:
+					save_dc["save_type"] = parts.pop()
+				section["saving_throw"] = save_dc
+				return None
+		return modifier
+	def _handle_modifier_damage(section, modifier):
+		if modifier:
+			m = re.search(r'^(\d*)d(\d*) (.*)$', modifier["name"])
+			if m:
+				groups = m.groups()
+				assert len(groups) == 3, groups
+				if "damage" in section:
+					damage = section["damage"]
+				else:
+					damage = {
+						"type": "stat_block_section",
+						"subtype": "attack_damage"
+					}
+				damage["formula"] = "%sd%s" % (groups[0], groups[1])
+				damage_types = {
+					"A": "Acid",
+					"B": "Bludgeoning",
+					"C": "Cold",
+					"E": "Electricity",
+					"F": "Fire",
+					"force": "Force",
+					"P": "Piercing",
+					"S": "Slashing",
+					"So": "Sonic",
+					"random": "Random type"
+				}
+				if groups[2] not in damage_types:
+					return modifier
+				damage["damage_type"] = damage_types[groups[2]]
+				damage["damage_type_text"] = groups[2]
+				section["damage"] = damage
+				return None
+		return modifier
+	def _handle_modifier_effect(section, modifier):
+		if modifier:
+			m = re.search(r'^(.*) (\d*)d?(\d?) (.*)$', modifier["name"])
+			if m:
+				groups = m.groups()
+				assert len(groups) == 4, groups
+				if "damage" in section:
+					damage = section["damage"]
+				else:
+					damage = {
+						"type": "stat_block_section",
+						"subtype": "attack_damage"
+					}
+				damage["effect"] = modifier["name"]
+				section["damage"] = damage
+				return None
+		return modifier
+
+	newmods = []
+	if "modifiers" in section:
+		for modifier in section['modifiers']:
+			modifier = _handle_modifier_range(section, modifier)
+			modifier = _handle_modifier_dc(section, modifier)
+			modifier = _handle_modifier_damage(section, modifier)
+			modifier = _handle_modifier_effect(section, modifier)
+			if modifier:
+				newmods.append(modifier)
+		section["modifiers"] = newmods
+		if len(newmods) == 0:
+			del section["modifiers"]
+	return section
+
+
 def top_matter_pass(struct):
 	def _handle_sb_image(sb, bs):
 		first = list(bs.children).pop(0)
@@ -201,7 +301,6 @@ def top_matter_pass(struct):
 		if len(parts) == 1:
 			# TODO: Check for parsables in modifiers
 			grafts = parts.pop()
-			log_element("%s.log" % "graft")("%s" % (grafts))
 			grafts = string_with_modifiers_from_string_list(
 				split_maintain_parens(grafts, " "),
 				"graft")
@@ -269,107 +368,13 @@ def top_matter_pass(struct):
 		return special_senses
 
 	def _handle_aura(title, value):
-		def _handle_aura_range(aura, modifier):
-			m = re.search(r'^(\d*) (.*)$', modifier["name"])
-			if m:
-				groups = m.groups()
-				assert len(groups) == 2, groups
-				if groups[1] in ["ft.", "feet"]:
-					aura['range'] = {
-						"type": "stat_block_section",
-						"subtype": "range",
-						"text": modifier["name"],
-						"range": int(groups[0]),
-						"unit": "feet"
-					}
-					return None
-			return modifier
-		def _handle_aura_dc(aura, modifier):
-			if modifier:
-				text = modifier["name"]
-				if "DC" in text:
-					parts = text.split(" ")
-					save_dc = {
-						"type": "stat_block_section",
-						"subtype": "save_dc",
-						"text": text
-					}
-					assert len(parts) in [2,3], "Broken DC: %s" % text
-					save_dc["dc"] = int(parts.pop())
-					assert parts.pop() == "DC",  "Broken DC: %s" % text
-					if len(parts) > 0:
-						save_dc["save_type"] = parts.pop()
-					aura["saving_throw"] = save_dc
-					return None
-			return modifier
-		def _handle_aura_damage(aura, modifier):
-			if modifier:
-				m = re.search(r'^(\d*)d(\d*) (.*)$', modifier["name"])
-				if m:
-					groups = m.groups()
-					assert len(groups) == 3, groups
-					if "damage" in aura:
-						damage = aura["damage"]
-					else:
-						damage = {
-							"type": "stat_block_section",
-							"subtype": "attack_damage"
-						}
-					damage["formula"] = "%sd%s" % (groups[0], groups[1])
-					damage_types = {
-						"A": "Acid",
-						"B": "Bludgeoning",
-						"C": "Cold",
-						"E": "Electricity",
-						"F": "Fire",
-						"force": "Force",
-						"P": "Piercing",
-						"S": "Slashing",
-						"So": "Sonic",
-						"random": "Random type"
-					}
-					assert groups[2] in damage_types, "Unknown damage type for aura: %s" % modifier['name']
-					damage["damage_type"] = damage_types[groups[2]]
-					damage["damage_type_text"] = groups[2]
-					aura["damage"] = damage
-					return None
-			return modifier
-		def _handle_aura_effect(aura, modifier):
-			if modifier:
-				m = re.search(r'^(.*) (\d*)d?(\d?) (.*)$', modifier["name"])
-				if m:
-					groups = m.groups()
-					assert len(groups) == 4, groups
-					if "damage" in aura:
-						damage = aura["damage"]
-					else:
-						damage = {
-							"type": "stat_block_section",
-							"subtype": "attack_damage"
-						}
-					damage["effect"] = modifier["name"]
-					aura["damage"] = damage
-					return None
-			return modifier
-		
 		assert str(title) == "<b>Aura</b>", title
 		auras = string_with_modifiers_from_string_list(
 			split_maintain_parens(str(value).strip(), ","),
 			"aura")
-		auras = link_values(auras, "text")
-		newmods = []
+		auras = link_values(auras)
 		for aura in auras:
-			for modifier in aura['modifiers']:
-				modifier = _handle_aura_range(aura, modifier)
-				modifier = _handle_aura_dc(aura, modifier)
-				modifier = _handle_aura_damage(aura, modifier)
-				modifier = _handle_aura_effect(aura, modifier)
-				if modifier:
-					newmods.append(modifier)
-					assert modifier["name"] in ["high", "medium", "rounds"], "Unrecognized aura modifier: %s" % modifier["name"]
-			aura["modifiers"] = newmods
-			if len(newmods) == 0:
-				del aura["modifiers"]
+			handle_modifier_breakout(aura)
 		return auras
 
 	text = list(filter(
@@ -522,20 +527,18 @@ def defense_pass(struct):
 				modtext = modtext.replace(")", "").strip()
 				dr['modifiers'] = modifiers_from_string_list(
 					[m.strip() for m in modtext.split(",")])
-			dr["text"] = text.strip()
+			dr["name"] = text.strip()
 			return dr
 		def _handle_weaknesses(value):
-			# TODO: Check for parsables in modifiers
 			weaknesses = string_with_modifiers_from_string_list(
 				split_maintain_parens(str(value), ","),
 				"weakness")
-			weaknesses = link_values(weaknesses, "text")
+			weaknesses = link_values(weaknesses)
 			for weakness in weaknesses:
-				if re.search("\d", weakness["text"]):
-					assert False, "Bad Weakness: %s" % (name, weakness["text"])
+				if re.search("\d", weakness["name"]):
+					assert False, "Bad Weakness: %s" % (name, weakness["name"])
 			return weaknesses
 		def _handle_resistances(value):
-			# TODO: Check for parsables in modifiers
 			values = split_maintain_parens(str(value), ",")
 			resistances = []
 			for value in values:
@@ -554,27 +557,38 @@ def defense_pass(struct):
 						[m.strip() for m in modtext.split(",")])
 				parts = value.split(" ")
 				assert len(parts) == 2, "Badly formatted resistance: %s" % value
-				resistance['text'] = parts[0].strip()
+				resistance['name'] = parts[0].strip()
 				resistance['value'] = int(parts[1].strip())
 				resistances.append(resistance)
 			return resistances
 		def _handle_immunities(value):
-			# TODO: Check for parsables in modifiers
 			immunities = string_with_modifiers_from_string_list(
 				split_maintain_parens(str(value), ","),
 				"immunity")
-			immunities = link_values(immunities, "text")
+			immunities = link_values(immunities)
 			for immunity in immunities:
-				if re.search("\d", immunity["text"]):
-					assert False, "Bad Immunity: %s" % (name, immunity["text"])
+				if re.search("\d", immunity["name"]):
+					assert False, "Bad Immunity: %s" % (name, immunity["name"])
 			return immunities
 
-		def _handle_das(name, value):
-			# TODO: Check for parsables in modifiers
+		def _handle_das(value):
+			def _handle_da_number(da):
+				m = re.search(r'^(.*) (\d*)$', da["name"])
+				if m:
+					groups = m.groups()
+					da["name"] = groups[0]
+					da["value"] = int(groups[1])
+
 			das = string_with_modifiers_from_string_list(
 				split_maintain_parens(str(value), ","),
 				"defensive_ability")
-			das = link_values(das, "text")
+			das = link_values(das)
+			for da in das:
+				_handle_da_number(da)
+				handle_modifier_breakout(da)
+				if "modifiers" in da:
+					for modifier in da["modifiers"]:
+						log_element("%s.log" % "da.mods")("%s" % (modifier["name"]))
 			return das
 
 		for dapart in daparts:
@@ -599,7 +613,7 @@ def defense_pass(struct):
 			elif name == "Immunities":
 				defense['immunities'] = _handle_immunities(value)
 			elif name == "Defensive Abilities":
-				defense['defensive_abilities'] = _handle_das("Defensive Ability", value)
+				defense['defensive_abilities'] = _handle_das(value)
 			else:
 				name = name.lower().replace(" ", "_")
 				values = split_maintain_parens(str(value), ",")
@@ -954,7 +968,7 @@ def offense_pass(struct):
 					modtext = modtext.replace(")", "").strip()
 					modparts = split_comma_and_semicolon(modtext, parenleft="[", parenright="]")
 					element['modifiers'] = modifiers_from_string_list(modparts)
-				element['text'] = text
+				element['name'] = text
 				retlist.append(element)
 			offense[sbfield] = retlist
 		return __handle_default_list
