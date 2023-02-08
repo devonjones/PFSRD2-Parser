@@ -1160,6 +1160,15 @@ def process_offensive_action(section):
 		return spell
 
 	def parse_affliction(parent_section):
+		def _handle_affliction_stage(title, text):
+			stage = {
+				'type': "stat_block_section",
+				'subtype': "affliction_stage",
+				'name': title,
+				'text': text
+			}
+			section.setdefault("stages", []).append(stage)
+
 		text = parent_section['text']
 		del parent_section['text']
 		section = {
@@ -1193,7 +1202,7 @@ def process_offensive_action(section):
 					assert 'maximum_duration' not in section, text
 					section['maximum_duration'] = newtext
 				elif title.startswith('Stage'):
-					section.setdefault("stages", []).append(newtext)
+					_handle_affliction_stage(title, newtext)
 				else:
 					assert False, text
 			else:

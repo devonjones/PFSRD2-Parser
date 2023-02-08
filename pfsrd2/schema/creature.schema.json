@@ -78,7 +78,7 @@
 				"maximum_duration": {"type": "string"},
 				"stages": {
 					"type": "array",
-					"items": {"type": "string"},
+					"items": {"$ref": "#/definitions/affliction_stage"},
 					"additionalItems": false
 				},
 				"links": {
@@ -90,6 +90,18 @@
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
 		},
+		"affliction_stage": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["affliction_stage"]},
+				"name": {"type": "string"},
+				"text": {"type": "string"}
+			},
+			"required": ["name", "type", "subtype", "text"],
+			"additionalProperties": false
+		},
+
 		"attack": {
 			"type": "object",
 			"properties": {
