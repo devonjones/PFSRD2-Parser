@@ -50,6 +50,14 @@ def universal_handle_perception(value):
 	return perception
 
 def universal_handle_special_senses(parts):
+	# Array of:
+	# <a aonid="65" game-obj="Spells"><i>detect alignment</i></a> (chaotic only)
+	# darkvision 60 ft.
+	# blindsense (thought) 30 ft.
+	# blindsense (scent, vibration) 60 ft.
+	# sense through (vision [life-forms only]) 60 ft.
+	# sense through (vision [crystal only])
+
 	def _get_link(part):
 		bs = BeautifulSoup(part, 'html.parser')
 		links = get_links(bs)
@@ -83,7 +91,6 @@ def universal_handle_special_senses(parts):
 	
 	special_senses = []
 	for part in parts:
-		log_element("%s.log" % "special_senses")("%s" % (part))
 		sense = {
 			"type": "stat_block_section",
 			"subtype": "special_sense",

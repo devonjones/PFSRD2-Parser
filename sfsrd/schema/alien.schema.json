@@ -94,6 +94,11 @@
 			"required": ["type", "subtype", "text"],
 			"additionalProperties": false
 		},
+		"auras": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/aura"},
+			"additionalItems": false
+		},
 		"creature_type": {
 			"type": "object",
 			"properties": {
@@ -107,7 +112,7 @@
 				]},
 				"creature_subtypes": {
 					"type": "array",
-					"items": {"$ref": "#/definitions/string_with_modifiers"},
+					"items": {"$ref": "#/definitions/string_value"},
 					"additionalItems": false
 				},
 				"family": {"type": "string"},
@@ -311,7 +316,7 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_attack", "offensive_ability",
 					"defensive_ability", "immunity", "weakness",
-					"creature_subtype", "graft", "communication_ability",
+					"graft", "communication_ability",
 					"other_ability"]},
 				"text": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"},
@@ -322,6 +327,16 @@
 				}
 			},
 			"required": ["type", "subtype", "text"],
+			"additionalProperties": false
+		},
+		"string_value": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["creature_subtype"]},
+				"value": {"type": "string"}
+			},
+			"required": ["type", "subtype", "value"],
 			"additionalProperties": false
 		},
 		"number_and_string_with_modifiers": {
@@ -708,11 +723,7 @@
 				"creature_type": {"$ref": "#/definitions/creature_type"},
 				"initiative": {"$ref": "#/definitions/number_with_modifiers"},
 				"senses": {"$ref": "#/definitions/senses"},
-				"auras": {
-					"type": "array",
-					"items": {"$ref": "#/definitions/aura"},
-					"additionalItems": false
-				},
+				"auras": {"$ref": "#/definitions/auras"},
 				"defense": {"$ref": "#/definitions/defense"},
 				"offense": {"$ref": "#/definitions/offense"},
 				"statistics": {"$ref": "#/definitions/statistics"},

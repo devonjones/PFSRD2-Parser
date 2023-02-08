@@ -477,6 +477,20 @@ def extract_modifiers(text):
 		return text, link_modifiers(modifiers)
 	return text, []
 
+def string_values_from_string_list(strlist, subtype):
+	svs = []
+	for part in strlist:
+		sv = {
+			"type": "stat_block_section",
+			"subtype": subtype
+		}
+		part, modifiers = extract_modifiers(part)
+		if modifiers:
+			assert False, "String Values have no modifiers: %s" % part
+		sv["value"] = part
+		svs.append(sv)
+	return svs
+
 def string_with_modifiers_from_string_list(strlist, subtype):
 	swms = []
 	for mpart in strlist:

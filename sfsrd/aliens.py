@@ -8,8 +8,10 @@ from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString, Tag
 from universal.universal import parse_universal, entity_pass
 from universal.universal import get_text, break_out_subtitles
-from universal.universal import link_values, string_with_modifiers_from_string_list
-from universal.universal import link_modifiers, modifiers_from_string_list
+from universal.universal import string_with_modifiers_from_string_list
+from universal.universal import string_values_from_string_list
+from universal.universal import modifiers_from_string_list
+from universal.universal import link_values
 from universal.universal import extract_source
 from universal.universal import html_pass, filter_tag
 from universal.universal import remove_empty_sections_pass
@@ -199,6 +201,7 @@ def top_matter_pass(struct):
 		if len(parts) == 1:
 			# TODO: Check for parsables in modifiers
 			grafts = parts.pop()
+			log_element("%s.log" % "graft")("%s" % (grafts))
 			grafts = string_with_modifiers_from_string_list(
 				split_maintain_parens(grafts, " "),
 				"graft")
@@ -244,11 +247,12 @@ def top_matter_pass(struct):
 		assert ct in types, ct
 
 	def _handle_creature_subtypes(subtype):
-		# TODO: Check for parsables in modifiers
-		subtypes = string_with_modifiers_from_string_list(
-			split_maintain_parens(subtype.replace(")", ""), ","),
+		assert subtype[-1] == ")", "Malformed subtypes: %s" % subtype
+		subtype = subtype.replace(")", "")
+		assert subtype.find(")") == -1, "Malformed subtypes: %s" % subtype
+		subtypes = string_values_from_string_list(
+			split_maintain_parens(subtype, ","),
 			"creature_subtype")
-		subtypes = link_values(subtypes, "text")
 		return subtypes
 
 	def _handle_perception(title, value):
