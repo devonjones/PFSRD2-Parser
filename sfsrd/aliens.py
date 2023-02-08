@@ -936,7 +936,6 @@ def offense_pass(struct):
 
 	def _handle_reach(offense, _, text):
 		reach = {
-			"name": "Reach",
 			"type": "stat_block_section",
 			"subtype": "reach"
 		}

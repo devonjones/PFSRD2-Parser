@@ -415,19 +415,6 @@
 			"required": ["name", "type", "subtype", "speed"],
 			"additionalProperties": false
 		},
-		"protection": {
-			"type": "object",
-			"properties": {
-				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["immunity", "resistance", "weakness"]},
-				"name": {"type": "string"},
-				"value": {"type": "integer"},
-				"modifiers": {"$ref": "#/definitions/modifiers"},
-				"link": {"$ref": "#/definitions/link"}
-			},
-			"required": ["name", "type", "subtype"],
-			"additionalProperties": false
-		},
 		"range": {
 			"type": "object",
 			"properties": {
@@ -443,7 +430,6 @@
 		"reach": {
 			"type": "object",
 			"properties": {
-				"name": {"type": "string"},
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["reach"]},
 				"value": {"type": "string"},
@@ -626,8 +612,7 @@
 					"Extraordinary", "Spell-Like", "Supernatural"]},
 				"ability_type_abbrev": {"enum": ["Ex", "Sp", "Su"]},
 				"maneuverability": {"type": "string"},
-				"modifiers": {"$ref": "#/definitions/modifiers"},
-				"from": {"$ref": "#/definitions/link"}
+				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
