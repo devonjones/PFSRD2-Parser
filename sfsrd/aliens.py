@@ -154,48 +154,60 @@ def handle_modifier_breakout(section):
 				return None
 		return modifier
 	def _handle_modifier_damage(section, modifier):
+		def _handle_dam(m):
+			groups = m.groups()
+			assert len(groups) == 2, groups
+			if "damage" in section:
+				damage = section["damage"]
+			else:
+				damage = {
+					"type": "stat_block_section",
+					"subtype": "attack_damage"
+				}
+			damage["formula"] = groups[0]
+			damage_types = {
+				"A": "Acid",
+				"B": "Bludgeoning",
+				"C": "Cold",
+				"E": "Electricity",
+				"F": "Fire",
+				"force": "Force",
+				"P": "Piercing",
+				"S": "Slashing",
+				"So": "Sonic",
+				"E & F": "Electricity & Fire",
+				"B & F": "Bludgeoning & Fire",
+				"P & F": "Piercing & Fire",
+				"random": "Random type"
+			}
+			damage_type = groups[1]
+			if 'plus' in damage_type:
+				damage_type, effect = damage_type.split("plus")
+				damage_type = damage_type.strip()
+				assert "effect" not in damage, "Damage already has effect: %s, %s" % (damage, effect)
+				damage["effect"] = effect.strip()
+			if damage_type not in damage_types:
+				return modifier
+			damage["damage_type"] = damage_types[damage_type]
+			damage["damage_type_text"] = damage_type
+			section["damage"] = damage
+			return None
+
 		if modifier:
 			if "[" in modifier["name"]:
 				return modifier
-			m = re.search(r'^(\d*d\d*\+?\d?) (.*)$', modifier["name"])
+			m = re.search(r'^(\d*d\d*) (.*)$', modifier["name"])
 			if m:
-				groups = m.groups()
-				assert len(groups) == 2, groups
-				if "damage" in section:
-					damage = section["damage"]
-				else:
-					damage = {
-						"type": "stat_block_section",
-						"subtype": "attack_damage"
-					}
-				damage["formula"] = groups[0]
-				damage_types = {
-					"A": "Acid",
-					"B": "Bludgeoning",
-					"C": "Cold",
-					"E": "Electricity",
-					"F": "Fire",
-					"force": "Force",
-					"P": "Piercing",
-					"S": "Slashing",
-					"So": "Sonic",
-					"E & F": "Electricity & Fire",
-					"B & F": "Bludgeoning & Fire",
-					"P & F": "Piercing & Fire",
-					"random": "Random type"
-				}
-				if groups[1] not in damage_types:
-					return modifier
-				damage["damage_type"] = damage_types[groups[1]]
-				damage["damage_type_text"] = groups[1]
-				section["damage"] = damage
-				return None
+				return _handle_dam(m)
+			m = re.search(r'^(\d*d\d*\+\d*) (.*)$', modifier["name"])
+			if m:
+				return _handle_dam(m)
 		return modifier
 	def _handle_modifier_effect(section, modifier):
 		if modifier:
 			if "[" in modifier["name"]:
 				return modifier
-			m = re.search(r'^(.*) (\d*)d?(\d?) (.*)$', modifier["name"])
+			m = re.search(r'^([a-zA-Z]*) (\d*)d?(\d?) ([a-zA-Z]*)$', modifier["name"])
 			if m:
 				groups = m.groups()
 				assert len(groups) == 4, groups
@@ -210,6 +222,39 @@ def handle_modifier_breakout(section):
 				section["damage"] = damage
 				return None
 		return modifier
+	def _handle_modifier_hp(section, modifier):
+		if modifier:
+			if "[" in modifier["name"]:
+				return modifier
+			m = re.search(r'^(\d*) hp$', modifier["name"].lower())
+			if m:
+				groups = m.groups()
+				assert len(groups) == 1, groups
+				section["hp"] = int(groups[0])
+				return None
+		return modifier
+	def _handle_modifier_kac(section, modifier):
+		if modifier:
+			if "[" in modifier["name"]:
+				return modifier
+			m = re.search(r'^kac (\d*)$', modifier["name"].lower())
+			if m:
+				groups = m.groups()
+				assert len(groups) == 1, groups
+				section["kac"] = int(groups[0])
+				return None
+		return modifier
+	def _handle_modifier_eac(section, modifier):
+		if modifier:
+			if "[" in modifier["name"]:
+				return modifier
+			m = re.search(r'^eac (\d*)$', modifier["name"].lower())
+			if m:
+				groups = m.groups()
+				assert len(groups) == 1, groups
+				section["eac"] = int(groups[0])
+				return None
+		return modifier
 
 	newmods = []
 	if "modifiers" in section:
@@ -218,6 +263,9 @@ def handle_modifier_breakout(section):
 			modifier = _handle_modifier_dc(section, modifier)
 			modifier = _handle_modifier_damage(section, modifier)
 			modifier = _handle_modifier_effect(section, modifier)
+			modifier = _handle_modifier_hp(section, modifier)
+			modifier = _handle_modifier_kac(section, modifier)
+			modifier = _handle_modifier_eac(section, modifier)
 			if modifier:
 				newmods.append(modifier)
 		section["modifiers"] = newmods
@@ -937,6 +985,30 @@ def offense_pass(struct):
 	def _handle_default(offense, name, text):
 		offense[name.lower().strip()] = text
 
+	def _handle_offensive_ability(offense, _, text):
+		retlist = []
+		parts = split_maintain_parens(text, ",")
+		for text in parts:
+			element = {
+				'type': 'stat_block_section',
+				'subtype': "offensive_ability"
+			}
+			if text.find("(") > -1:
+				text, modtext = text.split("(")
+				text = text.strip()
+				modtext = modtext.replace(")", "").strip()
+				modparts = split_comma_and_semicolon(modtext, parenleft="[", parenright="]")
+				element['modifiers'] = modifiers_from_string_list(modparts)
+
+			element['name'] = text
+			handle_modifier_breakout(element)
+			retlist.append(element)
+			if "modifiers" in element:
+				for value in element['modifiers']:
+					log_element("%s.log" % "offensive_ability")("%s" % (value["name"]))
+		offense["offensive_abilities"] = retlist
+
+
 	def _handle_default_list(sbsubtype, sbfield):
 		# TODO pull out dice
 		def __handle_default_list(offense, _, text):
@@ -980,8 +1052,7 @@ def offense_pass(struct):
 				"Multiattack": _handle_multiattack,
 				"Space": _handle_default,
 				"Reach": _handle_reach,
-				"Offensive Abilities": _handle_default_list(
-					"offensive_ability", "offensive_abilities"),
+				"Offensive Abilities": _handle_offensive_ability,
 				"Special Attacks": _handle_default_list(
 					"special_attack", "special_attacks"),
 				"Connection": _handle_default

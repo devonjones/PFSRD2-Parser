@@ -193,6 +193,7 @@
 				"range": {"$ref": "#/definitions/range"},
 				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"damage": {"$ref": "#/definitions/attack_damage"},
+				"hp": {"type": "integer"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["type", "subtype", "name"],
@@ -411,11 +412,7 @@
 					"items": {"$ref": "#/definitions/spells"},
 					"additionalItems": false
 				},
-				"offensive_abilities":  {
-					"type": "array",
-					"items": {"$ref": "#/definitions/string_with_modifiers"},
-					"additionalItems": false
-				},
+				"offensive_abilities": {"$ref": "#/definitions/offensive_abilities"},
 				"special_attacks": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/string_with_modifiers"},
@@ -426,6 +423,34 @@
 			"required": ["type", "subtype", "speed"],
 			"additionalProperties": false
 		},
+		"offensive_ability": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["offensive_ability"]},
+				"name": {"type": "string"},
+				"range": {"$ref": "#/definitions/range"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
+				"damage": {"$ref": "#/definitions/attack_damage"},
+				"hp": {"type": "integer"},
+				"kac": {"type": "integer"},
+				"eac": {"type": "integer"},
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["type", "subtype", "name"],
+			"additionalProperties": false
+		},
+		"offensive_abilities":  {
+			"type": "array",
+			"items": {"$ref": "#/definitions/offensive_ability"},
+			"additionalItems": false
+		},
+
 		"other_ability": {
 			"type": "object",
 			"properties": {
@@ -434,6 +459,7 @@
 				"name": {"type": "string"},
 				"range": {"$ref": "#/definitions/range"},
 				"saving_throw": {"$ref": "#/definitions/save_dc"},
+				"hp": {"type": "integer"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["type", "subtype", "name"],
@@ -500,6 +526,7 @@
 				"text": {"type": "string"},
 				"dc": {"type": "integer"},
 				"save_type": {"enum": ["Fort", "Ref", "Will", "Str"]},
+				"result": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["type", "subtype", "text", "dc"],

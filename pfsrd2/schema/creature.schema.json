@@ -493,6 +493,7 @@
 				"text": {"type": "string"},
 				"dc": {"type": "integer"},
 				"save_type": {"enum": ["Fort", "Ref", "Will"]},
+				"result": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["type", "subtype", "text", "dc"],

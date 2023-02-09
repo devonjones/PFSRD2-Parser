@@ -30,6 +30,8 @@ def universal_handle_senses():
 def universal_handle_save_dc(text):
 	# Fortitude DC 22
 	# DC 22
+	# DC 22 Fortitude
+	# DC 22 half
 
 	assert "DC" in text, "Saves must have DCs: %s" % text
 	save_dc = {
@@ -41,7 +43,6 @@ def universal_handle_save_dc(text):
 	if modifiers:
 		save_dc["modifiers"] = modifiers
 	parts = text.split(" ")
-	assert len(parts) in [2,3], "Broken DC: %s" % text
 	types = {
 		"Fortitude": "Fort",
 		"Fort": "Fort",
@@ -50,6 +51,7 @@ def universal_handle_save_dc(text):
 		"Will": "Will",
 		"Strength": "Str"
 	}
+	newparts = []
 	for part in parts:
 		if part == "DC":
 			continue
@@ -57,6 +59,12 @@ def universal_handle_save_dc(text):
 			save_dc["dc"] = int(part)
 		elif part in types:
 			save_dc["save_type"] = types[part]
+		else:
+			newparts.append(part)
+	if newparts:
+		result = " ".join(newparts)
+		if "half" in result:
+			save_dc['result'] = part
 		else:
 			assert False, "Broken DC: %s" % text
 	return save_dc
