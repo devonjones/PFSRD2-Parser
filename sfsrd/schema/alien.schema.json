@@ -450,7 +450,6 @@
 			"items": {"$ref": "#/definitions/offensive_ability"},
 			"additionalItems": false
 		},
-
 		"other_ability": {
 			"type": "object",
 			"properties": {

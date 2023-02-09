@@ -219,8 +219,8 @@ def handle_modifier_breakout(section):
 						"type": "stat_block_section",
 						"subtype": "attack_damage"
 					}
-				damage["effect"] = modifier["name"]
 				assert "effect" not in damage, "Damage already has effect: %s, %s" % (damage, damage["effect"])
+				damage["effect"] = modifier["name"]
 				section["damage"] = damage
 				return None
 		return modifier
@@ -834,7 +834,8 @@ def offense_pass(struct):
 	def _handle_attack(attack_type):
 		def _handle_attack_impl(offense, _, text):
 			def _handle_attack_start(start):
-				if start in ["swarm attack", "troop attack"]:
+				print(start)
+				if start in ["swarm attack", "troop attack", "distraction"]:
 					attack['name'] = start
 					return
 				parts = start.split(" ")
@@ -919,30 +920,31 @@ def offense_pass(struct):
 						else:
 							damagetext = damagetext + ";" + modpart
 
-				damageparts = [d.strip() for d in damagetext.split(";")]
-				for damagepart in damageparts:
-					attack_damage = {
-						"type": "stat_block_section",
-						"subtype": "attack_damage",
-					}
-					if damagepart.find("nonlethal") > -1:
-						attack_damage['nonlethal'] = True
-						damagepart = damagepart.replace("nonlethal", "").strip()
-						damagepart = damagepart.replace("  ", " ").strip()
-					if re.match("^\d+d\d+", damagepart):
-						ps = damagepart.split(" ")
-						attack_damage['formula'] = ps.pop(0)
-						damage_type = " ".join(ps)
-						_handle_damage_type(damage_type)
-					elif re.match(".* \d*d?\d+$", damagepart):
-						ps = damagepart.split(" ")
-						attack_damage['formula'] = ps.pop()
-						damagepart = " ".join(ps)
-						_handle_effects(damagepart)
-					else:
-						_handle_effects(damagepart)
-					damage.append(attack_damage)
-				attack['damage'] = damage
+				if len(damagetext.strip()) > 0:
+					damageparts = [d.strip() for d in damagetext.split(";")]
+					for damagepart in damageparts:
+						attack_damage = {
+							"type": "stat_block_section",
+							"subtype": "attack_damage",
+						}
+						if damagepart.find("nonlethal") > -1:
+							attack_damage['nonlethal'] = True
+							damagepart = damagepart.replace("nonlethal", "").strip()
+							damagepart = damagepart.replace("  ", " ").strip()
+						if re.match("^\d+d\d+", damagepart):
+							ps = damagepart.split(" ")
+							attack_damage['formula'] = ps.pop(0)
+							damage_type = " ".join(ps)
+							_handle_damage_type(damage_type)
+						elif re.match(".* \d*d?\d+$", damagepart):
+							ps = damagepart.split(" ")
+							attack_damage['formula'] = ps.pop()
+							damagepart = " ".join(ps).strip()
+							_handle_effects(damagepart)
+						else:
+							_handle_effects(damagepart)
+						damage.append(attack_damage)
+					attack['damage'] = damage
 
 			melee = []
 			attacks = split_maintain_parens(text, " or ")
