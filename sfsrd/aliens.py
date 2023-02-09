@@ -177,6 +177,7 @@ def handle_modifier_breakout(section):
 				"So": "Sonic",
 				"E & F": "Electricity & Fire",
 				"B & F": "Bludgeoning & Fire",
+				"B & S": "Bludgeoning & Slashing",
 				"P & F": "Piercing & Fire",
 				"random": "Random type"
 			}
@@ -219,6 +220,7 @@ def handle_modifier_breakout(section):
 						"subtype": "attack_damage"
 					}
 				damage["effect"] = modifier["name"]
+				assert "effect" not in damage, "Damage already has effect: %s, %s" % (damage, damage["effect"])
 				section["damage"] = damage
 				return None
 		return modifier
@@ -348,7 +350,6 @@ def top_matter_pass(struct):
 		assert len(type_parts) == 0, type_parts
 
 		if len(parts) == 1:
-			# TODO: Check for parsables in modifiers
 			grafts = parts.pop()
 			grafts = string_with_modifiers_from_string_list(
 				split_maintain_parens(grafts, " "),
@@ -542,7 +543,6 @@ def defense_pass(struct):
 				if t in value:
 					assert False, "Malformed %s: %s" % (name, value)
 		def _handle_sr(value):
-			# TODO: Check for parsables in modifiers
 			sr = {
 				'type': 'stat_block_section',
 				'subtype': 'sr',
@@ -1227,7 +1227,7 @@ def ecology_pass(struct):
 		ecology['environment'] = str(bs).strip()
 
 	def _handle_organization(ecology, bs):
-		#TODO: Handle links
+		log_element("%s.log" % "ecology.organization")("%s" % (str(bs).strip()))
 		ecology['organization'] = str(bs).strip()
 
 	stats_section = find_section(struct, "Ecology")
