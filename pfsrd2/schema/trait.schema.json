@@ -15,7 +15,7 @@
 					"Equipment", "Deities", "Feats", "Actions", "Monsters",
 					"Heritages", "Rules", "Diseases", "Rituals", "Planes",
 					"MonsterFamilies", "Domains", "Classes", "Ancestries",
-					"Archetypes"
+					"Archetypes", "SiegeWeapons"
 				]},
 				"aonid": {"type": "integer"}
 			},

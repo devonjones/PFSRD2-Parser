@@ -18,7 +18,9 @@ def parse_trait(filename, options):
 	basename = os.path.basename(filename)
 	if not options.stdout:
 		sys.stderr.write("%s\n" % basename)
-	details = parse_universal(filename, max_title=4)
+	details = parse_universal(filename, max_title=4,
+		cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
+	pprint(details)
 	details = entity_pass(details)
 	struct = restructure_trait_pass(details)
 	trait_struct_pass(struct)
@@ -127,7 +129,8 @@ def trait_class_pass(struct, filename):
 	parts = filename.split(".")
 	parts = parts[:-2]
 	fn = ".".join(parts)
-	details = parse_universal(fn, max_title=4)
+	details = parse_universal(fn, max_title=4,
+		cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
 	top = details.pop(0)
 	trait_classes = {}
 	for section in details:
