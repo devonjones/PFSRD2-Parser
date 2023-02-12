@@ -20,10 +20,13 @@ from universal.utils import split_maintain_parens, split_comma_and_semicolon
 from universal.utils import filter_end, clear_tags
 from universal.utils import log_element
 from universal.creatures import write_creature
-from universal.creatures import universal_handle_special_senses
+from universal.creatures import universal_handle_alignment
+from universal.creatures import universal_handle_creature_type
 from universal.creatures import universal_handle_perception
-from universal.creatures import universal_handle_senses
 from universal.creatures import universal_handle_save_dc
+from universal.creatures import universal_handle_senses
+from universal.creatures import universal_handle_size
+from universal.creatures import universal_handle_special_senses
 from sfsrd.schema import validate_against_schema
 
 def parse_alien(filename, options):
@@ -322,6 +325,11 @@ def top_matter_pass(struct):
 			init['modifiers'] = modifiers
 		return init
 
+	def _handle_alignment(abbrev):
+		alignment = universal_handle_alignment(abbrev)
+		assert alignment, "Unrecognized alignment: %s" % abbrev
+		return alignment
+
 	def _handle_creature_basics(bs, sb):
 		parts = list(filter(lambda e: len(e) > 0,
 			str(bs).split("<br/>")))
@@ -332,7 +340,7 @@ def top_matter_pass(struct):
 		basics = type_parts.pop(0).strip().split(" ")
 		assert len(basics) in [3,4], basics
 		alignment = _handle_alignment(basics.pop(0))
-		size = _handle_size(basics.pop(0).capitalize())
+		size = universal_handle_size(basics.pop(0).capitalize())
 		sb['creature_type'] = _handle_creature_type(
 			" ".join([b.capitalize() for b in basics]),
 			type_parts)
@@ -356,52 +364,11 @@ def top_matter_pass(struct):
 				"graft")
 			sb['creature_type']['grafts'] = grafts
 
-	def _handle_alignment(abbrev):
-		alignments = {
-			'LG': "Lawful Good",
-			'LN': "Lawful Neutral",
-			'LE': "Lawful Evil",
-			'NG': "Neutral Good",
-			'N': "Neutral",
-			'NE': "Neutral Evil",
-			'CG': "Chaotic Good",
-			'CN': "Chaotic Neutral",
-			'CE': "Chaotic Evil"
-		}
-		return alignments[abbrev]
-
-	def _handle_size(s):
-		sizes = [
-			"Fine", "Diminutive", "Tiny", "Small", "Medium", "Large", "Huge",
-			"Gargantuan", "Colossal"]
-		if s in sizes:
-			return s
-		assert s in sizes, s
-	
-	def _handle_creature_type(ct, subtype):
-		types = [
-			"Aberration", "Animal", "Construct", "Dragon", "Fey", "Humanoid",
-			"Magical Beast", "Monstrous Humanoid", "Ooze", "Outsider", "Plant",
-			"Undead", "Vermin"]
-		if ct in types:
-			creature_type = {
-				"type": "stat_block_section",
-				"subtype": "creature_type",
-				"creature_type": ct
-			}
-			if len(subtype) > 0:
-				creature_type['creature_subtypes'] = _handle_creature_subtypes(subtype.pop())
-			return creature_type
-		assert ct in types, ct
-
-	def _handle_creature_subtypes(subtype):
+	def _handle_creature_type(ct, type_parts):
+		subtype = type_parts.pop()
 		assert subtype[-1] == ")", "Malformed subtypes: %s" % subtype
 		subtype = subtype.replace(")", "")
-		assert subtype.find(")") == -1, "Malformed subtypes: %s" % subtype
-		subtypes = string_values_from_string_list(
-			split_maintain_parens(subtype, ","),
-			"creature_subtype")
-		return subtypes
+		return universal_handle_creature_type(ct, subtype)
 
 	def _handle_perception(title, value):
 		assert str(title) == "<b>Perception</b>", title
@@ -1005,9 +972,6 @@ def offense_pass(struct):
 			element['name'] = text
 			handle_modifier_breakout(element)
 			retlist.append(element)
-			if "modifiers" in element:
-				for value in element['modifiers']:
-					log_element("%s.log" % "offensive_ability")("%s" % (value["name"]))
 		offense["offensive_abilities"] = retlist
 
 
@@ -1229,7 +1193,6 @@ def ecology_pass(struct):
 		ecology['environment'] = str(bs).strip()
 
 	def _handle_organization(ecology, bs):
-		log_element("%s.log" % "ecology.organization")("%s" % (str(bs).strip()))
 		ecology['organization'] = str(bs).strip()
 
 	stats_section = find_section(struct, "Ecology")

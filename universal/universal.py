@@ -134,7 +134,7 @@ def subtitle_pass(details, max_title):
 				h = Heading(3, get_text(detail))
 				h.details = sub
 				retdetails.append(h)
-			elif has_name(detail, 'span') and not is_trait(detail):
+			elif has_name(detail, 'span') and not is_trait(detail) and not is_action(detail):
 				retdetails.append(span_to_heading(detail, 3))
 			else:
 				retdetails.append(detail)
@@ -298,6 +298,13 @@ def is_trait(span):
 	if(span.has_attr('class')):
 		c = span['class']
 		if "".join(c).startswith('trait'):
+			return True
+	return False
+
+def is_action(span):
+	if(span.has_attr('class')):
+		c = span['class']
+		if "".join(c).startswith('action'):
 			return True
 	return False
 

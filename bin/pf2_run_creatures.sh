@@ -11,6 +11,9 @@ rm errors.pf2.creatures.log
 if test -f "errors.pf2.creatures"; then
 	cat errors.pf2.creatures | while read i
 	do
+		if [[ "$i" == "done" ]]; then
+			exit
+		fi
 		if ! ./pf2_creature_parse -o $PF2_DATA_DIR $i ; then
 			echo $i >> errors.pf2.creatures.log
 		fi

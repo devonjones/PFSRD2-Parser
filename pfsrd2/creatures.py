@@ -7,12 +7,14 @@ from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
 from universal.universal import parse_universal, print_struct, entity_pass
 from universal.universal import is_trait, get_text, extract_link
+from universal.universal import string_with_modifiers_from_string_list
 from universal.utils import split_maintain_parens
 from universal.universal import source_pass, extract_source
 from universal.universal import aon_pass, restructure_pass, html_pass
 from universal.universal import remove_empty_sections_pass, get_links
 from universal.universal import walk, test_key_is_value
 from universal.universal import link_modifiers
+from universal.universal import link_values
 from universal.files import makedirs, char_replace
 from universal.creatures import write_creature
 from universal.creatures import universal_handle_special_senses
@@ -28,18 +30,32 @@ from pfsrd2.sql.traits import fetch_trait_by_name
 # TODO: range on perceptions
 # pleroma, 11, lifesense 120 feet
 
+# TODO: Greater barghest (43), deal with mutations
+
+# TODO: Some creatures have actions that are inlined in text.  Example are the
+# chromatic dragons
+
+# TODO: Recall Knowledge
+
+# TODO: Handle save critical/failure in offensive abilities (774, Nyogoth)
+# TODO: Fix that many afflictions had their . removed before Saving Throw
+# TODO: Fix rituals
+# TODO: Fix Sorcerer Bloodlines
+
 def parse_creature(filename, options):
 	basename = os.path.basename(filename)
 	if not options.stdout:
 		sys.stderr.write("%s\n" % basename)
-	details = parse_universal(filename, subtitle_text=True, max_title=4)
-	#	cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
+	details = parse_universal(filename, subtitle_text=True, max_title=4,
+		cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
 	details = entity_pass(details)
 	struct = restructure_creature_pass(details, options.subtype)
 	creature_stat_block_pass(struct)
 	source_pass(struct, find_stat_block)
 	sidebar_pass(struct)
+	elite_pass(struct)
 	index_pass(struct, find_stat_block(struct))
+	# TODO: Handle recall knowledge
 	aon_pass(struct, basename)
 	restructure_pass(struct, 'stat_block', find_stat_block)
 	trait_pass(struct)
@@ -89,7 +105,7 @@ def db_pass(struct):
 			assert data, trait
 			db_trait = json.loads(data['trait'])
 			if "link" in trait:
-				assert trait['link']['aonid'] == db_trait['aonid'], trait
+				assert trait['link']['aonid'] == db_trait['aonid'], "%s : %s" % (trait, db_trait)
 			assert isinstance(parent, list), parent
 			index = parent.index(trait)
 			if 'value' in trait:
@@ -129,6 +145,19 @@ def db_pass(struct):
 	walk(struct, test_key_is_value('subtype', 'trait'), _check_trait)
 
 def restructure_creature_pass(details, subtype):
+	def _handle_sanctioning(rest):
+		for obj in rest:
+			if "text" in obj:
+				bs = BeautifulSoup(obj['text'], 'html.parser')
+				imgs = bs.findAll('img')
+				for img in imgs:
+					if img['alt'].startswith("PFS"):
+						_, pfs = img['alt'].split(" ")
+						assert pfs in ["Standard", "Limited", "Restricted"], "Bad PFS: %s" % pfs
+						sb["creature_type"]["pfs"] = pfs
+						img.extract()
+				obj["text"] = str(bs)
+
 	sb = None
 	rest = []
 	for obj in details:
@@ -147,6 +176,7 @@ def restructure_creature_pass(details, subtype):
 		'level': level}
 	sb['type'] = 'stat_block'
 	del sb["subname"]
+	_handle_sanctioning(rest)
 	top['sections'].extend(rest)
 	return top
 
@@ -213,6 +243,7 @@ def creature_stat_block_pass(struct):
 	sections = []
 	data = []
 	key = None
+	last_key = None
 	value = []
 	link = None
 	for obj in objs:
@@ -220,9 +251,12 @@ def creature_stat_block_pass(struct):
 			trait = trait_parse(obj)
 			sb['creature_type'].setdefault('traits', []).append(trait)
 		elif obj.name == "br":
-			value.append(obj)
+			if last_key == "Source":
+				key = "Graft"
+			last_key = key
 			key, value, data, link = add_to_data(key, value, data, link)
 		elif obj.name == 'hr':
+			last_key = key
 			key, value, data, link = add_to_data(key, value, data, link)
 			if len(value) > 0:
 				assert link == None
@@ -231,6 +265,7 @@ def creature_stat_block_pass(struct):
 			sections.append(data)
 			data = []
 		elif obj.name == "b":
+			last_key = key
 			key, value, data, link = add_to_data(key, value, data, link)
 			key = get_text(obj)
 			if obj.a:
@@ -277,6 +312,18 @@ def sidebar_pass(struct):
 			struct['sidebar_heading'] = subtype
 			struct['image'] = {'type': "image", "name": subtype, "image": image}
 			struct['text'] = ''.join([str(c) for c in children])
+
+def elite_pass(struct):
+	remove = []
+	for section in struct['sections']:
+		keep = elite_pass(section)
+		if not keep:
+			remove.append(section)
+	for s in remove:
+		struct['sections'].remove(s)
+	if struct['name'].startswith("Elite") and struct['name'].endswith("Level"):
+		return False
+	return True
 
 def index_pass(struct, sb):
 	remove = []
@@ -332,9 +379,23 @@ def validate_dict_pass(top, struct, parent, field):
 		raise e
 
 def process_stat_block(sb, sections):
+	def _process_component(sb, defense):
+		comp = process_hp(defense.pop(0), 'hp')
+		comp["subtype"] = "defense_component"
+		if len(defense) > 0 and defense[0][0] == "Immunities":
+			n, v = process_defense(sb, defense.pop(0))
+			comp[n] = v
+		if len(defense) > 0 and defense[0][0] == "Resistances":
+			n, v = process_defense(sb, defense.pop(0))
+			comp[n] = v
+		if len(defense) > 0 and defense[0][0] == "Weaknesses":
+			n, v = process_defense(sb, defense.pop(0))
+			comp[n] = v
+		sb["defense"]["components"] = [comp]
 	# Stats
 	stats = sections.pop(0)
 	process_source(sb, stats.pop(0))
+	process_subtype(sb, stats)
 	sb['senses'] = process_senses(stats.pop(0))
 	sb['statistics'] = process_statistics(stats)
 	while len(stats) > 0:
@@ -359,12 +420,19 @@ def process_stat_block(sb, sections):
 		sb['defense']['hp']['hardness'] = hardness['hardness']
 		if 'automatic_abilities' in hardness:
 			assert False, "Hardness has automatic abilities: %s" % hardness
+	if len(defense) > 0 and defense[0][0] == "Thresholds":
+		process_threshold(sb, defense.pop(0))
 	if len(defense) > 0 and defense[0][0] == "Immunities":
-		process_defense(sb, defense.pop(0))
+		n, v = process_defense(sb, defense.pop(0))
+		sb['defense'][n] = v
 	if len(defense) > 0 and defense[0][0] == "Resistances":
-		process_defense(sb, defense.pop(0))
+		n, v = process_defense(sb, defense.pop(0))
+		sb['defense'][n] = v
 	if len(defense) > 0 and defense[0][0] == "Weaknesses":
-		process_defense(sb, defense.pop(0))
+		n, v = process_defense(sb, defense.pop(0))
+		sb['defense'][n] = v
+	if len(defense) > 0 and defense[0][0] == "HP":
+		_process_component(sb, defense)
 
 	while len(defense) > 0:
 		process_defensive_ability(defense.pop(0), defense, sb)
@@ -377,7 +445,7 @@ def process_stat_block(sb, sections):
 	}
 	sb['offense']['speed'] = process_speed(offense.pop(0))
 	del sb['text']
-	assert len(offense) == 0
+	assert len(offense) == 0, offense
 
 	# Attacks
 	attacks_src = get_attacks(sb)
@@ -432,6 +500,16 @@ def process_source(sb, section):
 		if errata:
 			source['errata'] = errata[1]
 	sb['sources'] = sources
+
+def process_subtype(sb, stats):
+	if stats[0][0] == 'Graft':
+		section = stats.pop(0)
+		grafts = string_with_modifiers_from_string_list(
+			split_maintain_parens(section[1].strip(), " ", parenleft="<", parenright=">"),
+			"graft")
+		link_values(grafts)
+		sb['creature_type']['grafts'] = grafts
+
 
 def process_senses(section):
 	assert section[0] == "Perception"
@@ -745,6 +823,23 @@ def process_saves(fort, ref, will):
 	return saves
 
 def process_hp(section, subtype):
+	def _handle_squares():
+		remove = []
+		for special in specials:
+			if special.endswith("squares"):
+				remove.append(special)
+				s, _ = special.split(" ")
+				hp["squares"] = int(s)
+		for r in remove:
+			specials.remove(r)
+	def _handle_component():
+		if len(specials) > 0:
+			remove = []
+			for special in specials:
+				if special.startswith("[") and special.endswith("]"):
+					remove.append(special)
+					hp["name"] = special[1:-1]
+			[specials.remove(r) for r in remove]
 	assert section[0] in ["HP", "Hardness"]
 	assert section[2] == None
 	text = section[1].strip()
@@ -766,6 +861,8 @@ def process_hp(section, subtype):
 		'type': 'stat_block_section',
 		'subtype': subtype,
 		name.lower(): value}
+	_handle_squares()
+	_handle_component()
 	if len(specials) > 0:
 		special_sections = build_objects(
 			'stat_block_section', 'ability', specials, {
@@ -779,7 +876,26 @@ def process_hp(section, subtype):
 		hp['automatic_abilities'] = special_sections
 	return hp
 
-def process_defense(sb, section):
+def process_threshold(sb, section):
+	_, text, _ = section
+	if text.endswith(";"):
+		text = text[:-1]
+	thresholds = string_with_modifiers_from_string_list(
+		split_maintain_parens(text, ","),
+		"threshold")
+	for t in thresholds:
+		t["value"] = int(t["name"])
+		del t["name"]
+		assert len(t["modifiers"]) == 1, "Broken thresholds: %s" % text
+		squares_text = t["modifiers"][0]["name"]
+		del t["modifiers"]
+		s, _ = squares_text.split(" ")
+		t["squares"] = int(s)
+	if len(thresholds) > 0:
+		sb["defense"]["hp"]["thresholds"] = thresholds
+		assert "squares" in sb["defense"]["hp"]
+
+def process_defense(sb, section, ret=False):
 	def create_defense(defense):
 		d = {
 			'type': 'stat_block_section',
@@ -805,7 +921,7 @@ def process_defense(sb, section):
 	for part in parts:
 		defense[section[0].lower()].append(create_defense(part))
 	link_objects(defense[section[0].lower()])
-	sb['defense'][section[0].lower()] = defense[section[0].lower()]
+	return section[0].lower(), defense[section[0].lower()]
 
 def process_defensive_ability(section, sections, sb):
 	#TODO: parse error on 71, Catfolk Pouncer
@@ -1098,6 +1214,7 @@ def process_offensive_action(section):
 			else:
 				remains.append(tt)
 		if len(remains) > 0 and remains != tt_parts:
+			remains = [r[:-1] for r in remains if r.endswith(")")]
 			section['notes'] = remains
 			remains = []
 		if len(remains) > 0:
@@ -1200,12 +1317,21 @@ def process_offensive_action(section):
 				if title == 'Saving Throw':
 					assert 'saving_throw' not in section, text
 					section['saving_throw'] = universal_handle_save_dc(newtext)
+				elif title == 'Requirements':
+					assert 'requirements' not in section, text
+					section['requirements'] = newtext
 				elif title == 'Onset':
 					assert 'onset' not in section, text
 					section['onset'] = newtext
+				elif title == 'Special':
+					assert 'special' not in section, text
+					section['special'] = newtext
 				elif title == 'Maximum Duration':
 					assert 'maximum_duration' not in section, text
 					section['maximum_duration'] = newtext
+				elif title == 'Effect':
+					assert 'effect' not in section, text
+					section['effect'] = newtext
 				elif title.startswith('Stage'):
 					_handle_affliction_stage(title, newtext)
 				else:
@@ -1248,7 +1374,7 @@ def process_offensive_action(section):
 		parts = []
 		addon_names = ["Frequency", "Trigger", "Effect", "Duration",
 			"Requirement", "Requirements", "Prerequisite", "Critical Success",
-			"Success", "Failure", "Critical Failure", "Range"]		
+			"Success", "Failure", "Critical Failure", "Range", "Cost"]
 		if section['name'] == "Planar Incarnation":
 			parts = [str(c) for c in children]
 		else: 
@@ -1287,19 +1413,22 @@ def process_offensive_action(section):
 	if len(traits) > 0:
 		section['traits'] = traits
 	section['text'] = text.strip()
+	parts = section["name"].split(" ")
 	if section['name'] in ["Melee", "Ranged"]:
 		section['offensive_action_type'] = "attack"
 		parse_attack_action(section, section['name'].lower())
-	elif section['name'].find("Spells") > -1 \
+	elif "Spells" in parts \
 			or section['name'].endswith("Rituals") \
-			or section['name'].endswith("Formulas"):
+			or section['name'].endswith("Formulas") \
+			or section['name'].endswith("Hexes"):
 		section['offensive_action_type'] = "spells"
 		parse_spells(section)
 	else:
 		bs = BeautifulSoup(section['text'], 'html.parser')
+		titles = [get_text(b) for b in bs.findAll('b')]
 		if bs.b:
 			title = get_text(bs.b)
-			if title.strip() in ['Saving Throw']:
+			if title.strip() in ['Saving Throw'] or 'Stage 1' in titles:
 				section['offensive_action_type'] = "affliction"
 				parse_affliction(section)
 			else:
@@ -1377,6 +1506,7 @@ def extract_all_traits(description):
 	return description, traits
 
 def _extract_trait(description):
+	# TODO: Need to solve cold iron as precious problem, Monster ID 1550
 	traits = []
 	newdescription = []
 	if description.find("(") > -1:
@@ -1441,16 +1571,15 @@ def extract_modifier(text):
 
 def extract_action(text):
 	def build_action(child, action):
-		action_name = child['alt']
-		image = child['src'].split("\\").pop().split("%5C").pop()
-		image_name = image.split(".")[0]
+		action_name = child['title']
 		if not action:
+			image = action_name.lower().replace(" ", "_") + ".png"
 			action = build_object(
 				'stat_block_section',
 				'action',
 				action_name,
 				{'image': {
-					"type": "image", "name": image_name, "image": image}})
+					"type": "image", "name": action_name, "image": image}})
 		return action
 
 	children = list(BeautifulSoup(text.strip(), 'html.parser').children)
@@ -1461,7 +1590,7 @@ def extract_action(text):
 		 "Two Actions", "Three Actions"]
 	while len(children) > 0:
 		child = children.pop(0)
-		if child.name == "img" and child['alt'] in action_names:
+		if child.name == "span" and child['title'] in action_names:
 			action = build_action(child, action)
 		else:
 			newchildren.append(child)
