@@ -95,10 +95,10 @@ def db_pass(struct):
 		_handle_value(trait)
 		if "alignment" in trait.get('classes', []) and trait['name'] != "No Alignment":
 			_handle_alignment_trait(trait, parent)
-		else: 
+		else:
 			fetch_trait_by_name(curs, trait['name'])
 			data = curs.fetchone()
-			assert data, trait
+			assert data, "%s | %s" %(data, trait)
 			db_trait = json.loads(data['trait'])
 			if "link" in trait:
 				assert trait['link']['aonid'] == db_trait['aonid'], "%s : %s" % (trait, db_trait)
@@ -123,6 +123,18 @@ def db_pass(struct):
 		elif trait['name'].startswith("versatile "):
 			value = trait['name'].replace("versatile ", "")
 			trait['name'] = "versatile"
+			trait['value'] = value
+		elif trait['name'].startswith("reload"):
+			value = trait['name'].replace("reload ", "")
+			trait['name'] = "reload"
+			trait['value'] = value
+		elif trait['name'].startswith("precious"):
+			value = trait['name'].replace("precious ", "")
+			trait['name'] = "precious"
+			trait['value'] = value
+		elif trait['name'].startswith("attached"):
+			value = trait['name'].replace("attached ", "")
+			trait['name'] = "attached"
 			trait['value'] = value
 
 	def _handle_alignment_trait(trait, parent):
@@ -454,10 +466,22 @@ def process_stat_block(sb, sections):
 			n, v = process_defense(sb, defense.pop(0))
 			comp[n] = v
 		sb["defense"]["components"] = [comp]
+	def _process_background(sb, stats):
+		bgs = ['Heritage', 'Background', "Rogue's Racket",
+			"Sorcerer Bloodline", "Cleric Doctrine"]
+		while stats[0][0] in bgs:
+			grafts = sb['creature_type'].setdefault('grafts', [])
+			background = stats.pop(0)
+			backgrounds = string_with_modifiers_from_string_list(
+				split_maintain_parens(background[1], ", "),
+			"graft")
+			link_values(backgrounds)
+			grafts.extend(backgrounds)
 	# Stats
 	stats = sections.pop(0)
 	process_source(sb, stats.pop(0))
 	process_subtype(sb, stats)
+	_process_background(sb, stats)
 	sb['senses'] = process_senses(stats.pop(0))
 	sb['statistics'] = process_statistics(stats)
 	while len(stats) > 0:
@@ -1115,7 +1139,9 @@ def process_speed(section):
 		speed['modifiers'] = link_modifiers(
 			build_objects('stat_block_section', 'modifier', modifiers))
 		for m in speed['modifiers']:
-			assert m['name'].find("feet") == -1, modifiers
+			# exception is for NPCs.aspx.ID_967.html
+			if "ignores 5 feet" not in m['name']:
+				assert m['name'].find("feet") == -1, modifiers
 	return speed
 
 def process_offensive_action(section):
@@ -1240,6 +1266,22 @@ def process_offensive_action(section):
 		return effect
 
 	def parse_spells(parent_section):
+		def _handle_traditions(name_parts):
+			tradition = {
+				"Wizard": "Arcane",
+				"Magus": "Arcane",
+				"Bard": "Occult",
+				"Witch": "Occult",
+				"Champion": "Divine",
+				"Cleric": "Divine",
+				"Druid": "Primal"
+			}
+			for caster in tradition.keys():
+				if caster in name_parts:
+					if tradition[caster] not in name_parts:
+						name_parts.insert(0, tradition[caster])
+					return
+
 		text = parent_section['text']
 		del parent_section['text']
 		section = {
@@ -1254,8 +1296,11 @@ def process_offensive_action(section):
 			del parent_section['traits']
 
 		name_parts = section['name'].split(" ")
-		if name_parts[-1] != "Formulas":
+		_handle_traditions(name_parts)
+		if name_parts[-1] not in ["Formulas", "Rituals"] and "Monk" not in name_parts:
 			section["spell_tradition"] = name_parts.pop(0)
+		if name_parts[-1] == "Rituals" and len(name_parts) > 1:
+			name_parts.pop(0)
 		section["spell_type"] = " ".join(name_parts)
 		parts = split_maintain_parens(text, ";")
 		tt_parts = split_maintain_parens(parts.pop(0), ",")

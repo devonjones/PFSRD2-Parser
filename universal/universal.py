@@ -56,6 +56,7 @@ def span_formatting_filter(soup):
 def noop_pass(details):
 	retdetails = []
 	for detail in details:
+		# TODO: Get rid of the following line
 		if not str(detail).strip() == "":
 			retdetails.append(detail)
 	return retdetails
