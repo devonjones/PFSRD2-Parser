@@ -21,26 +21,22 @@ from universal.creatures import universal_handle_special_senses
 from universal.creatures import universal_handle_perception
 from universal.creatures import universal_handle_senses
 from universal.creatures import universal_handle_save_dc
-from universal.utils import log_element
+from universal.utils import log_element, clear_tags
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
 from pfsrd2.sql import get_db_path, get_db_connection
 from pfsrd2.sql.traits import fetch_trait_by_name
 
-# TODO: range on perceptions
-# pleroma, 11, lifesense 120 feet
-
 # TODO: Greater barghest (43), deal with mutations
-
 # TODO: Some creatures have actions that are inlined in text.  Example are the
-# chromatic dragons
-
-# TODO: Recall Knowledge
-
+#       chromatic dragons
 # TODO: Handle save critical/failure in offensive abilities (774, Nyogoth)
-# TODO: Fix that many afflictions had their . removed before Saving Throw
 # TODO: Fix rituals
-# TODO: Fix Sorcerer Bloodlines
+# TODO: Handle hardness/hp/bt/etc for items
+# TODO: Defensive Ability, parse error on 71, Catfolk Pouncer
+# TODO: Traits: Need to solve cold iron as precious problem, Monster ID 1550
+# TODO: Traits, need to solve or cases on traits, Monster ID 518
+# TODO: Bunch of fix []
 
 def parse_creature(filename, options):
 	basename = os.path.basename(filename)
@@ -55,9 +51,9 @@ def parse_creature(filename, options):
 	sidebar_pass(struct)
 	elite_pass(struct)
 	index_pass(struct, find_stat_block(struct))
-	# TODO: Handle recall knowledge
 	aon_pass(struct, basename)
 	restructure_pass(struct, 'stat_block', find_stat_block)
+	recall_knowledge_pass(struct)
 	trait_pass(struct)
 	db_pass(struct)
 	html_pass(struct)
@@ -312,6 +308,72 @@ def sidebar_pass(struct):
 			struct['sidebar_heading'] = subtype
 			struct['image'] = {'type': "image", "name": subtype, "image": image}
 			struct['text'] = ''.join([str(c) for c in children])
+
+def recall_knowledge_pass(struct):
+	def parse_knowledge(sb, knowledges):
+		ks = []
+		for knowledge in knowledges:
+			k = {
+				"type": "stat_block_section",
+				"subtype": "knowledge"
+			}
+			bs = BeautifulSoup(knowledge, 'html.parser')
+			links = get_links(bs)
+			text = get_text(bs)
+			text, dc = text.split(":")
+			_, dc = dc.strip().split(" ")
+			k["dc"] = int(dc)
+			if len(links) == 1:
+				assert ")" not in text, "Unparsable Knowledge: %s" % knowledge
+				k["name"] = text.strip()
+				k["link"] = links.pop(0)
+			else:
+				assert ")" in text, "Unparsable Knowledge: %s" % knowledge
+				text, skill = text.split("(")
+				skill = skill[:-1]
+				k["name"] = text.strip()
+				k["link"] = links.pop(0)
+				for l in links:
+					assert l["game-obj"] == "Skills"
+				skills = []
+				for s in skill.split(","):
+					skill = s.strip()
+					link = links.pop(0)
+					assert link["name"] == skill
+					skills.append({
+						"name": skill,
+						"type": "stat_block_section",
+						"subtype": "knowledge_skill",
+						"link": link
+					})
+				k["skills"] = skills
+			ks.append(k)
+		sb["creature_type"]["knowledge"] = ks
+
+	sb = struct["stat_block"]
+	if "sections" in struct:
+		for section in struct["sections"]:
+			if "text" in section and section["text"].find("Recall Knowledge -") > -1:
+				bs = BeautifulSoup(section["text"], 'html.parser')
+				text_list = []
+				knowledges = []
+				for br in bs.find_all("br"):
+					br.insert_after("|")
+					br.unwrap()
+				parts = str(bs).split("|")
+				found = False
+				for part in parts:
+					if part.find("Recall Knowledge") > -1:
+						found = True
+					if not found:
+						text_list.append(part)
+					else:
+						knowledges.append(part)
+				if text_list[-1] == "":
+					text_list = text_list[:-1]
+				section["text"] = "<br/>".join(text_list)
+				parse_knowledge(sb, knowledges)
+
 
 def elite_pass(struct):
 	remove = []
@@ -924,7 +986,6 @@ def process_defense(sb, section, ret=False):
 	return section[0].lower(), defense[section[0].lower()]
 
 def process_defensive_ability(section, sections, sb):
-	#TODO: parse error on 71, Catfolk Pouncer
 	assert section[0] not in ["Immunities", "Resistances", "Weaknesses"], section[0]
 	description = section[1]
 	link = section[2]
@@ -1200,6 +1261,7 @@ def process_offensive_action(section):
 		tt_parts = split_maintain_parens(parts.pop(0), ",")
 		remains = []
 		for tt in tt_parts:
+			tt = tt.strip()
 			if tt == '':
 				continue
 			chunks = tt.split(" ")
@@ -1214,32 +1276,46 @@ def process_offensive_action(section):
 			else:
 				remains.append(tt)
 		if len(remains) > 0 and remains != tt_parts:
-			remains = [r[:-1] for r in remains if r.endswith(")")]
+			def _fix_parens(r):
+				if r.startswith("("):
+					r = r[1:]
+				if r.endswith(")") and r.find("(") == -1:
+					r = r[:-1]
+				return r
+			remains = [_fix_parens(r) for r in remains]
 			section['notes'] = remains
+			addons = ['DC', 'attack', 'Focus']
+			for addon in addons:
+				for note in section['notes']:
+					assert addon not in note, "%s should not be in spell notes: %s" % (addon, note)
+					assert addon.lower() not in note, "%s should not be in spell notes: %s" % (addon, note)
 			remains = []
 		if len(remains) > 0:
 			parts.insert(0, ', '.join(remains))
 		spell_lists = []
 		assert len(parts) > 0, section
 		for p in parts:
-			spell_lists.append(parse_spell_list(p))
+			spell_lists.append(parse_spell_list(section, p))
 		section['spell_list'] = spell_lists
 		parent_section['spells'] = section	
 
-	def parse_spell_list(part):
+	def parse_spell_list(section, part):
 		spell_list = {"type": "stat_block_section", "subtype": "spell_list"}
 		bs = BeautifulSoup(part, 'html.parser')
-		level_text = get_text(bs.b.extract())
-		if level_text == "Constant":
-			spell_list["constant"] = True
+		if not bs.b and section["name"] == "Alchemical Formulas":
+			pass
+		else:
 			level_text = get_text(bs.b.extract())
-		if level_text == "Cantrips":
-			spell_list["cantrips"] = True
-			level_text = get_text(bs.b.extract())
-		m = re.match(r"^\(?(\d*)[snrt][tdh]\)?$", level_text)
-		assert m, "Failed to parse spells: %s" % (part)
-		spell_list["level"] = int(m.groups()[0])
-		spell_list["level_text"] = level_text
+			if level_text == "Constant":
+				spell_list["constant"] = True
+				level_text = get_text(bs.b.extract())
+			if level_text == "Cantrips":
+				spell_list["cantrips"] = True
+				level_text = get_text(bs.b.extract())
+			m = re.match(r"^\(?(\d*)[snrt][tdh]\)?$", level_text)
+			assert m, "Failed to parse spells: %s" % (part)
+			spell_list["level"] = int(m.groups()[0])
+			spell_list["level_text"] = level_text
 		spells_html = split_maintain_parens(str(bs), ",")
 		spells = []
 		for html in spells_html:
@@ -1340,6 +1416,14 @@ def process_offensive_action(section):
 				section.setdefault('text', []).append(get_text(bs))
 		if 'text' in section:
 			section['text'] = '; '.join(section['text'])
+			if section["text"] == "":
+				del section["text"]
+			else:
+				assert section['text'].endswith('.') or section['text'].endswith(")"), "Affliction modification fail %s" % section['text']
+				addons = ['Saving Throw', 'Requirements', 'Onset', 'Special',
+					'Maximum Duration', 'Effect', "Stage"]
+				for addon in addons:
+					assert addon not in section["text"], "%s should not be in the text of Affliction: %s" % (addon, section["text"])
 		parent_section['affliction'] = section
 
 	def parse_offensive_ability(parent_section):
@@ -1506,7 +1590,6 @@ def extract_all_traits(description):
 	return description, traits
 
 def _extract_trait(description):
-	# TODO: Need to solve cold iron as precious problem, Monster ID 1550
 	traits = []
 	newdescription = []
 	if description.find("(") > -1:
@@ -1518,7 +1601,6 @@ def _extract_trait(description):
 		bs = BeautifulSoup(text, 'html.parser')
 		if bs.a and bs.a.has_attr('game-obj') and bs.a['game-obj'] == 'Traits':
 			if text.find(" or ") > -1:
-				# TODO - need to solve or cases on traits, Monster ID 518
 				return description, []
 			parts = [p.strip() for p in text.replace("(", "").split(",")]
 			for part in parts:
@@ -1623,7 +1705,7 @@ def build_object(dtype, subtype, name, keys=None):
 	obj = {
 		'type': dtype,
 		'subtype': subtype,
-		'name': name
+		'name': name.strip()
 	}
 	if keys:
 		obj.update(keys)

@@ -4,6 +4,8 @@ import re
 from pprint import pprint
 from universal.universal import modifiers_from_string_list, extract_modifiers
 from universal.universal import link_values, get_links, get_text
+from universal.universal import split_maintain_parens
+from universal.universal import string_values_from_string_list
 from universal.files import char_replace
 from universal.utils import log_element
 from bs4 import BeautifulSoup
@@ -137,7 +139,6 @@ def universal_handle_special_senses(parts):
 			"type": "stat_block_section",
 			"subtype": "special_sense",
 		}
-		part = _get_link(part)
 		part = _handle_special_sense_range(part, sense)
 		if part.find("(") > -1:
 			assert part.endswith(")"), part
@@ -148,8 +149,57 @@ def universal_handle_special_senses(parts):
 			mparts = [m.strip() for m in mods[0:-1].split(",")]
 			modifiers = modifiers_from_string_list(mparts)
 			sense["modifiers"] = link_values(modifiers)
+		part = _get_link(part)
 		
 		sense["name"] = part
 		special_senses.append(sense)
 	special_senses = link_values(special_senses, singleton=True)
 	return special_senses
+
+def universal_handle_size(s):
+	sizes = [
+		"Fine", "Diminutive", "Tiny", "Small", "Medium", "Large", "Huge",
+		"Gargantuan", "Colossal"]
+	if s in sizes:
+		return s
+	assert s in sizes, s
+
+def universal_handle_alignment(abbrev):
+	alignments = {
+		'LG': "Lawful Good",
+		'LN': "Lawful Neutral",
+		'LE': "Lawful Evil",
+		'NG': "Neutral Good",
+		'N': "Neutral",
+		'NE': "Neutral Evil",
+		'CG': "Chaotic Good",
+		'CN': "Chaotic Neutral",
+		'CE': "Chaotic Evil",
+		'Any': "Any alignment",
+	}
+	if abbrev in alignments:
+		return alignments[abbrev]
+
+def universal_handle_creature_type(ct, subtype):
+	def _handle_creature_subtypes(subtype):
+		subtype = subtype.replace(")", "")
+		assert subtype.find(")") == -1, "Malformed subtypes: %s" % subtype
+		subtypes = string_values_from_string_list(
+			split_maintain_parens(subtype, ","),
+			"creature_subtype")
+		return subtypes
+
+	types = [
+		"Aberration", "Animal", "Construct", "Dragon", "Fey", "Humanoid",
+		"Magical Beast", "Monstrous Humanoid", "Ooze", "Outsider", "Plant",
+		"Undead", "Vermin"]
+	if ct in types:
+		creature_type = {
+			"type": "stat_block_section",
+			"subtype": "creature_type",
+			"creature_type": ct
+		}
+		if len(subtype) > 0:
+			creature_type['creature_subtypes'] = _handle_creature_subtypes(subtype)
+		return creature_type
+	assert ct in types, ct

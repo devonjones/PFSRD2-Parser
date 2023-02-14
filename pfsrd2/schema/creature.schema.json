@@ -233,7 +233,8 @@
 					"No Alignment", "Any"]},
 				"rarity": {"enum": ["Common", "Uncommon", "Rare", "Unique"]},
 				"pfs": {"enum": ["Standard", "Limited", "Restricted"]},
-				"traits": {"$ref": "#/definitions/traits"}
+				"traits": {"$ref": "#/definitions/traits"},
+				"knowledge": {"$ref": "#/definitions/knowledges"}
 			},
 			"required": ["name", "type", "subtype", "creature_types", "size",
 				"level", "alignment", "traits"],
@@ -323,6 +324,36 @@
 			},
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
+		},
+		"knowledge": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["knowledge"]},
+				"name": {"type": "string"},
+				"dc": {"type": "integer"},
+				"skills": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"type": {"enum": ["stat_block_section"]},
+							"subtype": {"enum": ["knowledge_skill"]},
+							"name": {"type": "string"},
+							"link": {"$ref": "#/definitions/link"}
+						}
+					},
+					"additionalItems": false
+				},
+				"link": {"$ref": "#/definitions/link"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"knowledges": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/knowledge"},
+			"additionalItems": false
 		},
 		"language": {
 			"type": "object",
@@ -730,7 +761,7 @@
 				"constant": {"type": "boolean"},
 				"cantrips": {"type": "boolean"}
 			},
-			"required": ["type", "subtype", "level"],
+			"required": ["type", "subtype"],
 			"additionalProperties": false
 		},
 		"statistics": {
