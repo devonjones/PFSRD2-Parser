@@ -6,8 +6,10 @@ from universal.universal import modifiers_from_string_list, extract_modifiers
 from universal.universal import link_values, get_links, get_text
 from universal.universal import split_maintain_parens
 from universal.universal import string_values_from_string_list
+from universal.universal import string_with_modifiers_from_string_list
+from universal.universal import string_with_modifiers
 from universal.files import char_replace
-from universal.utils import log_element
+from universal.utils import log_element, clear_tags
 from bs4 import BeautifulSoup
 
 
@@ -28,6 +30,179 @@ def universal_handle_senses():
 		"subtype": "senses",
 	}
 	return senses
+
+def universal_handle_modifier_breakout(section):
+	def _handle_modifier_range(section, modifier):
+		if "[" in modifier["name"]:
+			return modifier
+		range = universal_handle_range(modifier["name"])
+		if range:
+			section['range'] = range
+			return None
+		return modifier
+	def _handle_modifier_dc(section, modifier):
+		if modifier:
+			if "[" in modifier["name"]:
+				return modifier
+			text = modifier["name"]
+			if "DC" in text:
+				section["saving_throw"] = universal_handle_save_dc(text)
+				return None
+		return modifier
+	def _handle_modifier_damage(section, modifier):
+		def _handle_dam(m):
+			groups = m.groups()
+			assert len(groups) == 2, groups
+			if "damage" in section:
+				damage = section["damage"]
+			else:
+				damage = {
+					"type": "stat_block_section",
+					"subtype": "attack_damage"
+				}
+			damage["formula"] = groups[0]
+			damage_types = {
+				"A": "Acid",
+				"B": "Bludgeoning",
+				"C": "Cold",
+				"E": "Electricity",
+				"F": "Fire",
+				"force": "Force",
+				"P": "Piercing",
+				"S": "Slashing",
+				"So": "Sonic",
+				"E & F": "Electricity & Fire",
+				"B & F": "Bludgeoning & Fire",
+				"B & S": "Bludgeoning & Slashing",
+				"P & F": "Piercing & Fire",
+				"random": "Random type"
+			}
+			damage_type = groups[1]
+			if 'plus' in damage_type:
+				damage_type, effect = damage_type.split("plus")
+				damage_type = damage_type.strip()
+				assert "effect" not in damage, "Damage already has effect: %s, %s" % (damage, effect)
+				damage["effect"] = effect.strip()
+			if damage_type not in damage_types:
+				return modifier
+			damage["damage_type"] = damage_types[damage_type]
+			damage["damage_type_text"] = damage_type
+			section["damage"] = damage
+			return None
+
+		if modifier:
+			if "[" in modifier["name"]:
+				return modifier
+			m = re.search(r'^(\d*d\d*) (.*)$', modifier["name"])
+			if m:
+				return _handle_dam(m)
+			m = re.search(r'^(\d*d\d*\+\d*) (.*)$', modifier["name"])
+			if m:
+				return _handle_dam(m)
+		return modifier
+	def _handle_modifier_effect(section, modifier):
+		if modifier:
+			if "[" in modifier["name"]:
+				return modifier
+			m = re.search(r'^([a-zA-Z]*) (\d*)d?(\d?) ([a-zA-Z]*)$', modifier["name"])
+			if m:
+				groups = m.groups()
+				assert len(groups) == 4, groups
+				if "damage" in section:
+					damage = section["damage"]
+				else:
+					damage = {
+						"type": "stat_block_section",
+						"subtype": "attack_damage"
+					}
+				assert "effect" not in damage, "Damage already has effect: %s, %s" % (damage, damage["effect"])
+				damage["effect"] = modifier["name"]
+				section["damage"] = damage
+				return None
+		return modifier
+	def _handle_modifier_hp(section, modifier):
+		if modifier:
+			if "[" in modifier["name"]:
+				return modifier
+			m = re.search(r'^(\d*) hp$', modifier["name"].lower())
+			if m:
+				groups = m.groups()
+				assert len(groups) == 1, groups
+				section["hp"] = int(groups[0])
+				return None
+		return modifier
+	def _handle_modifier_kac(section, modifier):
+		if modifier:
+			if "[" in modifier["name"]:
+				return modifier
+			m = re.search(r'^kac (\d*)$', modifier["name"].lower())
+			if m:
+				groups = m.groups()
+				assert len(groups) == 1, groups
+				section["kac"] = int(groups[0])
+				return None
+		return modifier
+	def _handle_modifier_eac(section, modifier):
+		if modifier:
+			if "[" in modifier["name"]:
+				return modifier
+			m = re.search(r'^eac (\d*)$', modifier["name"].lower())
+			if m:
+				groups = m.groups()
+				assert len(groups) == 1, groups
+				section["eac"] = int(groups[0])
+				return None
+		return modifier
+
+	newmods = []
+	if "modifiers" in section:
+		for modifier in section['modifiers']:
+			modifier = _handle_modifier_range(section, modifier)
+			modifier = _handle_modifier_dc(section, modifier)
+			modifier = _handle_modifier_damage(section, modifier)
+			modifier = _handle_modifier_effect(section, modifier)
+			modifier = _handle_modifier_hp(section, modifier)
+			modifier = _handle_modifier_kac(section, modifier)
+			modifier = _handle_modifier_eac(section, modifier)
+			if modifier:
+				newmods.append(modifier)
+		section["modifiers"] = newmods
+		if len(newmods) == 0:
+			del section["modifiers"]
+	return section
+
+def universal_handle_aura(value):
+	auras = string_with_modifiers_from_string_list(
+		split_maintain_parens(str(value).strip(), ","),
+		"aura")
+	auras = link_values(auras)
+	for aura in auras:
+		universal_handle_modifier_breakout(aura)
+	return auras
+
+def universal_handle_range(text):
+	m = re.search(r'^(\d*) (.*)$', text)
+	if m:
+		groups = m.groups()
+		assert len(groups) == 2, groups
+		unit = groups[1]
+		if unit.endswith('.'):
+			unit = unit[:-1]
+		if unit in ["ft", "feet", "mile", "miles"]:
+			if unit == "ft":
+				unit = "feet"
+			if unit == "mile":
+				unit = "miles"
+
+			range = {
+				"type": "stat_block_section",
+				"subtype": "range",
+				"text": text,
+				"range": int(groups[0]),
+				"unit": unit
+			}
+			return range
+	return None
 
 def universal_handle_save_dc(text):
 	# Fortitude DC 22
@@ -66,6 +241,8 @@ def universal_handle_save_dc(text):
 	if newparts:
 		result = " ".join(newparts)
 		if "half" in result:
+			save_dc['result'] = part
+		elif "negates" in result:
 			save_dc['result'] = part
 		else:
 			assert False, "Broken DC: %s" % text
@@ -199,7 +376,222 @@ def universal_handle_creature_type(ct, subtype):
 			"subtype": "creature_type",
 			"creature_type": ct
 		}
-		if len(subtype) > 0:
+		if subtype and len(subtype) > 0:
 			creature_type['creature_subtypes'] = _handle_creature_subtypes(subtype)
 		return creature_type
 	assert ct in types, ct
+
+def universal_handle_languages(text):
+	def _handle_communication_abilities(parts):
+		comtext = clear_tags(", ".join(parts), ["i"])
+		parts = split_maintain_parens(comtext, ",")
+		for v in parts:
+			log_element("%s.log" % "communication_ability")("%s" % (v))
+
+		coms = []
+		for part in parts:
+			text, crange = _handle_communication_ability_range(part)
+			com = string_with_modifiers(text, "communication_ability")
+			if crange:
+				com["range"] = crange
+			if 'modifiers' in com:
+				newmods = []
+				for modifier in com['modifiers']:
+					crange = universal_handle_range(modifier['name'])
+					if crange:
+						assert 'range' not in com, "broken communication ability: %s" % comtext
+						com['range'] = crange
+					else:
+						newmods.append(modifier)
+				if len(newmods) > 0:
+					com['modifiers'] = newmods
+				else:
+					del com['modifiers']
+			coms.append(com)
+		return coms
+	def _handle_communication_ability_range(text):
+		m = re.search(r'^(.*) (\d*) (.*)$', text)
+		if m:
+			groups = m.groups()
+			assert len(groups) == 3, groups
+			text = groups[0]
+			rangetext = "%s %s" % (groups[1], groups[2])
+			crange = universal_handle_range(rangetext)
+			assert crange, "communication ability range broken: %s" % text
+			return text, crange
+		return text, None
+
+	parts = text.split(";")
+	languages = {
+		"type": "stat_block_section",
+		"subtype": "languages",
+		"languages": []
+	}
+	langs = parts.pop(0)
+	lparts = split_maintain_parens(langs, ",")
+	for l in lparts:
+		log_element("%s.log" % "languages")("%s" % (l))
+
+	for lpart in lparts:
+		if "telepathy" in lpart:
+			parts.append(lpart)
+		elif "ft." in lpart:
+			parts.append(lpart)
+		else:
+			language = {
+				"type": "stat_block_section",
+				"subtype": "language",
+			}
+			ltext, modifiers = extract_modifiers(lpart)
+			bs = BeautifulSoup(ltext, 'html.parser')
+			links = get_links(bs)
+			if len(links) > 0:
+				assert len(links) == 1, "Malformed language: %s" % ltext
+				language['link'] = links[0]
+				ltext = get_text(bs)
+			language["name"] = ltext
+
+			if len(modifiers) > 0:
+				language['modifiers'] = modifiers
+			languages['languages'].append(language)
+	if len(languages['languages']) == 0:
+		del languages['languages']
+	if len(parts) > 0:
+		languages['communication_abilities'] = _handle_communication_abilities(parts)
+	return languages
+
+def universal_handle_sr(value):
+	sr = {
+		'type': 'stat_block_section',
+		'subtype': 'sr',
+	}
+	parts = value.split(" ")
+	sr['value'] = int(parts.pop(0))
+	if len(parts) > 0:
+		modifier_text = " ".join(parts)
+		if modifier_text.startswith("(") and modifier_text.endswith(")"):
+			modifier_text = modifier_text[1:-1]
+		assert modifier_text.find(",") < 0, "SR modifiers apparently do need to be split: %s" % modifier_text
+		assert modifier_text.find(";") < 0, "SR modifiers apparently do need to be split: %s" % modifier_text
+		sr['modifiers'] = modifiers_from_string_list(
+			[m.strip() for m in modifier_text.split(",")])
+	return sr
+
+def universal_handle_dr(value):
+	# TODO: Check for parsables in modifiers
+	def _break_out_damage_types(dr, text):
+		FULLWIDTH_COMMA = "，"
+		parts = text.split(FULLWIDTH_COMMA)
+		newparts = []
+		conj_and = False
+		conj_or = False
+		for part in parts:
+			if " and " in part:
+				conj_and = True
+				newparts.extend(part.split(" and "))
+			elif " or " in part:
+				conj_or = True
+				newparts.extend(part.split(" or "))
+			else:
+				newparts.append(part)
+		assert not (conj_and and conj_or), "broken dr: %s" % text
+		if conj_and:
+			dr["conjunction"] = "and"
+		elif conj_or:
+			dr["conjunction"] = "or"
+		dr["damage_types"] = newparts
+
+			
+	if value.endswith(";"):
+		value = value [:-1]
+	value = clear_tags(value, ["i"])
+	values = split_maintain_parens(value, ",")
+	drs = []
+	for value in values:
+		parts = value.split("/")
+		assert len(parts) == 2, "Bad DR: %s" % value
+		num = int(parts[0])
+		dr = {
+			"type": "stat_block_section",
+			"subtype": "dr",
+			"value": num,
+			"text": value
+		}
+		text = parts[1].strip()
+		if text.find("(") > -1:
+			text, modtext = text.split("(")
+			modtext = modtext.replace(")", "").strip()
+			dr['modifiers'] = modifiers_from_string_list(
+				[m.strip() for m in modtext.split(",")])
+		_break_out_damage_types(dr, text.strip())
+		drs.append(dr)
+	return drs
+
+def universal_handle_weaknesses(value):
+	if value.endswith(";"):
+		value = value [:-1]
+	weaknesses = string_with_modifiers_from_string_list(
+		split_maintain_parens(str(value), ","),
+		"weakness")
+	weaknesses = link_values(weaknesses)
+	for weakness in weaknesses:
+		if re.search("\d", weakness["name"]):
+			assert False, "Bad Weakness: %s" % (weakness["name"])
+	return weaknesses
+
+def universal_handle_resistances(value):
+	if value.endswith(";"):
+		value = value [:-1]
+	values = split_maintain_parens(str(value), ",")
+	resistances = []
+	for value in values:
+		resistance = {
+			"type": "stat_block_section",
+			"subtype": "resistance"
+		}
+		if value.find("(") > -1:
+			portions = value.split("(")
+			assert len(portions) == 2, "Badly formatted resistance with modifier: %s" % value
+			value = portions[0].strip()
+			modtext = portions[1].strip()
+			assert modtext.endswith(")"), "Badly formatted resistance with modifier: %s" % value
+			modtext = modtext[:-1]
+			resistance["modifiers"] = modifiers_from_string_list(
+				[m.strip() for m in modtext.split(",")])
+		parts = value.split(" ")
+		resistance['value'] = int(parts.pop().strip())
+		resistance['name'] = " ".join(parts).strip()
+		resistances.append(resistance)
+	return resistances
+
+def universal_handle_immunities(value):
+	if value.endswith(";"):
+		value = value [:-1]
+	value = value.replace(" and ", ", ")
+	immunities = string_with_modifiers_from_string_list(
+		split_maintain_parens(str(value), ","),
+		"immunity")
+	immunities = link_values(immunities)
+	for immunity in immunities:
+		if re.search("\d", immunity["name"]):
+			assert False, "Bad Immunity: %s" % (immunity["name"])
+	return immunities
+
+def universal_handle_defensive_abilities(value):
+	def _handle_da_number(da):
+		m = re.search(r'^(.*) (\d*)$', da["name"])
+		if m:
+			groups = m.groups()
+			da["name"] = groups[0]
+			da["value"] = int(groups[1])
+
+	if value.endswith(";"):
+		value = value [:-1]
+	das = string_with_modifiers_from_string_list(
+		split_maintain_parens(str(value), ","),
+		"defensive_ability")
+	das = link_values(das)
+	for da in das:
+		_handle_da_number(da)
+		universal_handle_modifier_breakout(da)
+	return das

@@ -1,10 +1,12 @@
 import sys
 from universal.utils import split_maintain_parens, clear_tags, filter_entities
+from universal.utils import split_comma_and_semicolon
 from hashlib import md5
 from pprint import pprint
 from urllib.parse import urlparse, parse_qs
 from bs4 import BeautifulSoup, BeautifulStoneSoup, Tag, NavigableString
 
+# FULLWIDTH COMMA = ，
 class Heading():
 	def __init__(self, level, name, subname=None):
 		self.level = level
@@ -474,21 +476,22 @@ def extract_modifiers(text):
 		assert len(parts) == 2, text
 		text = parts.pop(0)
 		mods = parts.pop()
-		mtext = split_maintain_parens(mods[0:-1], ",", parenleft="[", parenright="]")
+		mtext = split_comma_and_semicolon(mods[0:-1], parenleft="[", parenright="]")
 		modifiers = modifiers_from_string_list(mtext)
 		return text, link_modifiers(modifiers)
 	return text, []
 
-def string_values_from_string_list(strlist, subtype):
+def string_values_from_string_list(strlist, subtype, check_modifiers=True):
 	svs = []
 	for part in strlist:
 		sv = {
 			"type": "stat_block_section",
 			"subtype": subtype
 		}
-		part, modifiers = extract_modifiers(part)
-		if modifiers:
-			assert False, "String Values have no modifiers: %s" % part
+		if check_modifiers:
+			part, modifiers = extract_modifiers(part)
+			if modifiers:
+				assert False, "String Values have no modifiers: %s" % part
 		sv["name"] = part
 		svs.append(sv)
 	return svs
@@ -496,16 +499,42 @@ def string_values_from_string_list(strlist, subtype):
 def string_with_modifiers_from_string_list(strlist, subtype):
 	swms = []
 	for mpart in strlist:
-		swm = {
-			"type": "stat_block_section",
-			"subtype": subtype
-		}
-		mpart, modifiers = extract_modifiers(mpart)
-		if modifiers:
-			swm["modifiers"] = modifiers
-		swm["name"] = clear_tags(mpart, ["i"])
-		swms.append(swm)
+		swms.append(string_with_modifiers(mpart, subtype))
 	return swms
+
+def string_with_modifiers(mpart, subtype):
+	swm = {
+		"type": "stat_block_section",
+		"subtype": subtype
+	}
+	mpart, modifiers = extract_modifiers(mpart)
+	if modifiers:
+		swm["modifiers"] = modifiers
+	swm["name"] = clear_tags(mpart, ["i"])
+	return swm
+
+def parse_number(text):
+	negative = False
+	if text.startswith('–') or text.startswith('-'):
+		negative = True
+		text = text[1:]
+	if text == '—':
+		return None
+	value = int(text)
+	if negative:
+		value = value * -1
+	return value
+
+def number_with_modifiers(mpart, subtype):
+	nwm = {
+		"type": "stat_block_section",
+		"subtype": subtype
+	}
+	mpart, modifiers = extract_modifiers(mpart)
+	if modifiers:
+		nwm["modifiers"] = modifiers
+	nwm["value"] = parse_number(mpart)
+	return nwm
 
 def modifiers_from_string_list(modlist, subtype="modifier"):
 	modifiers = []

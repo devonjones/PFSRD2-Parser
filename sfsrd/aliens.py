@@ -21,12 +21,21 @@ from universal.utils import filter_end, clear_tags
 from universal.utils import log_element
 from universal.creatures import write_creature
 from universal.creatures import universal_handle_alignment
+from universal.creatures import universal_handle_aura
 from universal.creatures import universal_handle_creature_type
+from universal.creatures import universal_handle_dr
+from universal.creatures import universal_handle_defensive_abilities
+from universal.creatures import universal_handle_immunities
+from universal.creatures import universal_handle_languages
+from universal.creatures import universal_handle_modifier_breakout
 from universal.creatures import universal_handle_perception
+from universal.creatures import universal_handle_resistances
 from universal.creatures import universal_handle_save_dc
 from universal.creatures import universal_handle_senses
 from universal.creatures import universal_handle_size
 from universal.creatures import universal_handle_special_senses
+from universal.creatures import universal_handle_sr
+from universal.creatures import universal_handle_weaknesses
 from sfsrd.schema import validate_against_schema
 
 def parse_alien(filename, options):
@@ -129,154 +138,6 @@ def restructure_alien_pass(details, subtype):
 	struct['sections'].extend(top['sections'])
 	return struct
 
-def handle_modifier_breakout(section):
-	def _handle_modifier_range(section, modifier):
-		if "[" in modifier["name"]:
-			return modifier
-		m = re.search(r'^(\d*) (.*)$', modifier["name"])
-		if m:
-			groups = m.groups()
-			assert len(groups) == 2, groups
-			if groups[1] in ["ft.", "feet"]:
-				section['range'] = {
-					"type": "stat_block_section",
-					"subtype": "range",
-					"text": modifier["name"],
-					"range": int(groups[0]),
-					"unit": "feet"
-				}
-				return None
-		return modifier
-	def _handle_modifier_dc(section, modifier):
-		if modifier:
-			if "[" in modifier["name"]:
-				return modifier
-			text = modifier["name"]
-			if "DC" in text:
-				section["saving_throw"] = universal_handle_save_dc(text)
-				return None
-		return modifier
-	def _handle_modifier_damage(section, modifier):
-		def _handle_dam(m):
-			groups = m.groups()
-			assert len(groups) == 2, groups
-			if "damage" in section:
-				damage = section["damage"]
-			else:
-				damage = {
-					"type": "stat_block_section",
-					"subtype": "attack_damage"
-				}
-			damage["formula"] = groups[0]
-			damage_types = {
-				"A": "Acid",
-				"B": "Bludgeoning",
-				"C": "Cold",
-				"E": "Electricity",
-				"F": "Fire",
-				"force": "Force",
-				"P": "Piercing",
-				"S": "Slashing",
-				"So": "Sonic",
-				"E & F": "Electricity & Fire",
-				"B & F": "Bludgeoning & Fire",
-				"B & S": "Bludgeoning & Slashing",
-				"P & F": "Piercing & Fire",
-				"random": "Random type"
-			}
-			damage_type = groups[1]
-			if 'plus' in damage_type:
-				damage_type, effect = damage_type.split("plus")
-				damage_type = damage_type.strip()
-				assert "effect" not in damage, "Damage already has effect: %s, %s" % (damage, effect)
-				damage["effect"] = effect.strip()
-			if damage_type not in damage_types:
-				return modifier
-			damage["damage_type"] = damage_types[damage_type]
-			damage["damage_type_text"] = damage_type
-			section["damage"] = damage
-			return None
-
-		if modifier:
-			if "[" in modifier["name"]:
-				return modifier
-			m = re.search(r'^(\d*d\d*) (.*)$', modifier["name"])
-			if m:
-				return _handle_dam(m)
-			m = re.search(r'^(\d*d\d*\+\d*) (.*)$', modifier["name"])
-			if m:
-				return _handle_dam(m)
-		return modifier
-	def _handle_modifier_effect(section, modifier):
-		if modifier:
-			if "[" in modifier["name"]:
-				return modifier
-			m = re.search(r'^([a-zA-Z]*) (\d*)d?(\d?) ([a-zA-Z]*)$', modifier["name"])
-			if m:
-				groups = m.groups()
-				assert len(groups) == 4, groups
-				if "damage" in section:
-					damage = section["damage"]
-				else:
-					damage = {
-						"type": "stat_block_section",
-						"subtype": "attack_damage"
-					}
-				assert "effect" not in damage, "Damage already has effect: %s, %s" % (damage, damage["effect"])
-				damage["effect"] = modifier["name"]
-				section["damage"] = damage
-				return None
-		return modifier
-	def _handle_modifier_hp(section, modifier):
-		if modifier:
-			if "[" in modifier["name"]:
-				return modifier
-			m = re.search(r'^(\d*) hp$', modifier["name"].lower())
-			if m:
-				groups = m.groups()
-				assert len(groups) == 1, groups
-				section["hp"] = int(groups[0])
-				return None
-		return modifier
-	def _handle_modifier_kac(section, modifier):
-		if modifier:
-			if "[" in modifier["name"]:
-				return modifier
-			m = re.search(r'^kac (\d*)$', modifier["name"].lower())
-			if m:
-				groups = m.groups()
-				assert len(groups) == 1, groups
-				section["kac"] = int(groups[0])
-				return None
-		return modifier
-	def _handle_modifier_eac(section, modifier):
-		if modifier:
-			if "[" in modifier["name"]:
-				return modifier
-			m = re.search(r'^eac (\d*)$', modifier["name"].lower())
-			if m:
-				groups = m.groups()
-				assert len(groups) == 1, groups
-				section["eac"] = int(groups[0])
-				return None
-		return modifier
-
-	newmods = []
-	if "modifiers" in section:
-		for modifier in section['modifiers']:
-			modifier = _handle_modifier_range(section, modifier)
-			modifier = _handle_modifier_dc(section, modifier)
-			modifier = _handle_modifier_damage(section, modifier)
-			modifier = _handle_modifier_effect(section, modifier)
-			modifier = _handle_modifier_hp(section, modifier)
-			modifier = _handle_modifier_kac(section, modifier)
-			modifier = _handle_modifier_eac(section, modifier)
-			if modifier:
-				newmods.append(modifier)
-		section["modifiers"] = newmods
-		if len(newmods) == 0:
-			del section["modifiers"]
-	return section
 
 
 def top_matter_pass(struct):
@@ -365,9 +226,11 @@ def top_matter_pass(struct):
 			sb['creature_type']['grafts'] = grafts
 
 	def _handle_creature_type(ct, type_parts):
-		subtype = type_parts.pop()
-		assert subtype[-1] == ")", "Malformed subtypes: %s" % subtype
-		subtype = subtype.replace(")", "")
+		subtype = None
+		if len(type_parts) > 0:
+			subtype = type_parts.pop()
+			assert subtype[-1] == ")", "Malformed subtypes: %s" % subtype
+			subtype = subtype.replace(")", "")
 		return universal_handle_creature_type(ct, subtype)
 
 	def _handle_perception(title, value):
@@ -385,13 +248,7 @@ def top_matter_pass(struct):
 
 	def _handle_aura(title, value):
 		assert str(title) == "<b>Aura</b>", title
-		auras = string_with_modifiers_from_string_list(
-			split_maintain_parens(str(value).strip(), ","),
-			"aura")
-		auras = link_values(auras)
-		for aura in auras:
-			handle_modifier_breakout(aura)
-		return auras
+		return universal_handle_aura(value)
 
 	text = list(filter(
 		lambda e: e != "",
@@ -509,96 +366,6 @@ def defense_pass(struct):
 			for t in tests:
 				if t in value:
 					assert False, "Malformed %s: %s" % (name, value)
-		def _handle_sr(value):
-			sr = {
-				'type': 'stat_block_section',
-				'subtype': 'sr',
-			}
-			parts = value.split(" ")
-			sr['value'] = int(parts.pop(0))
-			if len(parts) > 0:
-				modifier_text = " ".join(parts)
-				assert modifier_text.find(",") < 0, "SR modifiers apparently do need to be split: %s" % modifier_text
-				assert modifier_text.find(";") < 0, "SR modifiers apparently do need to be split: %s" % modifier_text
-				sr['modifiers'] = modifiers_from_string_list(
-					[m.strip() for m in modifier_text.split(",")])
-			return sr
-		def _handle_dr(value):
-			# TODO: Check for parsables in modifiers
-			parts = value.split("/")
-			assert len(parts) == 2, "Bad DR: %s" % value
-			num = int(parts[0])
-			text = parts[1].strip()
-			dr = {
-				"type": "stat_block_section",
-				"subtype": "dr",
-				"value": num
-			}
-			if text.find("(") > -1:
-				text, modtext = text.split("(")
-				modtext = modtext.replace(")", "").strip()
-				dr['modifiers'] = modifiers_from_string_list(
-					[m.strip() for m in modtext.split(",")])
-			dr["name"] = text.strip()
-			return dr
-		def _handle_weaknesses(value):
-			weaknesses = string_with_modifiers_from_string_list(
-				split_maintain_parens(str(value), ","),
-				"weakness")
-			weaknesses = link_values(weaknesses)
-			for weakness in weaknesses:
-				if re.search("\d", weakness["name"]):
-					assert False, "Bad Weakness: %s" % (name, weakness["name"])
-			return weaknesses
-		def _handle_resistances(value):
-			values = split_maintain_parens(str(value), ",")
-			resistances = []
-			for value in values:
-				resistance = {
-					"type": "stat_block_section",
-					"subtype": "resistance"
-				}
-				if value.find("(") > -1:
-					portions = value.split("(")
-					assert len(portions) == 2, "Badly formatted resistance with modifier: %s" % value
-					value = portions[0].strip()
-					modtext = portions[1].strip()
-					assert modtext.endswith(")"), "Badly formatted resistance with modifier: %s" % value
-					modtext = modtext[:-1]
-					resistance["modifiers"] = modifiers_from_string_list(
-						[m.strip() for m in modtext.split(",")])
-				parts = value.split(" ")
-				assert len(parts) == 2, "Badly formatted resistance: %s" % value
-				resistance['name'] = parts[0].strip()
-				resistance['value'] = int(parts[1].strip())
-				resistances.append(resistance)
-			return resistances
-		def _handle_immunities(value):
-			immunities = string_with_modifiers_from_string_list(
-				split_maintain_parens(str(value), ","),
-				"immunity")
-			immunities = link_values(immunities)
-			for immunity in immunities:
-				if re.search("\d", immunity["name"]):
-					assert False, "Bad Immunity: %s" % (name, immunity["name"])
-			return immunities
-
-		def _handle_das(value):
-			def _handle_da_number(da):
-				m = re.search(r'^(.*) (\d*)$', da["name"])
-				if m:
-					groups = m.groups()
-					da["name"] = groups[0]
-					da["value"] = int(groups[1])
-
-			das = string_with_modifiers_from_string_list(
-				split_maintain_parens(str(value), ","),
-				"defensive_ability")
-			das = link_values(das)
-			for da in das:
-				_handle_da_number(da)
-				handle_modifier_breakout(da)
-			return das
 
 		for dapart in daparts:
 			bs = BeautifulSoup(dapart, 'html.parser')
@@ -612,17 +379,17 @@ def defense_pass(struct):
 			value = bsparts.pop().strip()
 			_check_broken_text(names, value)
 			if name == "SR":
-				defense['sr'] = _handle_sr(value)
+				defense['sr'] = universal_handle_sr(value)
 			elif name == "DR":
-				defense['dr'] = _handle_dr(value)
+				defense['dr'] = universal_handle_dr(value)
 			elif name == "Weaknesses":
-				defense['weaknesses'] = _handle_weaknesses(value)
+				defense['weaknesses'] = universal_handle_weaknesses(value)
 			elif name == "Resistances":
-				defense['resistances'] = _handle_resistances(value)
+				defense['resistances'] = universal_handle_resistances(value)
 			elif name == "Immunities":
-				defense['immunities'] = _handle_immunities(value)
+				defense['immunities'] = universal_handle_immunities(value)
 			elif name == "Defensive Abilities":
-				defense['defensive_abilities'] = _handle_das(value)
+				defense['defensive_abilities'] = universal_handle_defensive_abilities(value)
 			else:
 				name = name.lower().replace(" ", "_")
 				values = split_maintain_parens(str(value), ",")
@@ -776,7 +543,7 @@ def offense_pass(struct):
 				if len(parts) > 0:
 					speed['modifiers'] = modifiers_from_string_list(parts)
 
-			speed['text'] = text
+			speed['name'] = text
 			if text.find(" ft.") > -1:
 				segments = text.replace(" ft.", "").split(" ")
 				assert len(segments) in [1,2], text
@@ -801,7 +568,6 @@ def offense_pass(struct):
 	def _handle_attack(attack_type):
 		def _handle_attack_impl(offense, _, text):
 			def _handle_attack_start(start):
-				print(start)
 				if start in ["swarm attack", "troop attack", "distraction"]:
 					attack['name'] = start
 					return
@@ -970,7 +736,7 @@ def offense_pass(struct):
 				element['modifiers'] = modifiers_from_string_list(modparts)
 
 			element['name'] = text
-			handle_modifier_breakout(element)
+			universal_handle_modifier_breakout(element)
 			retlist.append(element)
 		offense["offensive_abilities"] = retlist
 
@@ -1045,7 +811,7 @@ def statistics_pass(struct):
 	def _handle_feats(statistics, _, bs):
 		assert str(bs).find(";") == -1, bs
 		feats = string_with_modifiers_from_string_list(
-				split_maintain_parens(str(str(bs)), ","), "feat")
+				split_maintain_parens(str(bs), ","), "feat")
 		statistics['feats'] = feats
 	
 	def _handle_skills(statistics, _, bs):
@@ -1088,54 +854,8 @@ def statistics_pass(struct):
 		statistics['skills'] = skills
 	
 	def _handle_languages(statistics, _, bs):
-		def _handle_communication_abilities(parts):
-			comtext = clear_tags(", ".join(parts), ["i"])
-			coms = string_with_modifiers_from_string_list(
-				[m.strip() for m in comtext.split(",")],
-				"communication_ability")
-			coms = [_handle_communication_ability_range(com) for com in coms]
-			return coms
-		def _handle_communication_ability_range(com):
-			m = re.search(r'^(.*) (\d*) (.*)$', com["name"])
-			if m:
-				groups = m.groups()
-				assert len(groups) == 3, groups
-				if groups[2] in ["ft.", "feet"]:
-					com['range'] = {
-						"type": "stat_block_section",
-						"subtype": "range",
-						"text": "%s %s" % (groups[1], groups[2]),
-						"range": int(groups[1]),
-						"unit": "feet"
-					}
-					com['name'] = groups[0]
-			return com
-
-		parts = str(bs).split(";")
-		languages = {
-			"type": "stat_block_section",
-			"subtype": "languages",
-			"languages": []
-		}
-		langs = parts.pop(0)
-		if len(parts) > 0:
-			languages['communication_abilities'] = _handle_communication_abilities(parts)
-		if langs.find("(") > -1:
-			langparts = langs.split("(")
-			modtext = langparts.pop().replace(")", "")
-			langs = "(".join(langparts)
-			languages['modifiers'] = modifiers_from_string_list(
-				[m.strip() for m in modtext.split(",")])
-
-		parts = split_maintain_parens(langs, ",")
-		for part in parts:
-			assert part.find("(") == -1, part
-			language = {
-				"type": "stat_block_section",
-				"subtype": "language",
-				"name": part
-			}
-			languages['languages'].append(language)
+		text = str(bs)
+		languages = universal_handle_languages(text)
 		statistics['languages'] = languages
 
 	def _handle_other_abilities(statistics, _, bs):
@@ -1143,7 +863,7 @@ def statistics_pass(struct):
 			split_maintain_parens(str(bs), ","),
 			"other_ability")
 		for ability in abilities:
-			handle_modifier_breakout(ability)
+			universal_handle_modifier_breakout(ability)
 		statistics['other_abilities'] = abilities
 	
 	def _handle_gear(_, sb, bs):
