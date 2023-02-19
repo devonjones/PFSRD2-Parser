@@ -11,6 +11,9 @@ rm errors.pf.monsters.log
 if test -f "errors.pf.monsters"; then
 	cat errors.pf.monsters | while read i
 	do
+		if [[ "$i" == "done" ]]; then
+			exit
+		fi
 		if ! ./pf_monster_parse -o $PF_DATA_DIR $i ; then
 			echo $i >> errors.pf.monsters.log
 		fi

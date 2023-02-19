@@ -11,6 +11,9 @@ rm errors.sf.aliens.log
 if test -f "errors.sf.aliens"; then
 	cat errors.sf.aliens | while read i
 	do
+		if [[ "$i" == "done" ]]; then
+			exit
+		fi
 		if ! ./sf_alien_parse -o $SF_DATA_DIR $i ; then
 			echo $i >> errors.sf.aliens.log
 		fi
