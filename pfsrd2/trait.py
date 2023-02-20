@@ -20,7 +20,6 @@ def parse_trait(filename, options):
 		sys.stderr.write("%s\n" % basename)
 	details = parse_universal(filename, max_title=4,
 		cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
-	pprint(details)
 	details = entity_pass(details)
 	struct = restructure_trait_pass(details)
 	trait_struct_pass(struct)

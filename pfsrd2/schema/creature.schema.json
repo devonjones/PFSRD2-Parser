@@ -727,7 +727,7 @@
 					"Witch Hexes",
 					"Wizard Spells Prepared", "Wizard School Spells",
 					"Primordial Flame Spells"]},
-				"spell_dc": {"type": "integer"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"focus_points": {"type": "integer"},
 				"spell_attack": {"type": "integer"},
 				"spell_list": {

@@ -8,6 +8,7 @@ from universal.universal import split_maintain_parens
 from universal.universal import string_values_from_string_list
 from universal.universal import string_with_modifiers_from_string_list
 from universal.universal import string_with_modifiers
+from universal.universal import split_comma_and_semicolon
 from universal.files import char_replace
 from universal.utils import log_element, clear_tags
 from bs4 import BeautifulSoup
@@ -385,9 +386,6 @@ def universal_handle_languages(text):
 	def _handle_communication_abilities(parts):
 		comtext = clear_tags(", ".join(parts), ["i"])
 		parts = split_maintain_parens(comtext, ",")
-		for v in parts:
-			log_element("%s.log" % "communication_ability")("%s" % (v))
-
 		coms = []
 		for part in parts:
 			text, crange = _handle_communication_ability_range(part)
@@ -429,8 +427,6 @@ def universal_handle_languages(text):
 	}
 	langs = parts.pop(0)
 	lparts = split_maintain_parens(langs, ",")
-	for l in lparts:
-		log_element("%s.log" % "languages")("%s" % (l))
 
 	for lpart in lparts:
 		if "telepathy" in lpart:
@@ -595,3 +591,84 @@ def universal_handle_defensive_abilities(value):
 		_handle_da_number(da)
 		universal_handle_modifier_breakout(da)
 	return das
+
+def universal_handle_gear(text):
+	def _fix_split_quantities(parts):
+		newparts = []
+		lastpart = None
+		for part in parts:
+			join = False
+			if lastpart:
+				if lastpart[-1].isnumeric() and part[0].isnumeric():
+					join = True
+					newparts[-1] = "%s,%s" %(newparts[-1], part)
+			if not join:
+				newparts.append(part)
+			lastpart = part
+		return newparts
+	def _handle_with(item):
+		name = item["name"]
+		if " with " in name:
+			parts = split_maintain_parens(name, " with ")
+			if len(parts) == 1:
+				return item
+			item["name"] = parts.pop(0)
+			subtext = " with ".join(parts)
+			item_with = universal_handle_gear(subtext)
+			assert len(item_with) < 2, "malformed item: %s" % name
+			item["with"] = item_with.pop(0)
+		return item
+	def _handle_quantity(item):
+		if "modifiers" in item:
+			newmods = []
+			for modifier in item["modifiers"]:
+				if modifier["name"].isnumeric():
+					item["quantity"] = int(modifier["name"])
+				else:
+					newmods.append(modifier)
+			item["modifiers"] = newmods
+			if len(item["modifiers"]) == 0:
+				del item["modifiers"]
+		name = item["name"]
+		m = re.search(r'^([0-9,]*) (.*)$', name)
+		if m:
+			groups = m.groups()
+			quantity = groups[0]
+			rest = groups[1]
+			quantity = quantity.replace(",", "")
+			if rest != "gp" and rest.startswith("gp "):
+				pass
+			else:
+				item["name"] = rest
+				item["quantity"] = int(quantity)
+		return item
+	def _clear_sup(text):
+		bs = BeautifulSoup(text, 'html.parser')
+		sups = bs.find_all('sup')
+		for sup in sups:
+			sup.replace_with('')
+		return str(bs)
+
+	text = clear_tags(text, ["i", "br"])
+	text = text.replace("mwk", "masterwork")
+	if text.endswith(";"):
+		text = text[:-1]
+	text = clear_tags(text, ["i", "br"])
+	text = _clear_sup(text)
+	parts = split_comma_and_semicolon(text)
+	parts = _fix_split_quantities(parts)
+	gear = []
+	for part in parts:
+		print(part)
+		item = {
+			"type": "stat_block_section",
+			"subtype": "item",
+			"name": part
+		}
+		item = _handle_with(item)
+		item["name"], modifiers = extract_modifiers(item["name"])
+		if modifiers:
+			item["modifiers"] = modifiers		
+		item = _handle_quantity(item)
+		gear.append(item)
+	return gear

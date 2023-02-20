@@ -380,6 +380,7 @@ def extract_source(obj):
 	return {'type': 'source', 'name': name, 'link': link, 'page': page}
 
 def aon_pass(struct, basename):
+	pprint(basename)
 	parts = basename.split("_")
 	assert len(parts) == 2
 	id_text = parts[1].replace(".html", "")

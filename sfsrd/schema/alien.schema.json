@@ -277,6 +277,8 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["item", "augmentation"]},
 				"name": {"type": "string"},
+				"quantity": {"type": "integer"},
+				"with": {"$ref": "#/definitions/item"},
 				"links": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/link"},
@@ -747,9 +749,9 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["spell"]},
 				"name": {"type": "string"},
-				"spell_level": {"type": "integer"},
-				"spell_dc": {"type": "integer"},
-				"spell_range": {"type": "string"},
+				"level": {"type": "integer"},
+				"range": {"$ref": "#/definitions/range"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["name", "type", "subtype"],

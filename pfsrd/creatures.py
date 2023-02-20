@@ -25,6 +25,7 @@ from universal.creatures import universal_handle_aura
 from universal.creatures import universal_handle_creature_type
 from universal.creatures import universal_handle_defensive_abilities
 from universal.creatures import universal_handle_dr
+from universal.creatures import universal_handle_gear
 from universal.creatures import universal_handle_immunities
 from universal.creatures import universal_handle_languages
 from universal.creatures import universal_handle_range
@@ -35,17 +36,20 @@ from universal.creatures import universal_handle_sr
 from universal.creatures import universal_handle_weaknesses
 from pfsrd.schema import validate_against_schema
 
+# TODO: Check in on final sections, example: npc codex, crime lord
 def parse_creature(filename, options):
 	basename = os.path.basename(filename)
 	if not options.stdout:
 		sys.stderr.write("%s\n" % basename)
 	details = parse_universal(filename, subtitle_text=False, max_title=3,
-		cssclass="ctl00_MainContent_DataListFeats_ctl00_Label1")
+		cssclass=options.cssclass)
 	details = entity_pass(details)
-	struct = restructure_creature_pass(details, options.subtype)
+	struct = restructure_creature_pass(details, options.subtype, basename)
 	top_matter_pass(struct)
+	npc_description_pass(struct)
 	defense_pass(struct)
 	offense_pass(struct)
+	#tactics_pass(struct)
 	statistics_pass(struct)
 	#ecology_pass(struct)
 	#special_ability_pass(struct)
@@ -63,6 +67,31 @@ def parse_creature(filename, options):
 			write_creature(jsondir, struct, name)
 	elif options.stdout:
 		print(json.dumps(struct, indent=2))
+
+def npc_description_pass(struct):
+	if struct['type'] == "npc":
+		for section in struct['sections']:
+			assert section["name"] != "Description", "well crap, I do need to handle structural descriptions"
+		newparts = []
+		newdescription = []
+		last_section = struct['sections'][-1]
+		parts = last_section['text'].split("<br/><br/>")
+		found = False
+		for part in parts:
+			if "<b>" not in part:
+				found = True
+			if found:
+				newdescription.append(part)
+			else:
+				newparts.append(part)
+		last_section['text'] = "<br/><br/>".join(newparts)
+		newsection = {
+			'name': "Description",
+			'sections': [],
+			'text': "<br/><br/>".join(newdescription)
+		}
+		struct['sections'].append(newsection)
+		return
 
 def handle_default_list_of_strings(field):
 	def _handle_default_list_impl(_, elem, text):
@@ -105,7 +134,7 @@ def handle_noop(name):
 		#assert False
 	return _handle_noop_impl
 
-def restructure_creature_pass(details, subtype):
+def restructure_creature_pass(details, subtype, basename):
 	def _find_stat_block(details):
 		path = []
 		for detail in details:
@@ -130,6 +159,11 @@ def restructure_creature_pass(details, subtype):
 				details.remove(detail)
 				return name
 
+	def _handle_aon(struct, basename):
+		parts = basename.split("Display")
+		assert len(parts) == 2
+		struct["game-obj"] = "%ss" % parts[0]
+
 	struct, path = _find_stat_block(details)
 	short_desc = path.pop()
 	assert path == [], path
@@ -143,14 +177,16 @@ def restructure_creature_pass(details, subtype):
 	cr = parts.pop(0)
 	assert len(parts) == 0, parts
 	struct['name'] = name
-	struct['type'] = 'monster'
-	struct['game-obj'] = "Monsters"
+	struct['type'] = subtype
+	#struct['game-obj'] = "Monsters"
+	_handle_aon(struct, basename)
 	struct['stat_block'] = {'name': name, 'type': 'stat_block'}
 	struct['stat_block']['cr'] = cr
 	family = _handle_family(details)
 	if family:
 		struct['stat_block']['family'] = family
 	return struct
+
 
 def top_matter_pass(struct):
 	def _handle_sources(struct, _, text):
@@ -471,7 +507,7 @@ def offense_pass(struct):
 					v = elements.pop()
 					n = " ".join(elements)
 					assert n in [
-						"melee", "ranged", "concentration", "touch", "ranged touch"]
+						"melee", "ranged", "concentration", "touch", "ranged touch"], n
 					n = n.replace(" ", "_")
 					spells[n] = int(v)
 				else:
@@ -566,7 +602,7 @@ def offense_pass(struct):
 						m = re.match(r"^([IVX]*) (.*)", exttext)
 						if m:
 							spell_version, exttext = m.groups()
-							spell['name'] = "%s %sgfvvvvvvvvvvvvvvvvvvvvv99999999999999999899999999" % (spell['name'], spell_version)
+							spell['name'] = "%s %s" % (spell['name'], spell_version)
 						assert exttext.startswith("(") and exttext.endswith(")"), exttext
 						exttext = exttext[1:-1]
 						extparts = split_comma_and_semicolon(exttext, ";")
@@ -574,13 +610,13 @@ def offense_pass(struct):
 						for extpart in extparts:
 							if extpart.endswith("level"):
 								level, _ = extpart.split(" ")
-								spell['spell_level'] = int(level[:-2])
+								spell['level'] = int(level[:-2])
 							elif extpart.startswith("range "):
-								_, range, _ = extpart.split(" ")
-								spell['spell_range'] = int(range)
+								parts = extpart.split(" ")
+								parts.pop(0)
+								spell['range'] = universal_handle_range(" ".join(parts))
 							elif extpart.startswith("DC"):
-								_, dc = extpart.split(" ")
-								spell['spell_dc'] = int(dc)
+								spell['saving_throw'] = universal_handle_save_dc(extpart)
 							elif extpart.endswith("PE"):
 								pe, _ = extpart.split(" ")
 								spell['psychic_energy'] = int(pe)
@@ -595,7 +631,6 @@ def offense_pass(struct):
 				"subtype": "spell_list",
 				"spells": []
 			}
-
 			text = text.replace("–", "—")
 			text = text.replace("-", "—")
 			
@@ -912,6 +947,8 @@ def offense_pass(struct):
 					"Evocation": _handle_class_selection("Evocation"),
 					"Illusion": _handle_class_selection("Illusion"),
 					"Psychic Discipline": _handle_class_selection("psychic discipline"),
+					"Prohibited Schools": _handle_class_selection("Prohibited Schools"),
+					"Inquisition": handle_noop("Inquisition")
 				}
 				dispatch[title](struct, offense, text)
 		else:
@@ -985,9 +1022,10 @@ def statistics_pass(struct):
 		statistics['feats'] = feats
 	
 	def _handle_skills(_, statistics, text):
+		text = clear_tags(text, ["br"])
 		if text.endswith(";"):
 			text = text[:-1]
-		assert ";" not in text, bs
+		assert ";" not in text, text
 		skills = {
 			"type": "stat_block_section",
 			"subtype": "skills",
@@ -1017,7 +1055,7 @@ def statistics_pass(struct):
 					skill['name'] = parts[0]
 					skill['value'] = parse_number(parts[1])
 				else:
-					assert False, "%s: %s" % (part, str(bs))
+					assert False, "%s: %s" % (part, text)
 			skills["skills"].append(skill)
 		statistics['skills'] = skills
 	
@@ -1030,30 +1068,6 @@ def statistics_pass(struct):
 	
 	def _handle_languages(_, statistics, text):
 		text = clear_tags(text, ["br"])
-		#parts = text.split(";")
-		#languages = {
-		#	"type": "stat_block_section",
-		#	"subtype": "languages",
-		#	"languages": []
-		#}
-		#langs = parts.pop(0)
-		#if len(parts) > 0:
-		#	modtext = ", ".join(parts)
-		#	# TODO: actually handle communication abilities
-		#	languages['communication_abilities'] = string_with_modifiers_from_string_list(
-		#		split_maintain_parens(modtext, ","),
-		#		"communication_ability")
-		#	vs = split_maintain_parens(modtext, ",")
-		#	for v in vs:
-		#		log_element("%s.log" % "communication_ability")("%s" % (v))
-		#
-		#ls = split_maintain_parens(langs, ",")
-		#langs = string_with_modifiers_from_string_list(
-		#		split_maintain_parens(langs, ","), "language")
-		#
-		#for l in ls:
-		#	log_element("%s.log" % "languages")("%s" % (l))
-		#languages['languages'] = langs
 		languages = universal_handle_languages(text)
 		statistics['languages'] = languages
 
@@ -1072,20 +1086,26 @@ def statistics_pass(struct):
 			assert ";" not in sq["name"], "Don't presently handle the SQ list having modifiers: %s" % text
 		statistics["special_qualities"] = sqs
 
-	def _handle_grapple(_, statistics, text):
-		assert False
-
 	def _handle_other_abilities(statistics, bs):
 		parts = split_maintain_parens(str(bs), ",")
 		abilities = modifiers_from_string_list(parts, "other_ability")
 		statistics['other_abilities'] = abilities
 	
-	def _handle_gear(statistics, bs):
-		assert str(bs).find(";") == -1, bs
-		parts = split_maintain_parens(str(bs), ",")
-		gear = modifiers_from_string_list(parts, "gear")
-		statistics['gear'] = gear
+	def _handle_gear(field):
+		def _handle_gear_impl(struct, _, bs):
+			text = str(bs)
+			if text.endswith(";"):
+				text = text[:-1]
+			gear = universal_handle_gear(text)
+			struct["stat_block"][field] = gear
+		return _handle_gear_impl
 	
+	def _handle_boon(struct, _, bs):
+		text = str(bs)
+		if text.endswith(";"):
+			text = text[:-1]
+		struct["stat_block"]["boon"] = text
+
 	def _handle_augmentations(statistics, bs):
 		parts = split_maintain_parens(str(bs), ",")
 		augmentations = modifiers_from_string_list(parts, "augmentation")
@@ -1121,9 +1141,10 @@ def statistics_pass(struct):
 				"Languages": _handle_languages,
 				"SQ": _handle_sq,
 				"Grapple": _handle_bab("grapple"),
-				"Gear": handle_noop("Gear"),
-				"Combat Gear": handle_noop("Combat Gear"),
-				"Other Gear": handle_noop("Other Gear"),
+				"Gear": _handle_gear("gear"),
+				"Combat Gear": _handle_gear("combat_gear"),
+				"Other Gear": _handle_gear("other_gear"),
+				"Boon": _handle_boon
 			}
 			dispatch[title](struct, statistics, text)
 		else:

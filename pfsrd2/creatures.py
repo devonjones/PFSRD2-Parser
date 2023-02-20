@@ -1311,7 +1311,7 @@ def process_offensive_action(section):
 				continue
 			chunks = tt.split(" ")
 			if tt.startswith("DC"):
-				section["spell_dc"] = int(chunks.pop())
+				section["saving_throw"] = universal_handle_save_dc(tt)
 			elif tt.startswith("attack") or tt.startswith("spell attack"):
 				section["spell_attack"] = int(chunks.pop())
 			elif tt.endswith("Focus Points"):

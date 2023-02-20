@@ -316,6 +316,8 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["item", "augmentation"]},
 				"name": {"type": "string"},
+				"quantity": {"type": "integer"},
+				"with": {"$ref": "#/definitions/item"},
 				"links": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/link"},
@@ -779,9 +781,9 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["spell"]},
 				"name": {"type": "string"},
-				"spell_level": {"type": "integer"},
-				"spell_dc": {"type": "integer"},
-				"spell_range": {"type": "string"},
+				"level": {"type": "integer"},
+				"range": {"$ref": "#/definitions/range"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"psychic_energy": {"type": "integer"},
 				"notation": {"type": "string"},
 				"metamagic": {"type": "string"},
@@ -864,6 +866,7 @@
 				"gear": {"$ref": "#/definitions/gear"},
 				"combat_gear": {"$ref": "#/definitions/gear"},
 				"other_gear": {"$ref": "#/definitions/gear"},
+				"boon": {"type": "string"},
 				"ecology": {"$ref": "#/definitions/ecology"},
 				"special_abilities": {"$ref": "#/definitions/special_abilities"},
 				"afflictions": {"$ref": "#/definitions/afflictions"}
@@ -878,8 +881,8 @@
 	"properties": {
 		"name": {"type": "string"},
 		"html": {"type": "string"},
-		"type": {"enum": ["monster"]},
-		"game-obj": {"enum": ["Monsters"]},
+		"type": {"enum": ["monster", "npc"]},
+		"game-obj": {"enum": ["Monsters", "NPCs"]},
 		"stat_block": {"$ref": "#/definitions/stat_block"},
 		"sources": {"$ref": "#/definitions/sources"},
 		"sections": {"$ref": "#/definitions/sections"}

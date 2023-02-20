@@ -25,10 +25,12 @@ from universal.creatures import universal_handle_aura
 from universal.creatures import universal_handle_creature_type
 from universal.creatures import universal_handle_dr
 from universal.creatures import universal_handle_defensive_abilities
+from universal.creatures import universal_handle_gear
 from universal.creatures import universal_handle_immunities
 from universal.creatures import universal_handle_languages
 from universal.creatures import universal_handle_modifier_breakout
 from universal.creatures import universal_handle_perception
+from universal.creatures import universal_handle_range
 from universal.creatures import universal_handle_resistances
 from universal.creatures import universal_handle_save_dc
 from universal.creatures import universal_handle_senses
@@ -477,13 +479,13 @@ def offense_pass(struct):
 					for extpart in extparts:
 						if extpart.endswith("level"):
 							level, _ = extpart.split(" ")
-							spell['spell_level'] = int(level[:-2])
+							spell['level'] = int(level[:-2])
 						elif extpart.startswith("range"):
-							_, range, _ = extpart.split(" ")
-							spell['spell_range'] = int(range)
+							parts = extpart.split(" ")
+							parts.pop(0)
+							spell['range']= universal_handle_range(" ".join(parts))
 						elif extpart.startswith("DC"):
-							_, dc = extpart.split(" ")
-							spell['spell_dc'] = int(dc)
+							spell['saving_throw'] = universal_handle_save_dc(extpart)
 						else:
 							modlist.append(extpart)
 					if len(modlist) > 0:
@@ -868,11 +870,7 @@ def statistics_pass(struct):
 	
 	def _handle_gear(_, sb, bs):
 		# TODO: We may want to handle with as a subitem
-		assert str(bs).find(";") == -1, bs
-		text = str(bs)
-		text = text.replace(" with", ",")
-		parts = split_maintain_parens(text, ",")
-		gear = string_with_modifiers_from_string_list(parts, "item")
+		gear = universal_handle_gear(str(bs))
 		sb['gear'] = gear
 	
 	def _handle_augmentations(_, sb, bs):
