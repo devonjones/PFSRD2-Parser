@@ -867,6 +867,7 @@
 				"combat_gear": {"$ref": "#/definitions/gear"},
 				"other_gear": {"$ref": "#/definitions/gear"},
 				"boon": {"type": "string"},
+				"tactics": {"$ref": "#/definitions/tactics"},
 				"ecology": {"$ref": "#/definitions/ecology"},
 				"special_abilities": {"$ref": "#/definitions/special_abilities"},
 				"afflictions": {"$ref": "#/definitions/afflictions"}
@@ -875,6 +876,22 @@
 				"name", "type", "creature_type", "initiative", "defense"
 			],
 			"additionalProperties": false
+		},
+		"tactic": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["tactic"]},
+				"text": {"type": "string"}
+			},
+			"required": ["name", "type", "subtype", "text"],
+			"additionalProperties": false
+		},
+		"tactics": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/tactic"},
+			"additionalItems": false
 		}
 	},
 	"type": "object",

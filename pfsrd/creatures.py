@@ -49,7 +49,7 @@ def parse_creature(filename, options):
 	npc_description_pass(struct)
 	defense_pass(struct)
 	offense_pass(struct)
-	#tactics_pass(struct)
+	tactics_pass(struct)
 	statistics_pass(struct)
 	#ecology_pass(struct)
 	#special_ability_pass(struct)
@@ -962,22 +962,46 @@ def offense_pass(struct):
 			assert False, output
 	sb['offense'] = offense
 
-def statistics_pass(struct):
-	def _handle_stats(statistics, text):
-		parts = split_comma_and_semicolon(text)
-		assert len(parts) == 6, parts
+def tactics_pass(struct):
+	def _handle_tactic(sb, title, text):
+		tactics = sb.setdefault('tactics', [])
+		tactics.append({
+			"type": "stat_block_section",
+			"subtype": "tactic",
+			"name": title,
+			"text": text
+		})
+	def _break_out_subtitles(bs):
+		text = str(bs)
+		newparts = []
+		first = True
+		title = None
+		for child in bs.children:
+			if first:
+				assert child.name == 'b', "malformed tactics: %s" % str(bs)
+				first = False
+				title = child.extract().get_text().strip()
+			else:
+				break
+		assert title, "malformed tactics: %s" % text
+		return title, str(bs)
+
+	sb = struct['stat_block']
+	tactics_section = find_section(struct, "Tactics")
+	if tactics_section:
+		tactics_text = tactics_section['text']
+		struct['sections'].remove(tactics_section)
+		parts = list(filter(lambda d: d != "",
+			[d.strip() for d in tactics_text.split("<br/>")]))
 		for part in parts:
 			bs = BeautifulSoup(part, 'html.parser')
-			bsparts = list(bs.children)
-			assert len(bsparts) == 2, str(bs)
-			name = bsparts.pop(0).get_text().lower()
-			assert name in ["str", "dex", "con", "int", "wis", "cha"], name
-			value = bsparts.pop().strip()
-			if value in ["-", "—"]:
-				statistics[name] = None
-			else:
-				statistics[name] = int(value)
-	
+			title, text = _break_out_subtitles(bs)
+			titles = ["During Combat", "Before Combat", "Base Statistics",
+				"Morale"]
+			assert title in titles, "Don't recognize tactic title: %s" % title
+			_handle_tactic(sb, title, text)
+
+def statistics_pass(struct):
 	def _handle_attribute(name):
 		def _handle_attribute_impl(_, stats, text):
 			text = filter_end(text, [",", "<br/>"]).strip()
@@ -1093,11 +1117,6 @@ def statistics_pass(struct):
 			assert ";" not in sq["name"], "Don't presently handle the SQ list having modifiers: %s" % text
 		statistics["special_qualities"] = sqs
 
-	def _handle_other_abilities(statistics, bs):
-		parts = split_maintain_parens(str(bs), ",")
-		abilities = modifiers_from_string_list(parts, "other_ability")
-		statistics['other_abilities'] = abilities
-	
 	def _handle_gear(field):
 		def _handle_gear_impl(struct, _, bs):
 			text = str(bs)
@@ -1112,11 +1131,6 @@ def statistics_pass(struct):
 		if text.endswith(";"):
 			text = text[:-1]
 		struct["stat_block"]["boon"] = text
-
-	def _handle_augmentations(statistics, bs):
-		parts = split_maintain_parens(str(bs), ",")
-		augmentations = modifiers_from_string_list(parts, "augmentation")
-		statistics['augmentations'] = augmentations
 
 	sb = struct['stat_block']
 	stats_section = find_section(struct, "Statistics")
