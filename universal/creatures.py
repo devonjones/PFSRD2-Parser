@@ -659,7 +659,6 @@ def universal_handle_gear(text):
 	parts = _fix_split_quantities(parts)
 	gear = []
 	for part in parts:
-		print(part)
 		item = {
 			"type": "stat_block_section",
 			"subtype": "item",

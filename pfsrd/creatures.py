@@ -893,10 +893,17 @@ def offense_pass(struct):
 		return _handle_notation_impl
 
 	def _handle_class_selection(name):
+		def _clear_sup(text):
+			bs = BeautifulSoup(text, 'html.parser')
+			sups = bs.find_all('sup')
+			for sup in sups:
+				sup.replace_with('')
+			return str(bs)
 		def _handle_notation_impl(_, offense, text):
 			magic = offense['magic']
 			notations = magic.setdefault("class_selections", [])
 			text = text.replace("<br/>", " ").strip()
+			text = _clear_sup(text)
 			values = split_comma_and_semicolon(text)
 			notation = {
 				'name': name,
@@ -948,7 +955,7 @@ def offense_pass(struct):
 					"Illusion": _handle_class_selection("Illusion"),
 					"Psychic Discipline": _handle_class_selection("psychic discipline"),
 					"Prohibited Schools": _handle_class_selection("Prohibited Schools"),
-					"Inquisition": handle_noop("Inquisition")
+					"Inquisition": _handle_class_selection("Inquisition")
 				}
 				dispatch[title](struct, offense, text)
 		else:
