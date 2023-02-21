@@ -55,6 +55,7 @@ def parse_alien(filename, options):
 	ecology_pass(struct)
 	special_ability_pass(struct)
 	section_pass(struct)
+	fix_description_pass(details, struct)
 	html_pass(struct)
 	#log_html_pass(struct, basename)
 	remove_empty_sections_pass(struct)
@@ -281,6 +282,11 @@ def top_matter_pass(struct):
 		senses['special_senses'] = _handle_special_senses(text.pop(0))
 
 	assert len(text) == 0, text
+
+def fix_description_pass(details, struct):
+	if details:
+		struct['sections'].extend(details)
+	return
 
 def defense_pass(struct):
 	def _handle_hp(defense, text):
