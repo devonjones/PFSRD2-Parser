@@ -36,7 +36,6 @@ from universal.creatures import universal_handle_sr
 from universal.creatures import universal_handle_weaknesses
 from pfsrd.schema import validate_against_schema
 
-# TODO: Check in on final sections, example: npc codex, crime lord
 def parse_creature(filename, options):
 	basename = os.path.basename(filename)
 	if not options.stdout:
@@ -46,7 +45,7 @@ def parse_creature(filename, options):
 	details = entity_pass(details)
 	struct = restructure_creature_pass(details, options.subtype, basename)
 	top_matter_pass(struct)
-	fix_description_pass(struct)
+	fix_description_pass(details, struct)
 	defense_pass(struct)
 	offense_pass(struct)
 	tactics_pass(struct)
@@ -67,7 +66,7 @@ def parse_creature(filename, options):
 	elif options.stdout:
 		print(json.dumps(struct, indent=2))
 
-def fix_description_pass(struct):
+def fix_description_pass(details, struct):
 	def _split_out_description(last_section):
 		newparts = []
 		newdescription = []
@@ -95,6 +94,8 @@ def fix_description_pass(struct):
 		return
 	last_section = struct['sections'][-1]
 	_split_out_description(last_section)
+	if details:
+		struct['sections'].extend(details)
 	return
 
 def handle_default_list_of_strings(field):
@@ -104,27 +105,25 @@ def handle_default_list_of_strings(field):
 		elem[field.lower().strip()] = parts
 	return _handle_default_list_impl
 
-def handle_default_list_of_objects(name, subtype, field):
+def handle_special_attacks(_, elem, text):
 	# TODO pull out dice
-	def _handle_default_list_impl(_, elem, text):
-		text = filter_end(text, ["<br/>", ","])
-		retlist = []
-		parts = split_comma_and_semicolon(text)
-		for text in parts:
-			element = {
-				'type': 'stat_block_section',
-				'subtype': subtype
-			}
-			if text.find("(") > -1:
-				parts = text.split("(")
-				text = parts.pop(0).strip()
-				modtext = ",".join([p.replace(")", "").strip() for p in parts])
-				modparts = split_comma_and_semicolon(modtext, parenleft="[", parenright="]")
-				element['modifiers'] = modifiers_from_string_list(modparts)
-			element['name'] = text
-			retlist.append(element)
-		elem[field] = retlist
-	return _handle_default_list_impl
+	text = filter_end(text, ["<br/>", ","])
+	retlist = []
+	parts = split_comma_and_semicolon(text)
+	for text in parts:
+		element = {
+			'type': 'stat_block_section',
+			'subtype': "special_attack"
+		}
+		if text.find("(") > -1:
+			parts = text.split("(")
+			text = parts.pop(0).strip()
+			modtext = ",".join([p.replace(")", "").strip() for p in parts])
+			modparts = split_comma_and_semicolon(modtext, parenleft="[", parenright="]")
+			element['modifiers'] = modifiers_from_string_list(modparts)
+		element['name'] = text
+		retlist.append(element)
+	elem["special_attacks"] = retlist
 
 def handle_default(field):
 	def _handle_default_impl(_, elem, text):
@@ -941,8 +940,7 @@ def offense_pass(struct):
 					"Reach": _handle_reach,
 					"Melee": _handle_attack("melee"),
 					"Ranged": _handle_attack("ranged"),
-					"Special Attacks": handle_default_list_of_objects(
-						"Special Attack", "special_attack", "special_attacks"),
+					"Special Attacks": handle_special_attacks,
 					"D": _handle_notation("D"),
 					"S": _handle_notation("S"),
 					"M": _handle_notation("M"),
@@ -1225,7 +1223,6 @@ def ecology_pass(struct):
 
 def special_ability_pass(struct):
 	def _handle_affliction(sa):
-		# TODO pull out dice
 		affliction = {
 			"type": "stat_block_section",
 			"subtype": "affliction",
@@ -1254,7 +1251,6 @@ def special_ability_pass(struct):
 				affliction['saving_throw'] = universal_handle_save_dc(text)
 			elif title == None:
 				if ":" in text:
-					pprint(text)
 					name, text = text.split(":")
 					affliction['name'] = name
 				affliction['affliction_type'] = "%s; %s" % (sa["name"].strip(), text.strip())
