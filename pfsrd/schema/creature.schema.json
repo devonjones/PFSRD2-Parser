@@ -142,7 +142,7 @@
 					"additionalItems": false
 				},
 				"cr": {"type": "string"},
-				"xp": {"type": "integer"},
+				"xp": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
 				"alignment": {"enum": [
 					"Lawful Good", "Lawful Neutral", "Lawful Evil",
 					"Neutral Good", "Neutral", "Neutral Evil",
@@ -154,7 +154,7 @@
 					"Huge", "Gargantuan", "Colossal"
 				]}
 			},
-			"required": ["type", "subtype", "creature_type", "cr", "size",
+			"required": ["type", "subtype", "creature_type", "size",
 				"alignment_text"],
 			"additionalProperties": false
 		},
@@ -442,7 +442,7 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["special_attack", "offensive_ability",
 					"communication_ability", "graft", "special_quality",
-					"immunity", "weakness"]},
+					"immunity", "weakness", "trick"]},
 				"name": {"type": "string"},
 				"modifiers": {"$ref": "#/definitions/modifiers"},
 				"links": {
@@ -846,6 +846,11 @@
 				"wis": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
 				"cha": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
 				"feats": {"$ref": "#/definitions/feats"},
+				"tricks": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/string_with_modifiers"},
+					"additionalItems": false
+				},
 				"skills": {"$ref": "#/definitions/skills"},
 				"languages": {"$ref": "#/definitions/languages"},
 				"special_qualities": {
@@ -887,11 +892,26 @@
 				"tactics": {"$ref": "#/definitions/tactics"},
 				"ecology": {"$ref": "#/definitions/ecology"},
 				"special_abilities": {"$ref": "#/definitions/special_abilities"},
-				"other_abilities": {"$ref": "#/definitions/other_abilities"}
+				"other_abilities": {"$ref": "#/definitions/other_abilities"},
+				"sub_creature": {"$ref": "#/definitions/sub_creature"}
 			},
 			"required": [
 				"name", "type", "creature_type", "initiative", "defense"
 			],
+			"additionalProperties": false
+		},
+		"sub_creature": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"html": {"type": "string"},
+				"type": {"enum": ["monster"]},
+				"game-obj": {"enum": ["Monsters"]},
+				"stat_block": {"$ref": "#/definitions/stat_block"},
+				"sources": {"$ref": "#/definitions/sources"},
+				"sections": {"$ref": "#/definitions/sections"}
+			},
+			"required": ["name", "type", "game-obj", "sources", "stat_block"],
 			"additionalProperties": false
 		},
 		"tactic": {
