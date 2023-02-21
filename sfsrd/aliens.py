@@ -140,8 +140,6 @@ def restructure_alien_pass(details, subtype):
 	struct['sections'].extend(top['sections'])
 	return struct
 
-
-
 def top_matter_pass(struct):
 	def _handle_sb_image(sb, bs):
 		first = list(bs.children).pop(0)

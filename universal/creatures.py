@@ -212,6 +212,8 @@ def universal_handle_save_dc(text):
 	# DC 22 half
 
 	assert "DC" in text, "Saves must have DCs: %s" % text
+	if text.endswith(","):
+		text = text[:-1]
 	save_dc = {
 		"type": "stat_block_section",
 		"subtype": "save_dc",

@@ -25,18 +25,12 @@
 				"affliction_type": {"type": "string"},
 				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"onset": {"type": "string"},
-				"track": {"type": "string"},
 				"frequency": {"type": "string"},
 				"effect": {"type": "string"},
 				"cure": {"type": "string"}
 			},
-			"required": ["name", "type", "subtype", "affliction_type"],
+			"required": ["type", "subtype", "affliction_type"],
 			"additionalProperties": false
-		},
-		"afflictions": {
-			"type": "array",
-			"items": {"$ref": "#/definitions/affliction"},
-			"additionalItems": false
 		},
 		"attack": {
 			"type": "object",
@@ -256,10 +250,13 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["ecology"]},
 				"environment": {"type": "string"},
-				"organization": {"type": "string"}
+				"organization": {"type": "string"},
+				"treasure": {"type": "string"},
+				"advancement": {"type": "string"},
+				"level_adjustment": {"type": "string"}
 			},
 			"required": [
-				"name", "type", "subtype", "environment", "organization"
+				"name", "type", "subtype", "environment"
 			],
 			"additionalProperties": false
 		},
@@ -560,6 +557,22 @@
 			"required": ["name", "type", "subtype", "speed"],
 			"additionalProperties": false
 		},
+		"other_ability": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["other_ability"]},
+				"name": {"type": "string"},
+				"text": {"type": "string"}
+			},
+			"required": ["type", "subtype", "name"],
+			"additionalProperties": false
+		},
+		"other_abilities": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/other_ability"},
+			"additionalItems": false
+		},
 		"range": {
 			"type": "object",
 			"properties": {
@@ -697,18 +710,22 @@
 				"subtype": {"enum": ["special_ability"]},
 				"name": {"type": "string"},
 				"ability_type": {"enum": [
-					"Extraordinary", "Spell-Like", "Supernatural"]},
-				"ability_type_abbrev": {"enum": ["Ex", "Sp", "Su"]},
+					"Extraordinary", "Spell-Like", "Supernatural",
+					"Spell-Like, Supernatural", "Extraordinary, Spell-Like",
+					"Extraordinary, Supernatural",
+					"Extraordinary, Spell-Like, Supernatural"]},
+				"ability_type_abbrev": {"enum": ["Ex", "Sp", "Su",
+					"Sp, Su", "Ex, Sp", "Ex, Su",
+					"Ex, Sp, Su"]},
 				"text": {"type": "string"},
+				"affliction": {"$ref": "#/definitions/affliction"},
 				"links": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/link"},
 					"additionalItems": false
 				}
 			},
-			"required": [
-				"name", "type", "subtype", "ability_type",
-				"ability_type_abbrev", "text"],
+			"required": ["name", "type", "subtype", "text"],
 			"additionalProperties": false
 		},
 		"special_abilities": {
@@ -870,7 +887,7 @@
 				"tactics": {"$ref": "#/definitions/tactics"},
 				"ecology": {"$ref": "#/definitions/ecology"},
 				"special_abilities": {"$ref": "#/definitions/special_abilities"},
-				"afflictions": {"$ref": "#/definitions/afflictions"}
+				"other_abilities": {"$ref": "#/definitions/other_abilities"}
 			},
 			"required": [
 				"name", "type", "creature_type", "initiative", "defense"

@@ -46,14 +46,13 @@ def parse_creature(filename, options):
 	details = entity_pass(details)
 	struct = restructure_creature_pass(details, options.subtype, basename)
 	top_matter_pass(struct)
-	npc_description_pass(struct)
+	fix_description_pass(struct)
 	defense_pass(struct)
 	offense_pass(struct)
 	tactics_pass(struct)
 	statistics_pass(struct)
-	#ecology_pass(struct)
-	#special_ability_pass(struct)
-	#section_pass(struct)
+	ecology_pass(struct)
+	special_ability_pass(struct)
 	html_pass(struct)
 	#log_html_pass(struct, basename)
 	remove_empty_sections_pass(struct)
@@ -68,13 +67,10 @@ def parse_creature(filename, options):
 	elif options.stdout:
 		print(json.dumps(struct, indent=2))
 
-def npc_description_pass(struct):
-	if struct['type'] == "npc":
-		for section in struct['sections']:
-			assert section["name"] != "Description", "well crap, I do need to handle structural descriptions"
+def fix_description_pass(struct):
+	def _split_out_description(last_section):
 		newparts = []
 		newdescription = []
-		last_section = struct['sections'][-1]
 		parts = last_section['text'].split("<br/><br/>")
 		found = False
 		for part in parts:
@@ -84,14 +80,22 @@ def npc_description_pass(struct):
 				newdescription.append(part)
 			else:
 				newparts.append(part)
+		newd = "<br/><br/>".join(newdescription)
 		last_section['text'] = "<br/><br/>".join(newparts)
-		newsection = {
-			'name': "Description",
-			'sections': [],
-			'text': "<br/><br/>".join(newdescription)
-		}
-		struct['sections'].append(newsection)
+		if len(newd) > 0:
+			newsection = {
+				'name': "Description",
+				'sections': [],
+				'text': "<br/><br/>".join(newdescription)
+			}
+			struct['sections'].append(newsection)
+			return
+
+	if find_section(struct, "Description"):
 		return
+	last_section = struct['sections'][-1]
+	_split_out_description(last_section)
+	return
 
 def handle_default_list_of_strings(field):
 	def _handle_default_list_impl(_, elem, text):
@@ -1175,62 +1179,117 @@ def statistics_pass(struct):
 
 def ecology_pass(struct):
 	def _handle_environment(ecology, bs):
-		assert str(bs).find(";") == -1, bs
 		ecology['environment'] = str(bs).strip()
 
 	def _handle_organization(ecology, bs):
-		#TODO: Handle links
+		# TODO: Handle links
 		ecology['organization'] = str(bs).strip()
 
+	def _handle_treasure(ecology, bs):
+		# TODO: Parse treasure
+		ecology['treasure'] = str(bs).strip()
+
+	def _handle_advancement(ecology, bs):
+		# TODO: Parse advancement
+		ecology['advancement'] = str(bs).strip()
+
+	def _handle_level_adjustment(ecology, bs):
+		# TODO: Parse level_adjustment
+		ecology['level_adjustment'] = str(bs).strip()
+	
 	stats_section = find_section(struct, "Ecology")
-	stats_text = stats_section['text']
-	struct['sections'].remove(stats_section)
-	parts = list(filter(lambda d: d != "",
-		[d.strip() for d in stats_text.split("<br/>")]))
-	ecology = {
-		"name": "Ecology",
-		"type": "stat_block_section",
-		"subtype": "ecology"
-	}
-	for part in parts:
-		bs = BeautifulSoup(part, 'html.parser')
-		namebs = list(bs.children).pop(0)
-		name = namebs.get_text()
-		namebs.extract()
-		dispatch = {
-			"Environment": _handle_environment,
-			"Organization": _handle_organization
+	if stats_section:
+		stats_text = stats_section['text']
+		struct['sections'].remove(stats_section)
+		parts = list(filter(lambda d: d != "",
+			[d.strip() for d in stats_text.split("<br/>")]))
+		ecology = {
+			"name": "Ecology",
+			"type": "stat_block_section",
+			"subtype": "ecology"
 		}
-		dispatch[name](ecology, bs)
-	struct['stat_block']['ecology'] = ecology
+		for part in parts:
+			bs = BeautifulSoup(part, 'html.parser')
+			namebs = list(bs.children).pop(0)
+			name = namebs.get_text()
+			namebs.extract()
+			dispatch = {
+				"Environment": _handle_environment,
+				"Organization": _handle_organization,
+				"Treasure": _handle_treasure,
+				"Advancement": _handle_advancement,
+				"Level Adjustment": _handle_level_adjustment,
+			}
+			dispatch[name](ecology, bs)
+		struct['stat_block']['ecology'] = ecology
 
 def special_ability_pass(struct):
-	def _handle_special_ability(data):
-		#TODO: Handle links
-		sa = {
+	def _handle_affliction(sa):
+		# TODO pull out dice
+		affliction = {
 			"type": "stat_block_section",
-			"subtype": "special_ability",
+			"subtype": "affliction",
+			"name": sa["name"]
 		}
-		bs = BeautifulSoup(data, 'html.parser')
-		name_tag = list(bs.children)[0]
-		name = name_tag.get_text()
-		name_tag.extract()
-		text = str(bs).strip()
-		while text.endswith("<br/>"):
-			text = text[:-5]
-		sa['text'] = text
-		name_parts = name.split("(")
+		sec_text = sa['text']
+		bs = BeautifulSoup(sec_text, 'html.parser')
+		parts = break_out_subtitles(bs, 'i')
+		if len(parts) == 0:
+			return
+		only_none = True
+		for part in parts:
+			affliction_sections = [
+				"save", "frequency", "effect", "cure", "onset", None]
+			if part[0] not in affliction_sections:
+				return
+			if part[0] != None:
+				only_none = False
+		if only_none:
+			return
+		for part in parts:
+			title, text = part
+			if text.endswith(";"):
+				text = text[:-1]
+			if title == "save":
+				affliction['saving_throw'] = universal_handle_save_dc(text)
+			elif title == None:
+				if ":" in text:
+					pprint(text)
+					name, text = text.split(":")
+					affliction['name'] = name
+				affliction['affliction_type'] = "%s; %s" % (sa["name"].strip(), text.strip())
+			else:
+				affliction[title] = text
+		sa['affliction'] = affliction
+
+	def _handle_special_ability_title(sa, title):
+		if "(" not in title:
+			sa["name"] = title
+			return False
+		name_parts = title.split("(")
 		sa['name'] = name_parts.pop(0).strip()
-		assert len(name_parts) == 1, name_tag
+		assert len(name_parts) == 1, title
 		sa_type = name_parts[0].replace(")", "").strip()
 		ability_types = {
 			"Ex": "Extraordinary",
 			"Sp": "Spell-Like",
-			"Su": "Supernatural"
+			"Su": "Supernatural",
+			"Sp, Su": "Spell-Like, Supernatural",
+			"Ex, Sp": "Extraordinary, Spell-Like",
+			"Ex, Su": "Extraordinary, Supernatural",
+			"Ex, Sp, Su": "Extraordinary, Spell-Like, Supernatural"
 		}
-		assert sa_type in ability_types.keys()
-		sa['ability_type'] = ability_types[sa_type]
-		sa['ability_type_abbrev'] = sa_type
+		if sa_type in ability_types.keys():
+			sa['ability_type'] = ability_types[sa_type]
+			sa['ability_type_abbrev'] = sa_type
+			return True
+		return False
+
+	def _handle_special_ability_text(sa, text):
+		#TODO: Handle links
+		while text.endswith("<br/>"):
+			text = text[:-5]
+		sa['text'] = text
 		return sa
 
 	sa_section = find_section(struct, "Special Abilities")
@@ -1238,52 +1297,26 @@ def special_ability_pass(struct):
 		sa_text = sa_section['text']
 		struct['sections'].remove(sa_section)
 		bs = BeautifulSoup(sa_text, 'html.parser')
-		parts = break_out_subtitles(bs)
-		parts = [''.join([str(t) for t in p]) for p in parts]
+		parts = break_out_subtitles(bs, 'b')
 		special_abilities = []
-		for part in parts:
-			special_abilities.append(_handle_special_ability(part))
-		struct['stat_block']['special_abilities'] = special_abilities
-
-def section_pass(struct):
-	def _handle_affliction(section):
-		# TODO pull out dice
-		sec_text = section['text']
-		del section['text']
-		del section['sections']
-		struct['sections'].remove(section)
-		bs = BeautifulSoup(sec_text, 'html.parser')
-		parts = break_out_subtitles(bs)
-		output = []
-		for part in parts:
-			pname = part.pop(0).get_text()
-			text = ''.join([str(p) for p in part]).strip()
-			while text.endswith("<br/>"):
-				text = text[:-5]
-			if text.endswith(";"):
-				text = text[:-1]
-			output.append((pname, text))
-		for element in output:
-			name, text = element
-			name = name.lower().strip()
-			if name == "type":
-				name = "affliction_type"
-			section[name] = text
-		section['type'] = 'stat_block_section'
-		section['subtype'] = 'affliction'
-		return section
-
-	afflictions = []
-	for section in struct['sections']:
-		bs = BeautifulSoup(section['text'].strip(), 'html.parser')
-		children = list(bs.children)
-		if len(children) == 1:
-			# Table, leave it in sections
-			pass
-		elif section['name'] not in ["Description"]:
-			afflictions.append(_handle_affliction(section))
-	if len(afflictions) > 0:
-		struct['stat_block']['afflictions'] = afflictions
+		other_abilities = []
+		for title, text in parts:
+			sa = {
+				"type": "stat_block_section",
+				"subtype": "special_ability",
+			}
+			is_sa = _handle_special_ability_title(sa, title)
+			_handle_special_ability_text(sa, text)
+			if is_sa:
+				_handle_affliction(sa)
+				special_abilities.append(sa)
+			else:
+				sa['subtype'] = "other_ability"
+				other_abilities.append(sa)
+		if len(special_abilities) > 0:
+			struct['stat_block']['special_abilities'] = special_abilities
+		if len(other_abilities) > 0:
+			struct['stat_block']['other_abilities'] = other_abilities
 
 def find_section(struct, name):
 	for s in struct['sections']:
