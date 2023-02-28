@@ -256,38 +256,14 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["defense"]},
-				"hp": {"$ref": "#/definitions/hp"},
-				"components": {"$ref": "#/definitions/defense_components"},
+				"hitpoints": {"$ref": "#/definitions/hitpoints"},
 				"ac": {"$ref": "#/definitions/ac"},
 				"saves": {"$ref": "#/definitions/saves"},
-				"immunities": {"$ref": "#/definitions/protections"},
-				"resistances": {"$ref": "#/definitions/protections"},
-				"weaknesses": {"$ref": "#/definitions/protections"},
 				"automatic_abilities": {"$ref": "#/definitions/abilities"},
 				"reactive_abilities": {"$ref": "#/definitions/abilities"}
 			},
-			"required": ["type", "subtype", "ac", "saves", "hp"],
+			"required": ["type", "subtype", "ac", "saves", "hitpoints"],
 			"additionalProperties": false
-		},
-		"defense_component": {
-			"type": "object",
-			"properties": {
-				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["defense_component"]},
-				"name": {"type": "string"},
-				"hp": {"type": "integer"},
-				"immunities": {"$ref": "#/definitions/protections"},
-				"resistances": {"$ref": "#/definitions/protections"},
-				"weaknesses": {"$ref": "#/definitions/protections"},
-				"automatic_abilities": {"$ref": "#/definitions/abilities"}
-			},
-			"required": ["type", "subtype", "hp"],
-			"additionalProperties": false
-		},
-		"defense_components": {
-			"type": "array",
-			"items": {"$ref": "#/definitions/defense_component"},
-			"additionalItems": false
 		},
 		"gear": {
 			"type": "array",
@@ -304,10 +280,18 @@
 				"hardness": {"type": "integer"},
 				"squares": {"type": "integer"},
 				"thresholds": {"$ref": "#/definitions/thresholds"},
+				"immunities": {"$ref": "#/definitions/protections"},
+				"resistances": {"$ref": "#/definitions/protections"},
+				"weaknesses": {"$ref": "#/definitions/protections"},
 				"automatic_abilities": {"$ref": "#/definitions/abilities"}
 			},
 			"required": ["type", "subtype", "hp"],
 			"additionalProperties": false
+		},
+		"hitpoints": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/hp"},
+			"additionalItems": false
 		},
 		"image": {
 			"type": "object",

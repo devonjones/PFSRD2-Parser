@@ -455,17 +455,14 @@ def validate_dict_pass(top, struct, parent, field):
 def process_stat_block(sb, sections):
 	def _process_component(sb, defense):
 		comp = process_hp(defense.pop(0), 'hp')
-		comp["subtype"] = "defense_component"
+		comp["subtype"] = "hitpoints"
 		if len(defense) > 0 and defense[0][0] == "Immunities":
-			n, v = process_defense(sb, defense.pop(0))
-			comp[n] = v
+			process_defense(comp, defense.pop(0))
 		if len(defense) > 0 and defense[0][0] == "Resistances":
-			n, v = process_defense(sb, defense.pop(0))
-			comp[n] = v
+			process_defense(comp, defense.pop(0))
 		if len(defense) > 0 and defense[0][0] == "Weaknesses":
-			n, v = process_defense(sb, defense.pop(0))
-			comp[n] = v
-		sb["defense"]["components"] = [comp]
+			process_defense(comp, defense.pop(0))
+		sb["defense"]["hitpoints"].append(comp)
 	def _process_background(sb, stats):
 		bgs = ['Heritage', 'Background', "Rogue's Racket",
 			"Sorcerer Bloodline", "Cleric Doctrine"]
@@ -500,23 +497,22 @@ def process_stat_block(sb, sections):
 	sb['defense']['ac'] = process_ac(defense.pop(0))
 	sb['defense']['saves'] = process_saves(
 		defense.pop(0), defense.pop(0), defense.pop(0))
-	sb['defense']['hp'] = process_hp(defense.pop(0), 'hitpoints')
+	sb['defense']['hitpoints'] =[]
+	hp = process_hp(defense.pop(0), 'hitpoints')
+	sb['defense']['hitpoints'].append(hp)
 	if len(defense) > 0 and defense[0][0] == "Hardness":
 		hardness = process_hp(defense.pop(0), 'hardness')
-		sb['defense']['hp']['hardness'] = hardness['hardness']
+		hp['hardness'] = hardness['hardness']
 		if 'automatic_abilities' in hardness:
 			assert False, "Hardness has automatic abilities: %s" % hardness
 	if len(defense) > 0 and defense[0][0] == "Thresholds":
-		process_threshold(sb, defense.pop(0))
+		process_threshold(hp, defense.pop(0))
 	if len(defense) > 0 and defense[0][0] == "Immunities":
-		n, v = process_defense(sb, defense.pop(0))
-		sb['defense'][n] = v
+		process_defense(hp, defense.pop(0))
 	if len(defense) > 0 and defense[0][0] == "Resistances":
-		n, v = process_defense(sb, defense.pop(0))
-		sb['defense'][n] = v
+		process_defense(hp, defense.pop(0))
 	if len(defense) > 0 and defense[0][0] == "Weaknesses":
-		n, v = process_defense(sb, defense.pop(0))
-		sb['defense'][n] = v
+		process_defense(hp, defense.pop(0))
 	if len(defense) > 0 and defense[0][0] == "HP":
 		_process_component(sb, defense)
 
@@ -962,7 +958,7 @@ def process_hp(section, subtype):
 		hp['automatic_abilities'] = special_sections
 	return hp
 
-def process_threshold(sb, section):
+def process_threshold(hp, section):
 	_, text, _ = section
 	if text.endswith(";"):
 		text = text[:-1]
@@ -978,10 +974,10 @@ def process_threshold(sb, section):
 		s, _ = squares_text.split(" ")
 		t["squares"] = int(s)
 	if len(thresholds) > 0:
-		sb["defense"]["hp"]["thresholds"] = thresholds
-		assert "squares" in sb["defense"]["hp"]
+		hp["thresholds"] = thresholds
+		assert "squares" in hp
 
-def process_defense(sb, section, ret=False):
+def process_defense(hp, section, ret=False):
 	def create_defense(defense):
 		d = {
 			'type': 'stat_block_section',
@@ -1007,7 +1003,7 @@ def process_defense(sb, section, ret=False):
 	for part in parts:
 		defense[section[0].lower()].append(create_defense(part))
 	link_objects(defense[section[0].lower()])
-	return section[0].lower(), defense[section[0].lower()]
+	hp[section[0].lower()] = defense[section[0].lower()]
 
 def process_defensive_ability(section, sections, sb):
 	assert section[0] not in ["Immunities", "Resistances", "Weaknesses"], section[0]
