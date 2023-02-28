@@ -46,6 +46,8 @@ def parse_creature(filename, options):
 		cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
 	details = entity_pass(details)
 	struct = restructure_creature_pass(details, options.subtype)
+	# TODO Deal with remaining sections
+	#assert len(details) == 0, details
 	creature_stat_block_pass(struct)
 	source_pass(struct, find_stat_block)
 	sidebar_pass(struct)
@@ -680,6 +682,7 @@ def process_languages(section):
 								modifier.strip()]))
 				abilities.append(ability)
 		if len(abilities) > 0:
+			# TODO pull ranges out of communication abilities
 			languages['communication_abilities'] = abilities
 	parts = rebuilt_split_modifiers(split_stat_block_line(text))
 	for text in parts:
@@ -766,6 +769,7 @@ def unwrap_formatting(bs):
 	return bs
 
 def process_items(section):
+	# TODO: Handle quantity
 	assert section[0] == "Items"
 	assert section[2] == None
 	parts = rebuilt_split_modifiers(split_stat_block_line(section[1]))
