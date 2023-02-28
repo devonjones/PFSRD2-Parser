@@ -646,11 +646,11 @@
 		"speed": {
 			"type": "object",
 			"properties": {
-				"name": {"type": "string"},
 				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["speed"]},
+				"name": {"type": "string"},
 				"movement_type": {"type": "string"},
 				"value": {"type": "integer"},
-				"subtype": {"enum": ["speed"]},
 				"modifiers": {"$ref": "#/definitions/modifiers"},
 				"link": {"$ref": "#/definitions/link"}
 			},
