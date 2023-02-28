@@ -788,7 +788,6 @@ def process_items(section):
 					'stat_block_section', 'modifier', modifier.split(",")))
 		links = []
 		while bs.a:
-		#for a in bs.findAll("a"):
 			_, link = extract_link(bs.a)
 			links.append(link)
 			bs.a.unwrap()
