@@ -873,7 +873,6 @@ def statistics_pass(struct):
 		statistics['other_abilities'] = abilities
 	
 	def _handle_gear(_, sb, bs):
-		# TODO: We may want to handle with as a subitem
 		gear = universal_handle_gear(str(bs))
 		sb['gear'] = gear
 	
