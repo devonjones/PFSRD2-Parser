@@ -17,7 +17,13 @@
 				"frequency": {"type": "string"},
 				"requirement": {"type": "string"},
 				"prerequisite": {"type": "string"},
-				"range": {"type": "string"},
+				"range": {"$ref": "#/definitions/range"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
+				"damage": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/attack_damage"},
+					"additionalItems": false
+				},
 				"failure": {"type": "string"},
 				"success": {"type": "string"},
 				"critical_failure": {"type": "string"},
@@ -126,7 +132,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["name", "type", "subtype"],
+			"required": ["name", "type", "subtype", "weapon", "bonus", "damage"],
 			"additionalProperties": false
 		},
 		"attack_bonus": {
@@ -156,7 +162,7 @@
 					"mental", "poison", "force", "cold or fire",
 					"positive", "negative", "positive or negative",
 					"chaotic", "lawful", "good", "evil", "precision",
-					"other", "energy", "bleed", "physical",
+					"other", "energy", "bleed", "physical", "split",
 					"bludgeoning or positive", "piercing or slashing",
 					"bludgeoning, piercing, or slashing",
 					"acid, cold, electricity, or fire",
@@ -524,7 +530,8 @@
 				"subtype": {"enum": ["range"]},
 				"text": {"type": "string"},
 				"range": {"type": "integer"},
-				"unit": {"enum": ["feet", "miles"]}
+				"unit": {"enum": ["feet", "miles"]},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["type", "subtype", "text", "range", "unit"],
 			"additionalProperties": false

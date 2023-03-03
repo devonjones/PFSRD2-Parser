@@ -438,35 +438,42 @@ def game_id_pass(struct):
 	pre_id = "%s: %s: %s" % (source['name'], source['page'], name)
 	struct['game-id'] = md5(str.encode(pre_id)).hexdigest()
 
-def get_links(bs):
+def get_links(bs, unwrap=False):
 	all_a = bs.find_all("a")
 	links = []
 	for a in all_a:
 		_, link = extract_link(a)
 		links.append(link)
+		if unwrap:
+			a.unwrap()
 	return links
 
 def link_modifiers(modifiers):
 	for m in modifiers:
 		bs = BeautifulSoup(m['name'], 'html.parser')
-		links = get_links(bs)
+		links = get_links(bs, True)
 		if links:
-			m['name'] = get_text(bs)
+			m['name'] = clear_tags(str(bs), ["i"])
 			m['links'] = links
 	return modifiers
 
-def link_values(values, field="name", singleton=False):
-	for v in values:
-		bs = BeautifulSoup(v[field], 'html.parser')
-		links = get_links(bs)
+def link_value(value, field="name", singleton=False):
+	if field in value:
+		bs = BeautifulSoup(value[field], 'html.parser')
+		links = get_links(bs, True)
 		if links:
 			if singleton:
-				assert len(links) == 1, "Multiple links found where one expected: %s" % v[field]
-				v[field] = get_text(bs)
-				v['link'] = links[0]
+				assert len(links) == 1, "Multiple links found where one expected: %s" % value[field]
+				value[field] = str(bs)
+				value['link'] = links[0]
 			else:
-				v[field] = get_text(bs)
-				v['links'] = links
+				value[field] = str(bs)
+				value['links'] = links
+	return value
+
+def link_values(values, field="name", singleton=False):
+	for v in values:
+		v = link_value(v, field, singleton)
 	return values
 
 def extract_modifiers(text):

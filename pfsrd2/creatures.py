@@ -14,13 +14,14 @@ from universal.universal import aon_pass, restructure_pass, html_pass
 from universal.universal import remove_empty_sections_pass, get_links
 from universal.universal import walk, test_key_is_value
 from universal.universal import link_modifiers
-from universal.universal import link_values
+from universal.universal import link_values, link_value
 from universal.files import makedirs, char_replace
 from universal.creatures import write_creature
 from universal.creatures import universal_handle_special_senses
 from universal.creatures import universal_handle_perception
 from universal.creatures import universal_handle_senses
 from universal.creatures import universal_handle_save_dc
+from universal.creatures import universal_handle_range
 from universal.utils import log_element, clear_tags
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
@@ -1009,6 +1010,58 @@ def process_defense(hp, section, ret=False):
 	hp[section[0].lower()] = defense[section[0].lower()]
 
 def process_defensive_ability(section, sections, sb):
+	def _test_aura(test):
+		if "damage" in test:
+			return True
+		if "DC" in test:
+			return True
+		if "feet" in test or "miles" in test or "mile" in test:
+			return True
+		return False
+	def _handle_aura(ability):
+		found = False
+		if 'traits' in ability and 'text' in ability:
+			for trait in ability['traits']:
+				if trait['name'] == 'aura':
+					found = True
+			if found:
+				parts = ability['text'].split(".")
+				test = parts[0]
+				if _test_aura(test):
+					print(test)
+					if test.startswith(";"):
+						test = test[1:].strip()
+					if test.endswith(";"):
+						test = test[:-1].strip()
+					test_parts = split_maintain_parens(test, ",")
+					while test_parts:
+						test_part = test_parts.pop(0)
+						if "DC" in test_part:
+							save = universal_handle_save_dc(test_part.strip())
+							assert save, "Malformed range and DC: %s" % ability['text']
+							assert 'saving_throw' not in ability, "Can't add a save_dc to an object that as a save_dc already: %s" % ability
+							ability['saving_throw'] = save
+						elif "feet" in test_part or "miles" in test_part or "mile" in test:
+							range = universal_handle_range(test_part.strip())
+							assert range, "Malformed range and DC: %s" % ability['text']
+							assert 'range' not in ability, "Can't add a range to an object that as a range already: %s" % ability
+							ability['range'] = range
+						elif "damage" in test_part:
+							dam = parse_attack_damage(test_part)
+							ability['damage'] = dam
+						else:
+							assert False, "Malformed range and DC: %s" % ability['text']
+					parts.pop(0)
+					ability['text'] = ".".join(parts).strip()
+				else:
+					if "Merlokrep" in ability['text']:
+						# TODO: Find a more graceful way to deal with 2179
+						return
+					assert False, ability['text']
+			if ability["text"] == "":
+				del ability["text"]
+
+	# TODO: Handle range, DC for auras.
 	assert section[0] not in ["Immunities", "Resistances", "Weaknesses"], section[0]
 	description = section[1]
 	link = section[2]
@@ -1019,9 +1072,6 @@ def process_defensive_ability(section, sections, sb):
 		'ability_type': 'automatic',
 		'name': section[0]
 	}
-	if link:
-		# TODO: fix []
-		ability['links'] = [link]
 	addons = ["Frequency", "Trigger", "Effect", "Duration", "Requirement",
 			"Critical Success", "Success", "Failure", "Critical Failure"]
 	while len(sections) > 0 and sections[0][0] in addons:
@@ -1045,7 +1095,14 @@ def process_defensive_ability(section, sections, sb):
 		ability['traits'] = traits
 
 	if(len(description) > 0):
-		ability['text'] = description.strip()
+		ability['text'] = clear_tags(description.strip(), ["i"])
+
+	_handle_aura(ability)
+
+	link_value(ability, field="text")
+	if link:
+		links = ability.setdefault('links', [])
+		links.insert(0, link)
 	sb['defense'].setdefault(sb_key, []).append(ability)
 
 def process_speed(section):
@@ -1143,6 +1200,67 @@ def process_speed(section):
 				assert m['name'].find("feet") == -1, modifiers
 	return speed
 
+def parse_attack_damage(text):
+	def _parse_attack_effect(parts):
+		effect = {
+			"type": "stat_block_section", "subtype": "attack_damage"
+		}
+		bs = BeautifulSoup(' '.join(parts), 'html.parser')
+		allA = bs.find_all("a")
+		links = []
+		for a in allA:
+			_, link = extract_link(a)
+			links.append(link)
+		if links:
+			effect["links"] = links
+		effect["effect"] = get_text(bs).strip()
+		return effect
+	
+	ds = split_list(text.strip(), [" plus ", " and "])
+	damages = []
+	for d in ds:
+		damage = {
+			"type": "stat_block_section", "subtype": "attack_damage"
+		}
+		parts = d.split(" ")
+		dice = parts.pop(0).strip()
+		m = re.match(r"^\d*d\d*.?[0-9]*?$", dice)
+		if not m:
+			m = re.match(r"^\d*$", dice)
+		if m: #damage
+			damage["formula"] = dice.replace('–', '-')
+			damage_type = ' '.join(parts)
+			if damage_type.find("(") > -1:
+				parts = damage_type.split("(")
+				damage_type = parts.pop(0).strip()
+				notes = parts.pop(0).replace(")", "").strip()
+				assert len(parts) == 0, "Failed to parse damage: %s" % (text)
+				damage["notes"] = notes
+			if damage_type.find("damage") > -1:
+				# energy touch +36 [<a aonid="322" game-obj="Rules"><u>+32/+28</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="99" game-obj="Traits"><u>lawful</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>), <b>Damage</b> 5d8+18 positive or negative damage plus 1d6 lawful
+				damage_type = damage_type.replace(" damage", "")
+			bs = BeautifulSoup(damage_type, 'html.parser')
+			allA = bs.find_all("a")
+			links = []
+			for a in allA:
+				_, link = extract_link(a)
+				links.append(link)
+			if links:
+				damage["links"] = links
+			damage_type = get_text(bs).strip()
+			if damage_type.startswith("persistent"):
+				damage_type = damage_type.replace("persistent ", "")
+				damage["persistent"] = True
+			if damage_type.find("splash") > -1:
+				damage_type = damage_type.replace("splash", "").strip()
+				damage["splash"] = True
+			damage["damage_type"] = damage_type
+		else: #effect
+			parts.insert(0, dice)
+			damage = _parse_attack_effect(parts)
+		damages.append(damage)
+	return damages
+
 def process_offensive_action(section):
 	def remove_html_weapon(text, section):
 		bs = BeautifulSoup(text, 'html.parser')
@@ -1202,67 +1320,6 @@ def process_offensive_action(section):
 			section['traits'] = traits
 		assert len(attack_data) == 0, "Failed to parse: %s" % (text)
 		parent_section['attack'] = section
-
-	def parse_attack_damage(text):
-		ds = split_list(text.strip(), [" plus ", " and "])
-		damages = []
-		for d in ds:
-			damage = {
-				"type": "stat_block_section", "subtype": "attack_damage"
-			}
-			parts = d.split(" ")
-			dice = parts.pop(0).strip()
-			m = re.match(r"^\d*d\d*.?[0-9]*?$", dice)
-			if not m:
-				m = re.match(r"^\d*$", dice)
-			if m: #damage
-				damage["formula"] = dice.replace('–', '-')
-				damage_type = ' '.join(parts)
-				if damage_type.find("(") > -1:
-					parts = damage_type.split("(")
-					damage_type = parts.pop(0).strip()
-					notes = parts.pop(0).replace(")", "").strip()
-					assert len(parts) == 0, "Failed to parse damage: %s" % (text)
-					damage["notes"] = notes
-				if damage_type.find("damage") > -1:
-					# energy touch +36 [<a aonid="322" game-obj="Rules"><u>+32/+28</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="99" game-obj="Traits"><u>lawful</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>), <b>Damage</b> 5d8+18 positive or negative damage plus 1d6 lawful
-					damage_type = damage_type.replace(" damage", "")
-				bs = BeautifulSoup(damage_type, 'html.parser')
-				allA = bs.find_all("a")
-				links = []
-				for a in allA:
-					_, link = extract_link(a)
-					links.append(link)
-				if links:
-					damage["links"] = links
-				damage_type = get_text(bs).strip()
-				if damage_type.startswith("persistent"):
-					damage_type = damage_type.replace("persistent ", "")
-					damage["persistent"] = True
-				if damage_type.find("splash") > -1:
-					damage_type = damage_type.replace("splash", "").strip()
-					damage["splash"] = True
-				damage["damage_type"] = damage_type
-			else: #effect
-				parts.insert(0, dice)
-				damage = parse_attack_effect(parts)
-			damages.append(damage)
-		return damages
-
-	def parse_attack_effect(parts):
-		effect = {
-			"type": "stat_block_section", "subtype": "attack_damage"
-		}
-		bs = BeautifulSoup(' '.join(parts), 'html.parser')
-		allA = bs.find_all("a")
-		links = []
-		for a in allA:
-			_, link = extract_link(a)
-			links.append(link)
-		if links:
-			effect["links"] = links
-		effect["effect"] = get_text(bs).strip()
-		return effect
 
 	def parse_spells(parent_section):
 		def _handle_traditions(name_parts):
@@ -1524,7 +1581,11 @@ def process_offensive_action(section):
 				else:
 					parts.append(str(child))
 		for k, v in addons.items():
-			section[k] = _oa_html_reduction(v)
+			if k == 'range':
+				assert len(v) == 1, "Malformed range: %s" % v
+				section['range'] = universal_handle_range(v[0])
+			else:
+				section[k] = _oa_html_reduction(v)
 		if len(parts) > 0:
 			section['text'] = _oa_html_reduction(parts)
 		parent_section['ability'] = section

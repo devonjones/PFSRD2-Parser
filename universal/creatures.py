@@ -187,6 +187,7 @@ def universal_handle_range(text):
 		groups = m.groups()
 		assert len(groups) == 2, groups
 		unit = groups[1]
+		unit, modifiers = extract_modifiers(unit)
 		if unit.endswith('.'):
 			unit = unit[:-1]
 		if unit in ["ft", "feet", "mile", "miles"]:
@@ -202,6 +203,8 @@ def universal_handle_range(text):
 				"range": int(groups[0]),
 				"unit": unit
 			}
+			if modifiers:
+				range["modifiers"] = modifiers
 			return range
 	return None
 
@@ -244,9 +247,11 @@ def universal_handle_save_dc(text):
 	if newparts:
 		result = " ".join(newparts)
 		if "half" in result:
-			save_dc['result'] = part
+			save_dc['result'] = result
 		elif "negates" in result:
-			save_dc['result'] = part
+			save_dc['result'] = result
+		elif "basic" in result:
+			save_dc['result'] = result
 		else:
 			assert False, "Broken DC: %s" % text
 	return save_dc
