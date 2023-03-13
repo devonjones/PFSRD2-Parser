@@ -38,6 +38,11 @@ from pfsrd2.sql.traits import fetch_trait_by_name
 # TODO: Traits: Need to solve cold iron as precious problem, Monster ID 1550
 # TODO: Traits, need to solve or cases on traits, Monster ID 518
 # TODO: Bunch of fix []
+# TODO: 2206 Fiendish Genesis
+# TODO: 643 <i> in Dweomer Leap
+# TODO: 146 formatting in Breah Weapon
+# TODO: 333 
+# TODO: I think we might be missing focus points not at the front of spell lists
 
 def parse_creature(filename, options):
 	basename = os.path.basename(filename)
@@ -58,12 +63,14 @@ def parse_creature(filename, options):
 	restructure_pass(struct, 'stat_block', find_stat_block)
 	recall_knowledge_pass(struct)
 	trait_pass(struct)
+	section_pass(struct)
 	db_pass(struct)
 	html_pass(struct)
-	log_html_pass(struct, basename)
+	log_html_pass(struct, basename + ", ")
 	remove_empty_sections_pass(struct)
 	basename.split("_")
 	if not options.skip_schema:
+		struct['schema_version'] = 1.0
 		validate_against_schema(struct, "creature.schema.json")
 	if not options.dryrun:
 		output = options.output
@@ -73,6 +80,27 @@ def parse_creature(filename, options):
 			write_creature(jsondir, struct, name)
 	elif options.stdout:
 		print(json.dumps(struct, indent=2))
+
+def section_pass(struct):
+	def clear_links(section):
+		text = section.setdefault('text', "")
+		links = section.setdefault('links', [])
+		bs = BeautifulSoup(text, 'html.parser')
+		while bs.a:
+			_, link = extract_link(bs.a)
+			links.append(link)
+			bs.a.unwrap()
+		section['text'] = str(bs)
+		if len(links) == 0:
+			del section['links']
+
+	def scan_section(section):
+		clear_links(section)
+		for s in section ['sections']:
+			scan_section(s)
+
+	for section in struct['sections']:
+		scan_section(section)
 
 def log_html_pass(struct, path):
 	for k, v in struct.items():
@@ -85,10 +113,10 @@ def log_html_pass(struct, path):
 						log_html_pass(item, "%s.%s" % (path, k))
 					elif isinstance(item, str):
 						if item.find("<") > -1:
-							log_element("html.log")("%s: %s" % (path, item))
+							log_element("html.log")("%s, %s" % (path, item))
 			elif isinstance(v, str):
 				if v.find("<") > -1:
-					log_element("html.log")("%s: %s" % (path, v))
+					log_element("html.log")("%s, %s" % (path, v))
 
 def db_pass(struct):
 	db_path = get_db_path("traits.db")
@@ -247,6 +275,23 @@ def creature_stat_block_pass(struct):
 		newvalue.extend(value)
 		data.append((k, ''.join([str(v) for v in newvalue]).strip(), link))
 		return [], data
+	
+	def _handle_sections(sb, struct):
+		if 'sections' in sb:
+			s = struct.setdefault('sections', [])
+			top = None
+			for x in s:
+				if x['type'] == 'section':
+					top = x
+					break
+			if top:
+				paste_sections = top.setdefault('sections', [])
+			else:
+				paste_sections = s
+			while len(sb['sections']) > 0:
+				section = sb['sections'].pop(0)
+				paste_sections.append(section)
+
 
 	sb = find_stat_block(struct)
 	bs = BeautifulSoup(sb["text"], 'html.parser')
@@ -289,11 +334,7 @@ def creature_stat_block_pass(struct):
 	sections.append(data)
 	assert len(sections) == 3, sections
 	process_stat_block(sb, sections)
-	if 'sections' in sb:
-		s = struct.setdefault('sections', [])
-		while len(sb['sections']) > 0:
-			section = sb['sections'].pop(0)
-			s.append(section)
+	_handle_sections(sb, struct)
 
 def strip_br(data):
 	newdata = []
@@ -489,7 +530,7 @@ def process_stat_block(sb, sections):
 			sb['gear'] = process_items(stats.pop(0))
 		else:
 			sb.setdefault('interaction_abilities', []).append(
-				process_interaction_ability(stats.pop(0)))
+				process_interaction_ability(sb, stats.pop(0)))
 
 	# Defense
 	defense = sections.pop(0)
@@ -797,7 +838,7 @@ def process_items(section):
 		items.append(item)
 	return items
 
-def process_interaction_ability(section):
+def process_interaction_ability(sb, section):
 	ability_name = section[0]
 	description = section[1]
 	link = section[2]
@@ -807,12 +848,19 @@ def process_interaction_ability(section):
 		'subtype': 'ability',
 		'ability_type': 'interaction'}
 	description, traits = extract_all_traits(description)
+	description, action = extract_action(description.strip())
+	if action:
+		ability['action'] = action
+
 	if len(traits) > 0:
 		ability['traits'] = traits
-	ability['text'] = description
+	ability['text'] = clear_tags(description.strip(), ["i"])
 	if link:
 		#TODO: fix []
 		ability['links'] = [link]
+
+	handle_aura(sb, ability)
+	link_value(ability, field="text")
 	return ability
 
 def process_ac(section):
@@ -1009,7 +1057,7 @@ def process_defense(hp, section, ret=False):
 	link_objects(defense[section[0].lower()])
 	hp[section[0].lower()] = defense[section[0].lower()]
 
-def process_defensive_ability(section, sections, sb):
+def handle_aura(sb, ability):
 	def _test_aura(test):
 		if "damage" in test:
 			return True
@@ -1018,50 +1066,57 @@ def process_defensive_ability(section, sections, sb):
 		if "feet" in test or "miles" in test or "mile" in test:
 			return True
 		return False
-	def _handle_aura(ability):
-		found = False
-		if 'traits' in ability and 'text' in ability:
-			for trait in ability['traits']:
-				if trait['name'] == 'aura':
-					found = True
-			if found:
-				parts = ability['text'].split(".")
-				test = parts[0]
-				if _test_aura(test):
-					print(test)
-					if test.startswith(";"):
-						test = test[1:].strip()
-					if test.endswith(";"):
-						test = test[:-1].strip()
-					test_parts = split_maintain_parens(test, ",")
-					while test_parts:
-						test_part = test_parts.pop(0)
-						if "DC" in test_part:
-							save = universal_handle_save_dc(test_part.strip())
-							assert save, "Malformed range and DC: %s" % ability['text']
-							assert 'saving_throw' not in ability, "Can't add a save_dc to an object that as a save_dc already: %s" % ability
-							ability['saving_throw'] = save
-						elif "feet" in test_part or "miles" in test_part or "mile" in test:
-							range = universal_handle_range(test_part.strip())
-							assert range, "Malformed range and DC: %s" % ability['text']
-							assert 'range' not in ability, "Can't add a range to an object that as a range already: %s" % ability
-							ability['range'] = range
-						elif "damage" in test_part:
-							dam = parse_attack_damage(test_part)
-							ability['damage'] = dam
-						else:
-							assert False, "Malformed range and DC: %s" % ability['text']
-					parts.pop(0)
-					ability['text'] = ".".join(parts).strip()
-				else:
-					if "Merlokrep" in ability['text']:
-						# TODO: Find a more graceful way to deal with 2179
-						return
-					assert False, ability['text']
-			if ability["text"] == "":
-				del ability["text"]
+	def _test_aura_dc(ability):
+		if sb['name'] in ['Weykoward', "Watch Officer"]:
+			return
+		if 'saving_throw' not in ability:
+			if "DC " in ability["text"]:
+				# TODO: Find a more graceful way to deal with 1816
+				pprint(sb)
+				assert False, "DC in text, but no save in aura: %s" % ability
+	found = False
+	if 'traits' in ability and 'text' in ability:
+		for trait in ability['traits']:
+			if trait['name'] == 'aura':
+				found = True
+		if found:
+			parts = ability['text'].split(".")
+			test = parts[0]
+			if _test_aura(test):
+				if test.startswith(";"):
+					test = test[1:].strip()
+				if test.endswith(";"):
+					test = test[:-1].strip()
+				test_parts = split_maintain_parens(test, ",")
+				while test_parts:
+					test_part = test_parts.pop(0)
+					if "DC" in test_part:
+						save = universal_handle_save_dc(test_part.strip())
+						assert save, "Malformed range and DC: %s" % ability['text']
+						assert 'saving_throw' not in ability, "Can't add a save_dc to an object that as a save_dc already: %s" % ability
+						ability['saving_throw'] = save
+					elif "feet" in test_part or "miles" in test_part or "mile" in test:
+						range = universal_handle_range(test_part.strip())
+						assert range, "Malformed range and DC: %s" % ability['text']
+						assert 'range' not in ability, "Can't add a range to an object that as a range already: %s" % ability
+						ability['range'] = range
+					elif "damage" in test_part:
+						dam = parse_attack_damage(test_part)
+						ability['damage'] = dam
+					else:
+						assert False, "Malformed range and DC: %s" % ability['text']
+				parts.pop(0)
+				ability['text'] = ".".join(parts).strip()
+				_test_aura_dc(ability)
+			else:
+				if "Merlokrep" in ability['text']:
+					# TODO: Find a more graceful way to deal with 2179
+					return
+				assert False, ability['text']
+		if ability["text"] == "":
+			del ability["text"]
 
-	# TODO: Handle range, DC for auras.
+def process_defensive_ability(section, sections, sb):
 	assert section[0] not in ["Immunities", "Resistances", "Weaknesses"], section[0]
 	description = section[1]
 	link = section[2]
@@ -1097,7 +1152,7 @@ def process_defensive_ability(section, sections, sb):
 	if(len(description) > 0):
 		ability['text'] = clear_tags(description.strip(), ["i"])
 
-	_handle_aura(ability)
+	handle_aura(sb, ability)
 
 	link_value(ability, field="text")
 	if link:

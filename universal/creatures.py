@@ -232,7 +232,8 @@ def universal_handle_save_dc(text):
 		"Reflex": "Ref",
 		"Ref": "Ref",
 		"Will": "Will",
-		"Strength": "Str"
+		"Strength": "Str",
+		"flat": "Flat Check"
 	}
 	newparts = []
 	for part in parts:
@@ -244,13 +245,17 @@ def universal_handle_save_dc(text):
 			save_dc["save_type"] = types[part]
 		else:
 			newparts.append(part)
+	if "save" in newparts:
+		newparts.remove("save")
+	if "check" in newparts:
+		newparts.remove("check")
 	if newparts:
 		result = " ".join(newparts)
-		if "half" in result:
+		if "half" == result.strip():
 			save_dc['result'] = result
-		elif "negates" in result:
+		elif "negates" == result.strip():
 			save_dc['result'] = result
-		elif "basic" in result:
+		elif "basic" == result.strip():
 			save_dc['result'] = result
 		else:
 			assert False, "Broken DC: %s" % text
