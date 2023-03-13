@@ -4,3 +4,5 @@ old
 __pycache__
 bin/errors*
 bin/*.validation*
+*.log
+*.logs
