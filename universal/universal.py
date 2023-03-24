@@ -1,6 +1,6 @@
 import sys
 from universal.utils import split_maintain_parens, clear_tags, filter_entities
-from universal.utils import split_comma_and_semicolon
+from universal.utils import split_comma_and_semicolon, get_text, has_name
 from hashlib import md5
 from pprint import pprint
 from urllib.parse import urlparse, parse_qs
@@ -282,14 +282,6 @@ def print_struct(top, level=0):
 			print_struct(detail, level + 2)
 	else:
 		print("<text>")
-
-def has_name(tag, name):
-	if hasattr(tag, 'name') and tag.name == name:
-		return True
-	return False
-
-def get_text(detail):
-	return ''.join(detail.findAll(text=True))
 
 def filter_name(name):
 	name = name.strip()

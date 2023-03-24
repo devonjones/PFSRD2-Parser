@@ -2,11 +2,11 @@ import os
 import json
 import sys
 import re
-import html2markdown
 from pprint import pprint
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup, NavigableString, Tag
+from universal.markdown import md
 from universal.universal import parse_universal, print_struct, entity_pass
-from universal.universal import is_trait, get_text, extract_link
+from universal.universal import is_trait, extract_link
 from universal.universal import string_with_modifiers_from_string_list
 from universal.utils import split_maintain_parens
 from universal.universal import source_pass, extract_source
@@ -22,7 +22,7 @@ from universal.creatures import universal_handle_perception
 from universal.creatures import universal_handle_senses
 from universal.creatures import universal_handle_save_dc
 from universal.creatures import universal_handle_range
-from universal.utils import log_element, clear_tags
+from universal.utils import log_element, clear_tags, is_tag_named, get_text
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
 from pfsrd2.sql import get_db_path, get_db_connection
@@ -65,12 +65,12 @@ def parse_creature(filename, options):
 	trait_pass(struct)
 	section_pass(struct)
 	db_pass(struct)
-	html_pass(struct)
-	log_html_pass(struct, basename + ", ")
+	#html_pass(struct)
+	markdown_pass(struct, struct["name"])
 	remove_empty_sections_pass(struct)
 	basename.split("_")
 	if not options.skip_schema:
-		struct['schema_version'] = 1.0
+		struct['schema_version'] = 1.1
 		validate_against_schema(struct, "creature.schema.json")
 	if not options.dryrun:
 		output = options.output
@@ -82,7 +82,47 @@ def parse_creature(filename, options):
 		print(json.dumps(struct, indent=2))
 
 def section_pass(struct):
-	def clear_links(section):
+	def _handle_front_spans(section):
+		def _handle_action(section, tag):
+			action = build_action(tag)
+			assert action, tag
+			section['action'] = action
+			tag.decompose()
+		def _handle_trait(section, tag):
+			trait = trait_parse(tag)
+			assert trait, tag
+			section.setdefault('traits', []).append(trait)
+			tag.decompose()
+		def _tag_is_action(tag):
+			assert 'class' in tag.attrs, tag
+			tag_class = tag['class']
+			if "action" in tag_class:
+				return True
+			return False
+		def _tag_is_trait(tag):
+			assert 'class' in tag.attrs, tag
+			tag_class = tag['class']
+			if 'trait' in tag_class:
+				return True
+			if 'traitrare' in tag_class:
+				return True
+			return False
+		
+		if 'text' in section:
+			bs = BeautifulSoup(section['text'].strip(), 'html.parser')
+			children = list(bs.children)
+			while children and is_tag_named(children[0], ['span']):
+				tag = children.pop(0)
+				pprint(tag)
+				if _tag_is_action(tag):
+					_handle_action(section, tag)
+				elif _tag_is_trait(tag):
+					_handle_trait(section, tag)
+				else:
+					assert False, tag
+			section['text'] = str(bs)
+
+	def _clear_links(section):
 		text = section.setdefault('text', "")
 		links = section.setdefault('links', [])
 		bs = BeautifulSoup(text, 'html.parser')
@@ -94,29 +134,137 @@ def section_pass(struct):
 		if len(links) == 0:
 			del section['links']
 
-	def scan_section(section):
-		clear_links(section)
+	def _handle_source(section):
+		if 'text' in section:
+			bs = BeautifulSoup(section['text'].strip(), 'html.parser')
+			children = list(bs.children)
+			while children and is_tag_named(children[0], ['br', 'hr']):
+				children.pop(0).decompose()
+			if children:
+				if not type(children[0]) == Tag:
+					return
+				if get_text(children[0]).strip() == "Source":
+					children.pop(0).decompose()
+					a = children.pop(0)
+					source = extract_source(a)
+					a.decompose()
+					section['sources'] = [source]
+			section['text'] = str(bs)
+
+	def _clear_garbage(section):
+		if 'text' in section:
+			if section['text'] == '':
+				del section['text']
+				return
+			bs = BeautifulSoup(section['text'].strip(), 'html.parser')
+			children = list(bs.children)
+			while children and is_tag_named(children[0], ['br', 'hr']):
+				children.pop(0).decompose()
+			while children and is_tag_named(children[-1], ['br', 'hr']):
+				children.pop().decompose()
+			section['text'] = str(bs)
+
+	def _scan_section(section):
+		_handle_front_spans(section)
+		_handle_source(section)
+		_clear_links(section)
+		_clear_garbage(section)
 		for s in section ['sections']:
-			scan_section(s)
+			_scan_section(s)
 
 	for section in struct['sections']:
-		scan_section(section)
+		_scan_section(section)
 
-def log_html_pass(struct, path):
+def get_unique_tag_set(text):
+	bs = BeautifulSoup(text, 'html.parser')
+	return set([tag.name for tag in bs.find_all()])
+
+def markdown_pass(struct, name):
+	def _validate_acceptable_tags(text):
+		validset = set(['i', 'b', 'u', 'strong', 'ol', 'ul', 'li', 'br',
+			'table', 'tr', 'td', 'hr'])
+		# I wish there was a more nuanced way to do this, but there are too many
+		# Errors where an action is skipped
+		spans_allowed = [
+			"Adult Black Dragon", "Adult Blue Dragon", "Adult Brass Dragon",
+			"Adult Bronze Dragon", "Adult Copper Dragon", "Adult Forest Dragon",
+			"Adult Gold Dragon", "Adult Green Dragon", "Adult Red Dragon",
+			"Adult Sea Dragon", "Adult Silver Dragon", "Adult Sky Dragon",
+			"Adult Sovereign Dragon", "Adult Underworld Dragon",
+			"Adult White Dragon", "Ancient Black Dragon", "Ancient Blue Dragon",
+			"Ancient Brass Dragon", "Ancient Bronze Dragon",
+			"Ancient Copper Dragon", "Ancient Forest Dragon",
+			"Ancient Gold Dragon", "Ancient Green Dragon", "Ancient Red Dragon",
+			"Ancient Sea Dragon", "Ancient Silver Dragon", "Ancient Sky Dragon",
+			"Ancient Sovereign Dragon", "Ancient Underworld Dragon",
+			"Ancient White Dragon", "Arboreal Snag", "Barnacle Ghoul",
+			"Beetle Carapace", "Blodeuwedd", "Chimpanzee Visitant",
+			"City Guard Squadron", "Clockwork Fabricator",
+			"Clockwork Shambler Horde", "Dancing Night Parade", "Daqqanoenyent",
+			"Demilich", "Dirge Piper", "Drake Skeleton", "Dryad Queen",
+			"Dryad", "Festering Gnasher", "Ghast", "Ghost Commoner",
+			"Ghost Mage", "Ghost Pirate Captain", "Ghostly Mob",
+			"Ghoul Antipaladin", "Ghoul Gnawer", "Ghoul Razorclaw", "Ghoul",
+			"Gold Defender Garrison", "Graveknight Captain",
+			"Graveknight Champion", "Graveknight Warmaster", "Graveknight",
+			"Greater Barghest", "Hana's Hundreds", "Harpy Skeleton",
+			"Hellknight Cavalry Brigade", "Hesperid Queen", "Hesperid",
+			"Horde Lich", "Hungry Ghost", "Husk Zombie",
+			"Jitterbone Contortionist", "Kothogaz, Dance Of Disharmony",
+			"Kuworsys", "Lacedon", "Lampad Queen", "Lampad", "Last Guard",
+			"Ledalusca", "Leng Ghoul", "Lich", "Lion Visitant",
+			"Mechanical Carny", "Melfesh Monster", "Minister Of Tumult",
+			"Mosquito Witch", "Mutant Desert Drake", "Mutant Giant Toad",
+			"Mutant Gnoll Hulk", "Naiad Queen", "Naiad", "Necromancer Troop",
+			"Nightmarchers", "Nosferatu Malefactor", "Nosferatu Overlord",
+			"Nosferatu Thrall", "Oaksteward Enforcer", "Petitioner",
+			"Plague Zombie", "Planar Terra-Cotta Squadron", "Priest of Kabriri",
+			"Provincial Jiang-Shi", "Rancorous Priesthood", "Ravener Husk",
+			"Ravener", "Runecarved Lich", "Shambler Troop", "Shock Zombie",
+			"Sinspawn", "Skeletal Champion", "Skeletal Giant", "Skeletal Horse",
+			"Skeletal Hulk", "Skeletal Mage", "Skeletal Soldier",
+			"Skeletal Titan", "Skeleton Guard", "Skeleton Infantry",
+			"Soul Swarm", "Spellskein", "Spring-Heeled Jack", "Stone Lion Cub",
+			"Strigoi Progenitor", "Sulfur Zombie", "Summer Hora Queen",
+			"Summer Hora", "Sun Warrior Brigade", "Taljjae",
+			"Tar Zombie Mammoth", "Tar Zombie Predator", "Tar Zombie Snatcher",
+			"Taunting Skull", "Tehialai-Thief-Of-Ships",
+			"Terra-Cotta Garrison", "Tyrannosaurus Skeleton", "Ulgrem-Axaan",
+			"Vampire Count", "Vampire Guardian", "Vampire Mastermind",
+			"Vampire Spawn", "Vetalarana Emergent", "Vetalarana Manipulator",
+			"Virulak Necromancer", "Virulak Villager", "Vrykolakas Ancient",
+			"Vrykolakas Master", "Vrykolakas Spawn", "Waldgeist", "Werebat",
+			"Werebear", "Wereboar", "Werecrocodile", "Wererat", "Weretiger",
+			"Werewolf", "Withered", "Wolf Skeleton", "Worm That Walks Cultist",
+			"Young Black Dragon", "Young Blue Dragon", "Young Brass Dragon",
+			"Young Bronze Dragon", "Young Copper Dragon", "Young Forest Dragon",
+			"Young Gold Dragon", "Young Green Dragon", "Young Red Dragon",
+			"Young Sea Dragon", "Young Silver Dragon", "Young Sky Dragon",
+			"Young Sovereign Dragon", "Young Underworld Dragon",
+			"Young White Dragon", "Zombie Brute", "Zombie Dragon",
+			"Zombie Hulk", "Zombie Lord", "Zombie Mammoth", "Zombie Owlbear",
+			"Zombie Shambler", "Zombie Snake",
+			]
+		if name in spans_allowed:
+			validset.add('span')
+		tags = get_unique_tag_set(text)
+		assert tags.issubset(validset), "%s : %s - %s" % (name, text, tags)
+	
 	for k, v in struct.items():
-		if k not in ["sections"]:
-			if isinstance(v, dict):
-				log_html_pass(v, "%s.%s" % (path, k))
-			elif isinstance(v, list):
-				for item in v:
-					if isinstance(item, dict):
-						log_html_pass(item, "%s.%s" % (path, k))
-					elif isinstance(item, str):
-						if item.find("<") > -1:
-							log_element("html.log")("%s, %s" % (path, item))
-			elif isinstance(v, str):
-				if v.find("<") > -1:
-					log_element("html.log")("%s, %s" % (path, v))
+		if isinstance(v, dict):
+			markdown_pass(v, name)
+		elif isinstance(v, list):
+			for item in v:
+				if isinstance(item, dict):
+					markdown_pass(item, name)
+				elif isinstance(item, str):
+					if item.find("<") > -1:
+						assert False # For now, I'm unaware of any tags in lists of strings
+		elif isinstance(v, str):
+			if v.find("<") > -1:
+				_validate_acceptable_tags(v)
+				struct[k] = md(v).strip()
+				#log_element("html.log")("%s, %s" % (path, v))
 
 def db_pass(struct):
 	db_path = get_db_path("traits.db")
@@ -291,7 +439,6 @@ def creature_stat_block_pass(struct):
 			while len(sb['sections']) > 0:
 				section = sb['sections'].pop(0)
 				paste_sections.append(section)
-
 
 	sb = find_stat_block(struct)
 	bs = BeautifulSoup(sb["text"], 'html.parser')
@@ -1136,7 +1283,11 @@ def process_defensive_ability(section, sections, sb):
 		value = addon[1].strip()
 		if value.endswith(";"):
 			value = value[:-1]
-		ability[addon_name] = value
+		bs = BeautifulSoup(value, 'html.parser')
+		links = get_links(bs, unwrap=True)
+		if len(links) > 0:
+			ability.setdefault('links', []).extend(links)
+		ability[addon_name] = str(bs)
 
 	description, action = extract_action(description.strip())
 	if action:
@@ -1290,7 +1441,11 @@ def parse_attack_damage(text):
 				damage_type = parts.pop(0).strip()
 				notes = parts.pop(0).replace(")", "").strip()
 				assert len(parts) == 0, "Failed to parse damage: %s" % (text)
-				damage["notes"] = notes
+				bs = BeautifulSoup(notes, 'html.parser')
+				links = get_links(bs, unwrap=True)
+				if len(links) > 0:
+					damage.setdefault('links', []).extend(links)
+				damage["notes"] = str(bs)
 			if damage_type.find("damage") > -1:
 				# energy touch +36 [<a aonid="322" game-obj="Rules"><u>+32/+28</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="99" game-obj="Traits"><u>lawful</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>), <b>Damage</b> 5d8+18 positive or negative damage plus 1d6 lawful
 				damage_type = damage_type.replace(" damage", "")
@@ -1811,18 +1966,47 @@ def extract_modifier(text):
 	else:
 		return text, None
 
+def build_action(child, action=None):
+	action_name = child['title']
+	if not action:
+		action = build_object(
+			'stat_block_section',
+			'action',
+			action_name)
+		if action_name == 'Single Action':
+			action["name"] = "One Action"
+	return action
+
 def extract_action(text):
-	def build_action(child, action):
-		action_name = child['title']
-		if not action:
-			image = action_name.lower().replace(" ", "_") + ".png"
-			action = build_object(
-				'stat_block_section',
-				'action',
-				action_name,
-				{'image': {
-					"type": "image", "name": action_name, "image": image}})
-		return action
+	def _handle_to_actions(action, newchildren):
+		if len(newchildren) == 0:
+			return
+		child = newchildren[0]
+		if not type(child) == NavigableString:
+			return
+		if child.strip() == "to":
+			newchildren.pop(0)
+			assert newchildren[0].name == "span"
+			assert action ["name"] == "One Action"
+			if newchildren[0]['title'] == "Three Actions":
+				action["name"] = "One to Three Actions"
+			elif newchildren[0]['title'] == "Two Actions":
+				action["name"] = "One or Two Actions"
+			else:
+				assert False
+			newchildren.pop(0)
+		elif child.strip() == "or":
+			newchildren.pop(0)
+			assert newchildren[0].name == "span"
+			if action["name"] == "One Action":
+				assert newchildren[0]['title'] == "Two Actions"
+				action["name"] = "One or Two Actions"
+			elif action["name"] == "Two Actions":
+				assert newchildren[0]['title'] == "Three Actions"
+				action["name"] = "Two or Three Actions"
+			else:
+				assert False
+			newchildren.pop(0)
 
 	children = list(BeautifulSoup(text.strip(), 'html.parser').children)
 	action = None
@@ -1838,6 +2022,8 @@ def extract_action(text):
 			newchildren.append(child)
 			newchildren.extend(children)
 			break
+	_handle_to_actions(action, newchildren)
+
 	text = ''.join([str(c) for c in newchildren]).strip()
 	return text, action
 

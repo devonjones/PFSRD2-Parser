@@ -71,3 +71,19 @@ def find_list(text, elements):
 		if text.find(element) > -1:
 			return element
 	return False
+
+def is_tag_named(element, taglist):
+	if type(element) != Tag:
+		return False
+	elif element.name in taglist:
+		return True
+	return False
+
+def has_name(tag, name):
+	if hasattr(tag, 'name') and tag.name == name:
+		return True
+	return False
+
+def get_text(detail):
+	return ''.join(detail.findAll(text=True))
+

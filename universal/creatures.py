@@ -3,14 +3,14 @@ import json
 import re
 from pprint import pprint
 from universal.universal import modifiers_from_string_list, extract_modifiers
-from universal.universal import link_values, get_links, get_text
+from universal.universal import link_values, get_links
 from universal.universal import split_maintain_parens
 from universal.universal import string_values_from_string_list
 from universal.universal import string_with_modifiers_from_string_list
 from universal.universal import string_with_modifiers
 from universal.universal import split_comma_and_semicolon
 from universal.files import char_replace
-from universal.utils import log_element, clear_tags
+from universal.utils import log_element, clear_tags, get_text
 from bs4 import BeautifulSoup
 
 

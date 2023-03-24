@@ -62,12 +62,12 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["action"]},
 				"name": {"enum": [
-					"Reaction", "Free Action", "Single Action",
-					"Two Actions", "Three Actions"
-				]},
-				"image": {"$ref": "#/definitions/image"}
+					"Reaction", "Free Action", "One Action",
+					"Two Actions", "Three Actions", "One to Three Actions",
+					"One or Two Actions", "Two or Three Actions"
+				]}
 			},
-			"required": ["name", "type", "subtype", "image"],
+			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
 		},
 		"affliction": {
@@ -391,16 +391,17 @@
 				"alt": {"type": "string"},
 				"href": {"type": "string"},
 				"game-obj": {"enum": [
-					"Spells", "Sources", "Skills", "Traits", "MonsterAbilities",
-					"Conditions", "Languages", "Weapons", "Armor", "Shields",
-					"Equipment", "Deities", "Feats", "Actions", "Monsters",
-					"Heritages", "Rules", "Diseases", "Rituals", "Planes",
-					"MonsterFamilies", "Domains", "Classes", "Ancestries",
-					"Archetypes", "Muses", "NPCs", "WeaponGroups", "Mysteries",
-					"Hazards", "Familiars", "Patrons", "Curses", "Bloodlines",
-					"Backgrounds", "Rackets", "Doctrines", "Instincts",
-					"HuntersEdge", "ResearchFields", "DeityCategories",
-					"Relics", "AnimalCompanions", "Causes"
+					"Traits",
+					"Actions", "Ancestries", "AnimalCompanions", "Archetypes",
+					"Armor", "Backgrounds", "Bloodlines", "Causes", "Classes",
+					"Conditions", "Curses", "Deities", "DeityCategories",
+					"Diseases", "Doctrines", "Domains", "Equipment",
+					"Familiars", "Feats", "Hazards", "Heritages", "HuntersEdge",
+					"Instincts", "Languages", "MonsterAbilities",
+					"MonsterFamilies", "Monsters", "Muses", "Mysteries",
+					"NPCs", "Patrons", "Planes", "Rackets", "Relics",
+					"ResearchFields", "Rituals", "Rules", "Shields", "Skills",
+					"Sources", "Spells", "WeaponGroups", "Weapons"
 				]},
 				"aonid": {"type": "integer"}
 			},
@@ -581,7 +582,7 @@
 			"properties": {
 				"name": {"type": "string"},
 				"type": {"enum": ["section"]},
-				"html": {"type": "string"},
+				"text": {"type": "string"},
 				"sections": {"$ref": "#/definitions/sections"},
 				"sources": {"$ref": "#/definitions/sources"},
 				"subtype": {"enum": ["sidebar", "index"]},
@@ -591,6 +592,8 @@
 				]},
 				"sidebar_heading": {"type": "string"},
 				"image": {"$ref": "#/definitions/image"},
+				"action": {"$ref": "#/definitions/action"},
+				"traits": {"$ref": "#/definitions/traits"},
 				"links": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/link"},
@@ -870,7 +873,7 @@
 		"stat_block": {"$ref": "#/definitions/stat_block"},
 		"sources": {"$ref": "#/definitions/sources"},
 		"sections": {"$ref": "#/definitions/sections"},
-		"schema_version": {"enum": [1.0]}
+		"schema_version": {"enum": [1.1]}
 	},
 	"required": ["name", "type", "aonid", "game-obj", "sources", "sections"],
 	"additionalProperties": false
