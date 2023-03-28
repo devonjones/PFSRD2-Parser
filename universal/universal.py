@@ -10,9 +10,19 @@ from bs4 import BeautifulSoup, BeautifulStoneSoup, Tag, NavigableString
 class Heading():
 	def __init__(self, level, name, subname=None):
 		self.level = level
-		self.name = name.strip()
+		self._handle_name(name)
 		self.subname = subname
 		self.details = []
+
+	def _handle_name(self, name):
+		bs = BeautifulSoup(str(name), 'html.parser')
+		children = list(bs.children)
+		assert len(children) == 1, bs
+		top = children[0]
+		self.name = get_text(bs).strip()
+		self.name_html = ''.join([str(i) for i in top])
+		top.clear()
+		self.name_tag = str(bs)
 
 	def __repr__(self):
 		if self.subname:
@@ -34,6 +44,8 @@ def href_filter(soup):
 			for a in attrs:
 				del href[a]
 			href["game-obj"] = o.path.split(".")[0]
+			if href["game-obj"].startswith("/"):
+				href["game-obj"] = href["game-obj"][1:]
 			q = parse_qs(o.query)
 			for k,vs in q.items():
 				for v in vs:
@@ -96,13 +108,13 @@ def title_pass(details, max_title):
 				obj = detail.findAll("span")[0]
 				subname = "".join(obj.extract().strings).strip()
 			img = img_details(detail)
-			h = Heading(1, get_text(detail), subname)
+			h = Heading(1, detail, subname)
 			if img:
 				h.details.extend(img)
 			retdetails.append(h)
 		elif has_name(detail, 'h2') and max_title >= 2:
 			details = img_details(detail)
-			h = Heading(2, get_text(detail))
+			h = Heading(2, detail)
 			h.details = details
 			retdetails.append(h)
 		else:
@@ -134,7 +146,7 @@ def subtitle_pass(details, max_title):
 				retdetails.append(detail)
 			elif has_name(detail, 'h3') and max_title >= 3:
 				sub = img_details(detail)
-				h = Heading(3, get_text(detail))
+				h = Heading(3, detail)
 				h.details = sub
 				retdetails.append(h)
 			elif has_name(detail, 'span') and not is_trait(detail) and not is_action(detail):
@@ -153,7 +165,7 @@ def subtitle_text_pass(details, max_title):
 			objs = list(bs.children)
 			fo = objs.pop(0)
 			if fo.name == "b" and get_text(fo) != "Source" and max_title > 2:
-				h = Heading(3, get_text(fo))
+				h = Heading(3, fo)
 				h.details = ''.join([str(o) for o in objs])
 				retdetails.append(h)
 			else:
@@ -169,7 +181,8 @@ def section_pass(struct):
 			proclist.append(section_pass(d))
 		oldstruct = struct
 		struct = {
-			'name': filter_name(oldstruct.name),
+			#'name': filter_name(oldstruct.name),
+			'name': oldstruct.name_html,
 			'type': 'section',
 			'sections': []
 		}
@@ -240,7 +253,6 @@ def parse_body(div, book=False, title=False, subtitle_text=False, max_title=5):
 		lines = title_collapse_pass(lines, 2)
 	if max_title >= 1:
 		lines = title_collapse_pass(lines, 1)
-
 	newlines = []
 	for line in lines:
 		section = section_pass(line)
@@ -248,16 +260,14 @@ def parse_body(div, book=False, title=False, subtitle_text=False, max_title=5):
 	return newlines
 
 def parse_universal(filename, title=False, subtitle_text=False, max_title=5, cssclass="ctl00_MainContent_DetailedOutput"):
-	fp = open(filename)
-	try:
-		soup = BeautifulSoup(fp, "lxml")
+	with open(filename) as fp:
+		data = fp.read().replace('\n', '')
+		soup = BeautifulSoup(data, "lxml")
 		href_filter(soup)
 		span_formatting_filter(soup)
 		content = soup.find(id=cssclass)
 		if content:
 			return parse_body(content, title=title, subtitle_text=subtitle_text, max_title=max_title)
-	finally:
-		fp.close()
 
 def print_struct(top, level=0):
 	if issubclass(top.__class__, list):
@@ -304,8 +314,9 @@ def is_action(span):
 	return False
 
 def span_to_heading(span, level):
-	details = span.contents
-	title = get_text(details.pop(0))
+	details_text = ''.join([str(i) for i in span.contents]).strip()
+	details = list(BeautifulSoup(details_text, 'html.parser').children)
+	title = details.pop(0)
 	h = Heading(level, title)
 	h.details = details
 	return h
@@ -366,10 +377,12 @@ def source_pass(struct, find_object_fxn):
 def extract_source(obj):
 	text, link = extract_link(obj)
 	parts = text.split(" pg. ")
-	assert len(parts) == 2
 	name = parts.pop(0)
-	page = int(parts.pop(0))
-	return {'type': 'source', 'name': name, 'link': link, 'page': page}
+	source = {'type': 'source', 'name': name, 'link': link}
+	if len(parts) == 1:
+		page = int(parts.pop(0))
+		source['page'] = page
+	return source
 
 def aon_pass(struct, basename):
 	parts = basename.split("_")
@@ -427,7 +440,7 @@ def test_key_is_value(k, v):
 def game_id_pass(struct):
 	source = struct['sources'][0]
 	name = struct['name']
-	pre_id = "%s: %s: %s" % (source['name'], source['page'], name)
+	pre_id = "%s: %s: %s" % (source['name'], source.get('page'), name)
 	struct['game-id'] = md5(str.encode(pre_id)).hexdigest()
 
 def get_links(bs, unwrap=False):

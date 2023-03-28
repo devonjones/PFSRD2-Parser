@@ -15,7 +15,7 @@
 					"Equipment", "Deities", "Feats", "Actions", "Monsters",
 					"Heritages", "Rules", "Diseases", "Rituals", "Planes",
 					"MonsterFamilies", "Domains", "Classes", "Ancestries",
-					"Archetypes", "SiegeWeapons"
+					"Archetypes", "SiegeWeapons", "WeaponGroups"
 				]},
 				"aonid": {"type": "integer"}
 			},
@@ -55,7 +55,7 @@
 				"errata": {"$ref": "#/definitions/link"},
 				"note": {"$ref": "#/definitions/link"}
 			},
-			"required": ["name", "type", "link", "page"],
+			"required": ["name", "type", "link"],
 			"additionalProperties": false
 		},
 		"sources": {

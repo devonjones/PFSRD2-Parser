@@ -365,7 +365,8 @@ def universal_handle_alignment(abbrev):
 		'CG': "Chaotic Good",
 		'CN': "Chaotic Neutral",
 		'CE': "Chaotic Evil",
-		'Any': "Any alignment",
+		'Any': "Any Alignment",
+		'No Alignment': "No Alignment",
 	}
 	if abbrev in alignments:
 		return alignments[abbrev]

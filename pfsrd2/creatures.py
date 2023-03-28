@@ -5,7 +5,7 @@ import re
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString, Tag
 from universal.markdown import md
-from universal.universal import parse_universal, print_struct, entity_pass
+from universal.universal import parse_universal, entity_pass
 from universal.universal import is_trait, extract_link
 from universal.universal import string_with_modifiers_from_string_list
 from universal.utils import split_maintain_parens
@@ -43,6 +43,7 @@ from pfsrd2.sql.traits import fetch_trait_by_name
 # TODO: 146 formatting in Breah Weapon
 # TODO: 333 
 # TODO: I think we might be missing focus points not at the front of spell lists
+# TODO: actions in the title bar for sections are probably getting lost
 
 def parse_creature(filename, options):
 	basename = os.path.basename(filename)
@@ -65,7 +66,6 @@ def parse_creature(filename, options):
 	trait_pass(struct)
 	section_pass(struct)
 	db_pass(struct)
-	#html_pass(struct)
 	markdown_pass(struct, struct["name"])
 	remove_empty_sections_pass(struct)
 	basename.split("_")
@@ -113,7 +113,6 @@ def section_pass(struct):
 			children = list(bs.children)
 			while children and is_tag_named(children[0], ['span']):
 				tag = children.pop(0)
-				pprint(tag)
 				if _tag_is_action(tag):
 					_handle_action(section, tag)
 				elif _tag_is_trait(tag):
@@ -121,6 +120,10 @@ def section_pass(struct):
 				else:
 					assert False, tag
 			section['text'] = str(bs)
+
+	def _fix_name(section):
+		bs = BeautifulSoup(str(section['name']), 'html.parser')
+		section['name'] = get_text(bs).strip()
 
 	def _clear_links(section):
 		text = section.setdefault('text', "")
@@ -165,6 +168,7 @@ def section_pass(struct):
 			section['text'] = str(bs)
 
 	def _scan_section(section):
+		_fix_name(section)
 		_handle_front_spans(section)
 		_handle_source(section)
 		_clear_links(section)
@@ -207,9 +211,9 @@ def markdown_pass(struct, name):
 			"Ghoul Antipaladin", "Ghoul Gnawer", "Ghoul Razorclaw", "Ghoul",
 			"Gold Defender Garrison", "Graveknight Captain",
 			"Graveknight Champion", "Graveknight Warmaster", "Graveknight",
-			"Greater Barghest", "Hana's Hundreds", "Harpy Skeleton",
-			"Hellknight Cavalry Brigade", "Hesperid Queen", "Hesperid",
-			"Horde Lich", "Hungry Ghost", "Husk Zombie",
+			"Greater Barghest", "Greater Shadow", "Hana's Hundreds",
+			"Harpy Skeleton", "Hellknight Cavalry Brigade", "Hesperid Queen",
+			"Hesperid", "Horde Lich", "Hungry Ghost", "Husk Zombie",
 			"Jitterbone Contortionist", "Kothogaz, Dance Of Disharmony",
 			"Kuworsys", "Lacedon", "Lampad Queen", "Lampad", "Last Guard",
 			"Ledalusca", "Leng Ghoul", "Lich", "Lion Visitant",
@@ -217,21 +221,22 @@ def markdown_pass(struct, name):
 			"Mosquito Witch", "Mutant Desert Drake", "Mutant Giant Toad",
 			"Mutant Gnoll Hulk", "Naiad Queen", "Naiad", "Necromancer Troop",
 			"Nightmarchers", "Nosferatu Malefactor", "Nosferatu Overlord",
-			"Nosferatu Thrall", "Oaksteward Enforcer", "Petitioner",
-			"Plague Zombie", "Planar Terra-Cotta Squadron", "Priest of Kabriri",
-			"Provincial Jiang-Shi", "Rancorous Priesthood", "Ravener Husk",
-			"Ravener", "Runecarved Lich", "Shambler Troop", "Shock Zombie",
-			"Sinspawn", "Skeletal Champion", "Skeletal Giant", "Skeletal Horse",
-			"Skeletal Hulk", "Skeletal Mage", "Skeletal Soldier",
-			"Skeletal Titan", "Skeleton Guard", "Skeleton Infantry",
-			"Soul Swarm", "Spellskein", "Spring-Heeled Jack", "Stone Lion Cub",
-			"Strigoi Progenitor", "Sulfur Zombie", "Summer Hora Queen",
-			"Summer Hora", "Sun Warrior Brigade", "Taljjae",
-			"Tar Zombie Mammoth", "Tar Zombie Predator", "Tar Zombie Snatcher",
-			"Taunting Skull", "Tehialai-Thief-Of-Ships",
-			"Terra-Cotta Garrison", "Tyrannosaurus Skeleton", "Ulgrem-Axaan",
-			"Vampire Count", "Vampire Guardian", "Vampire Mastermind",
-			"Vampire Spawn", "Vetalarana Emergent", "Vetalarana Manipulator",
+			"Nosferatu Thrall", "Oaksteward Enforcer", "Oil Living Graffiti",
+			"Petitioner", "Plague Zombie", "Planar Terra-Cotta Squadron",
+			"Priest of Kabriri", "Provincial Jiang-Shi", "Rancorous Priesthood",
+			"Ravener Husk", "Ravener", "Runecarved Lich", "Shadow",
+			"Shambler Troop", "Shock Zombie", "Sinspawn", "Skeletal Champion",
+			"Skeletal Giant", "Skeletal Horse", "Skeletal Hulk",
+			"Skeletal Mage", "Skeletal Soldier", "Skeletal Titan",
+			"Skeleton Guard", "Skeleton Infantry", "Soul Swarm", "Spellskein",
+			"Spring-Heeled Jack", "Stone Lion Cub", "Strigoi Progenitor",
+			"Sulfur Zombie", "Summer Hora Queen", "Summer Hora",
+			"Sun Warrior Brigade", "Taljjae", "Tar Zombie Mammoth",
+			"Tar Zombie Predator", "Tar Zombie Snatcher", "Taunting Skull",
+			"Tehialai-Thief-Of-Ships", "Terra-Cotta Garrison",
+			"Tyrannosaurus Skeleton", "Ulgrem-Axaan", "Vampire Count",
+			"Vampire Guardian", "Vampire Mastermind", "Vampire Spawn",
+			"Vetalarana Emergent", "Vetalarana Manipulator",
 			"Virulak Necromancer", "Virulak Villager", "Vrykolakas Ancient",
 			"Vrykolakas Master", "Vrykolakas Spawn", "Waldgeist", "Werebat",
 			"Werebear", "Wereboar", "Werecrocodile", "Wererat", "Weretiger",
@@ -279,7 +284,7 @@ def db_pass(struct):
 			data = curs.fetchone()
 			assert data, "%s | %s" %(data, trait)
 			db_trait = json.loads(data['trait'])
-			if "link" in trait:
+			if "link" in trait and trait['link']['game-obj'] == 'Trait':
 				assert trait['link']['aonid'] == db_trait['aonid'], "%s : %s" % (trait, db_trait)
 			assert isinstance(parent, list), parent
 			index = parent.index(trait)
@@ -344,6 +349,9 @@ def restructure_creature_pass(details, subtype):
 						sb["creature_type"]["pfs"] = pfs
 						img.extract()
 				obj["text"] = str(bs)
+	def _fix_name(sb):
+		bs = BeautifulSoup(str(sb['name']), 'html.parser')
+		sb['name'] = get_text(bs).strip()
 
 	sb = None
 	rest = []
@@ -354,6 +362,7 @@ def restructure_creature_pass(details, subtype):
 			sb = obj
 		else:
 			rest.append(obj)
+	_fix_name(sb)
 	top = {'name': sb['name'], 'type': subtype, 'sections': [sb]}
 	level = int(sb['subname'].split(" ")[1])
 	sb['creature_type'] = {
@@ -409,19 +418,20 @@ def trait_pass(struct):
 		assert False, "Has no alignment"
 
 def creature_stat_block_pass(struct):
-	def add_to_data(key, value, data, link):
+	def add_to_data(key, value, data, link, action):
 		if key:
-			data.append((key, ''.join([str(v) for v in value]).strip(), link))
+			data.append((key.strip(), ''.join([str(v) for v in value]).strip(), link, action))
 			key = None
 			value = []
 			link = None
-		return key, value, data, link
+			action = None
+		return key, value, data, link, action
 
 	def add_remnants(value, data):
-		k,v,_ = data.pop()
+		k,v,_,_ = data.pop()
 		newvalue = [v]
 		newvalue.extend(value)
-		data.append((k, ''.join([str(v) for v in newvalue]).strip(), link))
+		data.append((k, ''.join([str(v) for v in newvalue]).strip(), link, None))
 		return [], data
 	
 	def _handle_sections(sb, struct):
@@ -440,7 +450,29 @@ def creature_stat_block_pass(struct):
 				section = sb['sections'].pop(0)
 				paste_sections.append(section)
 
+	def _handle_title_before_speed(sb):
+		text = sb['text']
+		if not "<b>Speed</b>" in text:
+			sections = []
+			parts = []
+			found = False
+			for section in sb['sections']:
+				if not found:
+					parts.append(section)
+					if 'text' in section and "<b>Speed</b>" in section['text']:
+						found = True
+				else:
+					sections.append(section)
+			assert found, sb
+			sb['sections'] = sections
+			for section in parts:
+				assert len(section['sections']) == 0, section
+				text = text + "<b>%s</b>%s" % (section['name'], section.get('text', ''))
+		sb['text'] = text
+
 	sb = find_stat_block(struct)
+	_handle_title_before_speed(sb)
+
 	bs = BeautifulSoup(sb["text"], 'html.parser')
 	objs = list(bs.children)
 	sections = []
@@ -449,6 +481,7 @@ def creature_stat_block_pass(struct):
 	last_key = None
 	value = []
 	link = None
+	action = None
 	for obj in objs:
 		if obj.name == 'span' and is_trait(obj):
 			trait = trait_parse(obj)
@@ -457,10 +490,10 @@ def creature_stat_block_pass(struct):
 			if last_key == "Source":
 				key = "Graft"
 			last_key = key
-			key, value, data, link = add_to_data(key, value, data, link)
+			key, value, data, link, action = add_to_data(key, value, data, link, action)
 		elif obj.name == 'hr':
 			last_key = key
-			key, value, data, link = add_to_data(key, value, data, link)
+			key, value, data, link, action = add_to_data(key, value, data, link, action)
 			if len(value) > 0:
 				assert link == None
 				value, data = add_remnants(value, data)
@@ -469,14 +502,16 @@ def creature_stat_block_pass(struct):
 			data = []
 		elif obj.name == "b":
 			last_key = key
-			key, value, data, link = add_to_data(key, value, data, link)
+			key, value, data, link, action = add_to_data(key, value, data, link, action)
 			key = get_text(obj)
 			if obj.a:
 				_, link = extract_link(obj.a)
+			if obj.span:
+				_, action = extract_action(str(obj.span))
 		else:
 			value.append(obj)
 	if key:
-		key, value, data, link = add_to_data(key, value, data, link)
+		key, value, data, link, action = add_to_data(key, value, data, link, action)
 	data = strip_br(data)
 	sections.append(data)
 	assert len(sections) == 3, sections
@@ -485,15 +520,18 @@ def creature_stat_block_pass(struct):
 
 def strip_br(data):
 	newdata = []
-	for k,v,l in data:
+	for k,v,l,a in data:
 		bs = BeautifulSoup(v, 'html.parser')
 		children = list(bs.children)
 		while len(children) > 0 and children[-1].name == "br":
 			children.pop()
-		newdata.append((k, ''.join([str(c) for c in children]).strip(), l))
+		newdata.append((k, ''.join([str(c) for c in children]).strip(), l, a))
 	return newdata
 
 def sidebar_pass(struct):
+	def _handle_fixing_name(struct):
+		bs = BeautifulSoup(struct['name'], 'html.parser')
+		struct['name'] = get_text(bs)
 	for section in struct['sections']:
 		sidebar_pass(section)
 	if 'text' in struct:
@@ -511,6 +549,7 @@ def sidebar_pass(struct):
 			struct['sidebar_heading'] = subtype
 			struct['image'] = {'type': "image", "name": subtype, "image": image}
 			struct['text'] = ''.join([str(c) for c in children])
+			_handle_fixing_name(struct)
 
 def recall_knowledge_pass(struct):
 	def parse_knowledge(sb, knowledges):
@@ -566,7 +605,7 @@ def recall_knowledge_pass(struct):
 				parts = str(bs).split("|")
 				found = False
 				for part in parts:
-					if part.find("Recall Knowledge") > -1:
+					if part.find("Recall Knowledge - ") > -1:
 						found = True
 					if not found:
 						text_list.append(part)
@@ -586,7 +625,8 @@ def elite_pass(struct):
 			remove.append(section)
 	for s in remove:
 		struct['sections'].remove(s)
-	if struct['name'].startswith("Elite") and struct['name'].endswith("Level"):
+	name = get_text(BeautifulSoup(str(struct['name']), 'html.parser'))
+	if name.startswith("Elite") and name.endswith("Level"):
 		return False
 	return True
 
@@ -599,9 +639,16 @@ def index_pass(struct, sb):
 	for s in remove:
 		struct['sections'].remove(s)
 	if struct['name'].startswith("All Monsters"):
-		parts = struct['name'].split('"')
-		family_name = parts[1]
-		sb['creature_type']['family'] = family_name
+		bs = BeautifulSoup(struct['name'], 'html.parser')
+		assert bs.a, struct
+		name, link = extract_link(bs.a)
+		family = {
+			'type': 'stat_block_section',
+			'subtype': 'family',
+			'name': name,
+			'link': link
+		}
+		sb['creature_type']['family'] = family
 		struct['type'] = "section"
 		struct['subtype'] = "index"
 		return False
@@ -660,6 +707,8 @@ def process_stat_block(sb, sections):
 		while stats[0][0] in bgs:
 			grafts = sb['creature_type'].setdefault('grafts', [])
 			background = stats.pop(0)
+			assert not background[2], background
+			assert not background[3], background
 			backgrounds = string_with_modifiers_from_string_list(
 				split_maintain_parens(background[1], ", "),
 			"graft")
@@ -746,6 +795,8 @@ def process_source(sb, section):
 			'image': image}
 	assert section[0] == "Source"
 	bs = BeautifulSoup(section[1], 'html.parser')
+	assert not section[2], section
+	assert not section[3], section
 	c = [c for c in list(bs.children)] # if c.name != "sup"]
 	sources = []
 	if c[0].find("img"):
@@ -777,16 +828,18 @@ def process_source(sb, section):
 def process_subtype(sb, stats):
 	if stats[0][0] == 'Graft':
 		section = stats.pop(0)
+		assert not section[2], section
+		assert not section[3], section
 		grafts = string_with_modifiers_from_string_list(
 			split_maintain_parens(section[1].strip(), " ", parenleft="<", parenright=">"),
 			"graft")
 		link_values(grafts)
 		sb['creature_type']['grafts'] = grafts
 
-
 def process_senses(section):
 	assert section[0] == "Perception"
 	assert section[2] == None
+	assert section[3] == None
 	senses = universal_handle_senses()
 
 	parts = split_maintain_parens(section[1], ";")
@@ -833,6 +886,7 @@ def process_languages(section):
 
 	assert section[0] == "Languages"
 	assert section[2] == None
+	assert section[3] == None
 	text = section[1]
 	languages = {
 		'type': 'stat_block_section',
@@ -917,6 +971,7 @@ def process_languages(section):
 def process_skills(section):
 	assert section[0] == "Skills"
 	assert section[2] == None
+	assert section[3] == None
 	parts = split_stat_block_line(section[1])
 	parts = rebuilt_split_modifiers(parts)
 	skills = []
@@ -943,6 +998,7 @@ def process_skills(section):
 def process_attr(section):
 	assert section[0] in ['Str', 'Dex', 'Con', 'Int', 'Wis', 'Cha']
 	assert section[2] == None
+	assert section[3] == None
 	value = int(section[1].replace(",", "").replace("+", ""))
 	return value
 
@@ -961,6 +1017,7 @@ def process_items(section):
 	# TODO: Handle quantity
 	assert section[0] == "Items"
 	assert section[2] == None
+	assert section[3] == None
 	parts = rebuilt_split_modifiers(split_stat_block_line(section[1]))
 	items = []
 	for part in parts:
@@ -989,6 +1046,7 @@ def process_interaction_ability(sb, section):
 	ability_name = section[0]
 	description = section[1]
 	link = section[2]
+	title_action = section[3]
 	ability = {
 		'name': ability_name,
 		'type': 'stat_block_section',
@@ -996,8 +1054,13 @@ def process_interaction_ability(sb, section):
 		'ability_type': 'interaction'}
 	description, traits = extract_all_traits(description)
 	description, action = extract_action(description.strip())
+	
 	if action:
 		ability['action'] = action
+	elif title_action:
+		ability['action'] = title_action
+	elif action and title_action:
+		assert False, section
 
 	if len(traits) > 0:
 		ability['traits'] = traits
@@ -1042,6 +1105,7 @@ def process_ac(section):
 	assert section[0] == "AC"
 	assert section[1].endswith(";")
 	assert section[2] == None
+	assert section[3] == None
 	text = section[1][:-1]
 	modifiers = []
 	value, modifiers = extract_ac_modifier(text)
@@ -1072,6 +1136,7 @@ def process_saves(fort, ref, will):
 	def process_save(section):
 		assert section[0] in ["Fort", "Ref", "Will"]
 		assert section[2] == None
+		assert section[3] == None
 		name = section[0].lower()
 		value = section[1] 
 		if value.endswith(","):
@@ -1123,6 +1188,7 @@ def process_hp(section, subtype):
 			[specials.remove(r) for r in remove]
 	assert section[0] in ["HP", "Hardness"]
 	assert section[2] == None
+	assert section[3] == None
 	text = section[1].strip()
 	name = section[0]
 	value, text = re.search(r"^(\d*)(.*)", text).groups()
@@ -1158,7 +1224,9 @@ def process_hp(section, subtype):
 	return hp
 
 def process_threshold(hp, section):
-	_, text, _ = section
+	_, text, _, _ = section
+	assert section[2] == None
+	assert section[3] == None
 	if text.endswith(";"):
 		text = text[:-1]
 	thresholds = string_with_modifiers_from_string_list(
@@ -1188,6 +1256,7 @@ def process_defense(hp, section, ret=False):
 
 	assert section[0] in ["Immunities", "Resistances", "Weaknesses"]
 	assert section[2] == None
+	assert section[3] == None
 	text = section[1].strip()
 	subtype = {
 		"Immunities": "immunity",
@@ -1224,7 +1293,10 @@ def handle_aura(sb, ability):
 	found = False
 	if 'traits' in ability and 'text' in ability:
 		for trait in ability['traits']:
-			if trait['name'] == 'aura':
+			if sb['name'] in ['Brainchild']:
+				# TODO: Find a more graceful way to deal with 1085
+				found = False
+			elif trait['name'] == 'aura':
 				found = True
 		if found:
 			parts = ability['text'].split(".")
@@ -1267,6 +1339,7 @@ def process_defensive_ability(section, sections, sb):
 	assert section[0] not in ["Immunities", "Resistances", "Weaknesses"], section[0]
 	description = section[1]
 	link = section[2]
+	action = section[3]
 	sb_key = 'automatic_abilities'
 	ability = {
 		'type': 'stat_block_section',
@@ -1274,6 +1347,8 @@ def process_defensive_ability(section, sections, sb):
 		'ability_type': 'automatic',
 		'name': section[0]
 	}
+	if action:
+		ability['action'] = action
 	addons = ["Frequency", "Trigger", "Effect", "Duration", "Requirement",
 			"Critical Success", "Success", "Failure", "Critical Failure"]
 	while len(sections) > 0 and sections[0][0] in addons:
@@ -1384,6 +1459,7 @@ def process_speed(section):
 
 	assert section[0] == "Speed", section
 	assert section[2] == None, section
+	assert section[3] == None, section
 	text = section[1].strip()
 	parts = [t.strip() for t in text.split(";")]
 	text = parts.pop(0)
@@ -1743,13 +1819,29 @@ def process_offensive_action(section):
 			if(list(bs.children)[-1].name == 'br'):
 				list(bs.children)[-1].unwrap()
 			return str(bs)
+		def _handle_name(parent_section, new_section):
+			name_text = parent_section['name']
+			if "<" in name_text:
+				validset = set(['a', 'b'])
+				tags = get_unique_tag_set(name_text)
+				assert tags.issubset(validset), parent_section
+				bs = BeautifulSoup(name_text, 'html.parser')
+				if bs.a:
+					name_text, link = extract_link(bs.a)
+					new_section.setdefault('links', []).append(link)
+				if bs.b:
+					bs.b.unwrap()
+					name_text = get_text(bs)
+			new_section['name'] = name_text.strip()
+			parent_section['name'] = name_text.strip()
 
 		text = parent_section['text']
 		del parent_section['text']
 		section = {
 			'type': "stat_block_section", "subtype": "ability",
-			'name': parent_section['name'], "ability_type": "offensive"
+			"ability_type": "offensive"
 		}
+		_handle_name(parent_section, section)
 		if 'action' in parent_section:
 			section['action'] = parent_section['action']
 			del parent_section['action']
@@ -1759,7 +1851,7 @@ def process_offensive_action(section):
 		bs = BeautifulSoup(text, 'html.parser')
 		links = get_links(bs)
 		if len(links) > 0:
-			section['links'] = links
+			section.setdefault('links', []).extend(links)
 		while bs.a:
 			bs.a.unwrap()
 		
@@ -1849,6 +1941,8 @@ def split_stat_block_line(line):
 
 def get_attacks(sb):
 	def is_attack(section):
+		if not 'text' in section:
+			return False
 		text = section['text']
 		children = list(BeautifulSoup(text.strip(), 'html.parser').children)
 		test = children.pop(0)

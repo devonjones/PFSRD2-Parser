@@ -236,7 +236,7 @@
 					"Fine", "Diminutive", "Tiny", "Small", "Medium", "Large",
 					"Huge", "Gargantuan", "Colossal"
 				]},
-				"family": {"type": "string"},
+				"family": {"$ref": "#/definitions/family"},
 				"grafts": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/string_with_modifiers"},
@@ -269,6 +269,17 @@
 				"reactive_abilities": {"$ref": "#/definitions/abilities"}
 			},
 			"required": ["type", "subtype", "ac", "saves", "hitpoints"],
+			"additionalProperties": false
+		},
+		"family": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["family"]},
+				"name": {"type": "string"},
+				"link": {"$ref": "#/definitions/link"}
+			},
+			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
 		},
 		"gear": {
@@ -390,6 +401,7 @@
 				"type": {"enum": ["link"]},
 				"alt": {"type": "string"},
 				"href": {"type": "string"},
+				"note": {"$ref": "#/definitions/link"},
 				"game-obj": {"enum": [
 					"Traits",
 					"Actions", "Ancestries", "AnimalCompanions", "Archetypes",

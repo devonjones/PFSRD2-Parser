@@ -11,6 +11,7 @@ from universal.utils import split_maintain_parens
 from universal.universal import source_pass, extract_source, get_links
 from universal.universal import aon_pass, restructure_pass, html_pass
 from universal.universal import remove_empty_sections_pass, game_id_pass
+from universal.creatures import universal_handle_alignment
 from universal.files import makedirs, char_replace
 from universal.utils import get_text
 from pfsrd2.schema import validate_against_schema
@@ -64,7 +65,7 @@ def restructure_trait_pass(details):
 	return top
 
 def trait_parse(span):
-	def check_type_trait(trait_class, name):
+	def _check_type_trait(trait_class, name):
 		types = [
 			"Aberration", "Animal", "Astral", "Beast", "Celestial", "Construct",
 			"Dragon", "Dream", "Elemental", "Ethereal", "Fey", "Fiend",
@@ -75,18 +76,22 @@ def trait_parse(span):
 			return "creature_type"
 		else:
 			return trait_class
+	def _alingment_trait(trait):
+		align = universal_handle_alignment(trait['name'])
+		if align == 'Any Alignment':
+			align = 'Any'
+		trait['name'] = align
+		trait['link']['alt'] = align
 
-	name = ''.join(span['alt']).replace(" Trait", "")
+	name = ''.join(get_text(span)).replace(" Trait", "")
 	trait_class = ''.join(span['class'])
 	if trait_class != 'trait':
 		trait_class = trait_class.replace('trait', '')
 	if trait_class == 'trait':
-		trait_class = check_type_trait(trait_class, name)
-	text = ''.join(span['title'])
+		trait_class = _check_type_trait(trait_class, name)
 	trait = {
 		'name': name,
 		'classes': [trait_class],
-		'text': text.strip(),
 		'type': 'stat_block_section',
 		'subtype': 'trait'}
 	c = list(span.children)
@@ -96,6 +101,8 @@ def trait_parse(span):
 			trait['link'] = link
 	else:
 		raise Exception("You should not be able to get here")
+	if trait_class == "alignment":
+		_alingment_trait(trait)
 	return trait
 
 def find_trait(struct):
@@ -128,7 +135,7 @@ def trait_struct_pass(struct):
 def trait_class_pass(struct, filename):
 	parts = filename.split(".")
 	parts = parts[:-2]
-	fn = ".".join(parts)
+	fn = ".".join(parts) + ".html"
 	details = parse_universal(fn, max_title=4,
 		cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
 	top = details.pop(0)

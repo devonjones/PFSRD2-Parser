@@ -22,6 +22,10 @@ class PFSRDConverter(MarkdownConverter):
 			case _:
 				assert False, "Malformed action: %s" % el
 
+	def convert_li(self, el, text, convert_as_inline):
+		result = "\n" + super().convert_li(el, text, convert_as_inline).replace("\n", "")
+		return result
+
 # Create shorthand method for conversion
 def md(html, **options):
 	return PFSRDConverter(**options).convert(html)
