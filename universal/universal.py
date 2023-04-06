@@ -71,8 +71,8 @@ def noop_pass(details):
 	retdetails = []
 	for detail in details:
 		# TODO: Get rid of the following line
-		if not str(detail).strip() == "":
-			retdetails.append(detail)
+		#if not str(detail).strip() == "":
+		retdetails.append(detail)
 	return retdetails
 
 def entity_pass(details):
@@ -163,7 +163,9 @@ def subtitle_text_pass(details, max_title):
 		if issubclass(detail.__class__, str):
 			bs = BeautifulSoup(detail, 'html.parser')
 			objs = list(bs.children)
-			fo = objs.pop(0)
+			fo = ''
+			while str(fo).strip() == '':
+				fo = objs.pop(0)
 			if fo.name == "b" and get_text(fo) != "Source" and max_title > 2:
 				h = Heading(3, fo)
 				h.details = ''.join([str(o) for o in objs])
@@ -344,8 +346,11 @@ def source_pass(struct, find_object_fxn):
 			bs = BeautifulSoup(section['text'], 'html.parser')
 			children = list(bs.children)
 			if children[0].name == "b" and get_text(children[0]) == "Source":
+				children = [c for c in children if str(c).strip() != '']
 				children.pop(0)
-				book = children.pop(0)
+				book = ''
+				while str(book).strip() == '' and children:
+					book = children.pop(0)
 				source = extract_source(book)
 				if children[0].name == "sup":
 					sup = children.pop(0)

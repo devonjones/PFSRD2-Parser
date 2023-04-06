@@ -1,0 +1,25 @@
+{
+    "folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../sfsrd-data"
+		},
+		{
+			"path": "../sfsrd-web"
+		},
+		{
+			"path": "../pfsrd2-data"
+		},
+		{
+			"path": "../pfsrd2-web"
+		},
+		{
+			"path": "../pfsrd-data"
+		},
+		{
+			"path": "../pfsrd-web"
+		}
+	]
+}

@@ -44,6 +44,7 @@ from pfsrd2.sql.traits import fetch_trait_by_name
 # TODO: 333 
 # TODO: I think we might be missing focus points not at the front of spell lists
 # TODO: actions in the title bar for sections are probably getting lost
+# TODO: why is attack of opportunity not a reactive ability: bestiary_2/aapoph_serpentfolk.json
 
 def parse_creature(filename, options):
 	basename = os.path.basename(filename)
@@ -66,7 +67,7 @@ def parse_creature(filename, options):
 	trait_pass(struct)
 	section_pass(struct)
 	db_pass(struct)
-	markdown_pass(struct, struct["name"])
+	markdown_pass(struct, struct["name"], '')
 	remove_empty_sections_pass(struct)
 	basename.split("_")
 	if not options.skip_schema:
@@ -144,6 +145,7 @@ def section_pass(struct):
 			while children and is_tag_named(children[0], ['br', 'hr']):
 				children.pop(0).decompose()
 			if children:
+				children = [c for c in children if str(c).strip() != '']
 				if not type(children[0]) == Tag:
 					return
 				if get_text(children[0]).strip() == "Source":
@@ -183,7 +185,7 @@ def get_unique_tag_set(text):
 	bs = BeautifulSoup(text, 'html.parser')
 	return set([tag.name for tag in bs.find_all()])
 
-def markdown_pass(struct, name):
+def markdown_pass(struct, name, path):
 	def _validate_acceptable_tags(text):
 		validset = set(['i', 'b', 'u', 'strong', 'ol', 'ul', 'li', 'br',
 			'table', 'tr', 'td', 'hr'])
@@ -257,11 +259,11 @@ def markdown_pass(struct, name):
 	
 	for k, v in struct.items():
 		if isinstance(v, dict):
-			markdown_pass(v, name)
+			markdown_pass(v, name, "%s/%s" % (path,k))
 		elif isinstance(v, list):
 			for item in v:
 				if isinstance(item, dict):
-					markdown_pass(item, name)
+					markdown_pass(item, name, "%s/%s" % (path,k))
 				elif isinstance(item, str):
 					if item.find("<") > -1:
 						assert False # For now, I'm unaware of any tags in lists of strings
@@ -269,7 +271,7 @@ def markdown_pass(struct, name):
 			if v.find("<") > -1:
 				_validate_acceptable_tags(v)
 				struct[k] = md(v).strip()
-				#log_element("html.log")("%s, %s" % (path, v))
+				log_element("markdown.log")("%s : %s" % ("%s/%s" % (path, k), name))
 
 def db_pass(struct):
 	db_path = get_db_path("traits.db")
@@ -803,6 +805,7 @@ def process_source(sb, section):
 		set_image(c.pop(0), sb['name'])
 	note = None
 	errata = None
+	c = [child for child in c if str(child).strip() != '']
 	while len(c) > 0:
 		if c[0].name == "a":
 			sources.append(extract_source(c.pop(0)))
