@@ -76,25 +76,32 @@ def noop_pass(details):
 	return retdetails
 
 def entity_pass(details):
+	def _replace_entities(text):
+		text = text.replace("\u00c2\u00ba", "º") # u00ba
+		text = text.replace("\u00c3\u0097", "×")
+		text = text.replace("\u00e2\u0080\u0091", "‑")
+		text = text.replace("\u00e2\u0080\u0093", "–")
+		text = text.replace("\u00e2\u0080\u0094", "—")
+		text = text.replace("\u00e2\u0080\u0098", "‘") # u2018
+		text = text.replace("\u00e2\u0080\u0099", "’") # u2019
+		text = text.replace("\u00e2\u0080\u009c", "“")
+		text = text.replace("\u00e2\u0080\u009d", "”")
+		text = text.replace("\u00e2\u0080\u00a6", "…") # u2026
+		text = text.replace("%5C", "\\")
+		text = text.replace("&amp;", "&")
+		text = text.replace("\u00ca\u00bc", "’") # u2019 (was u02BC)
+		text = text.replace("\u00c2\u00a0", " ")
+		text = text.replace("\u00a0", " ")
+		text = ' '.join([part.strip() for part in text.split("\n")])
+		return text
+
 	for detail in details:
 		if 'sections' in detail:
 			entity_pass(detail['sections'])
 		if "text" in detail:
-			detail['text'] = detail['text'].replace("\u00c2\u00ba", "º") # u00ba
-			detail['text'] = detail['text'].replace("\u00c3\u0097", "×")
-			detail['text'] = detail['text'].replace("\u00e2\u0080\u0091", "‑")
-			detail['text'] = detail['text'].replace("\u00e2\u0080\u0093", "–")
-			detail['text'] = detail['text'].replace("\u00e2\u0080\u0094", "—")
-			detail['text'] = detail['text'].replace("\u00e2\u0080\u0099", "’") # u2019
-			detail['text'] = detail['text'].replace("\u00e2\u0080\u009c", "“")
-			detail['text'] = detail['text'].replace("\u00e2\u0080\u009d", "”")
-			detail['text'] = detail['text'].replace("\u00e2\u0080\u00a6", "…") # u2026
-			detail['text'] = detail['text'].replace("%5C", "\\")
-			detail['text'] = detail['text'].replace("&amp;", "&")
-			detail['text'] = detail['text'].replace("\u00ca\u00bc", "’") # u2019 (was u02BC)
-			detail['text'] = detail['text'].replace("\u00c2\u00a0", " ")
-			detail['text'] = detail['text'].replace("\u00a0", " ")
-			detail['text'] = ' '.join([part.strip() for part in detail['text'].split("\n")])
+			detail['text'] = _replace_entities(detail['text'])
+		if "name" in detail:
+			detail['name'] = _replace_entities(detail['name'])
 	return details
 
 def title_pass(details, max_title):
