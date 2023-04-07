@@ -22,7 +22,7 @@ from universal.creatures import universal_handle_perception
 from universal.creatures import universal_handle_senses
 from universal.creatures import universal_handle_save_dc
 from universal.creatures import universal_handle_range
-from universal.utils import log_element, clear_tags, is_tag_named, get_text
+from universal.utils import log_element, is_tag_named, get_text
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
 from pfsrd2.sql import get_db_path, get_db_connection
@@ -292,6 +292,8 @@ def db_pass(struct):
 			index = parent.index(trait)
 			if 'value' in trait:
 				db_trait['value'] = trait['value']
+			if 'classes' in trait and 'classes' not in db_trait:
+				db_trait['classes'] = trait['classes']
 			if "aonid" in db_trait:
 				del db_trait["aonid"]
 			parent[index] = db_trait
@@ -406,6 +408,8 @@ def trait_pass(struct):
 		if "trait" in trait['classes']:
 			ctlist = sb['creature_type'].setdefault('creature_types', [])
 			ctlist.append(trait['name'])
+			trait['classes'].remove('trait')
+			trait['classes'].append('monster')
 			consumed = True
 		if not consumed:
 			assert False, "Trait not consumed: %s" % trait
@@ -1055,8 +1059,8 @@ def process_interaction_ability(sb, section):
 		'type': 'stat_block_section',
 		'subtype': 'ability',
 		'ability_type': 'interaction'}
-	description, traits = extract_all_traits(description)
 	description, action = extract_action(description.strip())
+	description, traits = extract_starting_traits(description.strip())
 	
 	if action:
 		ability['action'] = action
@@ -1067,7 +1071,7 @@ def process_interaction_ability(sb, section):
 
 	if len(traits) > 0:
 		ability['traits'] = traits
-	ability['text'] = clear_tags(description.strip(), ["i"])
+	ability['text'] = description.strip()
 	if link:
 		#TODO: fix []
 		ability['links'] = [link]
@@ -1379,7 +1383,7 @@ def process_defensive_ability(section, sections, sb):
 		ability['traits'] = traits
 
 	if(len(description) > 0):
-		ability['text'] = clear_tags(description.strip(), ["i"])
+		ability['text'] = description.strip()
 
 	handle_aura(sb, ability)
 
