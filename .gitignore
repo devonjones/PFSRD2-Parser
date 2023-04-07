@@ -4,5 +4,6 @@ old
 __pycache__
 bin/errors*
 bin/*.validation*
+bin/pfsrd2.map.json
 *.log
 *.logs
