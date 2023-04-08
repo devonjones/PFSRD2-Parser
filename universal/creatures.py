@@ -182,6 +182,7 @@ def universal_handle_aura(value):
 	return auras
 
 def universal_handle_range(text):
+	text = text.strip()
 	m = re.search(r'^(\d*) (.*)$', text)
 	if m:
 		groups = m.groups()
