@@ -1884,7 +1884,7 @@ def process_offensive_action(section):
 					assert current in addon_names, "%s, %s" % (current, text)
 					addon_text = str(child)
 					if addon_text.strip().endswith(";"):
-						addon_text = addon_text.strip()[:-1]
+						addon_text = addon_text.rstrip()[:-1]
 					addons.setdefault(current.lower().replace(" ", "_"), [])\
 						.append(addon_text)
 				else:
