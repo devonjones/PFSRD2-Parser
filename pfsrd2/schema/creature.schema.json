@@ -394,6 +394,18 @@
 			},
 			"additionalProperties": false
 		},
+		"license": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["section"]},
+				"subtype": {"enum": ["license"]},
+				"license": {"enum": ["OPEN GAME LICENSE Version 1.0a"]},
+				"text": {"type": "string"},
+				"sections": {"$ref": "#/definitions/sections"}
+			},
+			"additionalProperties": false
+		},
 		"link": {
 			"type": "object",
 			"properties": {
@@ -885,7 +897,8 @@
 		"stat_block": {"$ref": "#/definitions/stat_block"},
 		"sources": {"$ref": "#/definitions/sources"},
 		"sections": {"$ref": "#/definitions/sections"},
-		"schema_version": {"enum": [1.1]}
+		"schema_version": {"enum": [1.1]},
+		"license": {"$ref": "#/definitions/license"}
 	},
 	"required": ["name", "type", "aonid", "game-obj", "sources", "sections"],
 	"additionalProperties": false

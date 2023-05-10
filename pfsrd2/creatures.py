@@ -27,6 +27,7 @@ from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
 from pfsrd2.sql import get_db_path, get_db_connection
 from pfsrd2.sql.traits import fetch_trait_by_name
+from pfsrd2.license import get_license
 
 # TODO: Greater barghest (43), deal with mutations
 # TODO: Some creatures have actions that are inlined in text.  Example are the
@@ -66,7 +67,8 @@ def parse_creature(filename, options):
 	recall_knowledge_pass(struct)
 	trait_pass(struct)
 	section_pass(struct)
-	db_pass(struct)
+	trait_db_pass(struct)
+	license_pass(struct)
 	markdown_pass(struct, struct["name"], '')
 	remove_empty_sections_pass(struct)
 	basename.split("_")
@@ -254,6 +256,8 @@ def markdown_pass(struct, name, path):
 			]
 		if name in spans_allowed:
 			validset.add('span')
+		if "license" in struct:
+			validset.add('p')
 		tags = get_unique_tag_set(text)
 		assert tags.issubset(validset), "%s : %s - %s" % (name, text, tags)
 	
@@ -273,7 +277,7 @@ def markdown_pass(struct, name, path):
 				struct[k] = md(v).strip()
 				log_element("markdown.log")("%s : %s" % ("%s/%s" % (path, k), name))
 
-def db_pass(struct):
+def trait_db_pass(struct):
 	db_path = get_db_path("traits.db")
 	conn = get_db_connection(db_path)
 	curs = conn.cursor()
@@ -339,6 +343,10 @@ def db_pass(struct):
 			index += 1
 
 	walk(struct, test_key_is_value('subtype', 'trait'), _check_trait)
+
+def license_pass(struct):
+	license = get_license(struct['sources'])
+	struct["license"] = license
 
 def restructure_creature_pass(details, subtype):
 	def _handle_sanctioning(rest):
