@@ -2,6 +2,20 @@
 	"$schema": "http://json-schema.org/draft-07/schema#",
 
 	"definitions": {
+		"action": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["action"]},
+				"name": {"enum": [
+					"Reaction", "Free Action", "One Action",
+					"Two Actions", "Three Actions", "One to Three Actions",
+					"One or Two Actions", "Two or Three Actions"
+				]}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
 		"license": {
 			"type": "object",
 			"properties": {
@@ -22,12 +36,8 @@
 				"alt": {"type": "string"},
 				"href": {"type": "string"},
 				"game-obj": {"enum": [
-					"Spells", "Sources", "Skills", "Traits", "MonsterAbilities",
-					"Conditions", "Languages", "Weapons", "Armor", "Shields",
-					"Equipment", "Deities", "Feats", "Actions", "Monsters",
-					"Heritages", "Rules", "Diseases", "Rituals", "Planes",
-					"MonsterFamilies", "Domains", "Classes", "Ancestries",
-					"Archetypes", "SiegeWeapons", "WeaponGroups"
+					"MonsterAbilities", "Sources", "Conditions", "Traits",
+					"Rules", "Actions", "Skills", "Spells", "Rituals"
 				]},
 				"aonid": {"type": "integer"}
 			},
@@ -79,25 +89,30 @@
 	"type": "object",
 	"properties": {
 		"name": {"type": "string"},
-		"type": {"enum": ["trait"]},
+		"type": {"enum": ["ability"]},
+		"ability_type": {"enum": ["universal_monster_ability"]},
 		"game-id": {"type": "string"},
-		"game-obj": {"enum": ["Traits"]},
+		"game-obj": {"enum": ["MonsterAbilities"]},
 		"aonid": {"type": "integer"},
 		"value": {"type": "string"},
+		"action": {"$ref": "#/definitions/action"},
 		"text": {"type": "string"},
-		"classes": {
-			"type": "array",
-			"items": {"type": "string"},
-			"additionalItems": false
-		},
+		"effect": {"type": "string"},
+		"requirement": {"type": "string"},
+		"trigger": {"type": "string"},
+		"failure": {"type": "string"},
+		"success": {"type": "string"},
+		"critical_failure": {"type": "string"},
+		"critical_success": {"type": "string"},
 		"sources": {"$ref": "#/definitions/sources"},
 		"links": {
 			"type": "array",
 			"items": {"$ref": "#/definitions/link"},
 			"additionalItems": false
 		},
+		"schema_version": {"enum": [1.1]},
 		"license": {"$ref": "#/definitions/license"}
 	},
-	"required": ["name", "type", "game-id", "game-obj", "sources", "license"],
+	"required": ["name", "type", "game-id", "game-obj", "sources"],
 	"additionalProperties": false
 }

@@ -33,8 +33,7 @@ class Heading():
 				self.level, self.name, self.details)
 
 def href_filter(soup):
-	hrefs = soup.findAll('a')
-	for href in hrefs:
+	for href in soup.findAll('a'):
 		if not href.has_attr('href'):
 			href.decompose()
 			continue
@@ -58,6 +57,39 @@ def href_filter(soup):
 				href.replaceWith(body.contents[0])
 			else:
 				href.replaceWith(body.renderContents())
+
+# TODO: Refactor from GPT
+# In the simplified version of your function:
+# 1) I merged the checks for the missing 'href' attribute and the 'javascript:void(0);' href into a single if statement
+#    to reduce redundancy.
+# 2) The list(href.attrs) statement has been removed as it isn't necessary. The attrs can be directly removed with
+#    href.clear().
+# 3) To remove a potential leading slash from the 'game-obj' attribute, we now use lstrip('/') which is a cleaner way
+#    to achieve the same result.
+# 4) The check for 'ID' in the key-value pairs of query parameters is done within the inline if-else statement for brevity.
+# Please note that the way I've merged the 'href' checks will cause the function to decompose() the href if it's
+#    equal to "javascript:void(0);", whereas the original function replaced it with its body contents. If you still
+#    want the original behaviour for "javascript:void(0);", you'll need to keep that as a separate elif clause.
+
+#def href_filter(soup):
+#	for href in soup.find_all('a'):
+#		if not href.has_attr('href'):
+#			href.decompose()
+#			continue
+#		if ".aspx?ID=" in href["href"]:
+#			o = urlparse(href["href"])
+#			href.clear()
+#			href["game-obj"] = o.path.split(".")[0].lstrip('/')
+#			q = parse_qs(o.query)
+#			for k,vs in q.items():
+#				for v in vs:
+#					href[k.lower() if k != "ID" else "aonid"] = v
+#		elif href["href"] == "javascript:void(0);":
+#			body = BeautifulSoup(href.renderContents(), "lxml")
+#			if len(body.contents) == 1:
+#				href.replaceWith(body.contents[0])
+#			else:
+#				href.replaceWith(body.renderContents())
 
 def span_formatting_filter(soup):
 	spans = soup.findAll('span')
@@ -109,16 +141,21 @@ def title_pass(details, max_title):
 	for detail in details:
 		if has_name(detail, 'h1') and max_title >= 1:
 			subname = None
+			after = []
 			if len(detail.findAll("span")) > 1:
 				raise Exception("unexpected number of subtitles")
 			elif len(detail.findAll("span")) == 1:
 				obj = detail.findAll("span")[0]
-				subname = "".join(obj.extract().strings).strip()
+				if is_action(obj) or is_trait(obj):
+					after.append(obj.extract())
+				else:
+					subname = "".join(obj.extract().strings).strip()
 			img = img_details(detail)
 			h = Heading(1, detail, subname)
 			if img:
 				h.details.extend(img)
 			retdetails.append(h)
+			retdetails.extend(after)
 		elif has_name(detail, 'h2') and max_title >= 2:
 			details = img_details(detail)
 			h = Heading(2, detail)

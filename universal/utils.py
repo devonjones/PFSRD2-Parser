@@ -87,3 +87,18 @@ def has_name(tag, name):
 def get_text(detail):
 	return ''.join(detail.findAll(text=True))
 
+def bs_pop_spaces(children):
+	clean = False
+	while not clean:
+		testval = children[0]
+		if type(testval) == Tag:
+			clean = True
+		elif testval.strip() != "":
+			clean = True
+		else:
+			children.pop(0)
+
+def get_unique_tag_set(text):
+	bs = BeautifulSoup(text, 'html.parser')
+	return set([tag.name for tag in bs.find_all()])
+

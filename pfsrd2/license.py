@@ -18,6 +18,8 @@ from pfsrd2.schema import validate_against_schema
 from pfsrd2.data import get_data
 from pfsrd2.sql import get_db_path
 
+# TODO markdown the licenses
+
 def parse_license(filename, options):
 	basename = os.path.basename(filename)
 	if not options.stdout:
@@ -94,3 +96,31 @@ def get_license(sources):
 	license["license"] = license["name"]
 
 	return license
+
+def license_pass(struct):
+	license = get_license(struct['sources'])
+	struct["license"] = license
+
+def license_consolidation_pass(struct):
+	def _get_licenses(struct):
+		retlist = []
+		if 'license' in struct:
+			retlist.append(struct['license'])
+			del struct['license']
+		for k, v in struct.items():
+			if isinstance(v, dict):
+				retlist.extend(_get_licenses(v))
+			elif isinstance(v, list):
+				for item in v:
+					if isinstance(item, dict):
+						retlist.extend(_get_licenses(item))
+		return retlist
+	licenses = _get_licenses(struct)
+	ogl = licenses.pop(0)
+	for sl in licenses:
+		section_names = [s['name'] for s in ogl['sections']]
+		for section in sl['sections']:
+			if section['name'] not in section_names:
+				ogl['sections'].append(section)
+	struct['license'] = ogl
+

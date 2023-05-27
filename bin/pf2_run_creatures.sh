@@ -19,7 +19,8 @@ if test -f "errors.pf2.creatures"; then
 		fi
 	done
 else
-	for i in `ls $PF2_WEB_DIR/Monsters/Monsters.aspx.ID_*.html | msort -j -q -l -n 1 -c hybrid`
+#	for i in `ls $PF2_WEB_DIR/Monsters/Monsters.aspx.ID_*.html | msort -j -q -l -n 1 -c hybrid`
+	for i in `ls $PF2_WEB_DIR/Monsters/Monsters.aspx.ID_*.html`
 	do
 		if ! ./pf2_creature_parse -o $PF2_DATA_DIR $i ; then
 			echo $i >> errors.pf2.creatures.log

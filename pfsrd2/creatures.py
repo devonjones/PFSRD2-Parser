@@ -4,13 +4,13 @@ import sys
 import re
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString, Tag
-from universal.markdown import md
+from universal.markdown import markdown_pass
 from universal.universal import parse_universal, entity_pass
 from universal.universal import is_trait, extract_link
 from universal.universal import string_with_modifiers_from_string_list
 from universal.utils import split_maintain_parens
 from universal.universal import source_pass, extract_source
-from universal.universal import aon_pass, restructure_pass, html_pass
+from universal.universal import aon_pass, restructure_pass
 from universal.universal import remove_empty_sections_pass, get_links
 from universal.universal import walk, test_key_is_value
 from universal.universal import link_modifiers
@@ -23,11 +23,12 @@ from universal.creatures import universal_handle_senses
 from universal.creatures import universal_handle_save_dc
 from universal.creatures import universal_handle_range
 from universal.utils import log_element, is_tag_named, get_text
+from universal.utils import get_unique_tag_set
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
+from pfsrd2.license import license_pass, license_consolidation_pass
 from pfsrd2.sql import get_db_path, get_db_connection
 from pfsrd2.sql.traits import fetch_trait_by_name
-from pfsrd2.license import get_license
 
 # TODO: Greater barghest (43), deal with mutations
 # TODO: Some creatures have actions that are inlined in text.  Example are the
@@ -69,7 +70,8 @@ def parse_creature(filename, options):
 	section_pass(struct)
 	trait_db_pass(struct)
 	license_pass(struct)
-	markdown_pass(struct, struct["name"], '')
+	license_consolidation_pass(struct)
+	markdown_pass(struct, struct["name"], '', markdown_valid_set)
 	remove_empty_sections_pass(struct)
 	basename.split("_")
 	if not options.skip_schema:
@@ -183,104 +185,105 @@ def section_pass(struct):
 	for section in struct['sections']:
 		_scan_section(section)
 
-def get_unique_tag_set(text):
-	bs = BeautifulSoup(text, 'html.parser')
-	return set([tag.name for tag in bs.find_all()])
+def markdown_valid_set(struct, name, path, validset):
+	# I wish there was a more nuanced way to do this, but there are too many
+	# Errors where an action is skipped
+	spans_allowed = [
+		"Adult Black Dragon", "Adult Blue Dragon", "Adult Brass Dragon",
+		"Adult Bronze Dragon", "Adult Copper Dragon", "Adult Forest Dragon",
+		"Adult Gold Dragon", "Adult Green Dragon", "Adult Red Dragon",
+		"Adult Sea Dragon", "Adult Silver Dragon", "Adult Sky Dragon",
+		"Adult Sovereign Dragon", "Adult Underworld Dragon",
+		"Adult White Dragon", "Ancient Black Dragon", "Ancient Blue Dragon",
+		"Ancient Brass Dragon", "Ancient Bronze Dragon",
+		"Ancient Copper Dragon", "Ancient Forest Dragon",
+		"Ancient Gold Dragon", "Ancient Green Dragon", "Ancient Red Dragon",
+		"Ancient Sea Dragon", "Ancient Silver Dragon", "Ancient Sky Dragon",
+		"Ancient Sovereign Dragon", "Ancient Underworld Dragon",
+		"Ancient White Dragon", "Arboreal Snag", "Barnacle Ghoul",
+		"Beetle Carapace", "Blodeuwedd", "Chimpanzee Visitant",
+		"City Guard Squadron", "Clockwork Fabricator",
+		"Clockwork Shambler Horde", "Dancing Night Parade", "Daqqanoenyent",
+		"Demilich", "Dirge Piper", "Drake Skeleton", "Dryad Queen",
+		"Dryad", "Festering Gnasher", "Ghast", "Ghost Commoner",
+		"Ghost Mage", "Ghost Pirate Captain", "Ghostly Mob",
+		"Ghoul Antipaladin", "Ghoul Gnawer", "Ghoul Razorclaw", "Ghoul",
+		"Gold Defender Garrison", "Graveknight Captain",
+		"Graveknight Champion", "Graveknight Warmaster", "Graveknight",
+		"Greater Barghest", "Greater Shadow", "Hana's Hundreds",
+		"Harpy Skeleton", "Hellknight Cavalry Brigade", "Hesperid Queen",
+		"Hesperid", "Horde Lich", "Hungry Ghost", "Husk Zombie",
+		"Jitterbone Contortionist", "Kothogaz, Dance Of Disharmony",
+		"Kuworsys", "Lacedon", "Lampad Queen", "Lampad", "Last Guard",
+		"Ledalusca", "Leng Ghoul", "Lich", "Lion Visitant",
+		"Mechanical Carny", "Melfesh Monster", "Minister Of Tumult",
+		"Mosquito Witch", "Mutant Desert Drake", "Mutant Giant Toad",
+		"Mutant Gnoll Hulk", "Naiad Queen", "Naiad", "Necromancer Troop",
+		"Nightmarchers", "Nosferatu Malefactor", "Nosferatu Overlord",
+		"Nosferatu Thrall", "Oaksteward Enforcer", "Oil Living Graffiti",
+		"Petitioner", "Plague Zombie", "Planar Terra-Cotta Squadron",
+		"Priest of Kabriri", "Provincial Jiang-Shi", "Rancorous Priesthood",
+		"Ravener Husk", "Ravener", "Runecarved Lich", "Shadow",
+		"Shambler Troop", "Shock Zombie", "Sinspawn", "Skeletal Champion",
+		"Skeletal Giant", "Skeletal Horse", "Skeletal Hulk",
+		"Skeletal Mage", "Skeletal Soldier", "Skeletal Titan",
+		"Skeleton Guard", "Skeleton Infantry", "Soul Swarm", "Spellskein",
+		"Spring-Heeled Jack", "Stone Lion Cub", "Strigoi Progenitor",
+		"Sulfur Zombie", "Summer Hora Queen", "Summer Hora",
+		"Sun Warrior Brigade", "Taljjae", "Tar Zombie Mammoth",
+		"Tar Zombie Predator", "Tar Zombie Snatcher", "Taunting Skull",
+		"Tehialai-Thief-Of-Ships", "Terra-Cotta Garrison",
+		"Tyrannosaurus Skeleton", "Ulgrem-Axaan", "Vampire Count",
+		"Vampire Guardian", "Vampire Mastermind", "Vampire Spawn",
+		"Vetalarana Emergent", "Vetalarana Manipulator",
+		"Virulak Necromancer", "Virulak Villager", "Vrykolakas Ancient",
+		"Vrykolakas Master", "Vrykolakas Spawn", "Waldgeist", "Werebat",
+		"Werebear", "Wereboar", "Werecrocodile", "Wererat", "Weretiger",
+		"Werewolf", "Withered", "Wolf Skeleton", "Worm That Walks Cultist",
+		"Young Black Dragon", "Young Blue Dragon", "Young Brass Dragon",
+		"Young Bronze Dragon", "Young Copper Dragon", "Young Forest Dragon",
+		"Young Gold Dragon", "Young Green Dragon", "Young Red Dragon",
+		"Young Sea Dragon", "Young Silver Dragon", "Young Sky Dragon",
+		"Young Sovereign Dragon", "Young Underworld Dragon",
+		"Young White Dragon", "Zombie Brute", "Zombie Dragon",
+		"Zombie Hulk", "Zombie Lord", "Zombie Mammoth", "Zombie Owlbear",
+		"Zombie Shambler", "Zombie Snake",
+		]
+	if name in spans_allowed:
+		validset.add('span')
 
-def markdown_pass(struct, name, path):
-	def _validate_acceptable_tags(text):
-		validset = set(['i', 'b', 'u', 'strong', 'ol', 'ul', 'li', 'br',
-			'table', 'tr', 'td', 'hr'])
-		# I wish there was a more nuanced way to do this, but there are too many
-		# Errors where an action is skipped
-		spans_allowed = [
-			"Adult Black Dragon", "Adult Blue Dragon", "Adult Brass Dragon",
-			"Adult Bronze Dragon", "Adult Copper Dragon", "Adult Forest Dragon",
-			"Adult Gold Dragon", "Adult Green Dragon", "Adult Red Dragon",
-			"Adult Sea Dragon", "Adult Silver Dragon", "Adult Sky Dragon",
-			"Adult Sovereign Dragon", "Adult Underworld Dragon",
-			"Adult White Dragon", "Ancient Black Dragon", "Ancient Blue Dragon",
-			"Ancient Brass Dragon", "Ancient Bronze Dragon",
-			"Ancient Copper Dragon", "Ancient Forest Dragon",
-			"Ancient Gold Dragon", "Ancient Green Dragon", "Ancient Red Dragon",
-			"Ancient Sea Dragon", "Ancient Silver Dragon", "Ancient Sky Dragon",
-			"Ancient Sovereign Dragon", "Ancient Underworld Dragon",
-			"Ancient White Dragon", "Arboreal Snag", "Barnacle Ghoul",
-			"Beetle Carapace", "Blodeuwedd", "Chimpanzee Visitant",
-			"City Guard Squadron", "Clockwork Fabricator",
-			"Clockwork Shambler Horde", "Dancing Night Parade", "Daqqanoenyent",
-			"Demilich", "Dirge Piper", "Drake Skeleton", "Dryad Queen",
-			"Dryad", "Festering Gnasher", "Ghast", "Ghost Commoner",
-			"Ghost Mage", "Ghost Pirate Captain", "Ghostly Mob",
-			"Ghoul Antipaladin", "Ghoul Gnawer", "Ghoul Razorclaw", "Ghoul",
-			"Gold Defender Garrison", "Graveknight Captain",
-			"Graveknight Champion", "Graveknight Warmaster", "Graveknight",
-			"Greater Barghest", "Greater Shadow", "Hana's Hundreds",
-			"Harpy Skeleton", "Hellknight Cavalry Brigade", "Hesperid Queen",
-			"Hesperid", "Horde Lich", "Hungry Ghost", "Husk Zombie",
-			"Jitterbone Contortionist", "Kothogaz, Dance Of Disharmony",
-			"Kuworsys", "Lacedon", "Lampad Queen", "Lampad", "Last Guard",
-			"Ledalusca", "Leng Ghoul", "Lich", "Lion Visitant",
-			"Mechanical Carny", "Melfesh Monster", "Minister Of Tumult",
-			"Mosquito Witch", "Mutant Desert Drake", "Mutant Giant Toad",
-			"Mutant Gnoll Hulk", "Naiad Queen", "Naiad", "Necromancer Troop",
-			"Nightmarchers", "Nosferatu Malefactor", "Nosferatu Overlord",
-			"Nosferatu Thrall", "Oaksteward Enforcer", "Oil Living Graffiti",
-			"Petitioner", "Plague Zombie", "Planar Terra-Cotta Squadron",
-			"Priest of Kabriri", "Provincial Jiang-Shi", "Rancorous Priesthood",
-			"Ravener Husk", "Ravener", "Runecarved Lich", "Shadow",
-			"Shambler Troop", "Shock Zombie", "Sinspawn", "Skeletal Champion",
-			"Skeletal Giant", "Skeletal Horse", "Skeletal Hulk",
-			"Skeletal Mage", "Skeletal Soldier", "Skeletal Titan",
-			"Skeleton Guard", "Skeleton Infantry", "Soul Swarm", "Spellskein",
-			"Spring-Heeled Jack", "Stone Lion Cub", "Strigoi Progenitor",
-			"Sulfur Zombie", "Summer Hora Queen", "Summer Hora",
-			"Sun Warrior Brigade", "Taljjae", "Tar Zombie Mammoth",
-			"Tar Zombie Predator", "Tar Zombie Snatcher", "Taunting Skull",
-			"Tehialai-Thief-Of-Ships", "Terra-Cotta Garrison",
-			"Tyrannosaurus Skeleton", "Ulgrem-Axaan", "Vampire Count",
-			"Vampire Guardian", "Vampire Mastermind", "Vampire Spawn",
-			"Vetalarana Emergent", "Vetalarana Manipulator",
-			"Virulak Necromancer", "Virulak Villager", "Vrykolakas Ancient",
-			"Vrykolakas Master", "Vrykolakas Spawn", "Waldgeist", "Werebat",
-			"Werebear", "Wereboar", "Werecrocodile", "Wererat", "Weretiger",
-			"Werewolf", "Withered", "Wolf Skeleton", "Worm That Walks Cultist",
-			"Young Black Dragon", "Young Blue Dragon", "Young Brass Dragon",
-			"Young Bronze Dragon", "Young Copper Dragon", "Young Forest Dragon",
-			"Young Gold Dragon", "Young Green Dragon", "Young Red Dragon",
-			"Young Sea Dragon", "Young Silver Dragon", "Young Sky Dragon",
-			"Young Sovereign Dragon", "Young Underworld Dragon",
-			"Young White Dragon", "Zombie Brute", "Zombie Dragon",
-			"Zombie Hulk", "Zombie Lord", "Zombie Mammoth", "Zombie Owlbear",
-			"Zombie Shambler", "Zombie Snake",
-			]
-		if name in spans_allowed:
-			validset.add('span')
-		if "license" in struct:
-			validset.add('p')
-		tags = get_unique_tag_set(text)
-		assert tags.issubset(validset), "%s : %s - %s" % (name, text, tags)
-	
-	for k, v in struct.items():
-		if isinstance(v, dict):
-			markdown_pass(v, name, "%s/%s" % (path,k))
-		elif isinstance(v, list):
-			for item in v:
-				if isinstance(item, dict):
-					markdown_pass(item, name, "%s/%s" % (path,k))
-				elif isinstance(item, str):
-					if item.find("<") > -1:
-						assert False # For now, I'm unaware of any tags in lists of strings
-		elif isinstance(v, str):
-			if v.find("<") > -1:
-				_validate_acceptable_tags(v)
-				struct[k] = md(v).strip()
-				log_element("markdown.log")("%s : %s" % ("%s/%s" % (path, k), name))
+# TODO: Delete after verifying
+#def markdown_pass(struct, name, path):
+#	def _validate_acceptable_tags(text):
+#		validset = set(['i', 'b', 'u', 'strong', 'ol', 'ul', 'li', 'br',
+#			'table', 'tr', 'td', 'hr'])
+#		if "license" in struct:
+#			validset.add('p')
+#		tags = get_unique_tag_set(text)
+#		assert tags.issubset(validset), "%s : %s - %s" % (name, text, tags)
+#	
+#	for k, v in struct.items():
+#		if isinstance(v, dict):
+#			markdown_pass(v, name, "%s/%s" % (path,k))
+#		elif isinstance(v, list):
+#			for item in v:
+#				if isinstance(item, dict):
+#					markdown_pass(item, name, "%s/%s" % (path,k))
+#				elif isinstance(item, str):
+#					if item.find("<") > -1:
+#						assert False # For now, I'm unaware of any tags in lists of strings
+#		elif isinstance(v, str):
+#			if v.find("<") > -1:
+#				_validate_acceptable_tags(v)
+#				struct[k] = md(v).strip()
+#				log_element("markdown.log")("%s : %s" % ("%s/%s" % (path, k), name))
 
 def trait_db_pass(struct):
-	db_path = get_db_path("traits.db")
-	conn = get_db_connection(db_path)
-	curs = conn.cursor()
+	def _merge_classes(trait, db_trait):
+		trait_classes = set(trait.get('classes', []))
+		db_trait_classes = set(db_trait.get('classes', []))
+		db_trait['classes'] = list(trait_classes | db_trait_classes)
+
 	def _check_trait(trait, parent):
 		_handle_value(trait)
 		if "alignment" in trait.get('classes', []) and trait['name'] != "No Alignment":
@@ -290,14 +293,13 @@ def trait_db_pass(struct):
 			data = curs.fetchone()
 			assert data, "%s | %s" %(data, trait)
 			db_trait = json.loads(data['trait'])
+			_merge_classes(trait, db_trait)
 			if "link" in trait and trait['link']['game-obj'] == 'Trait':
 				assert trait['link']['aonid'] == db_trait['aonid'], "%s : %s" % (trait, db_trait)
 			assert isinstance(parent, list), parent
 			index = parent.index(trait)
 			if 'value' in trait:
 				db_trait['value'] = trait['value']
-			if 'classes' in trait and 'classes' not in db_trait:
-				db_trait['classes'] = trait['classes']
 			if "aonid" in db_trait:
 				del db_trait["aonid"]
 			parent[index] = db_trait
@@ -337,16 +339,16 @@ def trait_db_pass(struct):
 			fetch_trait_by_name(curs, part)
 			data = curs.fetchone()
 			db_trait = json.loads(data['trait'])
+			_merge_classes(trait, db_trait)
 			if "aonid" in db_trait:
 				del db_trait["aonid"]
 			parent.insert(index, db_trait)
 			index += 1
 
+	db_path = get_db_path("traits.db")
+	conn = get_db_connection(db_path)
+	curs = conn.cursor()
 	walk(struct, test_key_is_value('subtype', 'trait'), _check_trait)
-
-def license_pass(struct):
-	license = get_license(struct['sources'])
-	struct["license"] = license
 
 def restructure_creature_pass(details, subtype):
 	def _handle_sanctioning(rest):
@@ -417,7 +419,7 @@ def trait_pass(struct):
 			ctlist = sb['creature_type'].setdefault('creature_types', [])
 			ctlist.append(trait['name'])
 			trait['classes'].remove('trait')
-			trait['classes'].append('monster')
+			trait['classes'].append('monsters')
 			consumed = True
 		if not consumed:
 			assert False, "Trait not consumed: %s" % trait

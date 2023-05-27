@@ -900,6 +900,6 @@
 		"schema_version": {"enum": [1.1]},
 		"license": {"$ref": "#/definitions/license"}
 	},
-	"required": ["name", "type", "aonid", "game-obj", "sources", "sections"],
+	"required": ["name", "type", "aonid", "game-obj", "sources", "sections", "license"],
 	"additionalProperties": false
 }
