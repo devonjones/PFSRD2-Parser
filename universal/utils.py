@@ -1,5 +1,7 @@
+import warnings
 from pprint import pprint
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, Tag, MarkupResemblesLocatorWarning
+warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
 def split_maintain_parens(text, split, parenleft="(", parenright=")"):
 	parts = text.split(split)
