@@ -113,7 +113,7 @@ def restructure_alien_pass(details, subtype):
 		for link in links:
 			retarr.append(extract_source(link))
 			link.extract()
-		assert str(bs).replace("<b>Source</b>", "").replace(", ", "") == "", str(bs)
+		assert str(bs).replace("<b>Source</b>", "").replace(",", "").strip() == "", str(bs)
 		del top['text']
 		return retarr
 
