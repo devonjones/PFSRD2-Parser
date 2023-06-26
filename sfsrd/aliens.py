@@ -9,16 +9,17 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 from universal.universal import parse_universal, entity_pass
 from universal.universal import get_text, break_out_subtitles
 from universal.universal import string_with_modifiers_from_string_list
-from universal.universal import string_values_from_string_list
 from universal.universal import modifiers_from_string_list
-from universal.universal import link_values
 from universal.universal import extract_source
+from universal.universal import extract_link
+from universal.universal import get_links
 from universal.universal import html_pass
 from universal.universal import remove_empty_sections_pass
 from universal.files import makedirs, char_replace
 from universal.utils import split_maintain_parens, split_comma_and_semicolon
-from universal.utils import filter_end, clear_tags
+from universal.utils import filter_end
 from universal.utils import log_element
+from universal.utils import is_tag_named
 from universal.creatures import write_creature
 from universal.creatures import universal_handle_alignment
 from universal.creatures import universal_handle_aura
@@ -284,7 +285,48 @@ def top_matter_pass(struct):
 	assert len(text) == 0, text
 
 def fix_description_pass(details, struct):
+	def _handle_detail(detail):
+		_handle_sources(detail)
+		_handle_name_links(detail)
+		for section in detail['sections']:
+			_handle_detail(section)
+
+	def _clear_br(children):
+		while is_tag_named(children[0], "br"):
+			children.pop(0)
+
+	def _handle_sources(section):
+		if 'text' in section:
+			bs = BeautifulSoup(section['text'], 'html.parser')
+			children = list(bs.children)
+			if children[0].name == "b" and get_text(children[0]) == "Source":
+				children = [c for c in children if str(c).strip() != '']
+				children.pop(0)
+				book = ''
+				_clear_br(children)
+				while str(book).strip() == '' and children:
+					book = children.pop(0)
+				source = extract_source(book)
+				if children[0].name == "sup":
+					sup = children.pop(0)
+					errata = extract_link(sup.find("a"))
+					source['errata'] = errata[1]
+				_clear_br(children)
+				section['text'] = ''.join([str(c) for c in children])
+				sources = section.setdefault("sources", [])
+				sources.append(source)
+
+	def _handle_name_links(section):
+		bs = BeautifulSoup(section['name'], 'html.parser')
+		links = get_links(bs, unwrap=True)
+		section['name'] = str(bs)
+		if links:
+			assert len(links) == 1, links
+			section['link'] = links.pop(0)
+
 	if details:
+		for detail in details:
+			_handle_detail(detail)
 		struct['sections'].extend(details)
 	return
 
@@ -503,7 +545,6 @@ def offense_pass(struct):
 			}
 
 			text = text.replace("–", "—")
-			
 			deets, listtext = text.split("—")
 			_handle_spell_list_deets(deets)
 			spelltexts = split_maintain_parens(listtext, ",")
@@ -524,6 +565,7 @@ def offense_pass(struct):
 		_handle_spell_deets(deets[1:-1])
 		for part in parts:
 			_handle_spell_list(part)
+		offense.setdefault('spells', []).append(spells)
 
 	def _handle_speeds(offense, _, text):
 		def _handle_speed(text):
@@ -685,6 +727,21 @@ def offense_pass(struct):
 						damage.append(attack_damage)
 					attack['damage'] = damage
 
+			def _handle_space_reach(attacktext, attack):
+				if not "Space" in attacktext:
+					return attacktext
+				parts = [p.strip() for p in attacktext.split("Space")]
+				assert len(parts) == 2, attacktext
+				attacktext = parts.pop(0)
+				space_reach = parts.pop(0)
+				space, reach = split_maintain_parens(space_reach, ";")
+				assert "ft." in space, space
+				attack['space'] = space.strip()
+				assert reach.startswith("Reach")
+				reach = reach.replace("Reach", "").strip()
+				attack['reach'] = _handle_reach_impl(reach)
+				return attacktext
+
 			melee = []
 			attacks = split_maintain_parens(text, " or ")
 			attacks = [a.replace("  ", " ") for a in attacks]
@@ -694,6 +751,7 @@ def offense_pass(struct):
 					"subtype": "attack",
 					"attack_type": attack_type,
 				}
+				attacktext = _handle_space_reach(attacktext, attack)
 				attackparts = attacktext.split("(")
 				assert len(attackparts) in [1,2], attacktext
 				start = attackparts.pop(0).strip()
@@ -709,7 +767,7 @@ def offense_pass(struct):
 		text = " or ".join(textparts)
 		_handle_attack("multiattack")(offense, name, text)
 
-	def _handle_reach(offense, _, text):
+	def _handle_reach_impl(text):
 		reach = {
 			"type": "stat_block_section",
 			"subtype": "reach"
@@ -721,6 +779,10 @@ def offense_pass(struct):
 			parts = [p.strip() for p in modtext.split(",")]
 			reach['modifiers'] = modifiers_from_string_list(parts)
 		reach['value'] = text
+		return reach
+
+	def _handle_reach(offense, _, text):
+		reach = _handle_reach_impl(text)
 		offense['reach'] = reach
 
 	def _handle_default(offense, name, text):
@@ -745,7 +807,6 @@ def offense_pass(struct):
 			universal_handle_modifier_breakout(element)
 			retlist.append(element)
 		offense["offensive_abilities"] = retlist
-
 
 	def _handle_default_list(sbsubtype, sbfield):
 		# TODO pull out dice
@@ -977,7 +1038,7 @@ def special_ability_pass(struct):
 		struct['stat_block']['special_abilities'] = special_abilities
 
 def section_pass(struct):
-	def _handle_affliction(section):
+	def _handle_affliction(section, remove):
 		def _handle_save_dc(affliction):
 			if "save" not in affliction:
 				return affliction
@@ -989,7 +1050,7 @@ def section_pass(struct):
 		sec_text = section['text']
 		del section['text']
 		del section['sections']
-		struct['sections'].remove(section)
+		remove.append(section)
 		bs = BeautifulSoup(sec_text, 'html.parser')
 		output = break_out_subtitles(bs, 'b')
 		for element in output:
@@ -1004,6 +1065,7 @@ def section_pass(struct):
 		return _handle_save_dc(section)
 
 	afflictions = []
+	remove = []
 	for section in struct['sections']:
 		bs = BeautifulSoup(section['text'].strip(), 'html.parser')
 		children = list(bs.children)
@@ -1011,7 +1073,9 @@ def section_pass(struct):
 			# Table, leave it in sections
 			pass
 		elif section['name'] not in ["Description"]:
-			afflictions.append(_handle_affliction(section))
+			afflictions.append(_handle_affliction(section, remove))
+	for s in remove:
+		struct['sections'].remove(s)
 	if len(afflictions) > 0:
 		struct['stat_block']['afflictions'] = afflictions
 

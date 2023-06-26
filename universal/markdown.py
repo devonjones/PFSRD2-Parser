@@ -32,7 +32,7 @@ def md(html, **options):
 	return PFSRDConverter(**options).convert(html)
 
 def markdown_pass(struct, name, path, fxn_valid_tags=None):
-	def _validate_acceptable_tags(text):
+	def _validate_acceptable_tags(text, fxn_valid_tags):
 		validset = set(['i', 'b', 'u', 'strong', 'ol', 'ul', 'li', 'br',
 			'table', 'tr', 'td', 'hr'])
 		if "license" in struct:
@@ -44,16 +44,16 @@ def markdown_pass(struct, name, path, fxn_valid_tags=None):
 	
 	for k, v in struct.items():
 		if isinstance(v, dict):
-			markdown_pass(v, name, "%s/%s" % (path,k))
+			markdown_pass(v, name, "%s/%s" % (path,k), fxn_valid_tags=fxn_valid_tags)
 		elif isinstance(v, list):
 			for item in v:
 				if isinstance(item, dict):
-					markdown_pass(item, name, "%s/%s" % (path,k))
+					markdown_pass(item, name, "%s/%s" % (path,k), fxn_valid_tags=fxn_valid_tags)
 				elif isinstance(item, str):
 					if item.find("<") > -1:
 						assert False # For now, I'm unaware of any tags in lists of strings
 		elif isinstance(v, str):
 			if v.find("<") > -1:
-				_validate_acceptable_tags(v)
+				_validate_acceptable_tags(v, fxn_valid_tags)
 				struct[k] = md(v).strip()
 				log_element("markdown.log")("%s : %s" % ("%s/%s" % (path, k), name))

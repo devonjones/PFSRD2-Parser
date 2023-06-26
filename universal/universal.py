@@ -37,20 +37,15 @@ def href_filter(soup):
 		if not href.has_attr('href'):
 			href.decompose()
 			continue
-		if (href["href"].find(".aspx?ID=") > -1):
+		if ".aspx?ID=" in href["href"]:
 			o = urlparse(href["href"])
-			attrs = list(href.attrs)
-			for a in attrs:
+			for a in list(href.attrs):
 				del href[a]
-			href["game-obj"] = o.path.split(".")[0]
-			if href["game-obj"].startswith("/"):
-				href["game-obj"] = href["game-obj"][1:]
+			href["game-obj"] = o.path.split(".")[0].lstrip('/')
 			q = parse_qs(o.query)
 			for k,vs in q.items():
 				for v in vs:
-					if k == "ID":
-						k = "aonid"
-					href[k.lower()] = v
+					href[k.lower() if k != "ID" else "aonid"] = v
 		elif (href["href"] == "javascript:void(0);"):
 			body = BeautifulSoup(href.renderContents(), "lxml")
 			if len(body.contents) == 1:
@@ -58,38 +53,6 @@ def href_filter(soup):
 			else:
 				href.replaceWith(body.renderContents())
 
-# TODO: Refactor from GPT
-# In the simplified version of your function:
-# 1) I merged the checks for the missing 'href' attribute and the 'javascript:void(0);' href into a single if statement
-#    to reduce redundancy.
-# 2) The list(href.attrs) statement has been removed as it isn't necessary. The attrs can be directly removed with
-#    href.clear().
-# 3) To remove a potential leading slash from the 'game-obj' attribute, we now use lstrip('/') which is a cleaner way
-#    to achieve the same result.
-# 4) The check for 'ID' in the key-value pairs of query parameters is done within the inline if-else statement for brevity.
-# Please note that the way I've merged the 'href' checks will cause the function to decompose() the href if it's
-#    equal to "javascript:void(0);", whereas the original function replaced it with its body contents. If you still
-#    want the original behaviour for "javascript:void(0);", you'll need to keep that as a separate elif clause.
-
-#def href_filter(soup):
-#	for href in soup.find_all('a'):
-#		if not href.has_attr('href'):
-#			href.decompose()
-#			continue
-#		if ".aspx?ID=" in href["href"]:
-#			o = urlparse(href["href"])
-#			href.clear()
-#			href["game-obj"] = o.path.split(".")[0].lstrip('/')
-#			q = parse_qs(o.query)
-#			for k,vs in q.items():
-#				for v in vs:
-#					href[k.lower() if k != "ID" else "aonid"] = v
-#		elif href["href"] == "javascript:void(0);":
-#			body = BeautifulSoup(href.renderContents(), "lxml")
-#			if len(body.contents) == 1:
-#				href.replaceWith(body.contents[0])
-#			else:
-#				href.replaceWith(body.renderContents())
 
 def span_formatting_filter(soup):
 	spans = soup.findAll('span')
@@ -142,10 +105,10 @@ def title_pass(details, max_title):
 		if has_name(detail, 'h1') and max_title >= 1:
 			subname = None
 			after = []
-			if len(detail.findAll("span")) > 1:
-				raise Exception("unexpected number of subtitles")
-			elif len(detail.findAll("span")) == 1:
-				obj = detail.findAll("span")[0]
+			spans = detail.findAll("span")
+			assert len(spans) < 2, "Unexpected number of subtitles %s" % spans
+			if len(spans) == 1:
+				obj = spans[0]
 				if is_action(obj) or is_trait(obj):
 					after.append(obj.extract())
 				else:
@@ -169,7 +132,7 @@ def title_collapse_pass(details, level, add_statblocks=True):
 	retdetails = []
 	curr = None
 	for detail in details:
-		if detail.__class__ == Heading and detail.level <= level:
+		if isinstance(detail, Heading) and detail.level <= level:
 			curr = None
 			retdetails.append(detail)
 		else:
@@ -177,7 +140,7 @@ def title_collapse_pass(details, level, add_statblocks=True):
 				curr.details.append(detail)
 			else:
 				retdetails.append(detail)
-		if detail.__class__ == Heading and detail.level == level:
+		if isinstance(detail, Heading) and detail.level == level:
 			curr = detail
 	return retdetails
 
@@ -628,3 +591,49 @@ def break_out_subtitles(bs, tagname):
 			title = title.get_text().strip()
 		parts.append((title, "".join([str(p) for p in part]).strip()))
 	return parts
+
+def build_objects(dtype, subtype, names, keys=None):
+	objects = []
+	for name in names:
+		objects.append(build_object(dtype, subtype, name, keys))
+	return objects
+
+def build_object(dtype, subtype, name, keys=None):
+	assert type(name) is str
+	obj = {
+		'type': dtype,
+		'subtype': subtype,
+		'name': name.strip()
+	}
+	if keys:
+		obj.update(keys)
+	return obj
+
+def build_value_objects(dtype, subtype, names, keys=None):
+	objects = []
+	for name in names:
+		objects.append(build_object(dtype, subtype, name, keys))
+	return objects
+
+def build_value_object(dtype, subtype, value, keys=None):
+	assert type(value) is str
+	obj = {
+		'type': dtype,
+		'subtype': subtype,
+		'value': value
+	}
+	if keys:
+		obj.update(keys)
+	return obj
+
+def link_objects(objects):
+	for o in objects:
+		bs = BeautifulSoup(o['name'], 'html.parser')
+		links = get_links(bs)
+		if len(links) > 0:
+			o['name'] = get_text(bs)
+			o['link'] = links[0]
+			if len(links) > 1:
+				# TODO: fix []
+				assert False, objects
+	return objects

@@ -24,6 +24,7 @@
 				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"onset": {"type": "string"},
 				"track": {"type": "string"},
+				"special": {"type": "string"},
 				"frequency": {"type": "string"},
 				"effect": {"type": "string"},
 				"cure": {"type": "string"}
@@ -53,7 +54,9 @@
 				},
 				"explode": {"type": "boolean"},
 				"range": {"$ref": "#/definitions/range"},
-				"saving_throw": {"$ref": "#/definitions/save_dc"}
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
+				"space": {"type": "string"},
+				"reach": {"$ref": "#/definitions/reach"}
 			},
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
@@ -577,6 +580,7 @@
 				"type": {"enum": ["section"]},
 				"html": {"type": "string"},
 				"sections": {"$ref": "#/definitions/sections"},
+				"link": {"$ref": "#/definitions/link"},
 				"sources": {"$ref": "#/definitions/sources"},
 				"subtype": {"enum": ["sidebar", "index"]},
 				"sidebar_type": {"enum": [

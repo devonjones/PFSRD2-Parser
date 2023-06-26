@@ -10,6 +10,7 @@ from universal.universal import extract_link
 from universal.universal import source_pass, extract_source, get_links
 from universal.universal import aon_pass, restructure_pass, html_pass
 from universal.universal import remove_empty_sections_pass, game_id_pass
+from universal.universal import build_object
 from universal.creatures import universal_handle_alignment
 from universal.markdown import md
 from universal.files import makedirs, char_replace
@@ -181,32 +182,49 @@ def list_removal_pass(struct, classlist):
 	return classlist
 
 def trait_cleanup_pass(struct):
-	assert 'sections' not in struct, struct # Right now no traits have other sections
-	trait = struct['trait']
-	if len(trait['sections']) == 0:
-		del trait['sections']
-	else:
-		assert False, struct
-	soup = BeautifulSoup(trait['text'], "html.parser")
-	first = list(soup.children)[0]
-	if first.name == "i":
-		text = get_text(first)
-		if text.find("Note from Nethys:") > -1:
-			first.clear()
-		first.unwrap()
-	struct['name'] = trait['name']
-	trait['text'] = str(soup).strip()
-	if trait['text'] != "":
-		assert 'text' not in struct, struct
-		struct['text'] = html2markdown.convert(trait['text'])
-	if len(trait.get('sections', [])) > 0:
+	def _clean_text():
+		soup = BeautifulSoup(trait['text'], "html.parser")
+		first = list(soup.children)[0]
+		if first.name == "i":
+			text = get_text(first)
+			if text.find("Note from Nethys:") > -1:
+				first.clear()
+			first.unwrap()
+		struct['name'] = trait['name']
+		trait['text'] = str(soup).strip()
+		if trait['text'] != "":
+			assert 'text' not in struct, struct
+			struct['text'] = html2markdown.convert(trait['text'])
+		del trait['text']
+	def _clean_sections():
+		if len(trait['sections']) == 0:
+			del trait['sections']
+		else:
+			assert False, struct
 		assert 'sections' not in struct, struct
-		struct['sections'] = trait['sections']
-	if trait.get('classes'):
-		struct['classes'] = trait['classes']
-	if trait.get('links'):
-		assert 'links' not in struct, struct
-		struct['links'] = trait['links']
+	def _clean_classes():
+		if trait.get('classes'):
+			struct['classes'] = trait['classes']
+			struct['classes'].sort()
+			del trait['classes']
+	def _clean_links():
+		if trait.get('links'):
+			assert 'links' not in struct, struct
+			struct['links'] = trait['links']
+			del trait['links']
+	def _clean_basics():
+		del trait['name']
+		del trait['type']
+		del trait['subtype']
+		del trait['sources']
+
+	trait = struct['trait']
+	_clean_text()
+	_clean_sections()
+	_clean_classes()
+	_clean_links()
+	_clean_basics()
+	assert len(trait) == 0, trait
 	del struct['trait']
 
 
@@ -245,3 +263,61 @@ def markdown_pass(struct, name, path):
 				_validate_acceptable_tags(v)
 				struct[k] = md(v).strip()
 				log_element("markdown.log")("%s : %s" % ("%s/%s" % (path, k), name))
+
+def extract_starting_traits(description):
+	if description.strip().startswith("("):
+		return _extract_trait(description)
+	return description, []
+
+def extract_all_traits(description):
+	traits = []
+	while description.find("(") > -1:
+		description, ts = _extract_trait(description)
+		traits.extend(ts)
+	return description, traits
+
+def _extract_trait(description):
+	def _handle_trait_template(text):
+		text = text.strip()
+		if not text.startswith("["):
+			return
+		assert text.endswith("]")
+		text = text[1:-1]
+		template = build_object('trait_template', "", text)
+		del template['subtype']
+		return template
+	
+	traits = []
+	newdescription = []
+	if description.find("(") > -1:
+		front, middle = description.split("(", 1)
+		newdescription.append(front)
+		s = middle.split(")", 1)
+		assert len(s) == 2, s
+		text, back = s
+		bs = BeautifulSoup(text, 'html.parser')
+		if bs.a and bs.a.has_attr('game-obj') and bs.a['game-obj'] == 'Traits':
+			if text.find(" or ") > -1:
+				return description, []
+			parts = [p.strip() for p in text.replace("(", "").split(",")]
+			for part in parts:
+				bs = BeautifulSoup(part, 'html.parser')
+				children = list(bs.children)
+				assert len(children) == 1, part
+				child = children[0]
+				template = _handle_trait_template(str(child))
+				if template:
+					traits.append(template)
+				else:
+					name, trait_link = extract_link(child)
+					traits.append(build_object(
+						'stat_block_section',
+						'trait',
+						name.strip(),
+						{'link': trait_link}))
+		else:
+			newdescription.append(text)
+			newdescription.append(")")
+		description = back
+	newdescription.append(description)
+	return ''.join(newdescription).strip(), traits

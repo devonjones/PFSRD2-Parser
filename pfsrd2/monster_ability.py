@@ -28,9 +28,11 @@ from universal.utils import get_unique_tag_set
 from universal.utils import get_text, bs_pop_spaces
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
+from pfsrd2.trait import extract_starting_traits
 from pfsrd2.license import license_pass, license_consolidation_pass
 from pfsrd2.sql import get_db_path, get_db_connection
 from pfsrd2.sql.traits import fetch_trait_by_name
+
 
 def parse_monster_ability(filename, options):
 	basename = os.path.basename(filename)
@@ -43,9 +45,10 @@ def parse_monster_ability(filename, options):
 	aon_pass(struct, basename)
 	section_pass(struct)
 	addon_pass(struct)
-	pprint(struct)
+	trait_db_pass(struct)
 	game_id_pass(struct)
-	#license_pass(struct)
+	license_pass(struct)
+	license_consolidation_pass(struct)
 	markdown_pass(struct, struct["name"], '')
 	remove_empty_sections_pass(struct)
 	basename.split("_")
@@ -82,42 +85,34 @@ def section_pass(struct):
 			assert action, tag
 			section['action'] = action
 			tag.decompose()
-		def _handle_trait(section, tag):
-			trait = trait_parse(tag)
-			assert trait, tag
-			section.setdefault('traits', []).append(trait)
-			tag.decompose()
 		def _tag_is_action(tag):
 			assert 'class' in tag.attrs, tag
 			tag_class = tag['class']
 			if "action" in tag_class:
 				return True
 			return False
-		def _tag_is_trait(tag):
-			assert 'class' in tag.attrs, tag
-			tag_class = tag['class']
-			if 'trait' in tag_class:
-				return True
-			if 'traitrare' in tag_class:
-				return True
-			return False
 		
-		if 'text' in section:
-			bs = BeautifulSoup(section['text'].strip(), 'html.parser')
-			children = list(bs.children)
-			while children and is_tag_named(children[0], ['span']):
-				tag = children.pop(0)
-				if _tag_is_action(tag):
-					_handle_action(section, tag)
-				elif _tag_is_trait(tag):
-					_handle_trait(section, tag)
-				else:
-					assert False, tag
-			section['text'] = str(bs)
+		if 'text' not in section:
+			return
+		bs = BeautifulSoup(section['text'].strip(), 'html.parser')
+		children = list(bs.children)
+		while children and is_tag_named(children[0], ['span']):
+			tag = children.pop(0)
+			if _tag_is_action(tag):
+				_handle_action(section, tag)
+			else:
+				assert False, tag
+		section['text'] = str(bs)
 
 	def _fix_name(section):
 		bs = BeautifulSoup(str(section['name']), 'html.parser')
 		section['name'] = get_text(bs).strip()
+
+	def _handle_traits(section):
+		text, traits = extract_starting_traits(section['text'])
+		section['text'] = text
+		if traits:
+			section['traits'] = traits
 
 	def _clear_links(section):
 		text = section.setdefault('text', "")
@@ -132,59 +127,73 @@ def section_pass(struct):
 			del section['links']
 
 	def _handle_source(section):
-		if 'text' in section:
-			bs = BeautifulSoup(section['text'].strip(), 'html.parser')
-			children = list(bs.children)
-			while children and is_tag_named(children[0], ['br', 'hr']):
+		def _extract_source_info(children):
+			if not type(children[0]) == Tag:
+				return None
+
+			if get_text(children[0]).strip() == "Source":
 				children.pop(0).decompose()
-			if children:
-				children = [c for c in children if str(c).strip() != '']
-				if not type(children[0]) == Tag:
-					return
-				if get_text(children[0]).strip() == "Source":
-					children.pop(0).decompose()
-					a = children.pop(0)
-					source = extract_source(a)
-					a.decompose()
-					if children[0].name == "sup":
-						sup = children.pop(0)
-						errata = extract_link(sup.find("a"))
-						source['errata'] = errata[1]
-						sup.decompose()
-					section['sources'] = [source]
-			while children and is_tag_named(children[0], ['br', 'hr']):
-				children.pop(0).decompose()
-				
-			section['text'] = str(bs)
+				a = children.pop(0)
+				source = extract_source(a)
+				a.decompose()
+				if children and children[0].name == "sup":
+					sup = children.pop(0)
+					errata = extract_link(sup.find("a"))
+					source['errata'] = errata[1]
+					sup.decompose()
+				return source
+
+			return None
+
+		if 'text' not in section:
+			return
+		
+		bs = BeautifulSoup(section['text'].strip(), 'html.parser')
+		children = list(bs.children)
+
+		_clear_bad_tags(children)
+		children = _clear_empty_tags(children)
+		source = _extract_source_info(children)
+		if source:
+			section['sources'] = [source]
+		_clear_bad_tags(children)
+		section['text'] = str(bs)
+
+	def _clear_empty_tags(children):
+		return [c for c in children if str(c).strip() != '']
+
+	def _clear_bad_tags(children, direction=0):
+		while children and is_tag_named(children[direction], ['br', 'hr']):
+			children.pop(0).decompose()
 
 	def _clear_garbage(section):
-		if 'text' in section:
-			if section['text'] == '':
-				del section['text']
-				return
-			bs = BeautifulSoup(section['text'].strip(), 'html.parser')
-			children = list(bs.children)
-			while children and is_tag_named(children[0], ['br', 'hr']):
-				children.pop(0).decompose()
-			while children and is_tag_named(children[-1], ['br', 'hr']):
-				children.pop().decompose()
-			section['text'] = str(bs)
+		if 'text' not in section:
+			return
+		if section['text'] == '':
+			del section['text']
+			return
+		bs = BeautifulSoup(section['text'].strip(), 'html.parser')
+		children = list(bs.children)
+		_clear_bad_tags(children)
+		_clear_bad_tags(children, -1)
+		section['text'] = str(bs)
 
 	_fix_name(struct)
 	_handle_front_spans(struct)
 	_handle_source(struct)
+	_handle_traits(struct)
 	_clear_links(struct)
 	_clear_garbage(struct)
 
 def build_action(child, action=None):
+	assert not action, "Multiple actions detected: %s" % child
 	action_name = child['title']
-	if not action:
-		action = build_object(
-			'stat_block_section',
-			'action',
-			action_name)
-		if action_name == 'Single Action':
-			action["name"] = "One Action"
+	action = build_object(
+		'stat_block_section',
+		'action',
+		action_name)
+	if action_name == 'Single Action':
+		action["name"] = "One Action"
 	return action
 
 def build_object(dtype, subtype, name, keys=None):
@@ -204,6 +213,33 @@ def addon_pass(struct):
 		if(list(bs.children)[-1].name == 'br'):
 			list(bs.children)[-1].unwrap()
 		return str(bs)
+	def _handle_ranges(addons):
+		for k, v in addons.items():
+			if k == 'range':
+				assert len(v) == 1, "Malformed range: %s" % v
+				struct['range'] = universal_handle_range(v[0])
+			else:
+				struct[k] = _oa_html_reduction(v)
+	def _get_prospective_name(child):
+		current = get_text(child).strip()
+		if current == "Requirements":
+			current = "Requirement"
+		return current
+	def _create_addon(current, child):
+		addon_names = ["Frequency", "Trigger", "Effect", "Duration",
+			"Requirement", "Requirements", "Prerequisite", "Critical Success",
+			"Success", "Failure", "Critical Failure", "Range", "Cost"]
+		assert current in addon_names, "%s, %s" % (current, text)
+		addon_text = str(child)
+		if addon_text.strip().endswith(";"):
+			addon_text = addon_text.rstrip()[:-1]
+		addons.setdefault(
+			current.lower().replace(" ", "_"), []).append(addon_text)
+	def _set_struct_text(struct, parts):
+		if len(parts) > 0:
+			struct['text'] = _oa_html_reduction(parts)
+		else:
+			del struct['text']
 
 	text = struct['text']
 	bs = BeautifulSoup(text, 'html.parser')
@@ -211,31 +247,91 @@ def addon_pass(struct):
 	addons = {}
 	current = None
 	parts = []
-	addon_names = ["Frequency", "Trigger", "Effect", "Duration",
-		"Requirement", "Requirements", "Prerequisite", "Critical Success",
-		"Success", "Failure", "Critical Failure", "Range", "Cost"]
 	while len(children) > 0:
 		child = children.pop(0)
 		if child.name == 'b':
-			current = get_text(child).strip()
-			if current == "Requirements":
-				current = "Requirement"
+			current = _get_prospective_name(child)
 		elif current:
-			assert current in addon_names, "%s, %s" % (current, text)
-			addon_text = str(child)
-			if addon_text.strip().endswith(";"):
-				addon_text = addon_text.rstrip()[:-1]
-			addons.setdefault(current.lower().replace(" ", "_"), [])\
-				.append(addon_text)
+			_create_addon(current, child)
 		else:
 			parts.append(str(child))
-	for k, v in addons.items():
-		if k == 'range':
-			assert len(v) == 1, "Malformed range: %s" % v
-			struct['range'] = universal_handle_range(v[0])
+	_handle_ranges(addons)
+	_set_struct_text(struct, parts)
+
+def trait_db_pass(struct):
+	# TODO: Copied from creature.py
+	def _merge_classes(trait, db_trait):
+		trait_classes = set(trait.get('classes', []))
+		db_trait_classes = set(db_trait.get('classes', []))
+		db_trait['classes'] = list(trait_classes | db_trait_classes)
+
+	def _check_trait(trait, parent):
+		_handle_value(trait)
+		if "alignment" in trait.get('classes', []) and trait['name'] != "No Alignment":
+			_handle_alignment_trait(trait, parent)
 		else:
-			struct[k] = _oa_html_reduction(v)
-	if len(parts) > 0:
-		struct['text'] = _oa_html_reduction(parts)
-	else:
-		del struct['text']
+			fetch_trait_by_name(curs, trait['name'])
+			data = curs.fetchone()
+			assert data, "%s | %s" %(data, trait)
+			db_trait = json.loads(data['trait'])
+			_merge_classes(trait, db_trait)
+			if "link" in trait and trait['link']['game-obj'] == 'Trait':
+				assert trait['link']['aonid'] == db_trait['aonid'], "%s : %s" % (trait, db_trait)
+			assert isinstance(parent, list), parent
+			index = parent.index(trait)
+			if 'value' in trait:
+				db_trait['value'] = trait['value']
+			if "aonid" in db_trait:
+				del db_trait["aonid"]
+			_sort_classes(db_trait)
+			parent[index] = db_trait
+
+	def _handle_value(trait):
+		m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait['name'])
+		if trait['name'].startswith("range increment"):
+			value = trait['name'].replace("range ", "")
+			trait['name'] = "range"
+			trait['value'] = value
+		elif m:
+			name, value = m.groups()
+			trait['name'] = name
+			trait['value'] = value
+		elif trait['name'].startswith("versatile "):
+			value = trait['name'].replace("versatile ", "")
+			trait['name'] = "versatile"
+			trait['value'] = value
+		elif trait['name'].startswith("reload"):
+			value = trait['name'].replace("reload ", "")
+			trait['name'] = "reload"
+			trait['value'] = value
+		elif trait['name'].startswith("precious"):
+			value = trait['name'].replace("precious ", "")
+			trait['name'] = "precious"
+			trait['value'] = value
+		elif trait['name'].startswith("attached"):
+			value = trait['name'].replace("attached ", "")
+			trait['name'] = "attached"
+			trait['value'] = value
+
+	def _handle_alignment_trait(trait, parent):
+		index = parent.index(trait)
+		parent.remove(trait)
+		parts = trait['name'].split(" ")
+		for part in parts:
+			fetch_trait_by_name(curs, part)
+			data = curs.fetchone()
+			db_trait = json.loads(data['trait'])
+			_merge_classes(trait, db_trait)
+			if "aonid" in db_trait:
+				del db_trait["aonid"]
+			_sort_classes(db_trait)
+			parent.insert(index, db_trait)
+			index += 1
+	
+	def _sort_classes(trait):
+		trait['classes'].sort()
+
+	db_path = get_db_path("traits.db")
+	conn = get_db_connection(db_path)
+	curs = conn.cursor()
+	walk(struct, test_key_is_value('subtype', 'trait'), _check_trait)

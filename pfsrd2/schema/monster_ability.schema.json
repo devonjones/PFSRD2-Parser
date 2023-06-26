@@ -84,6 +84,57 @@
 			"type": "array",
 			"items": {"$ref": "#/definitions/source"},
 			"additionalItems": false
+		},
+		"abstract_trait": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["trait", "trait_template"]},
+				"text": {"type": "string"}
+			},
+			"required": ["name", "type"],
+			"dependencies": {
+				"game-id": {"$ref": "#/definitions/trait"}
+			}
+		},
+		"trait": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["trait"]},
+				"game-id": {"type": "string"},
+				"game-obj": {"enum": ["Traits"]},
+				"value": {"type": "string"},
+				"text": {"type": "string"},
+				"classes": {
+					"type": "array",
+					"items": {"type": "string"},
+					"additionalItems": false
+				},
+				"sources": {"$ref": "#/definitions/sources"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "text", "game-id", "game-obj", "sources"],
+			"additionalProperties": false
+		},
+		"traits": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/abstract_trait"},
+			"additionalItems": false
+		},
+		"trait_template": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["trait_template"]},
+				"text": {"type": "string"}
+			},
+			"required": ["name", "type", "text"],
+			"additionalProperties": false
 		}
 	},
 	"type": "object",
@@ -105,6 +156,7 @@
 		"critical_failure": {"type": "string"},
 		"critical_success": {"type": "string"},
 		"sources": {"$ref": "#/definitions/sources"},
+		"traits": {"$ref": "#/definitions/traits"},
 		"links": {
 			"type": "array",
 			"items": {"$ref": "#/definitions/link"},

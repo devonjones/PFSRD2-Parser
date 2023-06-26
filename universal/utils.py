@@ -104,3 +104,21 @@ def get_unique_tag_set(text):
 	bs = BeautifulSoup(text, 'html.parser')
 	return set([tag.name for tag in bs.find_all()])
 
+def split_on_tag(text, tag):
+	bs = BeautifulSoup(text, 'html.parser')
+	parts = bs.findAll(tag)
+	for part in parts:
+		part.insert_after("|")
+		part.unwrap()
+	return str(bs).split("|")
+
+def clear_garbage(text):
+	if type(text) == list:
+		text = ''.join(text).strip()
+	bs = BeautifulSoup(text, 'html.parser')
+	children = list(bs.children)
+	while children and is_tag_named(children[0], ['br', 'hr']):
+		children.pop(0).decompose()
+	while children and is_tag_named(children[-1], ['br', 'hr']):
+		children.pop().decompose()
+	return str(bs)

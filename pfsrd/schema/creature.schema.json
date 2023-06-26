@@ -147,7 +147,7 @@
 					"Lawful Good", "Lawful Neutral", "Lawful Evil",
 					"Neutral Good", "Neutral", "Neutral Evil",
 					"Chaotic Good", "Chaotic Neutral", "Chaotic Evil",
-					"No Alignment", "Any alignment"]},
+					"No Alignment", "Any Alignment"]},
 				"alignment_text": {"type": "string"},
 				"size": {"enum": [
 					"Fine", "Diminutive", "Tiny", "Small", "Medium", "Large",
