@@ -184,7 +184,6 @@ def section_pass(struct):
 					called_action[k] = clear_garbage(v)
 			if len(parts) > 0:
 				called_action['text'] = clear_garbage(parts)
-			
 
 		bs = BeautifulSoup(section['text'].strip(), 'html.parser')
 		content = bs.findAll("div", {"class": "calledAction"})
@@ -203,7 +202,6 @@ def section_pass(struct):
 			_handle_requirements(called_action)
 			_handle_addons(called_action)
 			_clear_garbage(called_action)
-			pprint(called_action)
 			section.setdefault('abilities', []).append(called_action)
 		pass
 
