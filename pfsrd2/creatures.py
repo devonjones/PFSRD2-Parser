@@ -185,6 +185,8 @@ def section_pass(struct):
 			if len(parts) > 0:
 				called_action['text'] = clear_garbage(parts)
 
+		if not 'text' in section:
+			return
 		bs = BeautifulSoup(section['text'].strip(), 'html.parser')
 		content = bs.findAll("div", {"class": "calledAction"})
 		for c in content:
@@ -203,7 +205,6 @@ def section_pass(struct):
 			_handle_addons(called_action)
 			_clear_garbage(called_action)
 			section.setdefault('abilities', []).append(called_action)
-		pass
 
 	def _fix_name(section):
 		bs = BeautifulSoup(str(section['name']), 'html.parser')
