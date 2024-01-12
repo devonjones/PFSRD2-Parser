@@ -241,7 +241,7 @@
 				"family": {"$ref": "#/definitions/family"},
 				"grafts": {
 					"type": "array",
-					"items": {"$ref": "#/definitions/string_with_modifiers"},
+					"items": {"$ref": "#/definitions/graft"},
 					"additionalItems": false
 				},
 				"level": {"type": "integer"},
@@ -282,6 +282,23 @@
 				"link": {"$ref": "#/definitions/link"}
 			},
 			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"graft": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["graft"]},
+				"value": {"type": "integer"},
+				"name": {"type": "string"},
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["type", "subtype", "name"],
 			"additionalProperties": false
 		},
 		"gear": {

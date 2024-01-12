@@ -39,7 +39,8 @@ def md(html, **options):
 def markdown_pass(struct, name, path, fxn_valid_tags=None):
     def _validate_acceptable_tags(text, fxn_valid_tags):
         validset = set(
-            ["i", "b", "u", "strong", "ol", "ul", "li", "br", "table", "tr", "td", "hr"]
+            ["i", "b", "u", "strong", "ol", "ul",
+                "li", "br", "table", "tr", "td", "hr"]
         )
         if "license" in struct:
             validset.add("p")
@@ -50,7 +51,8 @@ def markdown_pass(struct, name, path, fxn_valid_tags=None):
 
     for k, v in struct.items():
         if isinstance(v, dict):
-            markdown_pass(v, name, "%s/%s" % (path, k), fxn_valid_tags=fxn_valid_tags)
+            markdown_pass(v, name, "%s/%s" % (path, k),
+                          fxn_valid_tags=fxn_valid_tags)
         elif isinstance(v, list):
             for item in v:
                 if isinstance(item, dict):
@@ -64,4 +66,5 @@ def markdown_pass(struct, name, path, fxn_valid_tags=None):
             if v.find("<") > -1:
                 _validate_acceptable_tags(v, fxn_valid_tags)
                 struct[k] = md(v).strip()
-                log_element("markdown.log")("%s : %s" % ("%s/%s" % (path, k), name))
+                log_element("markdown.log")("%s : %s" %
+                                            ("%s/%s" % (path, k), name))
