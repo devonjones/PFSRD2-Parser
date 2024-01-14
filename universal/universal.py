@@ -343,6 +343,24 @@ def is_action(span):
 
 
 def span_to_heading(span, level):
+    def _handle_actions(span):
+        subspans = span.findAll('span')
+        if len(subspans) == 0:
+            return
+        for action in subspans:
+            action = subspans[0]
+            if not is_action(action):
+                return
+            if len(list(action.children)) == 0:
+                return
+            contents = ' '.join([str(e) for e in action.contents]).strip()
+            if contents == "" or (contents.startswith("[") and contents.endswith("]")):
+                for c in action.contents:
+                    c.extract()
+            else:
+                assert False, span
+
+    _handle_actions(span)
     details_text = ''.join([str(i) for i in span.contents]).strip()
     details = list(BeautifulSoup(details_text, 'html.parser').children)
     title = details.pop(0)

@@ -181,8 +181,6 @@ def list_removal_pass(struct, classlist):
         r = True
         for c in list(soup.children):
             if c.name != "a":
-                pprint(c.name)
-                pprint(c)
                 assert False, section['text']
                 r = False
         if r:

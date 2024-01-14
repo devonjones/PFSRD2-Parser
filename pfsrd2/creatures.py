@@ -81,11 +81,12 @@ def parse_creature(filename, options):
     trait_db_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
-    markdown_pass(struct, struct["name"], "", fxn_valid_tags=markdown_valid_set)
+    markdown_pass(struct, struct["name"], "",
+                  fxn_valid_tags=markdown_valid_set)
     remove_empty_sections_pass(struct)
     basename.split("_")
     if not options.skip_schema:
-        struct["schema_version"] = 1.1
+        struct["schema_version"] = 1.2
         validate_against_schema(struct, "creature.schema.json")
     if not options.dryrun:
         output = options.output
@@ -449,15 +450,14 @@ def trait_pass(struct):
         assert False, "Has no creature types"
     if "size" not in sb["creature_type"]:
         assert False, "Has no size"
-    if "alignment" not in sb["creature_type"]:
-        assert False, "Has no alignment"
 
 
 def creature_stat_block_pass(struct):
     def add_to_data(key, value, data, link, action):
         if key:
             data.append(
-                (key.strip(), "".join([str(v) for v in value]).strip(), link, action)
+                (key.strip(), "".join([str(v)
+                 for v in value]).strip(), link, action)
             )
             key = None
             value = []
@@ -469,7 +469,8 @@ def creature_stat_block_pass(struct):
         k, v, _, _ = data.pop()
         newvalue = [v]
         newvalue.extend(value)
-        data.append((k, "".join([str(v) for v in newvalue]).strip(), link, None))
+        data.append((k, "".join([str(v)
+                    for v in newvalue]).strip(), link, None))
         return [], data
 
     def _handle_sections(sb, struct):
@@ -505,7 +506,8 @@ def creature_stat_block_pass(struct):
             sb["sections"] = sections
             for section in parts:
                 assert len(section["sections"]) == 0, section
-                text = text + "<b>%s</b>%s" % (section["name"], section.get("text", ""))
+                text = text + \
+                    "<b>%s</b>%s" % (section["name"], section.get("text", ""))
         sb["text"] = text
 
     def _strip_br(data):
@@ -515,7 +517,8 @@ def creature_stat_block_pass(struct):
             children = list(bs.children)
             while len(children) > 0 and children[-1].name == "br":
                 children.pop()
-            newdata.append((k, "".join([str(c) for c in children]).strip(), l, a))
+            newdata.append(
+                (k, "".join([str(c) for c in children]).strip(), l, a))
         return newdata
 
     sb = find_stat_block(struct)
@@ -538,10 +541,12 @@ def creature_stat_block_pass(struct):
             if last_key == "Source":
                 key = "Graft"
             last_key = key
-            key, value, data, link, action = add_to_data(key, value, data, link, action)
+            key, value, data, link, action = add_to_data(
+                key, value, data, link, action)
         elif obj.name == "hr":
             last_key = key
-            key, value, data, link, action = add_to_data(key, value, data, link, action)
+            key, value, data, link, action = add_to_data(
+                key, value, data, link, action)
             if len(value) > 0:
                 assert link == None
                 value, data = add_remnants(value, data)
@@ -550,7 +555,8 @@ def creature_stat_block_pass(struct):
             data = []
         elif obj.name == "b":
             last_key = key
-            key, value, data, link, action = add_to_data(key, value, data, link, action)
+            key, value, data, link, action = add_to_data(
+                key, value, data, link, action)
             key = get_text(obj)
             if obj.a:
                 _, link = extract_link(obj.a)
@@ -559,7 +565,8 @@ def creature_stat_block_pass(struct):
         else:
             value.append(obj)
     if key:
-        key, value, data, link, action = add_to_data(key, value, data, link, action)
+        key, value, data, link, action = add_to_data(
+            key, value, data, link, action)
     data = _strip_br(data)
     sections.append(data)
     assert len(sections) == 3, sections
@@ -587,7 +594,8 @@ def sidebar_pass(struct):
             struct["subtype"] = "sidebar"
             struct["sidebar_type"] = subtype.lower().replace(" ", "_")
             struct["sidebar_heading"] = subtype
-            struct["image"] = {"type": "image", "name": subtype, "image": image}
+            struct["image"] = {"type": "image",
+                               "name": subtype, "image": image}
             struct["text"] = "".join([str(c) for c in children])
             _handle_fixing_name(struct)
 
@@ -711,7 +719,8 @@ def validate_dict_pass(top, struct, parent, field):
                 if type(item) is dict:
                     validate_dict_pass(top, item, struct, "")
                 else:
-                    raise Exception("%s: lists should only have dicts" % struct)
+                    raise Exception(
+                        "%s: lists should only have dicts" % struct)
         elif type(struct) is str:
             # if field == "name" and struct.startswith(top.get("name", "")):
             # 	pass
@@ -728,7 +737,8 @@ def validate_dict_pass(top, struct, parent, field):
             elif struct.find("(") > -1:
                 bs = BeautifulSoup(struct, "html.parser")
                 if not bs.table:
-                    raise Exception("%s: '(' should have been parsed out" % struct)
+                    raise Exception(
+                        "%s: '(' should have been parsed out" % struct)
     except Exception as e:
         pprint(struct)
         raise e
@@ -893,7 +903,6 @@ def process_grafts(sb, stats):
                 newtokens[-1] = "%s %s" % (newtokens[-1], token)
             else:
                 newtokens.append(token)
-        pprint(newtokens)
         grafts = []
         for token in newtokens:
             if token.isnumeric():
@@ -901,7 +910,6 @@ def process_grafts(sb, stats):
             else:
                 grafts.append(string_with_modifiers(token, "graft"))
         link_values(grafts)
-        pprint(grafts)
         sb["creature_type"]["grafts"] = grafts
 
 
@@ -956,7 +964,8 @@ def process_languages(section):
     assert section[2] == None
     assert section[3] == None
     text = section[1]
-    languages = {"type": "stat_block_section", "subtype": "languages", "languages": []}
+    languages = {"type": "stat_block_section",
+                 "subtype": "languages", "languages": []}
     if text.find(";") > -1:
         parts = text.split(";")
         text = parts.pop(0)
@@ -991,7 +1000,8 @@ def process_languages(section):
                     # TODO: fix []
                     ability["modifiers"] = link_modifiers(
                         build_objects(
-                            "stat_block_section", "modifier", [modifier.strip()]
+                            "stat_block_section", "modifier", [
+                                modifier.strip()]
                         )
                     )
                 abilities.append(ability)
@@ -1103,10 +1113,12 @@ def process_items(section):
         text, modifier = extract_modifier(part)
         bs = unwrap_formatting(BeautifulSoup(text, "html.parser"))
         name = get_text(bs)
-        item = {"type": "stat_block_section", "subtype": "item", "name": name.strip()}
+        item = {"type": "stat_block_section",
+                "subtype": "item", "name": name.strip()}
         if modifier:
             item["modifiers"] = link_modifiers(
-                build_objects("stat_block_section", "modifier", modifier.split(","))
+                build_objects("stat_block_section",
+                              "modifier", modifier.split(","))
             )
         links = []
         while bs.a:
@@ -1286,12 +1298,13 @@ def process_hp(section, subtype):
         specials.extend([t.strip() for t in text[1:-1].split(",")])
     elif len(text.strip()) > 0:
         specials.extend([t.strip() for t in text.split(",")])
-    hp = {"type": "stat_block_section", "subtype": subtype, name.lower(): value}
+    hp = {"type": "stat_block_section", "subtype": subtype, name.lower()          : value}
     _handle_squares()
     _handle_component()
     if len(specials) > 0:
         special_sections = build_objects(
-            "stat_block_section", "ability", specials, {"ability_type": "automatic"}
+            "stat_block_section", "ability", specials, {
+                "ability_type": "automatic"}
         )
         for s in special_sections:
             parse_section_modifiers(s, "name")
@@ -1327,7 +1340,8 @@ def process_threshold(hp, section):
 
 def process_defense(hp, section, ret=False):
     def create_defense(defense):
-        d = {"type": "stat_block_section", "subtype": subtype[section[0]], "name": part}
+        d = {"type": "stat_block_section",
+             "subtype": subtype[section[0]], "name": part}
         d = parse_section_modifiers(d, "name")
         d = parse_section_value(d, "name")
         return d
@@ -1345,7 +1359,8 @@ def process_defense(hp, section, ret=False):
         text = text[:-1].strip()
     parts = rebuilt_split_modifiers(split_stat_block_line(text))
     defense = build_object(
-        "stat_block_section", section[0].lower(), section[0], {section[0].lower(): []}
+        "stat_block_section", section[0].lower(), section[0], {
+            section[0].lower(): []}
     )
     for part in parts:
         defense[section[0].lower()].append(create_defense(part))
@@ -1364,12 +1379,11 @@ def handle_aura(sb, ability):
         return False
 
     def _test_aura_dc(ability):
-        if sb["name"] in ["Weykoward", "Watch Officer"]:
+        if sb["name"] in ["Weykoward", "Watch Officer", "Twins of Rowan"]:
             return
         if "saving_throw" not in ability:
             if "DC " in ability["text"]:
                 # TODO: Find a more graceful way to deal with 1816
-                pprint(sb)
                 assert False, "DC in text, but no save in aura: %s" % ability
 
     found = False
@@ -1425,7 +1439,8 @@ def handle_aura(sb, ability):
 
 
 def process_defensive_ability(section, sections, sb):
-    assert section[0] not in ["Immunities", "Resistances", "Weaknesses"], section[0]
+    assert section[0] not in ["Immunities",
+                              "Resistances", "Weaknesses"], section[0]
     description = section[1]
     link = section[2]
     action = section[3]
@@ -1567,7 +1582,8 @@ def process_speed(section):
         modifiers = [p.strip() for p in parts.pop().split(",")]
     assert len(parts) == 0, section
     movement = build_movement(text)
-    speed = {"type": "stat_block_section", "subtype": "speeds", "movement": movement}
+    speed = {"type": "stat_block_section",
+             "subtype": "speeds", "movement": movement}
     if modifiers:
         speed["modifiers"] = link_modifiers(
             build_objects("stat_block_section", "modifier", modifiers)
@@ -1653,6 +1669,25 @@ def process_offensive_action(section):
         return str(bs)
 
     def parse_attack_action(parent_section, attack_type):
+        def _handle_requirements(text):
+            if "Requirements" in text:
+                assert "Effect" in text
+                parts = text.split("Effect")
+                assert len(parts) == 2, text
+                text = parts.pop()
+                requirements = parts.pop()
+                assert text.startswith("</b>"), text
+                requirements += "</b>"
+                text = text[4:].strip()
+                bs = BeautifulSoup(requirements, "html.parser")
+                b_tags = bs.findAll('b')
+                assert len(b_tags) == 2, bs
+                for b in b_tags:
+                    b.extract()
+                requirements = get_text(bs).strip()
+                if requirements.endswith(";"):
+                    requirements = requirements[:-1]
+                section['requirement'] = requirements
         # tentacle +16 [<a aonid="322" game-obj="Rules"><u>+12/+8</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>, <a aonid="192" game-obj="Traits"><u>reach 15 feet</u></a>), <b>Damage</b> 2d8+10 bludgeoning plus slime
         # trident +10 [<a aonid="322" game-obj="Rules"><u>+5/+0</u></a>], <b>Damage</b> 1d8+4 piercing
         # trident +7 [<a aonid="322" game-obj="Rules"><u>+2/-3</u></a>] (<a aonid="195" game-obj="Traits"><u>thrown 20 feet</u></a>), <b>Damage</b> 1d8+3 piercing
@@ -1673,6 +1708,8 @@ def process_offensive_action(section):
         if "traits" in parent_section:
             section["traits"] = parent_section["traits"]
             del parent_section["traits"]
+
+        _handle_requirements(text)
 
         m = re.search(r"^(.*) ([+-]\d*) \[(.*)\] \((.*)\), (.*)$", text)
         if not m:
@@ -1722,6 +1759,14 @@ def process_offensive_action(section):
                         name_parts.insert(0, tradition[caster])
                     return
 
+        def _handle_bloodline(section):
+            if "Bloodline" in section["spell_type"]:
+                parts = section["spell_type"].split(" ")
+                assert len(parts) == 4, parts
+                section["bloodline"] = parts[1]
+                del parts[1]
+                section["spell_type"] = " ".join(parts)
+
         text = parent_section["text"]
         del parent_section["text"]
         section = {
@@ -1743,6 +1788,7 @@ def process_offensive_action(section):
         if name_parts[-1] == "Rituals" and len(name_parts) > 1:
             name_parts.pop(0)
         section["spell_type"] = " ".join(name_parts)
+        _handle_bloodline(section)
         parts = split_maintain_parens(text, ";")
         tt_parts = split_maintain_parens(parts.pop(0), ",")
         remains = []
@@ -1756,9 +1802,11 @@ def process_offensive_action(section):
             elif tt.startswith("attack") or tt.startswith("spell attack"):
                 section["spell_attack"] = int(chunks.pop())
             elif tt.endswith("Focus Points"):
-                section["focus_points"] = int(tt.replace(" Focus Points", "").strip())
+                section["focus_points"] = int(
+                    tt.replace(" Focus Points", "").strip())
             elif tt.endswith("Focus Point"):
-                section["focus_points"] = int(tt.replace(" Focus Point", "").strip())
+                section["focus_points"] = int(
+                    tt.replace(" Focus Point", "").strip())
             else:
                 remains.append(tt)
         if len(remains) > 0 and remains != tt_parts:
@@ -1838,7 +1886,8 @@ def process_offensive_action(section):
                 for part in count_text.split(split):
                     m = re.match(r"^x\d*$", part.strip())
                     if m:
-                        assert count == None, "Failed to parse spell: %s" % (html)
+                        assert count == None, "Failed to parse spell: %s" % (
+                            html)
                         count = int(part.strip()[1:])
                     else:
                         remainder.append(part)
@@ -1980,6 +2029,7 @@ def process_offensive_action(section):
             "Frequency",
             "Trigger",
             "Effect",
+            "Damage",
             "Duration",
             "Requirement",
             "Requirements",
@@ -2016,6 +2066,9 @@ def process_offensive_action(section):
             if k == "range":
                 assert len(v) == 1, "Malformed range: %s" % v
                 section["range"] = universal_handle_range(v[0])
+            elif k == "damage":
+                assert len(v) == 1, "Malformed range: %s" % v
+                section["damage"] = parse_attack_damage(v[0])
             else:
                 section[k] = clear_garbage(v)
         if len(parts) > 0:
@@ -2179,23 +2232,35 @@ def extract_action(text):
         if child.strip() == "to":
             newchildren.pop(0)
             assert newchildren[0].name == "span"
-            assert action["name"] == "One Action"
-            if newchildren[0]["title"] == "Three Actions":
-                action["name"] = "One to Three Actions"
-            elif newchildren[0]["title"] == "Two Actions":
-                action["name"] = "One or Two Actions"
-            else:
-                assert False
+            if action["name"] == "One Action":
+                if newchildren[0]["title"] == "Three Actions":
+                    action["name"] = "One to Three Actions"
+                elif newchildren[0]["title"] == "Two Actions":
+                    action["name"] = "One or Two Actions"
+                else:
+                    assert False
+            elif action["name"] == "Tro Actions":
+                if newchildren[0]["title"] == "Three Actions":
+                    action["name"] = "Two to Three Actions"
+                else:
+                    assert False
             newchildren.pop(0)
         elif child.strip() == "or":
             newchildren.pop(0)
             assert newchildren[0].name == "span"
-            if action["name"] == "One Action":
-                assert newchildren[0]["title"] == "Two Actions"
-                action["name"] = "One or Two Actions"
+            if action["name"] in ["One Action", "Single Action"]:
+                if newchildren[0]["title"] == "Two Actions":
+                    action["name"] = "One or Two Actions"
+                elif newchildren[0]["title"] == "Three Actions":
+                    action["name"] = "One or Three Actions"
+                else:
+                    assert False
             elif action["name"] == "Two Actions":
                 assert newchildren[0]["title"] == "Three Actions"
                 action["name"] = "Two or Three Actions"
+            elif action["name"] == "Free Action":
+                assert newchildren[0]["title"] == "Single Action"
+                action["name"] = "Free Action or Single Action"
             else:
                 assert False
             newchildren.pop(0)
