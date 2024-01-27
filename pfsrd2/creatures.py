@@ -52,6 +52,7 @@ import pfsrd2.constants as constants
 # TODO: I think we might be missing focus points not at the front of spell lists
 # TODO: actions in the title bar for sections are probably getting lost
 # TODO: why is attack of opportunity not a reactive ability: bestiary_2/aapoph_serpentfolk.json
+# TODO: Fix Counteflora (518) The toxin's traits are not parsed correctly
 
 
 def parse_creature(filename, options):
@@ -1298,7 +1299,7 @@ def process_hp(section, subtype):
         specials.extend([t.strip() for t in text[1:-1].split(",")])
     elif len(text.strip()) > 0:
         specials.extend([t.strip() for t in text.split(",")])
-    hp = {"type": "stat_block_section", "subtype": subtype, name.lower()          : value}
+    hp = {"type": "stat_block_section", "subtype": subtype, name.lower(): value}
     _handle_squares()
     _handle_component()
     if len(specials) > 0:
@@ -1688,6 +1689,8 @@ def process_offensive_action(section):
                 if requirements.endswith(";"):
                     requirements = requirements[:-1]
                 section['requirement'] = requirements
+                pprint(text)
+            return text
         # tentacle +16 [<a aonid="322" game-obj="Rules"><u>+12/+8</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>, <a aonid="192" game-obj="Traits"><u>reach 15 feet</u></a>), <b>Damage</b> 2d8+10 bludgeoning plus slime
         # trident +10 [<a aonid="322" game-obj="Rules"><u>+5/+0</u></a>], <b>Damage</b> 1d8+4 piercing
         # trident +7 [<a aonid="322" game-obj="Rules"><u>+2/-3</u></a>] (<a aonid="195" game-obj="Traits"><u>thrown 20 feet</u></a>), <b>Damage</b> 1d8+3 piercing
@@ -1709,7 +1712,7 @@ def process_offensive_action(section):
             section["traits"] = parent_section["traits"]
             del parent_section["traits"]
 
-        _handle_requirements(text)
+        text = _handle_requirements(text)
 
         m = re.search(r"^(.*) ([+-]\d*) \[(.*)\] \((.*)\), (.*)$", text)
         if not m:
@@ -1928,6 +1931,7 @@ def process_offensive_action(section):
             bs.a.unwrap()
         text = str(bs)
         parts = [p.strip() for p in text.split(";")]
+        first = True
         for p in parts:
             bs = BeautifulSoup(p, "html.parser")
             if bs.b:
@@ -1956,7 +1960,11 @@ def process_offensive_action(section):
                 else:
                     assert False, text
             else:
-                section.setdefault("text", []).append(get_text(bs))
+                if first:
+                    section["context"] = get_text(bs)
+                else:
+                    section.setdefault("text", []).append(get_text(bs))
+            first = False
         if "text" in section:
             section["text"] = "; ".join(section["text"])
             if section["text"] == "":
@@ -2167,7 +2175,8 @@ def get_attacks(sb):
                             newsection["name"] = name
                             newsection["text"] = str(bs)
                             attacks.append(newsection)
-                pass
+                else:
+                    attacks.append(section)
             else:
                 attacks.append(section)
         else:

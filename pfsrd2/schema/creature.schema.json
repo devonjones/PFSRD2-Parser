@@ -88,6 +88,7 @@
 				"requirements": {"type": "string"},
 				"effect": {"type": "string"},
 				"special": {"type": "string"},
+				"context": {"type": "string"},
 				"stages": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/affliction_stage"},
