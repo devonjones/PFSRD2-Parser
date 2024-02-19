@@ -2083,6 +2083,19 @@ def process_offensive_action(section):
             section["text"] = clear_garbage(parts)
         parent_section["ability"] = section
 
+    def _is_spell(section):
+        parts = section["name"].split(" ")
+        if section['name'] in constants.CREATURE_NOT_SPELLS:
+            return False
+        if (
+            "Spells" in parts
+            or section["name"].endswith("Rituals")
+            or section["name"].endswith("Formulas")
+            or section["name"].endswith("Hexes")
+        ):
+            return True
+        return False
+
     if len(section["sections"]) == 0:
         del section["sections"]
     section["type"] = "stat_block_section"
@@ -2095,16 +2108,11 @@ def process_offensive_action(section):
     if len(traits) > 0:
         section["traits"] = traits
     section["text"] = text.strip()
-    parts = section["name"].split(" ")
+
     if section["name"] in ["Melee", "Ranged"]:
         section["offensive_action_type"] = "attack"
         parse_attack_action(section, section["name"].lower())
-    elif (
-        "Spells" in parts
-        or section["name"].endswith("Rituals")
-        or section["name"].endswith("Formulas")
-        or section["name"].endswith("Hexes")
-    ):
+    elif _is_spell(section):
         section["offensive_action_type"] = "spells"
         parse_spells(section)
     else:

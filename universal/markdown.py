@@ -40,7 +40,7 @@ def markdown_pass(struct, name, path, fxn_valid_tags=None):
     def _validate_acceptable_tags(text, fxn_valid_tags):
         validset = set(
             ["i", "b", "u", "strong", "ol", "ul",
-                "li", "br", "table", "tr", "td", "hr"]
+                "li", "br", "table", "tr", "td", "hr", "sup"]
         )
         if "license" in struct:
             validset.add("p")

@@ -26,6 +26,14 @@ CREATURE_ABILITY_ADDON_KEYS = [
     "critical failure",
 ]
 
+CREATURE_NOT_SPELLS = [
+    "Soul Spells",
+    "Signature Spells",
+    "Green Rituals",
+    "Dead Spells",
+    "Distracting Spells"
+]
+
 CREATURE_SPANS_ALLOWED = [
     "Adult Black Dragon",
     "Adult Blue Dragon",
