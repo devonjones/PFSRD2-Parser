@@ -5,21 +5,21 @@ import json
 from sh import find
 from optparse import OptionParser
 from pfsrd2.sql import get_db_path, create_db
-from pfsrd2.sql.traits import insert_trait, truncate_traits
+from pfsrd2.sql.monster_abilities import insert_monster_ability, truncate_monster_abilities
 
 
-def load_traits(conn, options):
-    path = options.output + "/" + "traits"
+def load_monster_abilities(conn, options):
+    path = options.output + "/" + "monster_abilities"
     assert os.path.exists(path), "JSON Directory doesn't exist: %s" % path
     files = find(path, "-type", "f", "-name", "*.json").strip().split("\n")
     files = [os.path.abspath(f) for f in files]
     curs = conn.cursor()
-    truncate_traits(curs)
+    truncate_monster_abilities(curs)
     for f in files:
         with open(f) as fp:
             data = json.load(fp)
             print(data['name'])
-            insert_trait(curs, data)
+            insert_monster_ability(curs, data)
     conn.commit()
 
 
@@ -32,12 +32,12 @@ def option_parser(usage):
 
 
 def main():
-    usage = "usage: %prog [options] [filenames]\nReads trait json and inserts them into a trait db"
+    usage = "usage: %prog [options] [filenames]\nReads monster ability json and inserts them into a monster_ability db"
     parser = option_parser(usage)
     (options, args) = parser.parse_args()
     db_path = get_db_path("pfsrd2.db")
     conn = create_db(db_path)
-    load_traits(conn, options)
+    load_monster_abilities(conn, options)
     conn.close()
 
 

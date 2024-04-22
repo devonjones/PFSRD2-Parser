@@ -20,6 +20,12 @@ def create_traits_index(curs):
     curs.execute(sql)
 
 
+def truncate_traits(curs):
+    sql = '\n'.join([
+        "DELETE FROM traits"])
+    curs.execute(sql)
+
+
 def insert_trait(curs, trait):
     text = json.dumps(trait)
     values = [trait['game-id'], trait['name'].lower(),

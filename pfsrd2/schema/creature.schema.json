@@ -5,10 +5,11 @@
 		"ability": {
 			"type": "object",
 			"properties": {
-				"type": {"enum": ["stat_block_section"]},
+				"type": {"enum": ["stat_block_section", "ability"]},
 				"subtype": {"enum": ["ability"]},
 				"name": {"type": "string"},
 				"ability_type": {"type": "string"},
+				"universal_monster_ability": {"$ref": "#/definitions/universal_monster_ability"},
 				"sources": {"$ref": "#/definitions/sources"},
 				"value": {"type": "integer"},
 				"text": {"type": "string"},
@@ -29,7 +30,7 @@
 				"success": {"type": "string"},
 				"critical_failure": {"type": "string"},
 				"critical_success": {"type": "string"},
-				"action": {"$ref": "#/definitions/action"},
+				"action_type": {"$ref": "#/definitions/action_type"},
 				"links": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/link"},
@@ -57,11 +58,11 @@
 			"required": ["type", "subtype", "value"],
 			"additionalProperties": false
 		},
-		"action": {
+		"action_type": {
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["action"]},
+				"subtype": {"enum": ["action_type"]},
 				"name": {"enum": [
 					"Reaction", "Free Action", "One Action",
 					"Two Actions", "Three Actions", "One to Three Actions",
@@ -80,7 +81,7 @@
 				"subtype": {"enum": ["affliction"]},
 				"name": {"type": "string"},
 				"text": {"type": "string"},
-				"action": {"$ref": "#/definitions/action"},
+				"action_type": {"$ref": "#/definitions/action_type"},
 				"traits": {"$ref": "#/definitions/traits"},
 				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"onset": {"type": "string"},
@@ -121,7 +122,7 @@
 				"subtype": {"enum": ["attack"]},
 				"name": {"type": "string"},
 				"attack_type": {"enum": ["melee", "ranged"]},
-				"action": {"$ref": "#/definitions/action"},
+				"action_type": {"$ref": "#/definitions/action_type"},
 				"traits": {"$ref": "#/definitions/traits"},
 				"weapon": {"type": "string"},
 				"bonus": {"$ref": "#/definitions/attack_bonus"},
@@ -642,7 +643,7 @@
 				]},
 				"sidebar_heading": {"type": "string"},
 				"image": {"$ref": "#/definitions/image"},
-				"action": {"$ref": "#/definitions/action"},
+				"action_type": {"$ref": "#/definitions/action_type"},
 				"traits": {"$ref": "#/definitions/traits"},
 				"links": {
 					"type": "array",
@@ -918,6 +919,38 @@
 			"type": "array",
 			"items": {"$ref": "#/definitions/trait"},
 			"additionalItems": false
+		},
+		"universal_monster_ability": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["ability"]},
+				"ability_type": {"enum": ["universal_monster_ability"]},
+				"game-id": {"type": "string"},
+				"game-obj": {"enum": ["MonsterAbilities"]},
+				"aonid": {"type": "integer"},
+				"value": {"type": "string"},
+				"action_type": {"$ref": "#/definitions/action_type"},
+				"text": {"type": "string"},
+				"effect": {"type": "string"},
+				"requirement": {"type": "string"},
+				"trigger": {"type": "string"},
+				"failure": {"type": "string"},
+				"success": {"type": "string"},
+				"critical_failure": {"type": "string"},
+				"critical_success": {"type": "string"},
+				"sources": {"$ref": "#/definitions/sources"},
+				"traits": {"$ref": "#/definitions/traits"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				},
+				"schema_version": {"enum": [1.1]},
+				"license": {"$ref": "#/definitions/license"}
+			},
+			"required": ["name", "type", "game-id", "game-obj", "sources"],
+			"additionalProperties": false	
 		}
 	},
 	"type": "object",
@@ -929,7 +962,7 @@
 		"stat_block": {"$ref": "#/definitions/stat_block"},
 		"sources": {"$ref": "#/definitions/sources"},
 		"sections": {"$ref": "#/definitions/sections"},
-		"schema_version": {"enum": [1.2]},
+		"schema_version": {"enum": [1.3]},
 		"license": {"$ref": "#/definitions/license"}
 	},
 	"required": ["name", "type", "aonid", "game-obj", "sources", "sections", "license"],

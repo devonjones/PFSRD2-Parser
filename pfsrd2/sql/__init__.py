@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from pfsrd2.sql.traits import create_traits_table, create_traits_index
+from pfsrd2.sql.monster_abilities import create_monster_abilities_table, create_monster_abilities_index
 
 
 def get_db_path(db_name):
@@ -10,8 +11,8 @@ def get_db_path(db_name):
     return os.path.abspath(path + "/" + db_name)
 
 
-def create_db(db_path):
-    if os.path.exists(db_path):
+def create_db(db_path, replace=False):
+    if os.path.exists(db_path) and replace:
         os.remove(db_path)
     return get_db_connection(db_path)
 
@@ -59,6 +60,17 @@ def create_db_v_2(conn, curs, ver, source=None):
     return ver
 
 
+def create_db_v_3(conn, curs, ver, source=None):
+    if ver >= 3:
+        return ver
+    ver = 3
+    create_monster_abilities_table(curs)
+    create_monster_abilities_index(curs)
+    set_version(curs, ver)
+    conn.commit()
+    return ver
+
+
 def dict_factory(cursor, row):
     d = {}
     for idx, col in enumerate(cursor.description):
@@ -72,6 +84,7 @@ def get_db_connection(db, source=None):
     try:
         ver = create_db_v_1(conn, curs)
         ver = create_db_v_2(conn, curs, ver, source)
+        ver = create_db_v_3(conn, curs, ver, source)
     finally:
         curs.close()
     conn.row_factory = dict_factory

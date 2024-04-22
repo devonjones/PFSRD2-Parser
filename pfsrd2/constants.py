@@ -258,3 +258,19 @@ CREATURE_SPANS_ALLOWED = [
     "Zombie Shambler",
     "Zombie Snake",
 ]
+
+CREATURE_ATTRIBUTES = [
+    "str",
+    "dex",
+    "con",
+    "int",
+    "wis",
+    "cha"
+]
+
+KINGDOM_ATTRIBUTES = [
+    "culture",
+    "economy",
+    "loyalty",
+    "stability",
+]

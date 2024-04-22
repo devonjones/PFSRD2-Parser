@@ -5,13 +5,12 @@ import re
 import html2markdown
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
-from universal.universal import parse_universal, print_struct, entity_pass
+from universal.universal import parse_universal, entity_pass
 from universal.universal import extract_link
 from universal.universal import source_pass, extract_source, get_links
-from universal.universal import aon_pass, restructure_pass, html_pass
+from universal.universal import aon_pass, restructure_pass
 from universal.universal import remove_empty_sections_pass, game_id_pass
 from universal.universal import build_object
-from universal.creatures import universal_handle_alignment
 from universal.markdown import md
 from universal.files import makedirs, char_replace
 from universal.utils import get_text, bs_pop_spaces
@@ -20,41 +19,46 @@ from pfsrd2.schema import validate_against_schema
 from pfsrd2.license import license_pass
 
 
-def parse_trait(filename, options):
+def parse_condition(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
         sys.stderr.write("%s\n" % basename)
-    details = parse_universal(filename, max_title=4,
-                              cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
+    details = parse_universal(
+        filename, max_title=4,
+        cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput",
+        pre_filters=[sidebar_filter])
     details = entity_pass(details)
-    struct = restructure_trait_pass(details)
-    trait_struct_pass(struct)
-    source_pass(struct, find_trait)
-    trait_link_pass(struct)
+    struct = restructure_condition_pass(details)
+    condition_struct_pass(struct)
+    source_pass(struct, find_condition)
+    condition_link_pass(struct)
     aon_pass(struct, basename)
-    restructure_pass(struct, 'trait', find_trait)
-    classlist = list_removal_pass(struct, [])
-    trait_class_pass(struct, classlist)
+    restructure_pass(struct, 'condition', find_condition)
     remove_empty_sections_pass(struct)
-    html_pass(struct)
     game_id_pass(struct)
-    trait_cleanup_pass(struct)
+    condition_cleanup_pass(struct)
     license_pass(struct)
     markdown_pass(struct, struct["name"], '')
     basename.split("_")
     if not options.skip_schema:
-        validate_against_schema(struct, "trait.schema.json")
+        validate_against_schema(struct, "condition.schema.json")
     if not options.dryrun:
         output = options.output
         for source in struct['sources']:
             name = char_replace(source['name'])
             jsondir = makedirs(output, struct['game-obj'], name)
-            write_trait(jsondir, struct, name)
+            write_condition(jsondir, struct, name)
     elif options.stdout:
         print(json.dumps(struct, indent=2))
 
 
-def restructure_trait_pass(details):
+def sidebar_filter(soup):
+    divs = soup.find_all("div", {"class": "sidebar-nofloat"})
+    for div in divs:
+        div.unwrap()
+
+
+def restructure_condition_pass(details):
     sb = None
     rest = []
     for obj in details:
@@ -62,9 +66,9 @@ def restructure_trait_pass(details):
             sb = obj
         else:
             rest.append(obj)
-    top = {'name': sb['name'], 'type': 'trait', 'sections': [sb]}
+    top = {'name': sb['name'], 'type': 'condition', 'sections': [sb]}
     sb['type'] = 'stat_block_section'
-    sb['subtype'] = 'trait'
+    sb['subtype'] = 'condition'
     top['sections'].extend(rest)
     if len(sb['sections']) > 0:
         top['sections'].extend(sb['sections'])
@@ -72,56 +76,13 @@ def restructure_trait_pass(details):
     return top
 
 
-def trait_parse(span):
-    def _check_type_trait(trait_class, name):
-        types = [
-            "Aberration", "Animal", "Astral", "Beast", "Celestial", "Construct",
-            "Dragon", "Dream", "Elemental", "Ethereal", "Fey", "Fiend",
-            "Fungus", "Giant", "Humanoid", "Monitor", "Ooze", "Petitioner",
-            "Plant", "Undead"
-        ]
-        if name in types:
-            return "creature_type"
-        else:
-            return trait_class
-
-    def _alingment_trait(trait):
-        align = universal_handle_alignment(trait['name'])
-        if align == 'Any Alignment':
-            align = 'Any'
-        trait['name'] = align
-        trait['link']['alt'] = align
-
-    name = ''.join(get_text(span)).replace(" Trait", "")
-    trait_class = ''.join(span['class'])
-    if trait_class != 'trait':
-        trait_class = trait_class.replace('trait', '')
-    if trait_class == 'trait':
-        trait_class = _check_type_trait(trait_class, name)
-    trait = {
-        'name': name,
-        'classes': [trait_class],
-        'type': 'stat_block_section',
-        'subtype': 'trait'}
-    c = list(span.children)
-    if len(c) == 1:
-        if c[0].name == "a":
-            _, link = extract_link(c[0])
-            trait['link'] = link
-    else:
-        raise Exception("You should not be able to get here")
-    if trait_class == "alignment":
-        _alingment_trait(trait)
-    return trait
-
-
-def find_trait(struct):
+def find_condition(struct):
     for section in struct['sections']:
-        if section['subtype'] == 'trait':
+        if section['subtype'] == 'condition':
             return section
 
 
-def trait_struct_pass(struct):
+def condition_struct_pass(struct):
     def _extract_source(section):
         if 'text' in section:
             bs = BeautifulSoup(section['text'], 'html.parser')
@@ -147,110 +108,89 @@ def trait_struct_pass(struct):
         section['sources'] = sources
 
 
-def trait_class_pass(struct, classlist):
-    classlist = list(set(classlist))
-    classlist = [c.lower() for c in classlist]
-    classlist = [c.replace(' ', '_') for c in classlist]
-    trait = struct['trait']
-    if len(classlist):
-        trait['classes'] = classlist
-
-
-def trait_link_pass(struct):
-    def _handle_text_field(field, keep=True):
-        bs = BeautifulSoup(trait[field], "html.parser")
+def condition_link_pass(struct):
+    def _handle_text_field(section, field, keep=True):
+        if field not in section:
+            return
+        bs = BeautifulSoup(section[field], "html.parser")
         links = get_links(bs)
         if len(links) > 0 and keep:
-            linklist = trait.setdefault('links', [])
+            linklist = section.setdefault('links', [])
             linklist.extend(links)
         while bs.a:
             bs.a.unwrap()
-        trait[field] = str(bs)
+        section[field] = str(bs)
 
-    trait = find_trait(struct)
-    _handle_text_field("name", False)
-    _handle_text_field("text")
-
-
-def list_removal_pass(struct, classlist):
     for section in struct['sections']:
+        _handle_text_field(section, "name", False)
+        _handle_text_field(section, "text")
         if 'sections' in section:
-            list_removal_pass(section, classlist)
-        text = "".join(section['text'].split(", "))
-        soup = BeautifulSoup(text, "html.parser")
-        r = True
-        for c in list(soup.children):
-            if c.name != "a":
-                assert False, section['text']
-                r = False
-        if r:
-            section['text'] = ''
-    classlist.extend([s['name']
-                     for s in struct['sections'] if s['text'] == ""])
-    struct['sections'] = [s for s in struct['sections'] if s['text'] != ""]
-    return classlist
+            condition_link_pass(section)
 
 
-def trait_cleanup_pass(struct):
+def condition_cleanup_pass(struct):
     def _clean_text():
-        soup = BeautifulSoup(trait['text'], "html.parser")
+        soup = BeautifulSoup(condition['text'], "html.parser")
         first = list(soup.children)[0]
         if first.name == "i":
             text = get_text(first)
             if text.find("Note from Nethys:") > -1:
                 first.clear()
             first.unwrap()
-        struct['name'] = trait['name']
-        trait['text'] = str(soup).strip()
-        if trait['text'] != "":
+        struct['name'] = condition['name']
+        del condition['name']
+        condition['text'] = str(soup).strip()
+        if condition['text'] != "":
             assert 'text' not in struct, struct
-            struct['text'] = html2markdown.convert(trait['text'])
-        del trait['text']
+            struct['text'] = html2markdown.convert(condition['text'])
+        del condition['text']
 
     def _clean_sections():
-        if len(trait['sections']) == 0:
-            del trait['sections']
-        else:
-            assert False, struct
-        assert 'sections' not in struct, struct
+        def _clean_html(section):
+            if 'html' in section:
+                section['text'] = section['html']
+                del section['html']
+            if 'sections' in section:
+                for s in section['sections']:
+                    _clean_html(s)
 
-    def _clean_classes():
-        if trait.get('classes'):
-            struct['classes'] = trait['classes']
-            struct['classes'].sort()
-            del trait['classes']
+        if len(condition['sections']) != 0:
+            struct['sections'] = condition['sections']
+        del condition['sections']
+        if 'sections' in struct:
+            for section in struct['sections']:
+                _clean_html(section)
 
     def _clean_links():
-        if trait.get('links'):
+        if condition.get('links'):
             assert 'links' not in struct, struct
-            struct['links'] = trait['links']
-            del trait['links']
+            struct['links'] = condition['links']
+            del condition['links']
 
-    def _clean_basics():
-        del trait['name']
-        del trait['type']
-        del trait['subtype']
-        del trait['sources']
+    def _clean_misc():
+        struct['sources'] = condition['sources']
+        del condition['sources']
+        del condition['type']
+        del condition['subtype']
 
-    trait = struct['trait']
+    condition = struct['condition']
     _clean_text()
     _clean_sections()
-    _clean_classes()
     _clean_links()
-    _clean_basics()
-    assert len(trait) == 0, trait
-    del struct['trait']
+    _clean_misc()
+    assert len(condition) == 0, condition
+    del struct['condition']
 
 
-def write_trait(jsondir, struct, source):
+def write_condition(jsondir, struct, source):
     print("%s (%s): %s" % (struct['game-obj'], source, struct['name']))
-    filename = create_trait_filename(jsondir, struct)
+    filename = create_condition_filename(jsondir, struct)
     fp = open(filename, 'w')
     json.dump(struct, fp, indent=4)
     fp.close()
 
 
-def create_trait_filename(jsondir, struct):
+def create_condition_filename(jsondir, struct):
     title = jsondir + "/" + char_replace(struct['name']) + ".json"
     return os.path.abspath(title)
 

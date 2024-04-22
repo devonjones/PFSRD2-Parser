@@ -2,11 +2,11 @@
 	"$schema": "http://json-schema.org/draft-07/schema#",
 
 	"definitions": {
-		"action": {
+		"action_type": {
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["action"]},
+				"subtype": {"enum": ["action_type"]},
 				"name": {"enum": [
 					"Reaction", "Free Action", "One Action",
 					"Two Actions", "Three Actions", "One to Three Actions",
@@ -129,7 +129,7 @@
 		"trait_template": {
 			"type": "object",
 			"properties": {
-				"name": {"type": "string"},
+				"name": {"enum": ["magical tradition"]},
 				"type": {"enum": ["trait_template"]},
 				"text": {"type": "string"}
 			},
@@ -146,7 +146,7 @@
 		"game-obj": {"enum": ["MonsterAbilities"]},
 		"aonid": {"type": "integer"},
 		"value": {"type": "string"},
-		"action": {"$ref": "#/definitions/action"},
+		"action_type": {"$ref": "#/definitions/action_type"},
 		"text": {"type": "string"},
 		"effect": {"type": "string"},
 		"requirement": {"type": "string"},
@@ -162,7 +162,7 @@
 			"items": {"$ref": "#/definitions/link"},
 			"additionalItems": false
 		},
-		"schema_version": {"enum": [1.1]},
+		"schema_version": {"enum": [1.2]},
 		"license": {"$ref": "#/definitions/license"}
 	},
 	"required": ["name", "type", "game-id", "game-obj", "sources"],

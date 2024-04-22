@@ -283,10 +283,15 @@ def parse_body(div, book=False, title=False, subtitle_text=False, max_title=5):
     return newlines
 
 
-def parse_universal(filename, title=False, subtitle_text=False, max_title=5, cssclass="ctl00_MainContent_DetailedOutput"):
+def parse_universal(
+        filename, title=False, subtitle_text=False, max_title=5,
+        cssclass="ctl00_MainContent_DetailedOutput", pre_filters=None):
     with open(filename) as fp:
         data = fp.read().replace('\n', '')
         soup = BeautifulSoup(data, "lxml")
+        if pre_filters:
+            for pre_filter in pre_filters:
+                pre_filter(soup)
         href_filter(soup)
         span_formatting_filter(soup)
         content = soup.find(id=cssclass)
@@ -388,6 +393,17 @@ def extract_link(a):
     return name, link
 
 
+def extract_links(text):
+    bs = BeautifulSoup(text.strip(), 'html.parser')
+    all_a = bs.find_all("a")
+    links = []
+    for a in all_a:
+        _, link = extract_link(a)
+        links.append(link)
+        a.unwrap()
+    return str(bs), links
+
+
 def source_pass(struct, find_object_fxn):
     def _extract_source(section):
         if 'text' in section:
@@ -410,6 +426,8 @@ def source_pass(struct, find_object_fxn):
                 return [source]
 
     def propagate_sources(section, sources):
+        if 'sources' in section and not section['sources']:
+            del section['sources']
         retval = _extract_source(section)
         if retval:
             sources = retval

@@ -53,7 +53,7 @@ def parse_monster_ability(filename, options):
     remove_empty_sections_pass(struct)
     basename.split("_")
     if not options.skip_schema:
-        struct['schema_version'] = 1.1
+        struct['schema_version'] = 1.2
         validate_against_schema(struct, "monster_ability.schema.json")
     if not options.dryrun:
         output = options.output
@@ -85,7 +85,7 @@ def section_pass(struct):
         def _handle_action(section, tag):
             action = build_action(tag)
             assert action, tag
-            section['action'] = action
+            section['action_type'] = action
             tag.decompose()
 
         def _tag_is_action(tag):
@@ -194,7 +194,7 @@ def build_action(child, action=None):
     action_name = child['title']
     action = build_object(
         'stat_block_section',
-        'action',
+        'action_type',
         action_name)
     if action_name == 'Single Action':
         action["name"] = "One Action"
@@ -277,73 +277,27 @@ def trait_db_pass(struct):
         db_trait['classes'] = list(trait_classes | db_trait_classes)
 
     def _check_trait(trait, parent):
-        _handle_value(trait)
-        if "alignment" in trait.get('classes', []) and trait['name'] != "No Alignment":
-            _handle_alignment_trait(trait, parent)
-        else:
-            fetch_trait_by_name(curs, trait['name'])
-            data = curs.fetchone()
-            assert data, "%s | %s" % (data, trait)
-            db_trait = json.loads(data['trait'])
-            _merge_classes(trait, db_trait)
-            if "link" in trait and trait['link']['game-obj'] == 'Trait':
-                assert trait['link']['aonid'] == db_trait['aonid'], "%s : %s" % (
-                    trait, db_trait)
-            assert isinstance(parent, list), parent
-            index = parent.index(trait)
-            if 'value' in trait:
-                db_trait['value'] = trait['value']
-            if "aonid" in db_trait:
-                del db_trait["aonid"]
-            _sort_classes(db_trait)
-            parent[index] = db_trait
-
-    def _handle_value(trait):
-        m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait['name'])
-        if trait['name'].startswith("range increment"):
-            value = trait['name'].replace("range ", "")
-            trait['name'] = "range"
-            trait['value'] = value
-        elif m:
-            name, value = m.groups()
-            trait['name'] = name
-            trait['value'] = value
-        elif trait['name'].startswith("versatile "):
-            value = trait['name'].replace("versatile ", "")
-            trait['name'] = "versatile"
-            trait['value'] = value
-        elif trait['name'].startswith("reload"):
-            value = trait['name'].replace("reload ", "")
-            trait['name'] = "reload"
-            trait['value'] = value
-        elif trait['name'].startswith("precious"):
-            value = trait['name'].replace("precious ", "")
-            trait['name'] = "precious"
-            trait['value'] = value
-        elif trait['name'].startswith("attached"):
-            value = trait['name'].replace("attached ", "")
-            trait['name'] = "attached"
-            trait['value'] = value
-
-    def _handle_alignment_trait(trait, parent):
+        fetch_trait_by_name(curs, trait['name'])
+        data = curs.fetchone()
+        assert data, "%s | %s" % (data, trait)
+        db_trait = json.loads(data['trait'])
+        _merge_classes(trait, db_trait)
+        if "link" in trait and trait['link']['game-obj'] == 'Trait':
+            assert trait['link']['aonid'] == db_trait['aonid'], "%s : %s" % (
+                trait, db_trait)
+        assert isinstance(parent, list), parent
         index = parent.index(trait)
-        parent.remove(trait)
-        parts = trait['name'].split(" ")
-        for part in parts:
-            fetch_trait_by_name(curs, part)
-            data = curs.fetchone()
-            db_trait = json.loads(data['trait'])
-            _merge_classes(trait, db_trait)
-            if "aonid" in db_trait:
-                del db_trait["aonid"]
-            _sort_classes(db_trait)
-            parent.insert(index, db_trait)
-            index += 1
+        if 'value' in trait:
+            db_trait['value'] = trait['value']
+        if "aonid" in db_trait:
+            del db_trait["aonid"]
+        _sort_classes(db_trait)
+        parent[index] = db_trait
 
     def _sort_classes(trait):
         trait['classes'].sort()
 
-    db_path = get_db_path("traits.db")
+    db_path = get_db_path("pfsrd2.db")
     conn = get_db_connection(db_path)
     curs = conn.cursor()
     walk(struct, test_key_is_value('subtype', 'trait'), _check_trait)

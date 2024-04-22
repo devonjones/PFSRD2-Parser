@@ -1,3 +1,4 @@
+import deepdiff
 import os
 import json
 import sys
@@ -31,8 +32,10 @@ from universal.utils import get_unique_tag_set
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse, extract_starting_traits
 from pfsrd2.license import license_pass, license_consolidation_pass
+from pfsrd2.action import extract_action_type, build_action_type
 from pfsrd2.sql import get_db_path, get_db_connection
 from pfsrd2.sql.traits import fetch_trait_by_name
+from pfsrd2.sql.monster_abilities import fetch_monster_ability_by_name
 import pfsrd2.constants as constants
 
 # TODO: Greater barghest (43), deal with mutations
@@ -80,6 +83,7 @@ def parse_creature(filename, options):
     trait_pass(struct)
     section_pass(struct)
     trait_db_pass(struct)
+    monster_ability_db_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
     markdown_pass(struct, struct["name"], "",
@@ -87,7 +91,7 @@ def parse_creature(filename, options):
     remove_empty_sections_pass(struct)
     basename.split("_")
     if not options.skip_schema:
-        struct["schema_version"] = 1.2
+        struct["schema_version"] = 1.3
         validate_against_schema(struct, "creature.schema.json")
     if not options.dryrun:
         output = options.output
@@ -102,9 +106,9 @@ def parse_creature(filename, options):
 def section_pass(struct):
     def _handle_front_spans(section):
         def _handle_action(section, tag):
-            action = build_action(tag)
+            action = build_action_type(tag)
             assert action, tag
-            section["action"] = action
+            section["action_type"] = action
             tag.decompose()
 
         def _handle_trait(section, tag):
@@ -360,10 +364,50 @@ def trait_db_pass(struct):
     def _sort_classes(trait):
         trait["classes"].sort()
 
-    db_path = get_db_path("traits.db")
+    db_path = get_db_path("pfsrd2.db")
     conn = get_db_connection(db_path)
     curs = conn.cursor()
     walk(struct, test_key_is_value("subtype", "trait"), _check_trait)
+
+
+def monster_ability_db_pass(struct):
+    def _template_get_magical_tradition(ability):
+        for trait in ability["traits"]:
+            if trait["name"] in ["Arcane", "Divine", "Occult", "Primal"]:
+                return trait
+        return None
+
+    def _handle_trait_template(ability, db_ability):
+        if "traits" not in db_ability:
+            return
+
+        deltrait = None
+        for trait in db_ability["traits"]:
+            if trait["type"] == "trait_template":
+                deltrait = trait
+        if not deltrait:
+            return
+
+        db_ability["traits"].remove(deltrait)
+        if deltrait["name"] == "magical tradition":
+            newtrait = _template_get_magical_tradition(ability)
+            if newtrait:
+                db_ability["traits"].append(newtrait)
+                return
+        assert False, "Shouldn't get here"
+
+    def _check_ability(ability, parent):
+        fetch_monster_ability_by_name(curs, ability["name"])
+        data = curs.fetchone()
+        if data:
+            db_ability = json.loads(data["monster_ability"])
+            _handle_trait_template(ability, db_ability)
+            ability["universal_monster_ability"] = db_ability
+
+    db_path = get_db_path("pfsrd2.db")
+    conn = get_db_connection(db_path)
+    curs = conn.cursor()
+    walk(struct, test_key_is_value("subtype", "ability"), _check_ability)
 
 
 def restructure_creature_pass(details, subtype):
@@ -562,7 +606,7 @@ def creature_stat_block_pass(struct):
             if obj.a:
                 _, link = extract_link(obj.a)
             if obj.span:
-                _, action = extract_action(str(obj.span))
+                _, action = extract_action_type(str(obj.span))
         else:
             value.append(obj)
     if key:
@@ -1143,13 +1187,13 @@ def process_interaction_ability(sb, section):
         "subtype": "ability",
         "ability_type": "interaction",
     }
-    description, action = extract_action(description.strip())
+    description, action = extract_action_type(description.strip())
     description, traits = extract_starting_traits(description.strip())
 
     if action:
-        ability["action"] = action
+        ability["action_type"] = action
     elif title_action:
-        ability["action"] = title_action
+        ability["action_type"] = title_action
     elif action and title_action:
         assert False, section
 
@@ -1299,7 +1343,7 @@ def process_hp(section, subtype):
         specials.extend([t.strip() for t in text[1:-1].split(",")])
     elif len(text.strip()) > 0:
         specials.extend([t.strip() for t in text.split(",")])
-    hp = {"type": "stat_block_section", "subtype": subtype, name.lower(): value}
+    hp = {"type": "stat_block_section", "subtype": subtype, name.lower()          : value}
     _handle_squares()
     _handle_component()
     if len(specials) > 0:
@@ -1453,7 +1497,7 @@ def process_defensive_ability(section, sections, sb):
         "name": section[0],
     }
     if action:
-        ability["action"] = action
+        ability["action_type"] = action
     addons = [
         "Frequency",
         "Trigger",
@@ -1478,9 +1522,9 @@ def process_defensive_ability(section, sections, sb):
             ability.setdefault("links", []).extend(links)
         ability[addon_name] = str(bs)
 
-    description, action = extract_action(description.strip())
+    description, action = extract_action_type(description.strip())
     if action:
-        ability["action"] = action
+        ability["action_type"] = action
         ability["subtype"] = "ability"
         ability["ability_type"] = "reactive"
         sb_key = "reactive_abilities"
@@ -1689,7 +1733,6 @@ def process_offensive_action(section):
                 if requirements.endswith(";"):
                     requirements = requirements[:-1]
                 section['requirement'] = requirements
-                pprint(text)
             return text
         # tentacle +16 [<a aonid="322" game-obj="Rules"><u>+12/+8</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>, <a aonid="192" game-obj="Traits"><u>reach 15 feet</u></a>), <b>Damage</b> 2d8+10 bludgeoning plus slime
         # trident +10 [<a aonid="322" game-obj="Rules"><u>+5/+0</u></a>], <b>Damage</b> 1d8+4 piercing
@@ -1705,9 +1748,9 @@ def process_offensive_action(section):
             "attack_type": attack_type,
             "name": parent_section["name"],
         }
-        if "action" in parent_section:
-            section["action"] = parent_section["action"]
-            del parent_section["action"]
+        if "action_type" in parent_section:
+            section["action_type"] = parent_section["action_type"]
+            del parent_section["action_type"]
         if "traits" in parent_section:
             section["traits"] = parent_section["traits"]
             del parent_section["traits"]
@@ -1777,9 +1820,9 @@ def process_offensive_action(section):
             "subtype": "spells",
             "name": parent_section["name"],
         }
-        if "action" in parent_section:
-            section["action"] = parent_section["action"]
-            del parent_section["action"]
+        if "action_type" in parent_section:
+            section["action_type"] = parent_section["action_type"]
+            del parent_section["action_type"]
         if "traits" in parent_section:
             section["traits"] = parent_section["traits"]
             del parent_section["traits"]
@@ -1919,9 +1962,9 @@ def process_offensive_action(section):
             "subtype": "affliction",
             "name": parent_section["name"],
         }
-        if "action" in parent_section:
-            section["action"] = parent_section["action"]
-            del parent_section["action"]
+        if "action_type" in parent_section:
+            section["action_type"] = parent_section["action_type"]
+            del parent_section["action_type"]
         if "traits" in parent_section:
             section["traits"] = parent_section["traits"]
             del parent_section["traits"]
@@ -2016,9 +2059,9 @@ def process_offensive_action(section):
             "ability_type": "offensive",
         }
         _handle_name(parent_section, section)
-        if "action" in parent_section:
-            section["action"] = parent_section["action"]
-            del parent_section["action"]
+        if "action_type" in parent_section:
+            section["action_type"] = parent_section["action_type"]
+            del parent_section["action_type"]
         if "traits" in parent_section:
             section["traits"] = parent_section["traits"]
             del parent_section["traits"]
@@ -2101,9 +2144,9 @@ def process_offensive_action(section):
     section["type"] = "stat_block_section"
     section["subtype"] = "offensive_action"
     text = section["text"].strip()
-    text, action = extract_action(text)
+    text, action = extract_action_type(text)
     if action:
-        section["action"] = action
+        section["action_type"] = action
     text, traits = extract_starting_traits(text)
     if len(traits) > 0:
         section["traits"] = traits
@@ -2228,82 +2271,6 @@ def extract_modifier(text):
         return " ".join([b.strip() for b in base]).strip(), modifier
     else:
         return text, None
-
-
-def build_action(child, action=None):
-    action_name = child["title"]
-    if not action:
-        action = build_object("stat_block_section", "action", action_name)
-        if action_name == "Single Action":
-            action["name"] = "One Action"
-    return action
-
-
-def extract_action(text):
-    def _handle_to_actions(action, newchildren):
-        if len(newchildren) == 0:
-            return
-        child = newchildren[0]
-        if not type(child) == NavigableString:
-            return
-        if child.strip() == "to":
-            newchildren.pop(0)
-            assert newchildren[0].name == "span"
-            if action["name"] == "One Action":
-                if newchildren[0]["title"] == "Three Actions":
-                    action["name"] = "One to Three Actions"
-                elif newchildren[0]["title"] == "Two Actions":
-                    action["name"] = "One or Two Actions"
-                else:
-                    assert False
-            elif action["name"] == "Tro Actions":
-                if newchildren[0]["title"] == "Three Actions":
-                    action["name"] = "Two to Three Actions"
-                else:
-                    assert False
-            newchildren.pop(0)
-        elif child.strip() == "or":
-            newchildren.pop(0)
-            assert newchildren[0].name == "span"
-            if action["name"] in ["One Action", "Single Action"]:
-                if newchildren[0]["title"] == "Two Actions":
-                    action["name"] = "One or Two Actions"
-                elif newchildren[0]["title"] == "Three Actions":
-                    action["name"] = "One or Three Actions"
-                else:
-                    assert False
-            elif action["name"] == "Two Actions":
-                assert newchildren[0]["title"] == "Three Actions"
-                action["name"] = "Two or Three Actions"
-            elif action["name"] == "Free Action":
-                assert newchildren[0]["title"] == "Single Action"
-                action["name"] = "Free Action or Single Action"
-            else:
-                assert False
-            newchildren.pop(0)
-
-    children = list(BeautifulSoup(text.strip(), "html.parser").children)
-    action = None
-    newchildren = []
-    action_names = [
-        "Reaction",
-        "Free Action",
-        "Single Action",
-        "Two Actions",
-        "Three Actions",
-    ]
-    while len(children) > 0:
-        child = children.pop(0)
-        if child.name == "span" and child["title"] in action_names:
-            action = build_action(child, action)
-        else:
-            newchildren.append(child)
-            newchildren.extend(children)
-            break
-    _handle_to_actions(action, newchildren)
-
-    text = "".join([str(c) for c in newchildren]).strip()
-    return text, action
 
 
 def rebuilt_split_modifiers(parts):
