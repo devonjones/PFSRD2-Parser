@@ -17,6 +17,7 @@ from universal.utils import get_text
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.data import get_data
 from pfsrd2.sql import get_db_path
+from pfsrd2.constants import ORC_LICENSE
 
 # TODO markdown the licenses
 
@@ -83,12 +84,7 @@ def create_license_filename(jsondir, struct):
     return os.path.abspath(title)
 
 
-def get_license(sources):
-    path = get_db_path("open_game_license_version_10a.json")
-    with open(path) as f:
-        license_data = json.load(f)
-    license = license_data
-    sec_8 = license_data["sections"]
+def get_license(license, sec_8, sources):
     new_sec_8 = []
     for source in sources:
         found = False
@@ -99,14 +95,35 @@ def get_license(sources):
                 break
         assert found, "Source not found in license: %s" % (source['name'])
     license["sections"] = new_sec_8
-    license["subtype"] = "license"
-    license["license"] = license["name"]
-
     return license
 
 
+def get_orc_license(sources):
+    def _get_sec_8():
+        path = get_db_path("open_game_license_version_10a.json")
+        with open(path) as f:
+            license_data = json.load(f)
+        return license_data["sections"]
+    license = ORC_LICENSE
+    return get_license(license, _get_sec_8(), sources)
+
+
+def get_ogl_license(sources):
+    path = get_db_path("open_game_license_version_10a.json")
+    with open(path) as f:
+        license_data = json.load(f)
+    license = license_data
+    license["subtype"] = "license"
+    license["license"] = license["name"]
+    sec_8 = license_data["sections"]
+    return get_license(license, sec_8, sources)
+
+
 def license_pass(struct):
-    license = get_license(struct['sources'])
+    if "edition" in struct and struct["edition"] == "remastered":
+        license = get_orc_license(struct['sources'])
+    else:
+        license = get_ogl_license(struct['sources'])
     struct["license"] = license
 
 

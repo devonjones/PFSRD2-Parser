@@ -115,6 +115,25 @@
 			"required": ["name", "type", "subtype", "text"],
 			"additionalProperties": false
 		},
+		"alternate_link": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["alternate_link"]},
+				"game-obj": {"enum": [
+					"Spells", "Sources", "Skills", "Traits", "MonsterAbilities",
+					"Conditions", "Languages", "Weapons", "Armor", "Shields",
+					"Equipment", "Deities", "Feats", "Actions", "Monsters",
+					"Heritages", "Rules", "Diseases", "Rituals", "Planes",
+					"MonsterFamilies", "Domains", "Classes", "Ancestries",
+					"Archetypes", "SiegeWeapons", "WeaponGroups"
+				]},
+				"game-id": {"type": "string"},
+				"alternate_type": {"enum": ["legacy", "remastered"]},
+				"aonid": {"type": "integer"}
+			},
+			"required": ["game-obj", "aonid"],
+			"additionalProperties": false
+		},
 		"attack": {
 			"type": "object",
 			"properties": {
@@ -208,31 +227,31 @@
 						"Duskwalker", "Dwarf", "Earth", "Eidolon",
 						"Electricity", "Elemental", "Elf", "Ethereal", "Evil",
 						"Evocation", "Fetchling", "Fey", "Fiend", "Fire",
-						"Formian", "Fungus", "Ganzi", "Genie", "Ghoran",
-						"Ghost", "Ghoul", "Ghul", "Giant", "Gnoll", "Gnome",
-						"Goblin", "Golem", "Gremlin", "Grioth", "Grippli",
-						"Hag", "Half-Elf", "Half-Orc", "Halfling", "Hantu",
-						"Herald", "Hobgoblin", "Human", "Humanoid", "Ifrit",
-						"Illusion", "Ikeshti", "Incorporeal", "Inevitable",
-						"Kami", "Kashrishi", "Kitsune", "Kobold", "Kovintus",
-						"Leshy", "Light", "Lilu", "Lizardfolk", "Locathah",
-						"Mental", "Merfolk", "Metal", "Mindless", "Minion",
-						"Monitor", "Morlock", "Mortic", "Mummy", "Munavri",
-						"Mutant", "Nagaji", "Necromancy", "Negative", "Nymph",
-						"Oni", "Ooze", "Orc", "Oread", "Paaridar", "Petitioner",
-						"Phantom", "Plant", "Poison", "Positive", "Primal",
-						"Protean", "Psychopomp", "Qlippoth", "Rakshasa",
-						"Ratajin", "Ratfolk", "Sahkil", "Samsaran", "Sea Devil",
-						"Seugathi", "Serpentfolk", "Shabti", "Shadow",
-						"Shapechanger", "Shoony", "Siktempora", "Skeleton",
-						"Skelm", "Skulk", "Soulbound", "Spirit", "Sporeborn",
-						"Spriggan", "Sprite", "Stheno", "Strix", "Suli",
-						"Swarm", "Sylph", "Talos", "Tane", "Tanggal", "Tengu",
-						"Tiefling", "Time", "Titan", "Troll", "Troop", "Undead",
-						"Undine", "Urdefhan", "Vampire", "Vanara", "Velstrac",
-						"Vishkanya", "Water", "Wayang", "Werecreature", "Wight",
-						"Wild Hunt", "Wood", "Wraith", "Wyrwood", "Xulgath",
-						"Zombie"
+						"Force", "Formian", "Fungus", "Ganzi", "Genie",
+						"Ghoran", "Ghost", "Ghoul", "Ghul", "Giant", "Gnoll",
+						"Gnome", "Goblin", "Golem", "Gremlin", "Grioth",
+						"Grippli", "Hag", "Half-Elf", "Half-Orc", "Halfling",
+						"Hantu", "Herald", "Hobgoblin", "Human", "Humanoid",
+						"Ifrit", "Illusion", "Ikeshti", "Incorporeal",
+						"Inevitable", "Kami", "Kashrishi", "Kitsune", "Kobold",
+						"Kovintus", "Leshy", "Light", "Lilu", "Lizardfolk",
+						"Locathah", "Mental", "Merfolk", "Metal", "Mindless",
+						"Minion", "Monitor", "Morlock", "Mortic", "Mummy",
+						"Munavri", "Mutant", "Nagaji", "Necromancy", "Negative",
+						"Nymph", "Oni", "Ooze", "Orc", "Oread", "Paaridar",
+						"Petitioner", "Phantom", "Plant", "Poison", "Positive",
+						"Primal", "Protean", "Psychopomp", "Qlippoth",
+						"Rakshasa", "Ratajin", "Ratfolk", "Sahkil", "Samsaran",
+						"Sea Devil", "Seugathi", "Serpentfolk", "Shabti",
+						"Shadow", "Shapechanger", "Shoony", "Siktempora",
+						"Skeleton", "Skelm", "Skulk", "Soulbound", "Spirit",
+						"Sporeborn", "Spriggan", "Sprite", "Stheno", "Strix",
+						"Suli", "Swarm", "Sylph", "Talos", "Tane", "Tanggal",
+						"Tengu", "Tiefling", "Time", "Titan", "Troll", "Troop",
+						"Undead", "Undine", "Urdefhan", "Vampire", "Vanara",
+						"Velstrac", "Vishkanya", "Water", "Wayang",
+						"Werecreature", "Wight", "Wild Hunt", "Wood", "Wraith",
+						"Wyrwood", "Xulgath", "Zombie"
 					]},
 					"additionalItems": false
 				},
@@ -426,7 +445,9 @@
 				"name": {"type": "string"},
 				"type": {"enum": ["section"]},
 				"subtype": {"enum": ["license"]},
-				"license": {"enum": ["OPEN GAME LICENSE Version 1.0a"]},
+				"license": {"enum": [
+					"OPEN GAME LICENSE Version 1.0a",
+					"Open RPG Creative license"]},
 				"text": {"type": "string"},
 				"sections": {"$ref": "#/definitions/sections"}
 			},
@@ -533,7 +554,7 @@
 				"speed": {"$ref": "#/definitions/speeds"},
 				"offensive_actions": {"$ref": "#/definitions/offensive_actions"}
 			},
-			"required": ["type", "subtype", "speed", "offensive_actions"],
+			"required": ["type", "subtype", "speed"],
 			"additionalProperties": false
 		},
 		"offensive_action": {
@@ -946,10 +967,12 @@
 					"items": {"$ref": "#/definitions/link"},
 					"additionalItems": false
 				},
-				"schema_version": {"enum": [1.1]},
+				"alternate_link": {"$ref": "#/definitions/alternate_link"},
+				"schema_version": {"enum": [1.3]},
+				"edition": {"enum": ["legacy", "remastered"]},
 				"license": {"$ref": "#/definitions/license"}
 			},
-			"required": ["name", "type", "game-id", "game-obj", "sources"],
+			"required": ["name", "type", "game-id", "game-obj", "sources", "schema_version", "edition"],
 			"additionalProperties": false	
 		}
 	},
@@ -963,8 +986,9 @@
 		"sources": {"$ref": "#/definitions/sources"},
 		"sections": {"$ref": "#/definitions/sections"},
 		"schema_version": {"enum": [1.3]},
+		"edition": {"enum": ["legacy", "remastered"]},
 		"license": {"$ref": "#/definitions/license"}
 	},
-	"required": ["name", "type", "aonid", "game-obj", "sources", "sections", "license"],
+	"required": ["name", "type", "aonid", "game-obj", "sources", "sections", "license", "schema_version"],
 	"additionalProperties": false
 }

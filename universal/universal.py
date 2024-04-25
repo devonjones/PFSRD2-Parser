@@ -1,6 +1,7 @@
 import sys
 from universal.utils import split_maintain_parens, clear_tags, filter_entities
 from universal.utils import split_comma_and_semicolon, get_text, has_name
+from universal.utils import clear_end_whitespace
 from hashlib import md5
 from pprint import pprint
 from urllib.parse import urlparse, parse_qs
@@ -102,6 +103,16 @@ def entity_pass(details):
             detail['text'] = _replace_entities(detail['text'])
         if "name" in detail:
             detail['name'] = _replace_entities(detail['name'])
+    return details
+
+
+def nethys_search_pass(details):
+    for detail in details:
+        if 'text' in detail:
+            detail['text'] = clear_end_whitespace(
+                clear_tags(detail['text'], ["nethys-search"]))
+        if 'sections' in detail:
+            nethys_search_pass(detail['sections'])
     return details
 
 

@@ -31,6 +31,7 @@ def parse_condition(filename, options):
     struct = restructure_condition_pass(details)
     condition_struct_pass(struct)
     source_pass(struct, find_condition)
+    subtype_pass(struct)
     condition_link_pass(struct)
     aon_pass(struct, basename)
     restructure_pass(struct, 'condition', find_condition)
@@ -106,6 +107,14 @@ def condition_struct_pass(struct):
     for section in struct['sections']:
         sources = _extract_source(section)
         section['sources'] = sources
+
+
+def subtype_pass(struct):
+    struct['subtype'] = 'standard'
+    for source in struct['sources']:
+        if source['name'] == "Kingmaker Adventure Path":
+            struct['subtype'] = 'kingdom'
+            return
 
 
 def condition_link_pass(struct):

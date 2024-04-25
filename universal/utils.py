@@ -76,6 +76,15 @@ def clear_tags(text, taglist):
     return filter_entities(str(bs))
 
 
+def clear_end_whitespace(text):
+    bs = BeautifulSoup(text, "html.parser")
+    children = list(bs.children)
+    while len(children) > 0 and children[-1].name == "br":
+        children.pop()
+    text = "".join([str(c) for c in children]).strip()
+    return text
+
+
 def find_list(text, elements):
     for element in elements:
         if text.find(element) > -1:

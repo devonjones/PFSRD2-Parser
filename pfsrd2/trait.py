@@ -6,11 +6,11 @@ import html2markdown
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString
 from universal.universal import parse_universal, print_struct, entity_pass
-from universal.universal import extract_link
+from universal.universal import extract_link, nethys_search_pass
 from universal.universal import source_pass, extract_source, get_links
 from universal.universal import aon_pass, restructure_pass, html_pass
 from universal.universal import remove_empty_sections_pass, game_id_pass
-from universal.universal import build_object
+from universal.universal import build_object, extract_links
 from universal.creatures import universal_handle_alignment
 from universal.markdown import md
 from universal.files import makedirs, char_replace
@@ -27,7 +27,11 @@ def parse_trait(filename, options):
     details = parse_universal(filename, max_title=4,
                               cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
     details = entity_pass(details)
+    alternate_link = handle_alternate_link(details)
+    details = nethys_search_pass(details)
     struct = restructure_trait_pass(details)
+    if alternate_link:
+        struct["alternate_link"] = alternate_link
     trait_struct_pass(struct)
     source_pass(struct, find_trait)
     trait_link_pass(struct)
@@ -43,6 +47,7 @@ def parse_trait(filename, options):
     markdown_pass(struct, struct["name"], '')
     basename.split("_")
     if not options.skip_schema:
+        struct["schema_version"] = 1.1
         validate_against_schema(struct, "trait.schema.json")
     if not options.dryrun:
         output = options.output
@@ -52,6 +57,29 @@ def parse_trait(filename, options):
             write_trait(jsondir, struct, name)
     elif options.stdout:
         print(json.dumps(struct, indent=2))
+
+
+def handle_alternate_link(details):
+    d = details[0]
+    if "Legacy version" in d or "Remastered version" in d:
+        details.pop(0)
+        text, links = extract_links(d)
+        bs = BeautifulSoup(text.strip(), 'html.parser')
+        assert len(list(bs.children)) == 1, bs
+        div = list(bs.children)[0]
+        assert div.name == "div", div
+        assert list(div.children)[0].__class__ == NavigableString, bs
+        text = get_text(div)
+        assert len(links) == 1, links
+        link = links[0]
+        del link['alt']
+        del link['name']
+        link['type'] = 'alternate_link'
+        if "Legacy version" in d:
+            link['alternate_type'] = 'legacy'
+        else:
+            link['alternate_type'] = 'remastered'
+        return link
 
 
 def restructure_trait_pass(details):
@@ -142,9 +170,29 @@ def trait_struct_pass(struct):
                 section['text'] = ''.join([str(c) for c in children])
                 return [source]
 
+    def _handle_legacy(struct):
+        if len(struct['sections']) == 1:
+            struct['edition'] = 'remastered'
+            return
+        if struct['sections'][1]['name'] == 'Legacy Content':
+            lc = struct['sections'].pop(1)
+            struct['edition'] = 'legacy'
+            del lc['name']
+            del lc['type']
+            sec = struct['sections'][0]
+            sec['text'] = lc['text']
+            del lc['text']
+            sec['sources'] = lc['sources']
+            del lc['sources']
+            sec['sections'].extend(lc['sections'])
+            del lc['sections']
+            assert len(lc) == 0, lc
+
     for section in struct['sections']:
         sources = _extract_source(section)
         section['sources'] = sources
+
+    _handle_legacy(struct)
 
 
 def trait_class_pass(struct, classlist):

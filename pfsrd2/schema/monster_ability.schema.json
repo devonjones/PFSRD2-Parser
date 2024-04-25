@@ -16,13 +16,34 @@
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
 		},
+		"alternate_link": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["alternate_link"]},
+				"game-obj": {"enum": [
+					"Spells", "Sources", "Skills", "Traits", "MonsterAbilities",
+					"Conditions", "Languages", "Weapons", "Armor", "Shields",
+					"Equipment", "Deities", "Feats", "Actions", "Monsters",
+					"Heritages", "Rules", "Diseases", "Rituals", "Planes",
+					"MonsterFamilies", "Domains", "Classes", "Ancestries",
+					"Archetypes", "SiegeWeapons", "WeaponGroups"
+				]},
+				"game-id": {"type": "string"},
+				"alternate_type": {"enum": ["legacy", "remastered"]},
+				"aonid": {"type": "integer"}
+			},
+			"required": ["game-obj", "aonid"],
+			"additionalProperties": false
+		},
 		"license": {
 			"type": "object",
 			"properties": {
 				"name": {"type": "string"},
 				"type": {"enum": ["section"]},
 				"subtype": {"enum": ["license"]},
-				"license": {"enum": ["OPEN GAME LICENSE Version 1.0a"]},
+				"license": {"enum": [
+					"OPEN GAME LICENSE Version 1.0a",
+					"Open RPG Creative license"]},
 				"text": {"type": "string"},
 				"sections": {"$ref": "#/definitions/sections"}
 			},
@@ -162,9 +183,11 @@
 			"items": {"$ref": "#/definitions/link"},
 			"additionalItems": false
 		},
+		"alternate_link": {"$ref": "#/definitions/alternate_link"},
 		"schema_version": {"enum": [1.2]},
+		"edition": {"enum": ["legacy", "remastered"]},
 		"license": {"$ref": "#/definitions/license"}
 	},
-	"required": ["name", "type", "game-id", "game-obj", "sources"],
+	"required": ["name", "type", "game-id", "game-obj", "sources", "schema_version", "edition"],
 	"additionalProperties": false
 }

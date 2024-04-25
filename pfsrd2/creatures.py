@@ -186,7 +186,8 @@ def section_pass(struct):
                     if current == "Requirements":
                         current = "Requirement"
                 elif current:
-                    assert current in addon_names, "%s, %s" % (current, text)
+                    assert current in addon_names, "%s, %s" % (
+                        current, addon_names)
                     addon_text = str(child)
                     if addon_text.strip().endswith(";"):
                         addon_text = addon_text.rstrip()[:-1]
@@ -371,16 +372,18 @@ def trait_db_pass(struct):
 
 
 def monster_ability_db_pass(struct):
-    def _template_get_magical_tradition(ability):
-        for trait in ability["traits"]:
-            if trait["name"] in ["Arcane", "Divine", "Occult", "Primal"]:
-                return trait
-        return None
+    def _template_get_magical_tradition(curs, ability):
+        if 'traits' in ability:
+            for trait in ability["traits"]:
+                if trait["name"] in ["Arcane", "Divine", "Occult", "Primal"]:
+                    return trait
+        fetch_trait_by_name(curs, "[Magical Tradition]")
+        data = curs.fetchone()
+        return json.loads(data["trait"])
 
-    def _handle_trait_template(ability, db_ability):
+    def _handle_trait_template(curs, ability, db_ability):
         if "traits" not in db_ability:
             return
-
         deltrait = None
         for trait in db_ability["traits"]:
             if trait["type"] == "trait_template":
@@ -390,7 +393,7 @@ def monster_ability_db_pass(struct):
 
         db_ability["traits"].remove(deltrait)
         if deltrait["name"] == "magical tradition":
-            newtrait = _template_get_magical_tradition(ability)
+            newtrait = _template_get_magical_tradition(curs, ability)
             if newtrait:
                 db_ability["traits"].append(newtrait)
                 return
@@ -401,7 +404,7 @@ def monster_ability_db_pass(struct):
         data = curs.fetchone()
         if data:
             db_ability = json.loads(data["monster_ability"])
-            _handle_trait_template(ability, db_ability)
+            _handle_trait_template(curs, ability, db_ability)
             ability["universal_monster_ability"] = db_ability
 
     db_path = get_db_path("pfsrd2.db")
@@ -535,6 +538,11 @@ def creature_stat_block_pass(struct):
                 paste_sections.append(section)
 
     def _handle_title_before_speed(sb):
+        if not "text" in sb:
+            # TODO add this to the creature
+            assert sb['sections'][0]['name'] == "Legacy Content", sb
+            section = sb['sections'].pop(0)
+            sb['text'] = section['text']
         text = sb["text"]
         if not "<b>Speed</b>" in text:
             sections = []
@@ -822,7 +830,7 @@ def process_stat_block(sb, sections):
 
     # Stats
     stats = sections.pop(0)
-    process_source(sb, stats.pop(0))
+    process_source(sb, stats)
     process_grafts(sb, stats)
     _process_background(sb, stats)
     sb["senses"] = process_senses(stats.pop(0))
@@ -880,7 +888,7 @@ def process_stat_block(sb, sections):
         sb["offense"]["offensive_actions"] = attacks
 
 
-def process_source(sb, section):
+def process_source(sb, sections):
     # 5
     # <a target="_blank" href="Images\Monsters\Alghollthu_VeiledMaster.png"><img class="thumbnail" src="Images\Monsters\Alghollthu_VeiledMaster.png"></a>
     # <b>Source</b> <a href="https://paizo.com/products/btq01y0m?Pathfinder-Bestiary" target="_blank" class="external-link"><i>Bestiary pg. 14</i></a>
@@ -890,6 +898,14 @@ def process_source(sb, section):
     # 861
     # <a target="_blank" href="Images\Monsters\Witchwyrd.png"><img class="thumbnail" src="Images\Monsters\Witchwyrd.png"></a>
     # <b>Source</b> <a href="https://paizo.com/products/btq022yq" target="_blank" class="external-link"><i>Bestiary 2 pg. 294</i></a>, <a href="https://paizo.com/products/btq02065" target="_blank"><i>Pathfinder #149: Against the Scarlet Triad pg. 90</i></a>
+
+    def handle_image(section):
+        bs = BeautifulSoup(section[1], "html.parser")
+        c = [c for c in list(bs.children)]  # if c.name != "sup"]
+        if c[0].find("img"):
+            set_image(c.pop(0), sb["name"])
+        return c
+
     def set_image(obj, name):
         link = obj["href"]
         image = link.split("\\").pop().split("%5C").pop()
@@ -900,14 +916,18 @@ def process_source(sb, section):
             "image": image,
         }
 
+    section = sections.pop(0)
+    if section[0] == 'Legacy Content':
+        # TODO add this to the creature
+        c = handle_image(section)
+        assert len(c) == 0, c
+        section = sections.pop(0)
+
     assert section[0] == "Source"
-    bs = BeautifulSoup(section[1], "html.parser")
     assert not section[2], section
     assert not section[3], section
-    c = [c for c in list(bs.children)]  # if c.name != "sup"]
+    c = handle_image(section)
     sources = []
-    if c[0].find("img"):
-        set_image(c.pop(0), sb["name"])
     note = None
     errata = None
     c = [child for child in c if str(child).strip() != ""]
@@ -1343,7 +1363,7 @@ def process_hp(section, subtype):
         specials.extend([t.strip() for t in text[1:-1].split(",")])
     elif len(text.strip()) > 0:
         specials.extend([t.strip() for t in text.split(",")])
-    hp = {"type": "stat_block_section", "subtype": subtype, name.lower()          : value}
+    hp = {"type": "stat_block_section", "subtype": subtype, name.lower(): value}
     _handle_squares()
     _handle_component()
     if len(specials) > 0:
@@ -1484,8 +1504,8 @@ def handle_aura(sb, ability):
 
 
 def process_defensive_ability(section, sections, sb):
-    assert section[0] not in ["Immunities",
-                              "Resistances", "Weaknesses"], section[0]
+    assert section[0].strip() not in [
+        "Immunities", "Resistances", "Weaknesses"], section[0]
     description = section[1]
     link = section[2]
     action = section[3]

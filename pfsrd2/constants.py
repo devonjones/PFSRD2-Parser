@@ -274,3 +274,12 @@ KINGDOM_ATTRIBUTES = [
     "loyalty",
     "stability",
 ]
+
+ORC_LICENSE = {
+    "name": "ORC Notice",
+    "type": "section",
+    "sections": [],
+    "subtype": "license",
+    "license": "Open RPG Creative license",
+    "text": "This product is licensed under the ORC License to be held in the Library of Congress and available online at various locations including paizo.com/orclicense, azoralaw.com/orclicense, and others. All warranties are disclaimed as set forth therein."
+}
