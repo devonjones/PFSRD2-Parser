@@ -37,10 +37,9 @@ def parse_trait(filename, options):
     trait_link_pass(struct)
     aon_pass(struct, basename)
     restructure_pass(struct, 'trait', find_trait)
-    classlist = list_removal_pass(struct, [])
-    trait_class_pass(struct, classlist)
+    # classlist = list_removal_pass(struct, [])
+    # trait_class_pass(struct, classlist)
     remove_empty_sections_pass(struct)
-    html_pass(struct)
     game_id_pass(struct)
     trait_cleanup_pass(struct)
     license_pass(struct)
@@ -171,8 +170,8 @@ def trait_struct_pass(struct):
                 return [source]
 
     def _handle_legacy(struct):
+        struct['edition'] = 'remastered'
         if len(struct['sections']) == 1:
-            struct['edition'] = 'remastered'
             return
         if struct['sections'][1]['name'] == 'Legacy Content':
             lc = struct['sections'].pop(1)
@@ -229,7 +228,6 @@ def list_removal_pass(struct, classlist):
         r = True
         for c in list(soup.children):
             if c.name != "a":
-                assert False, section['text']
                 r = False
         if r:
             section['text'] = ''
@@ -260,7 +258,7 @@ def trait_cleanup_pass(struct):
             del trait['sections']
         else:
             assert False, struct
-        assert 'sections' not in struct, struct
+        # assert 'sections' not in struct, struct
 
     def _clean_classes():
         if trait.get('classes'):

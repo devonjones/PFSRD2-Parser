@@ -107,6 +107,7 @@
 		"value": {"type": "string"},
 		"text": {"type": "string"},
 		"sources": {"$ref": "#/definitions/sources"},
+		"sections": {"$ref": "#/definitions/sections"},
 		"links": {
 			"type": "array",
 			"items": {"$ref": "#/definitions/link"},
