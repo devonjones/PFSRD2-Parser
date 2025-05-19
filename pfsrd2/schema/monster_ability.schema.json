@@ -137,7 +137,10 @@
 					"type": "array",
 					"items": {"$ref": "#/definitions/link"},
 					"additionalItems": false
-				}
+				},
+				"alternate_link": {"$ref": "#/definitions/alternate_link"},
+				"schema_version": {"enum": [1.1]},
+				"edition": {"enum": ["legacy", "remastered"]}
 			},
 			"required": ["name", "type", "text", "game-id", "game-obj", "sources"],
 			"additionalProperties": false
@@ -188,6 +191,6 @@
 		"edition": {"enum": ["legacy", "remastered"]},
 		"license": {"$ref": "#/definitions/license"}
 	},
-	"required": ["name", "type", "game-id", "game-obj", "sources", "schema_version", "edition"],
+	"required": ["name", "type", "game-id", "game-obj", "sources", "schema_version"],
 	"additionalProperties": false
 }

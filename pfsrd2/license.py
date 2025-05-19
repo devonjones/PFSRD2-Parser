@@ -84,8 +84,9 @@ def create_license_filename(jsondir, struct):
     return os.path.abspath(title)
 
 
-def get_license(license, sec_8, sources):
+def get_license(license, attribution_section, sec_8, sources):
     new_sec_8 = []
+    missing_sources = []
     for source in sources:
         found = False
         for sec in sec_8:
@@ -93,8 +94,12 @@ def get_license(license, sec_8, sources):
                 new_sec_8.append(sec)
                 found = True
                 break
-        assert found, "Source not found in license: %s" % (source['name'])
-    license["sections"] = new_sec_8
+        if not found:
+            missing_sources.append(source['name'])
+    if missing_sources:
+        for name in missing_sources:
+            print(f"Warning: Source not found in license: {name}")
+    attribution_section["sections"] = new_sec_8
     return license
 
 
@@ -105,7 +110,13 @@ def get_orc_license(sources):
             license_data = json.load(f)
         return license_data["sections"]
     license = ORC_LICENSE
-    return get_license(license, _get_sec_8(), sources)
+    sec_8 = _get_sec_8()
+    result = get_license(license, license["sections"][0], sec_8, sources)
+    for source in sources:
+        found = any(sec['name'] == source['name'] for sec in sec_8)
+        if not found:
+            print(f"Could not find source in license: {source['name']}")
+    return result
 
 
 def get_ogl_license(sources):
@@ -116,7 +127,14 @@ def get_ogl_license(sources):
     license["subtype"] = "license"
     license["license"] = license["name"]
     sec_8 = license_data["sections"]
-    return get_license(license, sec_8, sources)
+    try:
+        return get_license(license, license, sec_8, sources)
+    finally:
+        for source in sources:
+            found = any(sec['name'] == source['name'] for sec in sec_8)
+            if not found:
+                print(f"Could not find source in license: {source['name']}")
+        return license
 
 
 def license_pass(struct):

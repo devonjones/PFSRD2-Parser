@@ -58,29 +58,6 @@ def parse_trait(filename, options):
         print(json.dumps(struct, indent=2))
 
 
-def handle_alternate_link(details):
-    d = details[0]
-    if "Legacy version" in d or "Remastered version" in d:
-        details.pop(0)
-        text, links = extract_links(d)
-        bs = BeautifulSoup(text.strip(), 'html.parser')
-        assert len(list(bs.children)) == 1, bs
-        div = list(bs.children)[0]
-        assert div.name == "div", div
-        assert list(div.children)[0].__class__ == NavigableString, bs
-        text = get_text(div)
-        assert len(links) == 1, links
-        link = links[0]
-        del link['alt']
-        del link['name']
-        link['type'] = 'alternate_link'
-        if "Legacy version" in d:
-            link['alternate_type'] = 'legacy'
-        else:
-            link['alternate_type'] = 'remastered'
-        return link
-
-
 def restructure_trait_pass(details):
     sb = None
     rest = []
@@ -286,6 +263,29 @@ def trait_cleanup_pass(struct):
     _clean_basics()
     assert len(trait) == 0, trait
     del struct['trait']
+
+
+def handle_alternate_link(details):
+    d = details[0]
+    if "Legacy version" in d or "Remastered version" in d:
+        details.pop(0)
+        text, links = extract_links(d)
+        bs = BeautifulSoup(text.strip(), 'html.parser')
+        assert len(list(bs.children)) == 1, bs
+        div = list(bs.children)[0]
+        assert div.name == "div", div
+        assert list(div.children)[0].__class__ == NavigableString, bs
+        text = get_text(div)
+        assert len(links) == 1, links
+        link = links[0]
+        del link['alt']
+        del link['name']
+        link['type'] = 'alternate_link'
+        if "Legacy version" in d:
+            link['alternate_type'] = 'legacy'
+        else:
+            link['alternate_type'] = 'remastered'
+        return link
 
 
 def write_trait(jsondir, struct, source):

@@ -5,7 +5,8 @@ import json
 from sh import find
 from optparse import OptionParser
 from pfsrd2.sql import get_db_path, create_db
-from pfsrd2.sql.traits import insert_trait, truncate_traits
+from pfsrd2.sql.traits import insert_trait, truncate_traits, insert_trait_link, drop_trait_link_cache, fetch_trait_by_id
+from pfsrd2.sql.utils import create_link_cache_table, insert_link_cache, fetch_all_link_cache, drop_link_cache_table, create_legacy_remastered_relations
 
 
 def load_traits(conn, options):
@@ -15,11 +16,22 @@ def load_traits(conn, options):
     files = [os.path.abspath(f) for f in files]
     curs = conn.cursor()
     truncate_traits(curs)
+    create_link_cache_table(curs)
     for f in files:
         with open(f) as fp:
             data = json.load(fp)
             print(data['name'])
-            insert_trait(curs, data)
+            trait_id = insert_trait(curs, data)
+            # Insert into link_cache if alternate_link exists
+            if data.get('alternate_link'):
+                insert_link_cache(curs, trait_id, data['aonid'], data['alternate_link']['aonid'])
+    link_cache = fetch_all_link_cache(curs)
+    relations = create_legacy_remastered_relations(curs, link_cache, fetch_trait_by_id, item_id_col='trait_id')
+    for legacy_id, remastered_id in relations:
+        print(f"Legacy trait_id: {legacy_id}, Remastered trait_id: {remastered_id}")
+        insert_trait_link(curs, legacy_id, remastered_id)
+    # Drop the link_cache table
+    drop_link_cache_table(curs)
     conn.commit()
 
 

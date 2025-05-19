@@ -36,6 +36,7 @@ def insert_monster_ability(curs, monster_ability):
         " VALUES",
         " (?, ?, ?, ?)"])
     curs.execute(sql, values)
+    return curs.lastrowid
 
 
 def fetch_monster_ability(curs, game_id):

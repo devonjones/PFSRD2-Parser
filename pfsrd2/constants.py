@@ -278,7 +278,36 @@ KINGDOM_ATTRIBUTES = [
 ORC_LICENSE = {
     "name": "ORC Notice",
     "type": "section",
-    "sections": [],
+    "sections": [
+        {
+            "name": "Attribution",
+            "type": "section",
+            "text": "This product is based on the following Licensed Material:",
+            "sections": []
+        },
+        {
+            "name": "Attributing us",
+            "type": "section",
+            "text": "If you use our Licensed Material in your own published works, please credit us as follows:",
+            "sections": [
+                {
+                    "name": "Pathfinder Open Reference",
+                    "type": "section",
+                    "text": "© 2023 Masterwork Tools LLC, Authors: Devon Jones, Monica Jones."
+                }
+            ]
+        },
+        {
+            "name": "Reserved Material",
+            "type": "section",
+            "text": "Reserved Material elements in this product include, but may not be limited to: [none]"
+        },
+        {
+            "name": "Expressly Designated Licensed Material",
+            "type": "section",
+            "text": "The following elements are owned by the Licensor and would otherwise constitute Reserved Material and are hereby designated as Licensed Material: [None]."
+        }
+    ],
     "subtype": "license",
     "license": "Open RPG Creative license",
     "text": "This product is licensed under the ORC License to be held in the Library of Congress and available online at various locations including paizo.com/orclicense, azoralaw.com/orclicense, and others. All warranties are disclaimed as set forth therein."
