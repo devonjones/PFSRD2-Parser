@@ -7,6 +7,9 @@ rm errors.pf2.condition.log
 if test -f "errors.pf2.condition"; then
 	cat errors.pf2.condition | while read i
 	do
+		if [[ "$i" == "done" ]]; then
+			exit
+		fi
 		if ! ./pf2_condition_parse -o $PF2_DATA_DIR $i ; then
 			echo $i >> errors.pf2.condition.log
 		fi

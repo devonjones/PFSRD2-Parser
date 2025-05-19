@@ -17,6 +17,8 @@ from universal.utils import get_text, bs_pop_spaces
 from universal.utils import log_element, get_unique_tag_set
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.license import license_pass
+from pfsrd2.sql import get_db_path, get_db_connection
+from pfsrd2.sql.sources import fetch_source_by_name
 
 
 def parse_condition(filename, options):
@@ -38,10 +40,12 @@ def parse_condition(filename, options):
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
     condition_cleanup_pass(struct)
+    set_edition_from_db_pass(struct)
     license_pass(struct)
     markdown_pass(struct, struct["name"], '')
     basename.split("_")
     if not options.skip_schema:
+        struct['schema_version'] = 1.0
         validate_against_schema(struct, "condition.schema.json")
     if not options.dryrun:
         output = options.output
@@ -88,25 +92,43 @@ def condition_struct_pass(struct):
         if 'text' in section:
             bs = BeautifulSoup(section['text'], 'html.parser')
             children = list(bs.children)
-            if children[0].name == "b" and get_text(children[0]) == "Source":
+            if children and children[0].name == "b" and get_text(children[0]) == "Source":
                 children.pop(0)
                 bs_pop_spaces(children)
                 book = children.pop(0)
                 source = extract_source(book)
                 bs_pop_spaces(children)
-                if children[0].name == "sup":
+                if children and children[0].name == "sup":
                     assert 'errata' not in source, "Should be no more than one errata."
                     _, source['errata'] = extract_link(
                         children.pop(0).find("a"))
-                if children[0].name == "br":
+                if children and children[0].name == "br":
                     children.pop(0)
-                assert children[0].name != "a", section
+                assert not (children and children[0].name == "a"), section
                 section['text'] = ''.join([str(c) for c in children])
                 return [source]
-
+    # Remove debug print
+    sources = []
     for section in struct['sections']:
-        sources = _extract_source(section)
-        section['sources'] = sources
+        sec_sources = _extract_source(section)
+        if sec_sources:
+            section['sources'] = sec_sources
+            sources.extend(sec_sources)
+        else:
+            section['sources'] = []
+    struct['sources'] = sources
+
+    def _handle_legacy_content(struct):
+        sections = struct.get('sections', [])
+        for i, section in enumerate(sections):
+            if section.get('name') == 'Legacy Content' and i > 0:
+                prev_section = sections[i-1]
+                if 'text' not in prev_section and 'text' in section:
+                    prev_section['text'] = section['text']
+                # Remove the Legacy Content section
+                del sections[i]
+                break
+    _handle_legacy_content(struct)
 
 
 def subtype_pass(struct):
@@ -315,3 +337,15 @@ def _extract_trait(description):
         description = back
     newdescription.append(description)
     return ''.join(newdescription).strip(), traits
+
+
+def set_edition_from_db_pass(struct):
+    db_path = get_db_path("pfsrd2.db")
+    conn = get_db_connection(db_path)
+    curs = conn.cursor()
+    for source in struct.get('sources', []):
+        fetch_source_by_name(curs, source['name'])
+        row = curs.fetchone()
+        if row and row.get('edition'):
+            struct['edition'] = row['edition']
+    conn.close()
