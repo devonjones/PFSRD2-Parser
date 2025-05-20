@@ -16,6 +16,7 @@ from universal.utils import clear_garbage
 from universal.universal import source_pass, extract_source
 from universal.universal import aon_pass, restructure_pass
 from universal.universal import remove_empty_sections_pass, get_links
+from universal.universal import handle_alternate_link
 from universal.universal import walk, test_key_is_value
 from universal.universal import link_modifiers
 from universal.universal import link_values, link_value
@@ -69,6 +70,7 @@ def parse_creature(filename, options):
         cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput",
     )
     details = entity_pass(details)
+    alternate_link = handle_alternate_link(details)
     struct = restructure_creature_pass(details, options.subtype)
     # TODO Deal with remaining sections
     # assert len(details) == 0, details
