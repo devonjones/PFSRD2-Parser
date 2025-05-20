@@ -3,31 +3,21 @@ import json
 import sys
 import re
 from pprint import pprint
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Tag
 from universal.markdown import markdown_pass
 from universal.universal import parse_universal, entity_pass
-from universal.universal import is_trait, extract_link
-from universal.universal import string_with_modifiers_from_string_list
-from universal.utils import split_maintain_parens
-from universal.universal import source_pass, extract_source
-from universal.universal import aon_pass, restructure_pass
-from universal.universal import remove_empty_sections_pass, get_links
+from universal.universal import extract_link
+from universal.universal import extract_source
+from universal.universal import aon_pass
+from universal.universal import remove_empty_sections_pass
 from universal.universal import walk, test_key_is_value
 from universal.universal import remove_empty_sections_pass, game_id_pass
-from universal.universal import link_modifiers
-from universal.universal import link_values, link_value
 from universal.files import makedirs, char_replace
 from universal.creatures import write_creature
-from universal.creatures import universal_handle_special_senses
-from universal.creatures import universal_handle_perception
-from universal.creatures import universal_handle_senses
-from universal.creatures import universal_handle_save_dc
 from universal.creatures import universal_handle_range
-from universal.utils import log_element, is_tag_named, get_text
-from universal.utils import get_unique_tag_set
-from universal.utils import get_text, bs_pop_spaces
+from universal.utils import is_tag_named, get_text
+from universal.utils import get_text
 from pfsrd2.schema import validate_against_schema
-from pfsrd2.trait import trait_parse
 from pfsrd2.trait import extract_starting_traits
 from pfsrd2.license import license_pass, license_consolidation_pass
 from pfsrd2.sql import get_db_path, get_db_connection

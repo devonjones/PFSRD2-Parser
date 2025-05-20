@@ -2,10 +2,10 @@ import os
 import sys
 import json
 from pprint import pprint
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup
 from universal.universal import parse_universal, entity_pass
-from universal.universal import restructure_pass, html_pass, aon_pass
-from universal.universal import source_pass, game_id_pass, get_links
+from universal.universal import restructure_pass, aon_pass
+from universal.universal import source_pass, get_links
 from pfsrd2.schema import validate_against_schema
 from dateutil import parser as dateparser
 from universal.files import makedirs, char_replace

@@ -4,17 +4,10 @@ import sys
 import re
 import html2markdown
 from pprint import pprint
-from bs4 import BeautifulSoup, NavigableString
-from universal.universal import parse_universal, print_struct, entity_pass
-from universal.universal import is_trait, extract_link
-from universal.utils import split_maintain_parens
-from universal.universal import source_pass, extract_source, get_links
-from universal.universal import aon_pass, restructure_pass, html_pass
-from universal.universal import remove_empty_sections_pass, game_id_pass
-from universal.creatures import universal_handle_alignment
+from bs4 import BeautifulSoup
+from universal.universal import parse_universal, entity_pass
+from universal.universal import remove_empty_sections_pass
 from universal.files import makedirs, char_replace
-from universal.utils import get_text
-from pfsrd2.schema import validate_against_schema
 from pfsrd2.data import get_data
 from pfsrd2.sql import get_db_path
 from pfsrd2.constants import ORC_LICENSE

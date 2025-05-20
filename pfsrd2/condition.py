@@ -4,7 +4,7 @@ import sys
 import re
 import html2markdown
 from pprint import pprint
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup
 from universal.universal import parse_universal, entity_pass
 from universal.universal import extract_link
 from universal.universal import source_pass, extract_source, get_links
