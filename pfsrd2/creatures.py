@@ -72,8 +72,10 @@ def parse_creature(filename, options):
     details = entity_pass(details)
     alternate_link = handle_alternate_link(details)
     struct = restructure_creature_pass(details, options.subtype)
+    if alternate_link:
+        struct["alternate_link"] = alternate_link
     # TODO Deal with remaining sections
-    # assert len(details) == 0, details
+    #assert len(details) == 0, details
     creature_stat_block_pass(struct)
     source_pass(struct, find_stat_block)
     sidebar_pass(struct)
@@ -1335,6 +1337,10 @@ def process_hp(section, subtype):
                 remove.append(special)
                 s, _ = special.split(" ")
                 hp["squares"] = int(s)
+            elif special.endswith("segments"):
+                remove.append(special)
+                s, _ = special.split(" ")
+                hp["segments"] = int(s)
         for r in remove:
             specials.remove(r)
 
@@ -1398,11 +1404,11 @@ def process_threshold(hp, section):
         assert len(t["modifiers"]) == 1, "Broken thresholds: %s" % text
         squares_text = t["modifiers"][0]["name"]
         del t["modifiers"]
-        s, _ = squares_text.split(" ")
-        t["squares"] = int(s)
+        s, f = squares_text.split(" ")
+        t[f] = int(s)
     if len(thresholds) > 0:
         hp["thresholds"] = thresholds
-        assert "squares" in hp
+        assert "squares" in hp or "segments" in hp
 
 
 def process_defense(hp, section, ret=False):
@@ -1451,6 +1457,8 @@ def handle_aura(sb, ability):
         if "saving_throw" not in ability:
             if "DC " in ability["text"]:
                 # TODO: Find a more graceful way to deal with 1816
+                if sb["name"] in constants.CREATURE_IGNORE_DC_AURA:
+                    return
                 assert False, "DC in text, but no save in aura: %s" % ability
 
     found = False
@@ -1492,7 +1500,7 @@ def handle_aura(sb, ability):
                         dam = parse_attack_damage(test_part)
                         ability["damage"] = dam
                     else:
-                        assert False, "Malformed range and DC: %s" % ability["text"]
+                        assert False, "Malformed aura stats: %s" % ability["text"]
                 parts.pop(0)
                 ability["text"] = ".".join(parts).strip()
                 _test_aura_dc(ability)
@@ -1588,6 +1596,7 @@ def process_speed(section):
 
     def break_out_movement(movement):
         data = movement["name"]
+        data = data.replace("ft", "feet")
         m = re.match(r"^([a-zA-Z0-9 ]*) \((.*)\)$", data)
         if m:
             # climb 30 feet (<a aonid="299" game-obj="Spells"><i>spider climb</i></a>)
@@ -1738,17 +1747,22 @@ def process_offensive_action(section):
     def parse_attack_action(parent_section, attack_type):
         def _handle_requirements(text):
             if "Requirements" in text:
-                assert "Effect" in text
-                parts = text.split("Effect")
-                assert len(parts) == 2, text
-                text = parts.pop()
-                requirements = parts.pop()
-                assert text.startswith("</b>"), text
-                requirements += "</b>"
-                text = text[4:].strip()
+                if "Effect" in text:
+                    parts = text.split("Effect")
+                    assert len(parts) == 2, text
+                    text = parts.pop()
+                    requirements = parts.pop()
+                    assert text.startswith("</b>"), text
+                    requirements += "</b>"
+                    text = text[4:].strip()
+                else:
+                    parts = text.split("<b>Requirements</b>")
+                    assert len(parts) == 2, text
+                    requirements = "<b>Requirements</b>" + parts.pop()
+                    text = parts.pop()
                 bs = BeautifulSoup(requirements, "html.parser")
                 b_tags = bs.findAll('b')
-                assert len(b_tags) == 2, bs
+                assert len(b_tags) in [1, 2], bs
                 for b in b_tags:
                     b.extract()
                 requirements = get_text(bs).strip()
@@ -1776,7 +1790,6 @@ def process_offensive_action(section):
         if "traits" in parent_section:
             section["traits"] = parent_section["traits"]
             del parent_section["traits"]
-
         text = _handle_requirements(text)
 
         m = re.search(r"^(.*) ([+-]\d*) \[(.*)\] \((.*)\), (.*)$", text)
@@ -1909,28 +1922,33 @@ def process_offensive_action(section):
         parent_section["spells"] = section
 
     def parse_spell_list(section, part):
-        spell_list = {"type": "stat_block_section", "subtype": "spell_list"}
-        bs = BeautifulSoup(part, "html.parser")
-        if not bs.b and section["name"] == "Alchemical Formulas":
-            pass
-        else:
-            level_text = get_text(bs.b.extract())
-            if level_text == "Constant":
-                spell_list["constant"] = True
+        try:
+            spell_list = {"type": "stat_block_section", "subtype": "spell_list"}
+            bs = BeautifulSoup(part, "html.parser")
+            if not bs.b and section["name"] == "Alchemical Formulas":
+                pass
+            else:
                 level_text = get_text(bs.b.extract())
-            if level_text == "Cantrips":
-                spell_list["cantrips"] = True
-                level_text = get_text(bs.b.extract())
-            m = re.match(r"^\(?(\d*)[snrt][tdh]\)?$", level_text)
-            assert m, "Failed to parse spells: %s" % (part)
-            spell_list["level"] = int(m.groups()[0])
-            spell_list["level_text"] = level_text
-        spells_html = split_maintain_parens(str(bs), ",")
-        spells = []
-        for html in spells_html:
-            spells.append(parse_spell(html))
-        spell_list["spells"] = spells
-        return spell_list
+                if level_text == "Constant":
+                    spell_list["constant"] = True
+                    level_text = get_text(bs.b.extract())
+                if level_text == "Cantrips":
+                    spell_list["cantrips"] = True
+                    level_text = get_text(bs.b.extract())
+                m = re.match(r"^\(?(\d*)[snrt][tdh]\)?$", level_text)
+                assert m, "Failed to parse spells: %s" % (part)
+                spell_list["level"] = int(m.groups()[0])
+                spell_list["level_text"] = level_text
+            spells_html = split_maintain_parens(str(bs), ",")
+            spells = []
+            for html in spells_html:
+                spells.append(parse_spell(html))
+            spell_list["spells"] = spells
+            return spell_list
+        except AttributeError as e:
+            print(section)
+            pprint(part)
+            raise e
 
     def parse_spell(html):
         spell = {"type": "stat_block_section", "subtype": "spell"}
@@ -2055,6 +2073,13 @@ def process_offensive_action(section):
                         section["text"],
                     )
         parent_section["affliction"] = section
+
+    #<b><a style="text-decoration:underline" href="MonsterTemplates.aspx?ID=32">Mythic Ferocity</a>  <span class="action" title="Reaction" role="img" aria-label="Reaction">[reaction]</span> </b> <b>cost</b> 1 Mythic Point, 65 HP
+    #<b>Mythic Power</b>3 Mythic Points <ul><li><i>Mythic Skill</i><span class="action" title="Free Action" role="img" aria-label="Free Action">[free-action]</span><b>Cost</b> 1 Mythic Point; <a style="text-decoration:underline" href="Skills.aspx?ID=36">Athletics</a></li></ul>
+
+
+    def parse_mythic_ability(parent_section):
+        pass
 
     def parse_offensive_ability(parent_section):
         def _handle_name(parent_section, new_section):

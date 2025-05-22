@@ -18,14 +18,18 @@ class Heading():
         self.details = []
 
     def _handle_name(self, name):
-        bs = BeautifulSoup(str(name), 'html.parser')
-        children = list(bs.children)
-        assert len(children) == 1, bs
-        top = children[0]
-        self.name = get_text(bs).strip()
-        self.name_html = ''.join([str(i) for i in top])
-        top.clear()
-        self.name_tag = str(bs)
+        try:
+            bs = BeautifulSoup(str(name), 'html.parser')
+            children = list(bs.children)
+            assert len(children) == 1, bs
+            top = children[0]
+            self.name = get_text(bs).strip()
+            self.name_html = ''.join([str(i) for i in top])
+            top.clear()
+            self.name_tag = str(bs)
+        except Exception as e:
+            print(name)
+            raise e
 
     def __repr__(self):
         if self.subname:
@@ -199,7 +203,11 @@ def subtitle_pass(details, max_title):
                 h.details = sub
                 retdetails.append(h)
             elif has_name(detail, 'span') and not is_trait(detail) and not is_action(detail):
-                retdetails.append(span_to_heading(detail, 3))
+                try:
+                    retdetails.append(span_to_heading(detail, 3))
+                except IndexError as e:
+                    pprint(detail)
+                    raise(e)
             else:
                 retdetails.append(detail)
         else:
@@ -209,21 +217,28 @@ def subtitle_pass(details, max_title):
 
 def subtitle_text_pass(details, max_title):
     retdetails = []
+    prev = None
     for detail in details:
-        if issubclass(detail.__class__, str):
-            bs = BeautifulSoup(detail, 'html.parser')
-            objs = list(bs.children)
-            fo = ''
-            while str(fo).strip() == '':
-                fo = objs.pop(0)
-            if fo.name == "b" and get_text(fo) != "Source" and max_title > 2:
-                h = Heading(3, fo)
-                h.details = ''.join([str(o) for o in objs])
-                retdetails.append(h)
+        try:
+            if issubclass(detail.__class__, str):
+                bs = BeautifulSoup(detail, 'html.parser')
+                objs = list(bs.children)
+                fo = ''
+                while str(fo).strip() == '':
+                    fo = objs.pop(0)
+                if fo.name == "b" and get_text(fo) != "Source" and max_title > 2:
+                    h = Heading(3, fo)
+                    h.details = ''.join([str(o) for o in objs])
+                    retdetails.append(h)
+                else:
+                    retdetails.append(detail)
             else:
                 retdetails.append(detail)
-        else:
-            retdetails.append(detail)
+        except IndexError as e:
+            pprint(prev)
+            pprint(detail)
+            raise(e)
+        prev = detail
     return retdetails
 
 
