@@ -369,20 +369,24 @@ def _extract_trait(description):
                 return description, []
             parts = [p.strip() for p in text.replace("(", "").split(",")]
             for part in parts:
-                bs = BeautifulSoup(part, 'html.parser')
-                children = list(bs.children)
-                assert len(children) == 1, part
-                child = children[0]
-                template = _handle_trait_template(str(child))
-                if template:
-                    traits.append(template)
-                else:
-                    name, trait_link = extract_link(child)
-                    traits.append(build_object(
-                        'stat_block_section',
-                        'trait',
-                        name.strip(),
-                        {'link': trait_link}))
+                try:
+                    bs = BeautifulSoup(part, 'html.parser')
+                    children = list(bs.children)
+                    assert len(children) == 1, part
+                    child = children[0]
+                    template = _handle_trait_template(str(child))
+                    if template:
+                        traits.append(template)
+                    else:
+                        name, trait_link = extract_link(child)
+                        traits.append(build_object(
+                            'stat_block_section',
+                            'trait',
+                            name.strip(),
+                            {'link': trait_link}))
+                except Exception as e:
+                    print(parts)
+                    raise e
         else:
             newdescription.append(text)
             newdescription.append(")")

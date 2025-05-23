@@ -18,7 +18,7 @@ from universal.universal import aon_pass, restructure_pass
 from universal.universal import remove_empty_sections_pass, get_links
 from universal.universal import handle_alternate_link
 from universal.universal import walk, test_key_is_value
-from universal.universal import link_modifiers
+from universal.universal import link_modifiers, edition_pass
 from universal.universal import link_values, link_value
 from universal.universal import build_object, build_objects, link_objects
 from universal.files import makedirs, char_replace
@@ -35,7 +35,7 @@ from pfsrd2.trait import trait_parse, extract_starting_traits
 from pfsrd2.license import license_pass, license_consolidation_pass
 from pfsrd2.action import extract_action_type, build_action_type
 from pfsrd2.sql import get_db_path, get_db_connection
-from pfsrd2.sql.traits import fetch_trait_by_name
+from pfsrd2.sql.traits import fetch_trait_by_name, fetch_trait_by_link
 from pfsrd2.sql.monster_abilities import fetch_monster_ability_by_name
 import pfsrd2.constants as constants
 
@@ -71,7 +71,8 @@ def parse_creature(filename, options):
     )
     details = entity_pass(details)
     alternate_link = handle_alternate_link(details)
-    struct = restructure_creature_pass(details, options.subtype)
+    edition = edition_pass(details)
+    struct = restructure_creature_pass(details, options.subtype, edition)
     if alternate_link:
         struct["alternate_link"] = alternate_link
     # TODO Deal with remaining sections
@@ -300,6 +301,22 @@ def trait_db_pass(struct):
         db_trait_classes = set(db_trait.get("classes", []))
         db_trait["classes"] = list(trait_classes | db_trait_classes)
 
+    def _handle_trait_link(db_trait):
+        trait = json.loads(db_trait["trait"])
+        edition = trait["edition"]
+        if edition == struct["edition"]:
+            return trait
+        if "alternate_link" not in trait:
+            return trait
+        kwargs = {}
+        if edition == "legacy":
+            kwargs["legacy_trait_id"] = db_trait["trait_id"]
+        else:
+            kwargs["remastered_trait_id"] = db_trait["trait_id"]
+        data = fetch_trait_by_link(curs, **kwargs)
+        assert data, "%s | %s" % (data, trait)
+        return json.loads(data["trait"])
+
     def _check_trait(trait, parent):
         _handle_value(trait)
         if "alignment" in trait.get("classes", []) and trait["name"] != "No Alignment":
@@ -308,7 +325,7 @@ def trait_db_pass(struct):
             fetch_trait_by_name(curs, trait["name"])
             data = curs.fetchone()
             assert data, "%s | %s" % (data, trait)
-            db_trait = json.loads(data["trait"])
+            db_trait = _handle_trait_link(data)
             _merge_classes(trait, db_trait)
             if "link" in trait and trait["link"]["game-obj"] == "Trait":
                 assert trait["link"]["aonid"] == db_trait["aonid"], "%s : %s" % (
@@ -417,7 +434,7 @@ def monster_ability_db_pass(struct):
     walk(struct, test_key_is_value("subtype", "ability"), _check_ability)
 
 
-def restructure_creature_pass(details, subtype):
+def restructure_creature_pass(details, subtype, edition):
     def _handle_sanctioning(rest):
         for obj in rest:
             if "text" in obj:
@@ -458,6 +475,7 @@ def restructure_creature_pass(details, subtype):
     del sb["subname"]
     _handle_sanctioning(rest)
     top["sections"].extend(rest)
+    top['edition'] = edition
     return top
 
 

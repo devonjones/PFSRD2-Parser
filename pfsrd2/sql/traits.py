@@ -96,6 +96,26 @@ def fetch_trait_by_aonid(curs, aonid):
     return curs.fetchone()
 
 
+def fetch_trait_by_link(curs, legacy_trait_id=None, remastered_trait_id=None):
+    if legacy_trait_id:
+        sql = '\n'.join([
+            "SELECT t.*",
+            " FROM traits t",
+            " JOIN trait_links tl ON t.trait_id = tl.remastered_trait_id",
+            " WHERE tl.legacy_trait_id = ?"])
+        curs.execute(sql, (legacy_trait_id,))
+    elif remastered_trait_id:
+        sql = '\n'.join([
+            "SELECT t.*",
+            " FROM traits t",
+            " JOIN trait_links tl ON t.trait_id = tl.legacy_trait_id",
+            " WHERE tl.remastered_trait_id = ?"])
+        curs.execute(sql, (remastered_trait_id,))
+    else:
+        raise ValueError("Either legacy_trait_id or remastered_trait_id must be provided")
+    return curs.fetchone()
+
+
 def insert_trait_link(curs, legacy_trait_id, remastered_trait_id):
     sql = '\n'.join([
         "INSERT OR IGNORE INTO trait_links (legacy_trait_id, remastered_trait_id)",

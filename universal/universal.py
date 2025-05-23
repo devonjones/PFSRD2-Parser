@@ -1,4 +1,5 @@
 import sys
+import json
 from universal.utils import split_maintain_parens, clear_tags, filter_entities
 from universal.utils import split_comma_and_semicolon, get_text, has_name
 from universal.utils import clear_end_whitespace
@@ -773,3 +774,12 @@ def link_objects(objects):
                 # TODO: fix []
                 assert False, objects
     return objects
+
+def edition_pass(details):
+    for detail in details:
+        if detail['name'] == "Legacy Content":
+            return "legacy"
+        result = edition_pass(detail['sections'])
+        if result == "legacy":
+            return result
+    return "remastered"

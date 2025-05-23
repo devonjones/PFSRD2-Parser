@@ -36,34 +36,30 @@ def create_legacy_remastered_relations(curs, link_cache, fetch_item_by_id, item_
     """
     relations = set()
     for link in link_cache:
-        if isinstance(link, dict):
-            item_id = link.get(item_id_col)
-            item_aonid = link.get('item_aonid')
-            target_aonid = link.get('target_aonid')
-        else:
-            item_id, item_aonid, target_aonid = link
-        item = fetch_item_by_id(curs, item_id)
+        print(link)
+        target_aonid = link.get('target_aonid')
+        item = fetch_item_by_id(curs, link['item_id'])
         if not item:
             continue
         edition = item.get('edition')
         # Find the target item by matching aonid in link_cache
         target = None
         for candidate in link_cache:
-            if isinstance(candidate, dict):
-                cand_aonid = candidate.get('item_aonid')
-                cand_id = candidate.get(item_id_col)
-            else:
-                cand_id, cand_aonid, _ = candidate
+            cand_aonid = candidate.get('item_aonid')
+            cand_id = candidate.get('item_id')
             if cand_aonid == target_aonid:
                 target = fetch_item_by_id(curs, cand_id)
                 break
-        if not target:
-            continue
+        assert target, f"No target found for {link}"
         target_edition = target.get('edition')
+
         item_id_val = item[item_id_col]
         target_id_val = target[item_id_col]
         if edition == 'legacy' and target_edition == 'remastered':
             relations.add((item_id_val, target_id_val))
         elif edition == 'remastered' and target_edition == 'legacy':
             relations.add((target_id_val, item_id_val))
+        else:
+            print(f"No relation found for {link} {edition} {target_edition}")
+            raise
     return relations

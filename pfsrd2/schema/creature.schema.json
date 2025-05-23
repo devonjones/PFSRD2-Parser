@@ -125,7 +125,7 @@
 					"Equipment", "Deities", "Feats", "Actions", "Monsters",
 					"Heritages", "Rules", "Diseases", "Rituals", "Planes",
 					"MonsterFamilies", "Domains", "Classes", "Ancestries",
-					"Archetypes", "SiegeWeapons", "WeaponGroups"
+					"Archetypes", "SiegeWeapons", "WeaponGroups", "NPCs"
 				]},
 				"game-id": {"type": "string"},
 				"alternate_type": {"enum": ["legacy", "remastered"]},
