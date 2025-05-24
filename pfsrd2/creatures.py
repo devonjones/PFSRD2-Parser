@@ -19,7 +19,7 @@ from universal.universal import remove_empty_sections_pass, get_links
 from universal.universal import handle_alternate_link
 from universal.universal import walk, test_key_is_value
 from universal.universal import link_modifiers, edition_pass
-from universal.universal import link_values, link_value
+from universal.universal import link_values, link_value, extract_links
 from universal.universal import build_object, build_objects, link_objects
 from universal.files import makedirs, char_replace
 from universal.creatures import write_creature
@@ -2092,12 +2092,88 @@ def process_offensive_action(section):
                     )
         parent_section["affliction"] = section
 
-    #<b><a style="text-decoration:underline" href="MonsterTemplates.aspx?ID=32">Mythic Ferocity</a>  <span class="action" title="Reaction" role="img" aria-label="Reaction">[reaction]</span> </b> <b>cost</b> 1 Mythic Point, 65 HP
-    #<b>Mythic Power</b>3 Mythic Points <ul><li><i>Mythic Skill</i><span class="action" title="Free Action" role="img" aria-label="Free Action">[free-action]</span><b>Cost</b> 1 Mythic Point; <a style="text-decoration:underline" href="Skills.aspx?ID=36">Athletics</a></li></ul>
 
+
+    #<b>Mythic Power</b> 3 Mythic Points <ul><li><i>Mythic Skill</i> <span class="action" title="Free Action" role="img" aria-label="Free Action">[free-action]</span> <b>Cost</b> 1 Mythic Point; <a style="text-decoration:underline" href="Skills.aspx?ID=36">Athletics</a> or <a style="text-decoration:underline" href="Skills.aspx?ID=48">Stealth</a> (page 168)</li><li><i>Remove a Condition</i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b>1 Mythic Point; <b>Effect</b> The gogiteth ends one condition affecting it.</li></ul>
+    #<b><a style="text-decoration:underline" href="MonsterTemplates.aspx?ID=32">Mythic Ferocity</a>  <span class="action" title="Reaction" role="img" aria-label="Reaction">[reaction]</span> </b> <b>cost</b> 1 Mythic Point, 65 HP
+    #<b>Mythic Power</b> 3 Mythic Points <ul><li><i>Mythic Skill</i><span class="action" title="Free Action" role="img" aria-label="Free Action">[free-action]</span><b>Cost</b> 1 Mythic Point; <a style="text-decoration:underline" href="Skills.aspx?ID=36">Athletics</a></li></ul>
+    #<b>Mythic Power</b> 3 Mythic Points <ul><li><i><a style="text-decoration:underline" href="MonsterTemplates.aspx?ID=33">Recharge Spell</a></i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b> 1 Mythic Point; <b>Effect</b> The mythic lich regains one spell.</li><li><i>Remove a Condition</i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b> 1 Mythic Point; <b>Effect</b> The mythic lich ends one condition affecting it.</li></ul>
 
     def parse_mythic_ability(parent_section):
-        pass
+        def _handle_addons(activation, text):
+            addons = {}
+            addon_names = [
+                "Cost",
+                "Effect",
+                "Trigger",
+            ]
+            parts = []
+            bs = BeautifulSoup(text, "html.parser")
+            children = list(bs)
+            current = None
+            while len(children) > 0:
+                child = children.pop(0)
+                if child.name == "b":
+                    current = get_text(child).strip()
+                elif current:
+                    assert current in addon_names, "%s, %s" % (current, text)
+                    addon_text = str(child)
+                    if addon_text.strip().endswith(";"):
+                        addon_text = addon_text.rstrip()[:-1]
+                    addons.setdefault(current.lower().replace(" ", "_"), []).append(
+                        addon_text
+                    )
+                else:
+                    parts.append(str(child))
+            for k, v in addons.items():
+                activation[k] = clear_garbage(v)
+            if len(parts) > 0:
+                activation["text"] = clear_garbage(parts)
+
+        def _parse_mythic_activation(title, text):
+            mythic_activation = {
+                "type": "stat_block_section",
+                "subtype": "mythic_activation",
+                "name": title,
+            }
+            text, action = extract_action_type(text)
+            if action:
+                mythic_activation["action_type"] = action
+            text, traits = extract_starting_traits(text)
+            if len(traits) > 0:
+                mythic_activation["traits"] = traits
+            text, links = extract_links(text)
+            parts = text.split(";")
+            if len(links) > 0:
+                mythic_activation["links"] = links
+            for part in parts:
+                _handle_addons(mythic_activation, clear_garbage(part.strip()))
+            return mythic_activation
+
+        text = parent_section["text"]
+        del parent_section["text"]
+        bs = BeautifulSoup(text, "html.parser")
+        children = list(bs.children)
+        assert len(children) == 2, children
+        obj = children[0]
+        assert obj.__class__ == NavigableString, bs
+        point_text = str(obj)
+        assert point_text.find("Mythic Points") > 0, point_text
+        mythic_ability = {
+            "type": "stat_block_section",
+            "subtype": "mythic_ability",
+            "name": parent_section["name"],
+            "mythic_points": int(point_text.split(" ")[0].strip()),
+            "mythic_activations": []
+        }
+        l = children[1]
+        assert l.name == "ul", l
+        parent_section["mythic_ability"] = mythic_ability
+        for li in l.find_all("li"):
+            cont = list(li.contents)
+            assert is_tag_named(cont[0], ['i', 'b']), li
+            title = get_text(cont.pop(0))
+            mythic_ability["mythic_activations"].append(_parse_mythic_activation(title, ''.join([str(c) for c in cont])))
 
     def parse_offensive_ability(parent_section):
         def _handle_name(parent_section, new_section):
@@ -2204,6 +2280,11 @@ def process_offensive_action(section):
             return True
         return False
 
+    def _is_mythic_ability(section):
+        if section["name"] == "Mythic Power":
+            return True
+        return False
+
     if len(section["sections"]) == 0:
         del section["sections"]
     section["type"] = "stat_block_section"
@@ -2223,6 +2304,9 @@ def process_offensive_action(section):
     elif _is_spell(section):
         section["offensive_action_type"] = "spells"
         parse_spells(section)
+    elif _is_mythic_ability(section):
+        section["offensive_action_type"] = "mythic_ability"
+        parse_mythic_ability(section)
     else:
         bs = BeautifulSoup(section["text"], "html.parser")
         titles = [get_text(b) for b in bs.findAll("b")]

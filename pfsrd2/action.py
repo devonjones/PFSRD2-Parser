@@ -3,6 +3,7 @@ from universal.universal import build_object
 
 
 def extract_action_type(text, title=False):
+    # Action must be the first child of the text
     def _handle_to_actions(action, newchildren):
         if len(newchildren) == 0:
             return
