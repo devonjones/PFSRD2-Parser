@@ -470,9 +470,8 @@ def _normalize_int_field(sb, field_name):
     # Parse to int
     try:
         sb[field_name] = int(value.strip())
-    except ValueError:
-        # If it can't be parsed, leave it as-is (shouldn't happen with good data)
-        pass
+    except ValueError as e:
+        raise ValueError(f"Could not parse {field_name} value: '{sb[field_name]}'") from e
 
 
 def _normalize_strength(sb):
@@ -514,9 +513,8 @@ def _normalize_strength(sb):
             'legacy_value': stat_value,
             'remastered_value': modifier
         }
-    except ValueError:
-        # If it can't be parsed, leave it as-is
-        pass
+    except ValueError as e:
+        raise ValueError(f"Could not parse strength value: '{sb['strength']}'") from e
 
 
 def _normalize_ac_bonus(sb):
@@ -542,9 +540,8 @@ def _normalize_ac_bonus(sb):
             'bonus_type': 'armor',
             'bonus_value': value
         }
-    except ValueError:
-        # If it can't be parsed, leave it as-is
-        pass
+    except ValueError as e:
+        raise ValueError(f"Could not parse ac_bonus value: '{sb['ac_bonus']}'") from e
 
 
 def _normalize_dex_cap(sb):
@@ -570,9 +567,8 @@ def _normalize_dex_cap(sb):
             'bonus_type': 'dexterity',
             'bonus_cap': cap
         }
-    except ValueError:
-        # If it can't be parsed, leave it as-is
-        pass
+    except ValueError as e:
+        raise ValueError(f"Could not parse dex_cap value: '{sb['dex_cap']}'") from e
 
 
 def _normalize_check_penalty(sb):
@@ -601,9 +597,8 @@ def _normalize_check_penalty(sb):
             'bonus_type': 'armor',
             'bonus_value': value
         }
-    except ValueError:
-        # If it can't be parsed, leave it as-is
-        pass
+    except ValueError as e:
+        raise ValueError(f"Could not parse check_penalty value: '{sb['check_penalty']}'") from e
 
 
 def _normalize_speed_penalty(sb):
@@ -637,9 +632,8 @@ def _normalize_speed_penalty(sb):
         if unit:
             speed_obj['unit'] = unit
         sb['speed_penalty'] = speed_obj
-    except ValueError:
-        # If it can't be parsed, leave it as-is
-        pass
+    except ValueError as e:
+        raise ValueError(f"Could not parse speed_penalty value: '{sb['speed_penalty']}'") from e
 
 
 def _normalize_bulk(sb):
@@ -670,14 +664,8 @@ def _normalize_bulk(sb):
                 'value': int_value,
                 'display': value_str.strip()
             }
-        except ValueError:
-            # If it can't be parsed, keep as structured object with string
-            sb['bulk'] = {
-                'type': 'stat_block_section',
-                'subtype': 'bulk',
-                'value': None,
-                'display': value_str.strip()
-            }
+        except ValueError as e:
+            raise ValueError(f"Could not parse bulk value: '{sb['bulk']}' (expected integer or 'L')") from e
 
 
 def trait_db_pass(struct):

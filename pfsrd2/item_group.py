@@ -63,7 +63,7 @@ def restructure_armor_group_pass(details, subtype='armor_group'):
     sb = None
     rest = []
     for obj in details:
-        if sb == None:
+        if sb is None:
             sb = obj
         else:
             rest.append(obj)
@@ -111,7 +111,7 @@ def section_pass(struct):
         # Clear empty tags
         children = [c for c in children if str(c).strip() != '']
 
-        if not children or not type(children[0]) == Tag:
+        if not children or not isinstance(children[0], Tag):
             return
 
         # Look for "Source" tag
