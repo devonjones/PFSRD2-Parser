@@ -4,6 +4,8 @@ from pfsrd2.sql.traits import create_traits_table, create_traits_index
 from pfsrd2.sql.traits import create_trait_link_table, create_trait_link_index
 from pfsrd2.sql.monster_abilities import create_monster_abilities_table, create_monster_abilities_index
 from pfsrd2.sql.sources import create_sources_table, create_sources_index
+from pfsrd2.sql.armor_groups import create_armor_groups_table, create_armor_groups_index
+from pfsrd2.sql.weapon_groups import create_weapon_groups_table, create_weapon_groups_index
 
 
 def get_db_path(db_name):
@@ -95,6 +97,39 @@ def create_db_v_5(conn, curs, ver, source=None):
     return ver
 
 
+def create_db_v_6(conn, curs, ver, source=None):
+    # Version 6 previously created armor table, but armor is no longer stored in DB
+    # (like creatures, armor is parsed to JSON only)
+    if ver >= 6:
+        return ver
+    ver = 6
+    set_version(curs, ver)
+    conn.commit()
+    return ver
+
+
+def create_db_v_7(conn, curs, ver, source=None):
+    if ver >= 7:
+        return ver
+    ver = 7
+    create_armor_groups_table(curs)
+    create_armor_groups_index(curs)
+    set_version(curs, ver)
+    conn.commit()
+    return ver
+
+
+def create_db_v_8(conn, curs, ver, source=None):
+    if ver >= 8:
+        return ver
+    ver = 8
+    create_weapon_groups_table(curs)
+    create_weapon_groups_index(curs)
+    set_version(curs, ver)
+    conn.commit()
+    return ver
+
+
 def dict_factory(cursor, row):
     d = {}
     for idx, col in enumerate(cursor.description):
@@ -111,6 +146,9 @@ def get_db_connection(db, source=None):
         ver = create_db_v_3(conn, curs, ver, source)
         ver = create_db_v_4(conn, curs, ver, source)
         ver = create_db_v_5(conn, curs, ver, source)
+        ver = create_db_v_6(conn, curs, ver, source)
+        ver = create_db_v_7(conn, curs, ver, source)
+        ver = create_db_v_8(conn, curs, ver, source)
     finally:
         curs.close()
     conn.row_factory = dict_factory
