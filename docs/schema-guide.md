@@ -252,29 +252,13 @@ Every content type schema should have these top-level properties (order matters 
 
 ## Content-Specific Definitions
 
-Content-specific definitions (like `armor_stat_block`, `armor_trait`, `bonus`, `bulk`) should be:
+Content-specific definitions (like `armor_stat_block`, `bonus`, `bulk`) should be:
 
-1. **Prefixed** with the content type (e.g., `armor_trait` not just `trait`)
+1. **Prefixed** with the content type when they are truly content-specific (e.g., `armor_stat_block`, `armor_bonus`)
 2. **Documented** with comments explaining their purpose
 3. **Validated** against actual parser output
 
-### Example: Armor-Specific Definitions
-
-```json
-"armor_stat_block": {
-    "type": "object",
-    "properties": {
-        "type": {"enum": ["stat_block"]},
-        "subtype": {"enum": ["armor"]},
-        "traits": {"$ref": "#/definitions/armor_traits"},
-        // ... armor-specific fields
-    },
-    "required": ["type", "subtype"],
-    "additionalProperties": false
-}
-```
-
-**Why prefix?** Prevents confusion between content-specific traits and universal traits. `armor_trait` is a simple {name, link} object, while universal `trait` is a complex enriched object.
+**Important:** Do NOT create content-specific versions of standard definitions like `trait`, `link`, `source`, etc. Always use the standard definitions for these universal types. For example, use `#/definitions/traits` (not `armor_traits`) and rely on enrichment passes like `trait_db_pass()` to populate full trait data.
 
 ## Field Ordering Conventions
 

@@ -744,11 +744,11 @@ def trait_db_pass(struct):
         parent[index] = db_trait
 
     db_path = get_db_path("pfsrd2.db")
-    conn = get_db_connection(db_path)
-    curs = conn.cursor()
+    with get_db_connection(db_path) as conn:
+        curs = conn.cursor()
 
-    # Walk the structure and enrich all traits
-    walk(struct, test_key_is_value("subtype", "trait"), _check_trait)
+        # Walk the structure and enrich all traits
+        walk(struct, test_key_is_value("subtype", "trait"), _check_trait)
 
 
 def armor_group_pass(struct):
@@ -784,8 +784,8 @@ def armor_group_pass(struct):
         parent["group"] = db_armor_group
 
     db_path = get_db_path("pfsrd2.db")
-    conn = get_db_connection(db_path)
-    curs = conn.cursor()
+    with get_db_connection(db_path) as conn:
+        curs = conn.cursor()
 
-    # Walk the structure and enrich all armor groups
-    walk(struct, test_key_is_value("subtype", "armor_group"), _check_armor_group)
+        # Walk the structure and enrich all armor groups
+        walk(struct, test_key_is_value("subtype", "armor_group"), _check_armor_group)
