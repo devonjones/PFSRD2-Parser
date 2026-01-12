@@ -152,7 +152,7 @@
 				"subtype": {"enum": ["melee", "ranged"]},
 				"traits": {"$ref": "#/definitions/traits"},
 				"damage": {
-					"type": "array",
+					"type": ["array", "null"],
 					"items": {"$ref": "#/definitions/attack_damage"}
 				},
 				"weapon_type": {"enum": ["Melee", "Ranged"]},

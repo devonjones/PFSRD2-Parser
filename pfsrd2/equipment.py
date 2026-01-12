@@ -1279,7 +1279,7 @@ def trait_db_pass(struct):
         """Extract value from trait names like 'Entrench Melee' -> name='Entrench', value='Melee'."""
         m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
         if m:
-            # Numeric values like "range increment 60 feet" or "Deadly d8"
+            # Numeric or dice values like "Deadly d8"
             name, value = m.groups()
             trait["name"] = name.strip()  # Remove trailing whitespace
             trait["value"] = value.strip()
