@@ -14,7 +14,7 @@ from pfsrd2.schema import validate_against_schema
 from pfsrd2.license import license_pass, license_consolidation_pass
 
 
-def parse_armor_group(filename, options):
+def parse_item_group(filename, options):
     """Main parsing function - entry point for the armor/weapon group parser"""
     basename = os.path.basename(filename)
     if not options.stdout:

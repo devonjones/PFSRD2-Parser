@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import sys
 import os
-from pfsrd2.armor_group import parse_armor_group
+from pfsrd2.item_group import parse_item_group
 from universal.warnings import WarningReporting
 from universal.options import exec_main, option_parser
 
@@ -11,7 +11,7 @@ def main():
     parser = option_parser(usage)
     (options, args) = parser.parse_args()
     options.subtype = "weapon_group"
-    exec_main(options, args, parse_armor_group, "weapon_groups")
+    exec_main(options, args, parse_item_group, "weapon_groups")
 
 
 if __name__ == "__main__":

@@ -80,6 +80,8 @@ These definitions should be identical across **all** schemas. When creating a ne
 }
 ```
 
+**Important:** While the structure of standard definitions should remain consistent, enums can be customized per schema. For example, the `game-obj` enum in `link` can include additional object types specific to your content, and `alternate_link` can have a tailored set of game objects. This flexibility allows schemas to be precise about what types of links are valid for that specific content type without changing the overall structure of the definition.
+
 **license** - OGL license information
 ```json
 "license": {

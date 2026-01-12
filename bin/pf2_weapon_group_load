@@ -2,16 +2,16 @@
 import sys
 import os
 import json
-from sh import find
+import glob
 from optparse import OptionParser
 from pfsrd2.sql import get_db_path, create_db
 from pfsrd2.sql.weapon_groups import insert_weapon_group, truncate_weapon_groups
 
 
 def load_weapon_groups(conn, options):
-    path = options.output + "/" + "weapon_groups"
+    path = os.path.join(options.output, "weapon_groups")
     assert os.path.exists(path), "JSON Directory doesn't exist: %s" % path
-    files = find(path, "-type", "f", "-name", "*.json").strip().split("\n")
+    files = glob.glob(os.path.join(path, "*.json"))
     files = [os.path.abspath(f) for f in files]
     curs = conn.cursor()
     truncate_weapon_groups(curs)
