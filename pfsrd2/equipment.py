@@ -96,14 +96,6 @@ EQUIPMENT_TYPES = {
 }
 
 
-# Populate normalizer function references after they're defined
-# (Done at module load time, before parse_equipment is called)
-def _populate_normalizers():
-    """Populate normalizer function references in EQUIPMENT_TYPES config."""
-    EQUIPMENT_TYPES['armor']['normalize_fields'] = normalize_armor_fields
-    EQUIPMENT_TYPES['weapon']['normalize_fields'] = normalize_weapon_fields
-
-
 def parse_equipment(filename, options):
     """Universal equipment parser - supports armor, weapons, and future equipment types."""
     equipment_type = options.equipment_type
@@ -1057,6 +1049,9 @@ def normalize_armor_fields(sb):
         _normalize_check_penalty(armor_obj)
         _normalize_speed_penalty(armor_obj)
 
+# Register normalizer in EQUIPMENT_TYPES config
+EQUIPMENT_TYPES['armor']['normalize_fields'] = normalize_armor_fields
+
 
 def normalize_weapon_fields(sb):
     """Normalize weapon-specific fields in melee/ranged mode objects."""
@@ -1075,6 +1070,8 @@ def normalize_weapon_fields(sb):
         if 'ranged' in weapon_obj:
             _normalize_weapon_mode(weapon_obj['ranged'])
 
+# Register normalizer in EQUIPMENT_TYPES config
+EQUIPMENT_TYPES['weapon']['normalize_fields'] = normalize_weapon_fields
 
 
 def _normalize_weapon_mode(mode_obj):
@@ -1391,7 +1388,3 @@ def equipment_group_pass(struct, config):
 
         # Walk the structure and enrich all equipment groups
         walk(struct, test_key_is_value("subtype", group_subtype), _check_equipment_group)
-
-
-# Populate normalizer function references at module load time
-_populate_normalizers()
