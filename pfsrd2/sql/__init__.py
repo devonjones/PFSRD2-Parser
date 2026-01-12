@@ -4,8 +4,6 @@ from pfsrd2.sql.traits import create_traits_table, create_traits_index
 from pfsrd2.sql.traits import create_trait_link_table, create_trait_link_index
 from pfsrd2.sql.monster_abilities import create_monster_abilities_table, create_monster_abilities_index
 from pfsrd2.sql.sources import create_sources_table, create_sources_index
-from pfsrd2.sql.armor import create_armor_table, create_armor_index
-from pfsrd2.sql.armor import create_armor_aonid_index, create_armor_category_index
 from pfsrd2.sql.armor_groups import create_armor_groups_table, create_armor_groups_index
 from pfsrd2.sql.weapon_groups import create_weapon_groups_table, create_weapon_groups_index
 
@@ -100,13 +98,11 @@ def create_db_v_5(conn, curs, ver, source=None):
 
 
 def create_db_v_6(conn, curs, ver, source=None):
+    # Version 6 previously created armor table, but armor is no longer stored in DB
+    # (like creatures, armor is parsed to JSON only)
     if ver >= 6:
         return ver
     ver = 6
-    create_armor_table(curs)
-    create_armor_index(curs)
-    create_armor_aonid_index(curs)
-    create_armor_category_index(curs)
     set_version(curs, ver)
     conn.commit()
     return ver
