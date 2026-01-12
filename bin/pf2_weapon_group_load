@@ -1,0 +1,45 @@
+#!/usr/bin/env python
+import sys
+import os
+import json
+from sh import find
+from optparse import OptionParser
+from pfsrd2.sql import get_db_path, create_db
+from pfsrd2.sql.weapon_groups import insert_weapon_group, truncate_weapon_groups
+
+
+def load_weapon_groups(conn, options):
+    path = options.output + "/" + "weapon_groups"
+    assert os.path.exists(path), "JSON Directory doesn't exist: %s" % path
+    files = find(path, "-type", "f", "-name", "*.json").strip().split("\n")
+    files = [os.path.abspath(f) for f in files]
+    curs = conn.cursor()
+    truncate_weapon_groups(curs)
+    for f in files:
+        with open(f) as fp:
+            data = json.load(fp)
+            print(data['name'])
+            insert_weapon_group(curs, data)
+    conn.commit()
+
+
+def option_parser(usage):
+    parser = OptionParser(usage=usage)
+    parser.add_option(
+        "-o", "--output", dest="output",
+        help="Output data directory.  Should be top level directory of psrd data. (required)")
+    return parser
+
+
+def main():
+    usage = "usage: %prog [options] [filenames]\nReads weapon group json and inserts them into a weapon group db"
+    parser = option_parser(usage)
+    (options, args) = parser.parse_args()
+    db_path = get_db_path("pfsrd2.db")
+    conn = create_db(db_path)
+    load_weapon_groups(conn, options)
+    conn.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

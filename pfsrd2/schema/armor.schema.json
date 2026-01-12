@@ -1,0 +1,248 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+
+	"definitions": {
+		"trait": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["trait"]},
+				"game-id": {"type": "string"},
+				"game-obj": {"enum": ["Traits"]},
+				"value": {"type": "string"},
+				"text": {"type": "string"},
+				"classes": {
+					"type": "array",
+					"items": {"type": "string"},
+					"additionalItems": false
+				},
+				"sources": {"$ref": "#/definitions/sources"},
+				"sections": {"$ref": "#/definitions/sections"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				},
+				"alternate_link": {"$ref": "#/definitions/alternate_link"},
+				"schema_version": {"enum": [1.1]},
+				"edition": {"enum": ["legacy", "remastered"]}
+			},
+			"required": ["name", "type", "game-id", "game-obj", "sources", "schema_version", "edition"],
+			"additionalProperties": false
+		},
+		"traits": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/trait"},
+			"additionalItems": false
+		},
+		"bonus": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["bonus"]},
+				"subtype": {"enum": ["ac", "skill", "speed"]},
+				"bonus_type": {"enum": ["armor", "dexterity"]},
+				"bonus_value": {"type": "integer"},
+				"bonus_cap": {"type": "integer"},
+				"unit": {"enum": ["feet"]}
+			},
+			"required": ["type", "subtype", "bonus_type"],
+			"additionalProperties": false
+		},
+		"bulk": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["bulk"]},
+				"value": {"type": ["integer", "null"]},
+				"display": {"type": "string"}
+			},
+			"required": ["type", "subtype", "value", "display"],
+			"additionalProperties": false
+		},
+		"armor_group": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["armor_group"]},
+				"name": {"type": "string"},
+				"game-id": {"type": "string"},
+				"game-obj": {"enum": ["ArmorGroups"]},
+				"text": {"type": "string"},
+				"sources": {"$ref": "#/definitions/sources"},
+				"sections": {"$ref": "#/definitions/sections"},
+				"edition": {"enum": ["legacy", "remastered"]},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["type", "name", "game-id", "game-obj", "text", "sources", "edition"],
+			"additionalProperties": false
+		},
+		"stat_requirement": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["stat_requirement"]},
+				"stat": {"enum": ["strength"]},
+				"legacy_value": {"type": "integer"},
+				"remastered_value": {"type": "integer"}
+			},
+			"required": ["type", "subtype", "stat", "legacy_value", "remastered_value"],
+			"additionalProperties": false
+		},
+		"armor_stat_block": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block"]},
+				"subtype": {"enum": ["armor"]},
+				"traits": {"$ref": "#/definitions/traits"},
+				"price": {"type": "string"},
+				"ac_bonus": {"$ref": "#/definitions/bonus"},
+				"dex_cap": {"$ref": "#/definitions/bonus"},
+				"check_penalty": {"$ref": "#/definitions/bonus"},
+				"speed_penalty": {"$ref": "#/definitions/bonus"},
+				"strength": {"$ref": "#/definitions/stat_requirement"},
+				"bulk": {"$ref": "#/definitions/bulk"},
+				"category": {"enum": ["Unarmored", "Light", "Medium", "Heavy"]},
+				"group": {"$ref": "#/definitions/armor_group"},
+				"access": {"type": "string"}
+			},
+			"required": ["type", "subtype"],
+			"additionalProperties": false
+		},
+		"alternate_link": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["alternate_link"]},
+				"game-obj": {"enum": [
+					"Actions", "Ancestries", "Archetypes", "Armor",
+					"Classes", "Conditions", "Deities", "Diseases",
+					"Domains", "Equipment", "Feats", "Heritages",
+					"Languages", "MonsterAbilities", "MonsterFamilies",
+					"Monsters", "NPCs", "Planes", "Rituals", "Rules",
+					"Shields", "SiegeWeapons", "Skills", "Sources",
+					"Spells", "Traits", "WeaponGroups", "Weapons"
+				]},
+				"game-id": {"type": "string"},
+				"alternate_type": {"enum": ["legacy", "remastered"]},
+				"aonid": {"type": "integer"}
+			},
+			"required": ["game-obj", "aonid"],
+			"additionalProperties": false
+		},
+		"image": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["image"]},
+				"game-obj": {"type": "string"},
+				"image": {"type": "string"}
+			},
+			"required": ["name", "type", "image"],
+			"additionalProperties": false
+		},
+		"link": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["link"]},
+				"alt": {"type": "string"},
+				"href": {"type": "string"},
+				"game-obj": {"enum": [
+					"Actions", "Ancestries", "AnimalCompanions", "Archetypes",
+					"Armor", "ArmorGroups", "Backgrounds", "Bloodlines", "Causes", "Classes",
+					"Conditions", "Curses", "Deities", "DeityCategories",
+					"Diseases", "Doctrines", "Domains", "DruidicOrders",
+					"Equipment", "Familiars", "Feats", "Hazards", "Heritages",
+					"HuntersEdge", "HybridStudies", "Instincts", "Languages",
+					"MonsterAbilities", "MonsterFamilies", "MonsterTemplates",
+					"Monsters", "Muses", "Mysteries", "NPCs", "Patrons",
+					"Planes", "Rackets", "Relics", "ResearchFields", "Rituals",
+					"Rules", "Shields", "Skills", "Sources", "Spells", "Traits",
+					"WeaponGroups", "Weapons"
+				]},
+				"aonid": {"type": "integer"}
+			},
+			"required": ["name", "type", "alt"],
+			"additionalProperties": false
+		},
+		"source": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["source"]},
+				"link": {"$ref": "#/definitions/link"},
+				"note": {"$ref": "#/definitions/link"},
+				"page": {"type": "integer"},
+				"errata": {"$ref": "#/definitions/link"}
+			},
+			"required": ["name", "type", "link", "page"],
+			"additionalProperties": false
+		},
+		"sources": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/source"},
+			"additionalItems": false
+		},
+		"section": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["section"]},
+				"text": {"type": "string"},
+				"sections": {"$ref": "#/definitions/sections"},
+				"sources": {"$ref": "#/definitions/sources"},
+				"subtype": {"enum": ["sidebar", "index"]},
+				"sidebar_type": {"enum": [
+					"treasure_and_rewards", "related_creatures", "locations",
+					"additional_lore", "advice_and_rules", "geb"
+				]},
+				"sidebar_heading": {"type": "string"},
+				"image": {"$ref": "#/definitions/image"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"additionalProperties": false
+		},
+		"sections": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/section"},
+			"additionalItems": false
+		},
+		"license": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["section"]},
+				"subtype": {"enum": ["license"]},
+				"license": {"enum": [
+					"OPEN GAME LICENSE Version 1.0a",
+					"Open RPG Creative license"]},
+				"text": {"type": "string"},
+				"sections": {"$ref": "#/definitions/sections"}
+			},
+			"additionalProperties": false
+		}
+	},
+	"type": "object",
+	"properties": {
+		"name": {"type": "string"},
+		"type": {"enum": ["armor"]},
+		"aonid": {"type": "integer"},
+		"game-obj": {"enum": ["Armor"]},
+		"game-id": {"type": "string"},
+		"stat_block": {"$ref": "#/definitions/armor_stat_block"},
+		"sources": {"$ref": "#/definitions/sources"},
+		"sections": {"$ref": "#/definitions/sections"},
+		"alternate_link": {"$ref": "#/definitions/alternate_link"},
+		"edition": {"enum": ["legacy", "remastered"]},
+		"schema_version": {"type": "number"},
+		"license": {"$ref": "#/definitions/license"}
+	},
+	"required": ["name", "type", "aonid", "game-obj", "game-id", "sources", "sections", "stat_block", "edition", "license", "schema_version"],
+	"additionalProperties": false
+}
