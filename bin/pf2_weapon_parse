@@ -7,11 +7,11 @@ from universal.options import exec_main, option_parser
 
 
 def main():
-    usage = "usage: %prog [options] [filenames]\nParses armor from pfsrd2 html to json and writes them to the specified directory"
+    usage = "usage: %prog [options] [filenames]\nParses weapons from pfsrd2 html to json and writes them to the specified directory"
     parser = option_parser(usage)
     (options, args) = parser.parse_args()
-    options.equipment_type = "armor"
-    exec_main(options, args, parse_equipment, "armor")
+    options.equipment_type = "weapon"
+    exec_main(options, args, parse_equipment, "weapon")
 
 
 if __name__ == "__main__":

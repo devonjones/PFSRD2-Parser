@@ -35,6 +35,17 @@
 			"items": {"$ref": "#/definitions/trait"},
 			"additionalItems": false
 		},
+		"bulk": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["bulk"]},
+				"value": {"type": ["integer", "null"]},
+				"display": {"type": "string"}
+			},
+			"required": ["type", "subtype", "value", "display"],
+			"additionalProperties": false
+		},
 		"bonus": {
 			"type": "object",
 			"properties": {
@@ -48,15 +59,16 @@
 			"required": ["type", "subtype", "bonus_type"],
 			"additionalProperties": false
 		},
-		"bulk": {
+		"stat_requirement": {
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["bulk"]},
-				"value": {"type": ["integer", "null"]},
-				"display": {"type": "string"}
+				"subtype": {"enum": ["stat_requirement"]},
+				"stat": {"enum": ["strength"]},
+				"legacy_value": {"type": "integer"},
+				"remastered_value": {"type": "integer"}
 			},
-			"required": ["type", "subtype", "value", "display"],
+			"required": ["type", "subtype", "stat", "legacy_value", "remastered_value"],
 			"additionalProperties": false
 		},
 		"armor_group": {
@@ -79,34 +91,115 @@
 			"required": ["type", "name", "game-id", "game-obj", "text", "sources", "edition"],
 			"additionalProperties": false
 		},
-		"stat_requirement": {
+		"weapon_group": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["weapon_group"]},
+				"name": {"type": "string"},
+				"game-id": {"type": "string"},
+				"game-obj": {"enum": ["WeaponGroups"]},
+				"text": {"type": "string"},
+				"sources": {"$ref": "#/definitions/sources"},
+				"sections": {"$ref": "#/definitions/sections"},
+				"edition": {"enum": ["legacy", "remastered"]},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["type", "name", "game-id", "game-obj", "text", "sources", "edition"],
+			"additionalProperties": false
+		},
+		"range": {
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["stat_requirement"]},
-				"stat": {"enum": ["strength"]},
-				"legacy_value": {"type": "integer"},
-				"remastered_value": {"type": "integer"}
+				"subtype": {"enum": ["range"]},
+				"value": {"type": "integer"},
+				"unit": {"enum": ["feet"]}
 			},
-			"required": ["type", "subtype", "stat", "legacy_value", "remastered_value"],
+			"required": ["type", "subtype", "value"],
 			"additionalProperties": false
 		},
-		"armor_stat_block": {
+		"reload": {
 			"type": "object",
 			"properties": {
-				"type": {"enum": ["stat_block"]},
-				"subtype": {"enum": ["armor"]},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["reload"]},
+				"value": {"type": "integer"},
+				"unit": {"enum": ["action", "minute", "round"]}
+			},
+			"required": ["type", "subtype", "value", "unit"],
+			"additionalProperties": false
+		},
+		"attack_damage": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["attack_damage"]},
+				"formula": {"type": "string"},
+				"damage_type": {"type": "string"},
+				"notes": {"type": "string"}
+			},
+			"required": ["type", "subtype"],
+			"additionalProperties": false
+		},
+		"weapon_mode": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["melee", "ranged"]},
 				"traits": {"$ref": "#/definitions/traits"},
-				"price": {"type": "string"},
+				"damage": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/attack_damage"}
+				},
+				"weapon_type": {"enum": ["Melee", "Ranged"]},
+				"group": {"$ref": "#/definitions/weapon_group"},
+				"range": {"$ref": "#/definitions/range"},
+				"reload": {"$ref": "#/definitions/reload"},
+				"ammunition": {"type": "string"},
+				"hands": {"type": ["integer", "string"]}
+			},
+			"required": ["type", "subtype"],
+			"additionalProperties": false
+		},
+		"weapon_object": {
+			"type": "object",
+			"properties": {
+				"category": {"enum": ["Unarmed", "Simple", "Martial", "Advanced", "Ammunition"]},
+				"hands": {"type": ["integer", "string"]},
+				"ammunition": {"type": "string"},
+				"melee": {"$ref": "#/definitions/weapon_mode"},
+				"ranged": {"$ref": "#/definitions/weapon_mode"}
+			},
+			"additionalProperties": false
+		},
+		"armor_object": {
+			"type": "object",
+			"properties": {
+				"category": {"enum": ["Unarmored", "Light", "Medium", "Heavy"]},
 				"ac_bonus": {"$ref": "#/definitions/bonus"},
 				"dex_cap": {"$ref": "#/definitions/bonus"},
 				"check_penalty": {"$ref": "#/definitions/bonus"},
 				"speed_penalty": {"$ref": "#/definitions/bonus"},
 				"strength": {"$ref": "#/definitions/stat_requirement"},
+				"group": {"$ref": "#/definitions/armor_group"}
+			},
+			"additionalProperties": false
+		},
+		"equipment_stat_block": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block"]},
+				"subtype": {"enum": ["weapon", "armor"]},
+				"traits": {"$ref": "#/definitions/traits"},
+				"price": {"type": "string"},
 				"bulk": {"$ref": "#/definitions/bulk"},
-				"category": {"enum": ["Unarmored", "Light", "Medium", "Heavy"]},
-				"group": {"$ref": "#/definitions/armor_group"},
-				"access": {"type": "string"}
+				"access": {"type": "string"},
+				"weapon": {"$ref": "#/definitions/weapon_object"},
+				"armor": {"$ref": "#/definitions/armor_object"}
 			},
 			"required": ["type", "subtype"],
 			"additionalProperties": false
@@ -177,7 +270,7 @@
 				"page": {"type": "integer"},
 				"errata": {"$ref": "#/definitions/link"}
 			},
-			"required": ["name", "type", "link", "page"],
+			"required": ["name", "type", "link"],
 			"additionalProperties": false
 		},
 		"sources": {
@@ -231,11 +324,11 @@
 	"type": "object",
 	"properties": {
 		"name": {"type": "string"},
-		"type": {"enum": ["armor"]},
+		"type": {"enum": ["weapon", "armor"]},
 		"aonid": {"type": "integer"},
-		"game-obj": {"enum": ["Armor"]},
+		"game-obj": {"enum": ["Weapons", "Armor"]},
 		"game-id": {"type": "string"},
-		"stat_block": {"$ref": "#/definitions/armor_stat_block"},
+		"stat_block": {"$ref": "#/definitions/equipment_stat_block"},
 		"sources": {"$ref": "#/definitions/sources"},
 		"sections": {"$ref": "#/definitions/sections"},
 		"alternate_link": {"$ref": "#/definitions/alternate_link"},

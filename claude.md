@@ -1,5 +1,15 @@
 # PFSRD2-Parser Developer Guide
 
+## Issue Tracking
+
+This project uses **beads** for issue tracking. The beads database is located at:
+
+```
+/home/devon/MasterworkTools/pfsrd2/.beads/
+```
+
+To create issues for this project, run `bd` commands from `/home/devon/MasterworkTools/pfsrd2/` or any subdirectory (like `PFSRD2-Parser/`).
+
 ## Project Mission
 
 The goal of this project is to **express every aspect of the game system mechanics** available in the source HTML files through a **discrete, structured schema**.
@@ -51,6 +61,114 @@ The structured version exposes the mechanical components so tools can:
 - Calculate expected damage
 - Understand trigger conditions
 - Generate tooltips or UI elements
+
+## Technical/Architecture Philosophy
+
+This section documents the technical philosophy and architectural principles that guide this project's design decisions.
+
+### Unix Philosophy & Influences
+
+- Deeply influenced by "The Art of Unix Programming" - this shaped the fundamental approach
+- Unix philosophy: small tools, text interfaces, composability, processes over threads
+- Heavy terminal user, bash/zsh expert
+- Right tool for the job - pragmatic over dogmatic
+
+### Code & Complexity
+
+**Inherent complexity vs. accidental complexity:**
+- Obsessively avoid accidental complexity
+- Code bases under **~10k LOC** are in the realm a single human mind can fully understand
+- Keep team codebases below this threshold, interface between teams via documented contracts
+- **Working code has more value than most people believe** - allergic to rewrites, prefer evolution
+- "Prototype before polishing" - get it working, measure, then optimize
+- **"The next right thing" approach:** Deploy working solution first, analyze/optimize after. Prevents analysis paralysis while preserving improvement path.
+
+### Architecture Principles
+
+**Service Design:**
+- Strong microservices advocate - small, focused services
+- Loathes monoliths but recognizes they can sometimes be the right tool
+- **Text is superior default** for inter-service communication
+- Binary protocols are optimizations - only use when protocol is proven bottleneck
+- Documented interfaces and contracts between teams/services
+
+**Scale Patterns:**
+- **Isolation prevents cascading failures:** infrastructure, system, and service isolation
+- **Pull > Push:** avoid overwhelming systems, create natural backpressure
+- **Async > Sync:** transform to asynchronous as early as possible
+- **Orders of magnitude thinking:** solutions that work at 1M/hour fail at 100M/hour
+- **Swimlanes/pods/shards:** partition for known capacity and fault containment
+- **No cross-DC synchronous dependencies** for critical path
+- **Local caching, data replication:** minimize bit travel distance
+
+**The Virtuous Cycle:**
+- Scalability → Availability → Performance → Scalability
+- Each improvement enables the others
+
+### Technology Selection Principles
+
+- **Scale-appropriate tooling:** Don't use enterprise-grade distributed systems for problems that don't require them
+- **Complexity budget:** Complex tools cost learning curve, operational overhead, lock-in - only spend when problem demands it
+- **Resist cargo culting:** Popular/trendy ≠ appropriate for your context
+- **Deep organizational knowledge compounds:** Team expertise in existing tools is a strategic asset
+- **80% fit with known tech > 100% fit with new dependency**
+- Justify new dependencies against: learning curve, operational overhead, lock-in, team skill depth, ongoing maintenance burden
+- **"Revolutionary" = repackaged patterns:** Vendor claims of breakthrough innovation usually just cross-domain transfer of existing patterns. Look for what they're actually borrowing from.
+
+**Concurrency & Communication:**
+- Prefer **processes over threads**
+- Prefer **queues over locks**
+- Async message passing over shared state
+
+**Object Orientation:**
+- Dislikes OOP in most cases
+- Prefers **procedural with good interfaces at service level** - less prone to bloat
+- Composition over inheritance when OOP is necessary
+
+### Language Selection Pattern
+
+- Python for development speed, readability, most services
+- Go for performance-critical paths
+- Right tool for the job, not religious about it
+
+### Response Approach for Technical Questions
+
+**DO:**
+- Question whether complexity is inherent or accidental
+- Suggest simpler alternatives with trade-offs
+- Call out when scale doesn't justify tool choice
+- Consider failure modes and cascading failures
+- Think about orders of magnitude changes
+- Propose evolutionary changes over rewrites
+- Use text/documented interfaces as default
+
+**DON'T:**
+- Assume latest/shiniest tech is best
+- Propose rewrites when evolution is viable
+- Over-engineer for scale that doesn't exist yet
+- Suggest OOP inheritance hierarchies
+- Recommend shared state over message passing
+- Ignore the cost/complexity of adding new dependencies
+
+**Key Questions to Ask:**
+- What's the actual bottleneck? (measure first)
+- What's the inherent vs. accidental complexity here?
+- Can we evolve existing code instead of rewrite?
+- Is this tool justified at current/projected scale?
+- What are the failure modes?
+- How does this fail at 10x scale? 100x?
+- Can we do this with text interfaces first?
+- What's the 80% solution using tech we already know?
+
+### Architectural Review Lens
+
+When describing a system or reviewing architecture:
+1. Identify coupling points and failure domains
+2. Look for synchronous dependencies that could be async
+3. Question if scale justifies complexity of proposed tools
+4. Suggest isolation strategies to prevent cascade
+5. Consider the 10k LOC boundary - should this be multiple services?
+6. Check if working code exists that could evolve vs. rewrite
 
 ## Architecture Documentation
 
