@@ -1152,8 +1152,7 @@ def _normalize_damage(sb):
 
     if damage_array:
         sb['damage'] = damage_array
-    elif 'damage' in sb:
-        del sb['damage']
+    # If empty, don't set it - cleanup pass will handle any existing empty/null values
 
 
 def _normalize_hands(sb):
