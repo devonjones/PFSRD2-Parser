@@ -1,5 +1,15 @@
 # PFSRD2-Parser Developer Guide
 
+## Issue Tracking
+
+This project uses **beads** for issue tracking. The beads database is located at:
+
+```
+/home/devon/MasterworkTools/pfsrd2/.beads/
+```
+
+To create issues for this project, run `bd` commands from `/home/devon/MasterworkTools/pfsrd2/` or any subdirectory (like `PFSRD2-Parser/`).
+
 ## Project Mission
 
 The goal of this project is to **express every aspect of the game system mechanics** available in the source HTML files through a **discrete, structured schema**.
