@@ -1150,7 +1150,10 @@ def _normalize_damage(sb):
         }
         damage_array.append(damage_obj)
 
-    sb['damage'] = damage_array if damage_array else None
+    if damage_array:
+        sb['damage'] = damage_array
+    elif 'damage' in sb:
+        del sb['damage']
 
 
 def _normalize_hands(sb):
