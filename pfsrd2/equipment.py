@@ -81,11 +81,12 @@ EQUIPMENT_TYPES = {
         },
         # Fields at different nesting levels:
         # - shared_fields: top-level stat_block (price, bulk, access)
-        # - weapon_fields: nested in weapon object (category, hands, ammunition)
-        # - mode_fields: nested in melee/ranged objects (damage, weapon_type, group, range, reload)
+        # - weapon_fields: nested in weapon object (category)
+        # - mode_fields: nested in melee/ranged objects (damage, weapon_type, group, range, reload, ammunition, hands)
+        #   Note: ammunition and hands can appear in weapon_fields OR mode_fields (combination weapons have them mode-specific)
         'shared_fields': ['access', 'price', 'bulk'],
         'weapon_fields': ['category', 'hands', 'ammunition'],
-        'mode_fields': ['damage', 'weapon_type', 'group', 'range', 'reload'],
+        'mode_fields': ['damage', 'weapon_type', 'group', 'range', 'reload', 'ammunition', 'hands'],
         'group_table': 'weapon_groups',
         'group_sql_module': 'pfsrd2.sql.weapon_groups',
         'group_subtype': 'weapon_group',
@@ -420,12 +421,19 @@ def _extract_combination_weapon(bs, sb, struct, config):
             break
 
         label = tag.get_text().strip()
-        if not label or label not in config['recognized_stats']:
+        if not label:
             continue
 
+        # FAIL FAST: Assert all labels are recognized
+        assert label in config['recognized_stats'], \
+            f"Unknown weapon stat label in combination weapon: '{label}'. Add it to EQUIPMENT_TYPES['weapon']['recognized_stats']."
+
         field_name = config['recognized_stats'][label]
+        if field_name is None:  # Intentionally skipped (like Source)
+            continue
+
         # Extract both shared and weapon-level fields before h2
-        if field_name and (field_name in shared_fields or field_name in weapon_fields):
+        if field_name in shared_fields or field_name in weapon_fields:
             if label == 'Group':
                 value = _extract_group_value(tag, config['group_subtype'])
             else:
@@ -492,16 +500,21 @@ def _extract_combination_weapon(bs, sb, struct, config):
                 continue
 
             label = tag.get_text().strip()
-            if not label or label not in config['recognized_stats']:
+            if not label:
                 continue
+
+            # FAIL FAST: Assert all labels are recognized
+            assert label in config['recognized_stats'], \
+                f"Unknown weapon stat label in {mode_name} mode: '{label}'. Add it to EQUIPMENT_TYPES['weapon']['recognized_stats']."
 
             field_name = config['recognized_stats'][label]
-            if not field_name:
+            if field_name is None:  # Intentionally skipped (like Source, Favored Weapon)
                 continue
 
-            # Only extract mode-specific fields for modes
-            if field_name not in config.get('mode_fields', []):
-                continue
+            # FAIL FAST: Mode sections should only contain mode-specific fields
+            assert field_name in config.get('mode_fields', []), \
+                f"Field '{field_name}' from label '{label}' found in {mode_name} mode but not in mode_fields config. " \
+                f"Mode sections should only contain: {config.get('mode_fields', [])}"
 
             if label == 'Group':
                 value = _extract_group_value(tag, config['group_subtype'])

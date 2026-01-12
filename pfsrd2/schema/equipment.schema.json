@@ -158,7 +158,9 @@
 				"weapon_type": {"enum": ["Melee", "Ranged"]},
 				"group": {"$ref": "#/definitions/weapon_group"},
 				"range": {"$ref": "#/definitions/range"},
-				"reload": {"$ref": "#/definitions/reload"}
+				"reload": {"$ref": "#/definitions/reload"},
+				"ammunition": {"type": "string"},
+				"hands": {"type": ["integer", "string"]}
 			},
 			"required": ["type", "subtype"],
 			"additionalProperties": false
