@@ -18,7 +18,7 @@ def load_armor_groups(conn, options):
     for f in files:
         with open(f) as fp:
             data = json.load(fp)
-            print(data['name'])
+            sys.stderr.write(data['name'] + '\n')
             insert_armor_group(curs, data)
     conn.commit()
 

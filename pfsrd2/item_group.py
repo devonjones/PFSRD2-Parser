@@ -200,8 +200,6 @@ def section_pass(struct):
 def handle_edition(struct):
     """Determine if armor group is legacy or remastered based on sections"""
     struct['edition'] = 'remastered'
-    if len(struct['sections']) == 1:
-        return
     # Check if there's a Legacy Content section
     for section in struct['sections']:
         if section.get('name') == 'Legacy Content':
