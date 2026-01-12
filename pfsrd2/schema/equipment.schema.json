@@ -51,7 +51,7 @@
 			"properties": {
 				"type": {"enum": ["bonus"]},
 				"subtype": {"enum": ["ac", "skill", "speed"]},
-				"bonus_type": {"enum": ["armor", "dexterity"]},
+				"bonus_type": {"enum": ["armor", "dexterity", "shield"]},
 				"bonus_value": {"type": "integer"},
 				"bonus_cap": {"type": "integer"},
 				"unit": {"enum": ["feet"]}
@@ -189,17 +189,39 @@
 			},
 			"additionalProperties": false
 		},
+		"shield_hitpoints": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["hitpoints"]},
+				"hp": {"type": "integer"},
+				"hardness": {"type": "integer"},
+				"break_threshold": {"type": "integer"}
+			},
+			"required": ["type", "subtype", "hp"],
+			"additionalProperties": false
+		},
+		"shield_object": {
+			"type": "object",
+			"properties": {
+				"ac_bonus": {"$ref": "#/definitions/bonus"},
+				"speed_penalty": {"$ref": "#/definitions/bonus"},
+				"hitpoints": {"$ref": "#/definitions/shield_hitpoints"}
+			},
+			"additionalProperties": false
+		},
 		"equipment_stat_block": {
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block"]},
-				"subtype": {"enum": ["weapon", "armor"]},
+				"subtype": {"enum": ["weapon", "armor", "shield"]},
 				"traits": {"$ref": "#/definitions/traits"},
 				"price": {"type": "string"},
 				"bulk": {"$ref": "#/definitions/bulk"},
 				"access": {"type": "string"},
 				"weapon": {"$ref": "#/definitions/weapon_object"},
-				"armor": {"$ref": "#/definitions/armor_object"}
+				"armor": {"$ref": "#/definitions/armor_object"},
+				"shield": {"$ref": "#/definitions/shield_object"}
 			},
 			"required": ["type", "subtype"],
 			"additionalProperties": false
@@ -324,9 +346,9 @@
 	"type": "object",
 	"properties": {
 		"name": {"type": "string"},
-		"type": {"enum": ["weapon", "armor"]},
+		"type": {"enum": ["weapon", "armor", "shield"]},
 		"aonid": {"type": "integer"},
-		"game-obj": {"enum": ["Weapons", "Armor"]},
+		"game-obj": {"enum": ["Weapons", "Armor", "Shields"]},
 		"game-id": {"type": "string"},
 		"stat_block": {"$ref": "#/definitions/equipment_stat_block"},
 		"sources": {"$ref": "#/definitions/sources"},

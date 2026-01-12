@@ -2,6 +2,7 @@ import os
 import json
 import sys
 import re
+import copy
 import importlib
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -92,6 +93,25 @@ EQUIPMENT_TYPES = {
         'group_subtype': 'weapon_group',
         'schema_file': 'equipment.schema.json',
         'output_subdir': 'weapons',
+        'normalize_fields': None,  # Set after function definition
+    },
+    'shield': {
+        'recognized_stats': {
+            'Source': None,  # Handled separately
+            'Price': 'price',
+            'AC Bonus': 'ac_bonus',
+            'Speed Penalty': 'speed_penalty',
+            'Bulk': 'bulk',
+            'Hardness': 'hardness',
+            'HP (BT)': 'hp_bt',
+        },
+        # Fields at different nesting levels:
+        # - shared_fields: top-level stat_block (price, bulk)
+        # - nested_fields: nested in shield object (ac_bonus, speed_penalty, hardness, hp_bt)
+        'shared_fields': ['price', 'bulk'],
+        'nested_fields': ['ac_bonus', 'speed_penalty', 'hardness', 'hp_bt'],
+        'schema_file': 'equipment.schema.json',
+        'output_subdir': 'shields',
         'normalize_fields': None,  # Set after function definition
     },
 }
@@ -189,26 +209,26 @@ def extract_name_link(container):
     """
     Extract the equipment name link, skipping legacy/remastered note links.
     Try game-obj attribute first (after pfsrd2-web transform), fallback to href.
-    Works for both armor and weapons.
+    Works for armor, weapons, and shields.
     """
     # Try game-obj attribute (from pfsrd2-web transform)
-    # Could be 'Armor' or 'Weapons'
-    for game_obj in ['Armor', 'Weapons']:
+    # Could be 'Armor', 'Weapons', or 'Shields'
+    for game_obj in ['Armor', 'Weapons', 'Shields']:
         all_links = container.find_all('a', attrs={'game-obj': game_obj})
         for link in all_links:
             if not link.has_attr('noredirect'):
                 return link
 
     # Fallback: use href attribute
-    # Could be 'Armor.aspx?ID=' or 'Weapons.aspx?ID='
-    for pattern in ['Armor.aspx?ID=', 'Weapons.aspx?ID=']:
+    # Could be 'Armor.aspx?ID=', 'Weapons.aspx?ID=', or 'Shields.aspx?ID='
+    for pattern in ['Armor.aspx?ID=', 'Weapons.aspx?ID=', 'Shields.aspx?ID=']:
         all_links = container.find_all('a', href=lambda x: x and pattern in x)
         for link in all_links:
             href = link.get('href', '')
             if 'NoRedirect' not in href:
                 return link
 
-    assert False, "Could not find equipment name link (tried both Armor and Weapons)"
+    assert False, "Could not find equipment name link (tried Armor, Weapons, and Shields)"
 
 
 def restructure_equipment_pass(details, equipment_type):
@@ -271,7 +291,7 @@ def _generic_section_pass(struct, config):
 
     # Extract stats into a temporary dictionary
     stats = {}
-    _extract_stats_to_dict(bs, stats, config['recognized_stats'], struct['type'], config['group_subtype'])
+    _extract_stats_to_dict(bs, stats, config['recognized_stats'], struct['type'], config.get('group_subtype'))
 
     # Separate shared vs nested fields
     shared_fields = config.get('shared_fields', [])
@@ -621,7 +641,7 @@ def _extract_source(bs, struct):
             struct['sources'] = [source]
 
 
-def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, group_subtype):
+def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, group_subtype=None):
     """Extract stats into a dictionary - works for any equipment type based on configuration."""
     # Find all bold tags before the hr (stats section)
     hr = bs.find('hr')
@@ -675,25 +695,41 @@ def _extract_armor_stats(bs, sb):
 
 def _extract_stat_value(label_tag):
     """Extract the value after a bold label tag, handling em dashes as None."""
-    next_sibling = label_tag.next_sibling
+    # Collect all content between this label and the next <b> tag, <hr> tag, or semicolon
+    # This handles cases like: "+2 (+4<sup>2</sup>)" where content spans multiple siblings
+    value_parts = []
+    current = label_tag.next_sibling
 
-    # Skip whitespace-only text nodes
-    while next_sibling and isinstance(next_sibling, NavigableString) and not next_sibling.strip():
-        next_sibling = next_sibling.next_sibling
+    while current:
+        # Stop at next <b> tag (next field label) or <hr> tag (end of stats section)
+        if isinstance(current, Tag) and current.name in ('b', 'hr', 'br'):
+            break
 
-    if not next_sibling:
-        return None
+        # Skip leading whitespace-only text nodes
+        if isinstance(current, NavigableString):
+            text = str(current)
+            # Check for semicolon delimiter
+            if ';' in text:
+                # Take only the part before the semicolon
+                before_semi = text.split(';')[0]
+                if before_semi.strip():
+                    value_parts.append(before_semi)
+                break
+            # Add non-empty text
+            if text.strip():
+                value_parts.append(text)
+        elif isinstance(current, Tag):
+            # Skip <sup> tags (footnote markers)
+            if current.name != 'sup':
+                # For other tags, get the text content
+                tag_text = get_text(current)
+                if tag_text.strip():
+                    value_parts.append(tag_text)
 
-    # Extract text from sibling
-    if isinstance(next_sibling, NavigableString):
-        value_text = str(next_sibling).strip()
-    else:
-        # It might be a tag (like <u><a>Cloth</a></u> for Group)
-        value_text = get_text(next_sibling).strip()
+        current = current.next_sibling
 
-    # Split on semicolon if present
-    if ';' in value_text:
-        value_text = value_text.split(';')[0].strip()
+    # Combine collected parts and clean up
+    value_text = ''.join(value_parts).strip()
 
     # Handle em dash (—) as None/absent
     if value_text == '—' or value_text == '':
@@ -893,14 +929,23 @@ def _normalize_strength(sb):
         raise ValueError(f"Could not parse strength value: '{sb['strength']}'") from e
 
 
-def _normalize_ac_bonus(sb):
-    """Convert ac_bonus string to structured bonus object."""
+def _normalize_ac_bonus(sb, bonus_type='armor'):
+    """Convert ac_bonus string to structured bonus object.
+
+    Args:
+        sb: stat block dict
+        bonus_type: 'armor' for armor, 'shield' for shields
+    """
     if 'ac_bonus' not in sb:
         return
 
     value_str = sb['ac_bonus']
     if not value_str:
         return
+
+    # Handle conditional bonuses like "+2 (+4)" - take only the base value
+    if '(' in value_str:
+        value_str = value_str.split('(')[0].strip()
 
     # Strip leading + sign
     if value_str.startswith('+'):
@@ -909,11 +954,11 @@ def _normalize_ac_bonus(sb):
     # Parse to int
     try:
         value = int(value_str.strip())
-        # Create bonus object for armor's AC bonus (armor bonus type)
+        # Create bonus object with appropriate bonus_type
         sb['ac_bonus'] = {
             'type': 'bonus',
             'subtype': 'ac',
-            'bonus_type': 'armor',
+            'bonus_type': bonus_type,
             'bonus_value': value
         }
     except ValueError as e:
@@ -1085,6 +1130,67 @@ def normalize_weapon_fields(sb):
 
 # Register normalizer in EQUIPMENT_TYPES config
 EQUIPMENT_TYPES['weapon']['normalize_fields'] = normalize_weapon_fields
+
+
+def normalize_shield_fields(sb):
+    """Normalize shield-specific fields."""
+    # Normalize shared field at top level
+    _normalize_bulk(sb)
+
+    # Normalize shield-specific fields within shield object
+    if 'shield' in sb:
+        shield_obj = sb['shield']
+        # Bonus objects (for stacking rules) - shields use bonus_type 'shield'
+        _normalize_ac_bonus(shield_obj, bonus_type='shield')
+        _normalize_speed_penalty(shield_obj)
+        # Build hitpoints object from hp_bt, hardness fields
+        _normalize_shield_hitpoints(shield_obj)
+
+# Register normalizer in EQUIPMENT_TYPES config
+EQUIPMENT_TYPES['shield']['normalize_fields'] = normalize_shield_fields
+
+
+def _normalize_shield_hitpoints(sb):
+    """Build hitpoints object from hp_bt and hardness fields.
+
+    Creates a stat_block_section hitpoints object matching creature structure.
+    """
+    if 'hp_bt' not in sb and 'hardness' not in sb:
+        return
+
+    # Build hitpoints object
+    hitpoints = {
+        'type': 'stat_block_section',
+        'subtype': 'hitpoints'
+    }
+
+    # Parse HP (BT) string like "6 (3)" if present
+    if 'hp_bt' in sb:
+        value_str = sb['hp_bt']
+        if value_str:
+            try:
+                match = re.match(r'(\d+)\s*\((\d+)\)', value_str.strip())
+                if match:
+                    hitpoints['hp'] = int(match.group(1))
+                    hitpoints['break_threshold'] = int(match.group(2))
+                else:
+                    raise ValueError(f"Could not parse hp_bt format: '{value_str}'")
+            except (ValueError, AttributeError) as e:
+                raise ValueError(f"Could not parse hp_bt value: '{value_str}'") from e
+        del sb['hp_bt']
+
+    # Add hardness to hitpoints object if present
+    if 'hardness' in sb:
+        hardness_val = sb['hardness']
+        if isinstance(hardness_val, str):
+            hitpoints['hardness'] = int(hardness_val.strip())
+        else:
+            hitpoints['hardness'] = hardness_val
+        del sb['hardness']
+
+    # Only add hitpoints object if we have at least hp
+    if 'hp' in hitpoints:
+        sb['hitpoints'] = hitpoints
 
 
 def _normalize_weapon_mode(mode_obj):
@@ -1353,6 +1459,10 @@ def trait_db_pass(struct):
 
 def equipment_group_pass(struct, config):
     """Enrich equipment group objects with full data from database."""
+    # Skip if equipment type doesn't have groups (e.g., shields)
+    if 'group_table' not in config:
+        return
+
     sb = struct.get('stat_block', {})
 
     group_table = config['group_table']
