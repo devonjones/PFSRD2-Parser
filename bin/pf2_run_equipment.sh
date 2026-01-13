@@ -9,6 +9,7 @@ fi
 EQUIPMENT_TYPE=$1
 
 # Pluralize for directory names and error files
+# NOTE: When adding a new equipment type, you must add a new case here.
 case "$EQUIPMENT_TYPE" in
 	weapon)
 		PLURAL="Weapons"
