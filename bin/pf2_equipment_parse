@@ -11,14 +11,11 @@ def main():
     valid_types_str = ", ".join(valid_types)
     usage = f"usage: %prog [options] --type TYPE [filenames]\nParses equipment ({valid_types_str}) from pfsrd2 html to json and writes them to the specified directory"
     parser = option_parser(usage)
-    parser.add_option("--type", dest="equipment_type", help=f"Equipment type: {valid_types_str}")
+    parser.add_option("--type", dest="equipment_type", type="choice", choices=valid_types, help=f"Equipment type: {valid_types_str}")
     (options, args) = parser.parse_args()
 
     if not options.equipment_type:
         parser.error(f"--type is required (one of: {valid_types_str})")
-
-    if options.equipment_type not in valid_types:
-        parser.error(f"Invalid equipment type: {options.equipment_type}. Must be one of: {valid_types_str}")
 
     exec_main(options, args, parse_equipment, options.equipment_type)
 
