@@ -8,12 +8,6 @@ fi
 
 EQUIPMENT_TYPE=$1
 
-# Validate equipment type
-if [[ "$EQUIPMENT_TYPE" != "weapon" && "$EQUIPMENT_TYPE" != "armor" && "$EQUIPMENT_TYPE" != "shield" ]]; then
-	echo "Error: Invalid equipment type '$EQUIPMENT_TYPE'. Must be weapon, armor, or shield"
-	exit 1
-fi
-
 # Pluralize for directory names and error files
 case "$EQUIPMENT_TYPE" in
 	weapon)
@@ -27,6 +21,10 @@ case "$EQUIPMENT_TYPE" in
 	shield)
 		PLURAL="Shields"
 		ERROR_SUFFIX="shields"
+		;;
+	*)
+		echo "Error: Invalid equipment type '$EQUIPMENT_TYPE'. Must be weapon, armor, or shield"
+		exit 1
 		;;
 esac
 
