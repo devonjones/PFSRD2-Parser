@@ -1022,8 +1022,13 @@ def _normalize_check_penalty(sb):
         raise ValueError(f"Could not parse check_penalty value: '{sb['check_penalty']}'") from e
 
 
-def _normalize_speed_penalty(sb):
-    """Convert speed_penalty string to bonus object."""
+def _normalize_speed_penalty(sb, bonus_type='armor'):
+    """Convert speed_penalty string to bonus object.
+
+    Args:
+        sb: stat block dict
+        bonus_type: 'armor' for armor, 'shield' for shields
+    """
     if 'speed_penalty' not in sb:
         return
 
@@ -1043,11 +1048,11 @@ def _normalize_speed_penalty(sb):
         # Speed penalties are always negative
         if value > 0:
             value = -value
-        # Create bonus object for speed penalty
+        # Create bonus object for speed penalty with appropriate bonus_type
         speed_obj = {
             'type': 'bonus',
             'subtype': 'speed',
-            'bonus_type': 'armor',
+            'bonus_type': bonus_type,
             'bonus_value': value
         }
         if unit:
@@ -1142,7 +1147,7 @@ def normalize_shield_fields(sb):
         shield_obj = sb['shield']
         # Bonus objects (for stacking rules) - shields use bonus_type 'shield'
         _normalize_ac_bonus(shield_obj, bonus_type='shield')
-        _normalize_speed_penalty(shield_obj)
+        _normalize_speed_penalty(shield_obj, bonus_type='shield')
         # Build hitpoints object from hp_bt, hardness fields
         _normalize_shield_hitpoints(shield_obj)
 
