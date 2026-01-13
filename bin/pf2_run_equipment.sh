@@ -14,38 +14,41 @@ if [[ "$EQUIPMENT_TYPE" != "weapon" && "$EQUIPMENT_TYPE" != "armor" && "$EQUIPME
 	exit 1
 fi
 
-# Pluralize for directory names
+# Pluralize for directory names and error files
 case "$EQUIPMENT_TYPE" in
 	weapon)
 		PLURAL="Weapons"
+		ERROR_SUFFIX="weapons"
 		;;
 	armor)
 		PLURAL="Armor"
+		ERROR_SUFFIX="armor"
 		;;
 	shield)
 		PLURAL="Shields"
+		ERROR_SUFFIX="shields"
 		;;
 esac
 
 source dir.conf
 
-rm -f errors.pf2.${EQUIPMENT_TYPE}s.log
+rm -f errors.pf2.${ERROR_SUFFIX}.log
 
-if test -f "errors.pf2.${EQUIPMENT_TYPE}s"; then
-	cat errors.pf2.${EQUIPMENT_TYPE}s | while read i
+if test -f "errors.pf2.${ERROR_SUFFIX}"; then
+	cat errors.pf2.${ERROR_SUFFIX} | while read i
 	do
 		if [[ "$i" == "done" ]]; then
 			exit
 		fi
 		if ! ./pf2_equipment_parse --type "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
-			echo "$i" >> errors.pf2.${EQUIPMENT_TYPE}s.log
+			echo "$i" >> errors.pf2.${ERROR_SUFFIX}.log
 		fi
 	done
 else
 	for i in `ls $PF2_WEB_DIR/$PLURAL/$PLURAL.aspx.ID_*.html | msort -j -q -l -n 1 -c hybrid`
 	do
 		if ! ./pf2_equipment_parse --type "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
-			echo "$i" >> errors.pf2.${EQUIPMENT_TYPE}s.log
+			echo "$i" >> errors.pf2.${ERROR_SUFFIX}.log
 		fi
 	done
 fi
