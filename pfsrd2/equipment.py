@@ -1186,11 +1186,12 @@ def _normalize_shield_hitpoints(sb):
 
     # Add hardness to hitpoints object if present
     if 'hardness' in sb:
-        hardness_val = sb['hardness']
-        if isinstance(hardness_val, str):
-            hitpoints['hardness'] = int(hardness_val.strip())
-        else:
-            hitpoints['hardness'] = hardness_val
+        hardness_val = sb.get('hardness')
+        if hardness_val is not None and str(hardness_val).strip():
+            try:
+                hitpoints['hardness'] = int(str(hardness_val).strip())
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Could not parse hardness value: '{hardness_val}'") from e
         del sb['hardness']
 
     # Only add hitpoints object if we have at least hp
