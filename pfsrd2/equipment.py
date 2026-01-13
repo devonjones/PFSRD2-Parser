@@ -2,7 +2,6 @@ import os
 import json
 import sys
 import re
-import copy
 import importlib
 from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString, Tag
