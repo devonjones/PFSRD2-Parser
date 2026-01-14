@@ -1621,15 +1621,6 @@ def _extract_description(bs, struct):
     # Get the cleaned text
     desc_text = _normalize_whitespace(str(desc_soup))
 
-    # DEBUG: Check for action spans
-    from bs4 import BeautifulSoup as BS
-    debug_soup = BS(desc_text, 'html.parser')
-    remaining_action_spans = debug_soup.find_all('span', class_='action')
-    if remaining_action_spans:
-        import sys
-        sys.stderr.write(f"WARNING: Description still has {len(remaining_action_spans)} action spans!\n")
-        sys.stderr.write(f"Description text: {desc_text[:200]}\n")
-
     # Add text and links to top-level structure (not as a section)
     if desc_text:
         struct['text'] = desc_text
