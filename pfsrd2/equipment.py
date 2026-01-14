@@ -1955,9 +1955,7 @@ def _normalize_favored_weapon(weapon_obj):
         return
 
     html_str = weapon_obj['favored_weapon']
-    if not html_str or not html_str.strip():
-        del weapon_obj['favored_weapon']
-        return
+    # Empty field cleanup is handled by a separate pass - don't delete here
 
     # Parse HTML to extract text and links
     soup = BeautifulSoup(html_str, 'html.parser')
@@ -1992,9 +1990,7 @@ def _normalize_ammunition(obj):
         return
 
     html_str = obj['ammunition']
-    if not html_str or not html_str.strip():
-        del obj['ammunition']
-        return
+    # Empty field cleanup is handled by a separate pass - don't delete here
 
     # Check if it's already a structured object (shouldn't be, but be defensive)
     if isinstance(html_str, dict):
