@@ -2111,6 +2111,8 @@ def normalize_siege_weapon_fields(sb):
         _normalize_defensive_stats(sw_obj)
         # Normalize speed field if present
         _normalize_speed(sw_obj)
+        # Normalize ammunition field if present
+        _normalize_ammunition(sw_obj)
         # Build hitpoints object from hp_bt, hardness, immunities fields
         # This must come last since it deletes the source fields
         _normalize_item_hitpoints(sw_obj)
