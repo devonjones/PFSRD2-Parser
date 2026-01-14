@@ -1401,9 +1401,10 @@ def _remove_redundant_sections(bs):
     # Remove Armor Specialization Effects h2 section (comes from group, redundant)
     links_removed += _remove_h2_section(bs, lambda s: s and 'Armor Specialization Effects' in s)
 
-    # Remove Specific Magic Armor/Weapon sections (lists of related items)
+    # Remove Specific Magic Armor/Weapon/Shield sections (lists of related items)
     links_removed += _remove_h2_section(bs, lambda s: s and 'Specific Magic Armor' in s)
     links_removed += _remove_h2_section(bs, lambda s: s and 'Specific Magic Weapon' in s)
+    links_removed += _remove_h2_section(bs, lambda s: s and 'Specific Magic Shield' in s)
 
     # Remove Critical Specialization Effects section (weapon groups, redundant)
     links_removed += _remove_h2_section(bs, lambda s: s and 'Critical Specialization Effects' in s)
