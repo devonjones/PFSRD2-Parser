@@ -44,6 +44,12 @@ def truncate_traits(curs):
     curs.execute(sql)
 
 
+def truncate_trait_links(curs):
+    sql = '\n'.join([
+        "DELETE FROM trait_links"])
+    curs.execute(sql)
+
+
 def insert_trait(curs, trait):
     text = json.dumps(trait)
     values = [trait['game-id'], trait['name'].lower(),
@@ -64,6 +70,7 @@ def fetch_trait(curs, game_id):
         " FROM traits",
         " WHERE game_id = ?"])
     curs.execute(sql, values)
+    return curs.fetchone()
 
 
 def fetch_trait_by_name(curs, name):
@@ -73,6 +80,7 @@ def fetch_trait_by_name(curs, name):
         " FROM traits t",
         " WHERE t.name = ?"])
     curs.execute(sql, values)
+    return curs.fetchone()
 
 
 def fetch_trait_by_id(curs, trait_id):

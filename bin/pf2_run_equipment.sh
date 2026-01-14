@@ -2,7 +2,7 @@
 
 if [ $# -ne 1 ]; then
 	echo "Usage: $0 <equipment_type>"
-	echo "  equipment_type: weapon, armor, or shield"
+	echo "  equipment_type: weapon, armor, shield, or siege_weapon"
 	exit 1
 fi
 
@@ -23,8 +23,12 @@ case "$EQUIPMENT_TYPE" in
 		PLURAL="Shields"
 		ERROR_SUFFIX="shields"
 		;;
+	siege_weapon)
+		PLURAL="SiegeWeapons"
+		ERROR_SUFFIX="siege_weapons"
+		;;
 	*)
-		echo "Error: Invalid equipment type '$EQUIPMENT_TYPE'. Must be weapon, armor, or shield"
+		echo "Error: Invalid equipment type '$EQUIPMENT_TYPE'. Must be weapon, armor, shield, or siege_weapon"
 		exit 1
 		;;
 esac
