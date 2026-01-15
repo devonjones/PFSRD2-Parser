@@ -567,9 +567,9 @@ def _generic_section_pass(struct, config):
     Returns the number of links removed from redundant sections.
     """
     sb = find_stat_block(struct)
-    text = sb.get('text', '')
+    text = sb['text']  # Fail if missing
     if not text:
-        return 0
+        raise ValueError(f"Stat block text is empty for {struct.get('name', 'unknown')}")
 
     bs = BeautifulSoup(text, 'html.parser')
 
@@ -616,9 +616,9 @@ def _weapon_section_pass(struct, config):
     Returns the number of links removed from redundant sections.
     """
     sb = find_stat_block(struct)
-    text = sb.get('text', '')
+    text = sb['text']  # Fail if missing
     if not text:
-        return 0
+        raise ValueError(f"Stat block text is empty for {struct.get('name', 'unknown')}")
 
     bs = BeautifulSoup(text, 'html.parser')
 
@@ -647,9 +647,9 @@ def _siege_weapon_section_pass(struct, config):
     Returns the number of links removed from redundant sections.
     """
     sb = find_stat_block(struct)
-    text = sb.get('text', '')
+    text = sb['text']  # Fail if missing
     if not text:
-        return 0
+        raise ValueError(f"Stat block text is empty for {struct.get('name', 'unknown')}")
 
     bs = BeautifulSoup(text, 'html.parser')
 
