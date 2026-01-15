@@ -386,7 +386,6 @@
 				"subtype": {"enum": ["defense"]},
 				"ac_bonus": {"$ref": "#/definitions/bonus"},
 				"ac": {"type": "integer"},
-				"hardness": {"type": "integer"},
 				"hitpoints": {"$ref": "#/definitions/item_hitpoints"},
 				"speed_penalty": {"$ref": "#/definitions/bonus"},
 				"check_penalty": {"$ref": "#/definitions/bonus"},

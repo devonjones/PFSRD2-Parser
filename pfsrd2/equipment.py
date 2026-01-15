@@ -2831,23 +2831,23 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
             siege = stat_block["siege_weapon"]
             if "ac" in defense:
                 assert defense["ac"] == siege["ac"], \
-                    f"defense.ac != siege_weapon.ac"
+                    f"defense.ac != siege.ac"
             if "hitpoints" in defense and "hitpoints" in siege:
                 assert defense["hitpoints"] == siege["hitpoints"], \
-                    f"defense.hitpoints != siege_weapon.hitpoints"
+                    f"defense.hitpoints != siege.hitpoints"
             if "speed" in defense:
                 assert defense["speed"] == siege["speed"], \
-                    f"defense.speed != siege_weapon.speed"
+                    f"defense.speed != siege.speed"
             # Validate saves (old structure has integers, new has save objects)
             if "saves" in defense:
                 if "fort" in siege:
                     assert "fort" in defense["saves"], "Missing fort in defense.saves"
                     assert defense["saves"]["fort"]["value"] == siege["fort"], \
-                        f"defense.saves.fort.value != siege_weapon.fort"
+                        f"defense.saves.fort.value != siege.fort"
                 if "ref" in siege:
                     assert "ref" in defense["saves"], "Missing ref in defense.saves"
                     assert defense["saves"]["ref"]["value"] == siege["ref"], \
-                        f"defense.saves.ref.value != siege_weapon.ref"
+                        f"defense.saves.ref.value != siege.ref"
 
     # Validate offense bucket
     if offense:
@@ -2879,7 +2879,7 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
             siege = stat_block["siege_weapon"]
             if "ammunition" in offense and "ammunition" in siege:
                 assert offense["ammunition"] == siege["ammunition"], \
-                    f"offense.ammunition != siege_weapon.ammunition"
+                    f"offense.ammunition != siege.ammunition"
 
 
 def populate_equipment_buckets_pass(struct):
