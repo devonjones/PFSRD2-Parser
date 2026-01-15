@@ -1424,14 +1424,9 @@ def _remove_h2_section(bs, match_func):
         current = current.next_sibling
 
     # Count links in the section before removing
-    links_count = 0
-    for elem in section_elements:
-        if isinstance(elem, Tag):
-            # Check if this element itself is a link
-            if elem.name == 'a' and elem.get('game-obj'):
-                links_count += 1
-            # Count links with game-obj in descendants
-            links_count += len(elem.find_all('a', attrs={'game-obj': True}))
+    section_html = ''.join(str(e) for e in section_elements)
+    section_soup = BeautifulSoup(section_html, 'html.parser')
+    links_count = len(section_soup.find_all('a', attrs={'game-obj': True}))
 
     # Now remove the section
     current = h2.next_sibling
