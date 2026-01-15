@@ -2667,23 +2667,19 @@ def _build_defense_bucket(stat_block):
         # Build saves container if fort or ref exist
         # Note: old structure has fort/ref as raw integers, need to wrap in save objects
         saves = None
-        if "fort" in siege or "ref" in siege:
+        save_keys = ["fort", "ref"]
+        if any(key in siege for key in save_keys):
             saves = {
                 "type": "stat_block_section",
                 "subtype": "saves"
             }
-            if "fort" in siege:
-                saves["fort"] = {
-                    "type": "stat_block_section",
-                    "subtype": "save",
-                    "value": siege["fort"]
-                }
-            if "ref" in siege:
-                saves["ref"] = {
-                    "type": "stat_block_section",
-                    "subtype": "save",
-                    "value": siege["ref"]
-                }
+            for key in save_keys:
+                if key in siege:
+                    saves[key] = {
+                        "type": "stat_block_section",
+                        "subtype": "save",
+                        "value": siege[key]
+                    }
         if saves:
             defense["saves"] = saves
 
@@ -2716,17 +2712,12 @@ def _build_offense_bucket(stat_block):
         weapon = stat_block["weapon"]
         weapon_modes = []
 
-        # Convert melee mode if exists
-        if "melee" in weapon:
-            melee = weapon["melee"].copy()
-            melee["type"] = "stat_block_section"
-            weapon_modes.append(melee)
-
-        # Convert ranged mode if exists
-        if "ranged" in weapon:
-            ranged = weapon["ranged"].copy()
-            ranged["type"] = "stat_block_section"
-            weapon_modes.append(ranged)
+        # Convert melee and ranged modes if they exist
+        for mode_type in ["melee", "ranged"]:
+            if mode_type in weapon:
+                mode = weapon[mode_type].copy()
+                mode["type"] = "stat_block_section"
+                weapon_modes.append(mode)
 
         if weapon_modes:
             offense["weapon_modes"] = weapon_modes
@@ -2915,13 +2906,8 @@ def populate_equipment_buckets_pass(struct):
     if offense:
         stat_block["offense"] = offense
 
-    # Phase 4 cleanup: Remove deprecated old structures now that buckets are populated
-    # These old objects are no longer in the schema
-    for key in ("weapon", "armor", "shield", "siege_weapon"):
-        if key in stat_block:
-            del stat_block[key]
-
-    # Remove top-level fields that have been moved into statistics bucket
-    for key in ("price", "bulk", "access"):
+    # Phase 4 cleanup: Remove deprecated old structures and moved fields
+    deprecated_keys = ("weapon", "armor", "shield", "siege_weapon", "price", "bulk", "access")
+    for key in deprecated_keys:
         if key in stat_block:
             del stat_block[key]

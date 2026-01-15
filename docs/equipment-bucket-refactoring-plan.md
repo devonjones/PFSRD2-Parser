@@ -71,7 +71,7 @@ Maps from: All types
 ### DEFENSE Bucket (Defensive Properties)
 Maps from: armor, shield, siege_weapon
 - `ac_bonus` (armor, shield)
-- `ac` → `ac_value` (siege_weapon - raw AC, not bonus)
+- `ac` (siege_weapon - raw AC, not bonus)
 - `hardness` (shield.hitpoints, siege_weapon.hitpoints)
 - `hitpoints` (shield, siege_weapon)
   - `hp`
@@ -228,13 +228,9 @@ Could go in:
 **Risk**: Parser refactoring effort
 **Mitigation**: Incremental migration, validate at each step
 
-## Next Steps
+## Status
 
-1. Review and approve this plan
-2. Update schema with new bucket definitions
-3. Begin Phase 1 (schema updates)
-4. Create test cases for hybrid equipment
-5. Update parser incrementally
+This equipment bucket refactoring has been completed. All phases (schema updates, parser implementation, and validation) have been implemented and tested.
 
 ## Notes
 
