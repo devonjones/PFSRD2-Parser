@@ -387,6 +387,9 @@ def parse_equipment(filename, options):
     # Enrich equipment groups with database data (only for equipment types that have groups)
     if 'group_table' in config:
         equipment_group_pass(struct, config)
+    # Populate creature-style buckets (statistics, defense, offense) from old structure
+    # This maintains backward compatibility during migration
+    populate_equipment_buckets_pass(struct)
     remove_empty_sections_pass(struct)
 
     if not options.skip_schema:
@@ -2537,3 +2540,235 @@ def equipment_group_pass(struct, config):
 
         # Walk the structure and enrich all equipment groups
         walk(struct, test_key_is_value("subtype", group_subtype), _check_equipment_group)
+
+
+def _build_statistics_bucket(stat_block):
+    """
+    Build the statistics bucket from existing equipment data.
+
+    Maps fields from various sources:
+    - price, bulk, access (from stat_block top-level)
+    - category (from weapon/armor object)
+    - hands (from weapon object or weapon_mode)
+    - usage, crew, proficiency, space (from siege_weapon)
+    - strength → strength_requirement (from armor)
+    - favored_weapon (from weapon)
+    """
+    statistics = {
+        "type": "stat_block_section",
+        "subtype": "statistics"
+    }
+
+    # Top-level fields
+    if "price" in stat_block:
+        statistics["price"] = stat_block["price"]
+    if "bulk" in stat_block:
+        statistics["bulk"] = stat_block["bulk"]
+    if "access" in stat_block:
+        statistics["access"] = stat_block["access"]
+
+    # Weapon-specific statistics
+    if "weapon" in stat_block:
+        weapon = stat_block["weapon"]
+        if "category" in weapon:
+            statistics["category"] = weapon["category"]
+        if "hands" in weapon:
+            statistics["hands"] = weapon["hands"]
+        if "favored_weapon" in weapon:
+            statistics["favored_weapon"] = weapon["favored_weapon"]
+
+    # Armor-specific statistics
+    if "armor" in stat_block:
+        armor = stat_block["armor"]
+        if "category" in armor:
+            statistics["category"] = armor["category"]
+        if "strength" in armor:
+            # Rename strength to strength_requirement in new structure
+            statistics["strength_requirement"] = armor["strength"]
+
+    # Siege weapon-specific statistics
+    if "siege_weapon" in stat_block:
+        siege = stat_block["siege_weapon"]
+        if "usage" in siege:
+            statistics["usage"] = siege["usage"]
+        if "crew" in siege:
+            statistics["crew"] = siege["crew"]
+        if "proficiency" in siege:
+            statistics["proficiency"] = siege["proficiency"]
+        if "space" in siege:
+            statistics["space"] = siege["space"]
+
+    # Only return statistics if it has fields beyond type/subtype
+    if len(statistics) > 2:
+        return statistics
+    return None
+
+
+def _build_defense_bucket(stat_block):
+    """
+    Build the defense bucket from existing equipment data.
+
+    Maps fields from:
+    - ac_bonus (from armor, shield)
+    - ac → ac_value (from siege_weapon - raw AC value, not bonus)
+    - hardness, hitpoints (from shield, siege_weapon)
+    - speed_penalty (from armor, shield)
+    - check_penalty, dex_cap (from armor)
+    - armor_group (from armor)
+    - saves (fort, ref from siege_weapon)
+    - speed (from siege_weapon)
+    """
+    defense = {
+        "type": "stat_block_section",
+        "subtype": "defense"
+    }
+
+    # Armor defensive properties
+    if "armor" in stat_block:
+        armor = stat_block["armor"]
+        if "ac_bonus" in armor:
+            defense["ac_bonus"] = armor["ac_bonus"]
+        if "dex_cap" in armor:
+            defense["dex_cap"] = armor["dex_cap"]
+        if "check_penalty" in armor:
+            defense["check_penalty"] = armor["check_penalty"]
+        if "speed_penalty" in armor:
+            defense["speed_penalty"] = armor["speed_penalty"]
+        if "armor_group" in armor:
+            defense["armor_group"] = armor["armor_group"]
+
+    # Shield defensive properties
+    if "shield" in stat_block:
+        shield = stat_block["shield"]
+        if "ac_bonus" in shield:
+            defense["ac_bonus"] = shield["ac_bonus"]
+        if "speed_penalty" in shield:
+            defense["speed_penalty"] = shield["speed_penalty"]
+        if "hitpoints" in shield:
+            defense["hitpoints"] = shield["hitpoints"]
+            # Extract hardness if it's in hitpoints
+            if isinstance(shield["hitpoints"], dict) and "hardness" in shield["hitpoints"]:
+                defense["hardness"] = shield["hitpoints"]["hardness"]
+
+    # Siege weapon defensive properties
+    if "siege_weapon" in stat_block:
+        siege = stat_block["siege_weapon"]
+        # Siege weapons have raw AC value, not a bonus
+        if "ac" in siege:
+            defense["ac"] = siege["ac"]
+        if "hitpoints" in siege:
+            defense["hitpoints"] = siege["hitpoints"]
+            # Extract hardness if it's in hitpoints
+            if isinstance(siege["hitpoints"], dict) and "hardness" in siege["hitpoints"]:
+                defense["hardness"] = siege["hitpoints"]["hardness"]
+
+        # Build saves container if fort or ref exist
+        saves = None
+        if "fort" in siege or "ref" in siege:
+            saves = {
+                "type": "stat_block_section",
+                "subtype": "saves"
+            }
+            if "fort" in siege:
+                saves["fort"] = siege["fort"]
+            if "ref" in siege:
+                saves["ref"] = siege["ref"]
+        if saves:
+            defense["saves"] = saves
+
+        if "speed" in siege:
+            defense["speed"] = siege["speed"]
+
+    # Only return defense if it has fields beyond type/subtype
+    if len(defense) > 2:
+        return defense
+    return None
+
+
+def _build_offense_bucket(stat_block):
+    """
+    Build the offense bucket from existing equipment data.
+
+    Maps fields from:
+    - weapon_modes (from weapon.melee, weapon.ranged)
+    - ammunition (from weapon, siege_weapon)
+
+    For weapons, converts the old melee/ranged structure into a weapon_modes array.
+    """
+    offense = {
+        "type": "stat_block_section",
+        "subtype": "offense"
+    }
+
+    # Weapon offensive properties
+    if "weapon" in stat_block:
+        weapon = stat_block["weapon"]
+        weapon_modes = []
+
+        # Convert melee mode if exists
+        if "melee" in weapon:
+            melee = weapon["melee"].copy()
+            # Ensure it has the right type/subtype
+            melee["type"] = "stat_block_section"
+            melee["subtype"] = "weapon_mode"
+            # Add mode_type to distinguish melee from ranged
+            melee["mode_type"] = "melee"
+            weapon_modes.append(melee)
+
+        # Convert ranged mode if exists
+        if "ranged" in weapon:
+            ranged = weapon["ranged"].copy()
+            # Ensure it has the right type/subtype
+            ranged["type"] = "stat_block_section"
+            ranged["subtype"] = "weapon_mode"
+            # Add mode_type to distinguish melee from ranged
+            ranged["mode_type"] = "ranged"
+            weapon_modes.append(ranged)
+
+        if weapon_modes:
+            offense["weapon_modes"] = weapon_modes
+
+        # Top-level ammunition for weapons (not mode-specific)
+        if "ammunition" in weapon:
+            offense["ammunition"] = weapon["ammunition"]
+
+    # Siege weapon offensive properties
+    if "siege_weapon" in stat_block:
+        siege = stat_block["siege_weapon"]
+        if "ammunition" in siege:
+            offense["ammunition"] = siege["ammunition"]
+
+    # Only return offense if it has fields beyond type/subtype
+    if len(offense) > 2:
+        return offense
+    return None
+
+
+def populate_equipment_buckets_pass(struct):
+    """
+    Populate creature-style buckets (statistics, defense, offense) from existing
+    type-specific equipment objects.
+
+    This maintains backward compatibility by keeping the old structure (weapon,
+    armor, shield, siege_weapon objects) while also populating the new bucket-based
+    structure.
+
+    Args:
+        struct: The equipment structure with stat_block containing old-style objects
+    """
+    stat_block = struct.get("stat_block")
+    if not stat_block:
+        return
+
+    # Build each bucket from existing data
+    statistics = _build_statistics_bucket(stat_block)
+    defense = _build_defense_bucket(stat_block)
+    offense = _build_offense_bucket(stat_block)
+
+    # Add buckets to stat_block (only if they have content)
+    if statistics:
+        stat_block["statistics"] = statistics
+    if defense:
+        stat_block["defense"] = defense
+    if offense:
+        stat_block["offense"] = offense
