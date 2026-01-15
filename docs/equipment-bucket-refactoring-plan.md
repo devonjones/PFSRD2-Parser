@@ -191,8 +191,7 @@ Could go in:
       "weapon_modes": [
         {
           "type": "stat_block_section",
-          "subtype": "weapon_mode",
-          "mode_type": "melee",
+          "subtype": "melee",
           "weapon_group": {"name": "Shield", ...},
           "damage": [
             {

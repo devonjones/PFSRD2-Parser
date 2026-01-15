@@ -2641,14 +2641,15 @@ def _build_defense_bucket(stat_block):
     if "shield" in stat_block:
         shield = stat_block["shield"]
         if "ac_bonus" in shield:
+            if "ac_bonus" in defense:
+                raise ValueError("Conflicting 'ac_bonus' definitions for hybrid armor/shield item.")
             defense["ac_bonus"] = shield["ac_bonus"]
         if "speed_penalty" in shield:
+            if "speed_penalty" in defense:
+                raise ValueError("Conflicting 'speed_penalty' definitions for hybrid armor/shield item.")
             defense["speed_penalty"] = shield["speed_penalty"]
         if "hitpoints" in shield:
             defense["hitpoints"] = shield["hitpoints"]
-            # Extract hardness if it's in hitpoints
-            if isinstance(shield["hitpoints"], dict) and "hardness" in shield["hitpoints"]:
-                defense["hardness"] = shield["hitpoints"]["hardness"]
 
     # Siege weapon defensive properties
     if "siege_weapon" in stat_block:
@@ -2658,9 +2659,6 @@ def _build_defense_bucket(stat_block):
             defense["ac"] = siege["ac"]
         if "hitpoints" in siege:
             defense["hitpoints"] = siege["hitpoints"]
-            # Extract hardness if it's in hitpoints
-            if isinstance(siege["hitpoints"], dict) and "hardness" in siege["hitpoints"]:
-                defense["hardness"] = siege["hitpoints"]["hardness"]
 
         # Build saves container if fort or ref exist
         # Note: old structure has fort/ref as raw integers, need to wrap in save objects
@@ -2717,17 +2715,13 @@ def _build_offense_bucket(stat_block):
         # Convert melee mode if exists
         if "melee" in weapon:
             melee = weapon["melee"].copy()
-            # Ensure it has the right type/subtype (subtype should already be "melee")
             melee["type"] = "stat_block_section"
-            melee["subtype"] = "melee"
             weapon_modes.append(melee)
 
         # Convert ranged mode if exists
         if "ranged" in weapon:
             ranged = weapon["ranged"].copy()
-            # Ensure it has the right type/subtype (subtype should already be "ranged")
             ranged["type"] = "stat_block_section"
-            ranged["subtype"] = "ranged"
             weapon_modes.append(ranged)
 
         if weapon_modes:
@@ -2926,3 +2920,11 @@ def populate_equipment_buckets_pass(struct):
         del stat_block["shield"]
     if "siege_weapon" in stat_block:
         del stat_block["siege_weapon"]
+
+    # Remove top-level fields that have been moved into statistics bucket
+    if "price" in stat_block:
+        del stat_block["price"]
+    if "bulk" in stat_block:
+        del stat_block["bulk"]
+    if "access" in stat_block:
+        del stat_block["access"]
