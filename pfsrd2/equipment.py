@@ -567,7 +567,9 @@ def _generic_section_pass(struct, config):
 
     # Extract stats into a temporary dictionary
     stats = {}
-    _extract_stats_to_dict(bs, stats, config['recognized_stats'], struct['type'], config.get('group_subtype'))
+    # Fail fast if Group stat requires group_subtype but it's missing from config
+    group_subtype = config['group_subtype'] if 'Group' in config['recognized_stats'] else None
+    _extract_stats_to_dict(bs, stats, config['recognized_stats'], struct['type'], group_subtype)
 
     # Separate shared vs nested fields
     shared_fields = config.get('shared_fields', [])
