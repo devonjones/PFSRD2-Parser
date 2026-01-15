@@ -1678,10 +1678,7 @@ def _normalize_int_field(sb, field_name):
         value = value[1:]
 
     # Parse to int
-    try:
-        sb[field_name] = int(value.strip())
-    except ValueError as e:
-        raise ValueError(f"Could not parse {field_name} value: '{sb[field_name]}'") from e
+    sb[field_name] = int(value.strip())
 
 
 def _normalize_strength(sb):
@@ -1701,30 +1698,27 @@ def _normalize_strength(sb):
         value_str = value_str[1:]
 
     # Parse to int
-    try:
-        value = int(value_str.strip())
+    value = int(value_str.strip())
 
-        if is_modifier:
-            # Value is a modifier (remastered format like +3)
-            # Calculate stat value: modifier * 2 + 10
-            modifier = value
-            stat_value = modifier * 2 + 10
-        else:
-            # Value is a stat (legacy format like 16)
-            # Calculate modifier: (stat - 10) / 2
-            stat_value = value
-            modifier = (stat_value - 10) // 2
+    if is_modifier:
+        # Value is a modifier (remastered format like +3)
+        # Calculate stat value: modifier * 2 + 10
+        modifier = value
+        stat_value = modifier * 2 + 10
+    else:
+        # Value is a stat (legacy format like 16)
+        # Calculate modifier: (stat - 10) / 2
+        stat_value = value
+        modifier = (stat_value - 10) // 2
 
-        # Create stat requirement object
-        sb['strength'] = {
-            'type': 'stat_block_section',
-            'subtype': 'stat_requirement',
-            'stat': 'strength',
-            'legacy_value': stat_value,
-            'remastered_value': modifier
-        }
-    except ValueError as e:
-        raise ValueError(f"Could not parse strength value: '{sb['strength']}'") from e
+    # Create stat requirement object
+    sb['strength'] = {
+        'type': 'stat_block_section',
+        'subtype': 'stat_requirement',
+        'stat': 'strength',
+        'legacy_value': stat_value,
+        'remastered_value': modifier
+    }
 
 
 def _normalize_ac_bonus(sb, bonus_type='armor'):
@@ -1750,17 +1744,14 @@ def _normalize_ac_bonus(sb, bonus_type='armor'):
         value_str = value_str[1:]
 
     # Parse to int
-    try:
-        value = int(value_str.strip())
-        # Create bonus object with appropriate bonus_type
-        sb['ac_bonus'] = {
-            'type': 'bonus',
-            'subtype': 'ac',
-            'bonus_type': bonus_type,
-            'bonus_value': value
-        }
-    except ValueError as e:
-        raise ValueError(f"Could not parse ac_bonus value: '{sb['ac_bonus']}'") from e
+    value = int(value_str.strip())
+    # Create bonus object with appropriate bonus_type
+    sb['ac_bonus'] = {
+        'type': 'bonus',
+        'subtype': 'ac',
+        'bonus_type': bonus_type,
+        'bonus_value': value
+    }
 
 
 def _normalize_dex_cap(sb):
@@ -1777,17 +1768,14 @@ def _normalize_dex_cap(sb):
         value_str = value_str[1:]
 
     # Parse to int
-    try:
-        cap = int(value_str.strip())
-        # Create bonus object for dexterity cap (limits dexterity bonus to AC)
-        sb['dex_cap'] = {
-            'type': 'bonus',
-            'subtype': 'ac',
-            'bonus_type': 'dexterity',
-            'bonus_cap': cap
-        }
-    except ValueError as e:
-        raise ValueError(f"Could not parse dex_cap value: '{sb['dex_cap']}'") from e
+    cap = int(value_str.strip())
+    # Create bonus object for dexterity cap (limits dexterity bonus to AC)
+    sb['dex_cap'] = {
+        'type': 'bonus',
+        'subtype': 'ac',
+        'bonus_type': 'dexterity',
+        'bonus_cap': cap
+    }
 
 
 def _normalize_check_penalty(sb):
@@ -1804,20 +1792,17 @@ def _normalize_check_penalty(sb):
         value_str = value_str[1:]
 
     # Parse to int
-    try:
-        value = int(value_str.strip())
-        # Check penalties are always negative
-        if value > 0:
-            value = -value
-        # Create bonus object for check penalty (skill bonus type)
-        sb['check_penalty'] = {
-            'type': 'bonus',
-            'subtype': 'skill',
-            'bonus_type': 'armor',
-            'bonus_value': value
-        }
-    except ValueError as e:
-        raise ValueError(f"Could not parse check_penalty value: '{sb['check_penalty']}'") from e
+    value = int(value_str.strip())
+    # Check penalties are always negative
+    if value > 0:
+        value = -value
+    # Create bonus object for check penalty (skill bonus type)
+    sb['check_penalty'] = {
+        'type': 'bonus',
+        'subtype': 'skill',
+        'bonus_type': 'armor',
+        'bonus_value': value
+    }
 
 
 def _normalize_speed_penalty(sb, bonus_type='armor'):
@@ -1841,23 +1826,20 @@ def _normalize_speed_penalty(sb, bonus_type='armor'):
         value_str = value_str[:-4]
 
     # Parse to int
-    try:
-        value = int(value_str.strip())
-        # Speed penalties are always negative
-        if value > 0:
-            value = -value
-        # Create bonus object for speed penalty with appropriate bonus_type
-        speed_obj = {
-            'type': 'bonus',
-            'subtype': 'speed',
-            'bonus_type': bonus_type,
-            'bonus_value': value
-        }
-        if unit:
-            speed_obj['unit'] = unit
-        sb['speed_penalty'] = speed_obj
-    except ValueError as e:
-        raise ValueError(f"Could not parse speed_penalty value: '{sb['speed_penalty']}'") from e
+    value = int(value_str.strip())
+    # Speed penalties are always negative
+    if value > 0:
+        value = -value
+    # Create bonus object for speed penalty with appropriate bonus_type
+    speed_obj = {
+        'type': 'bonus',
+        'subtype': 'speed',
+        'bonus_type': bonus_type,
+        'bonus_value': value
+    }
+    if unit:
+        speed_obj['unit'] = unit
+    sb['speed_penalty'] = speed_obj
 
 
 def _normalize_bulk(sb):
@@ -1879,17 +1861,14 @@ def _normalize_bulk(sb):
             'display': 'L'
         }
     else:
-        # Try to parse as integer
-        try:
-            int_value = int(value_str.strip())
-            sb['bulk'] = {
-                'type': 'stat_block_section',
-                'subtype': 'bulk',
-                'value': int_value,
-                'display': value_str.strip()
-            }
-        except ValueError as e:
-            raise ValueError(f"Could not parse bulk value: '{sb['bulk']}' (expected integer or 'L')") from e
+        # Parse as integer
+        int_value = int(value_str.strip())
+        sb['bulk'] = {
+            'type': 'stat_block_section',
+            'subtype': 'bulk',
+            'value': int_value,
+            'display': value_str.strip()
+        }
 
 
 # Equipment-specific field normalizers
@@ -2243,27 +2222,24 @@ def _normalize_speed(sb):
         value_str = value_str[:-4]
 
     # Parse to int
-    try:
-        value = int(value_str.strip())
-        # Create speed object
-        speed_obj = {
-            'type': 'stat_block_section',
-            'subtype': 'speed',
-            'value': value
-        }
-        if unit:
-            speed_obj['unit'] = unit
+    value = int(value_str.strip())
+    # Create speed object
+    speed_obj = {
+        'type': 'stat_block_section',
+        'subtype': 'speed',
+        'value': value
+    }
+    if unit:
+        speed_obj['unit'] = unit
 
-        # Add modifiers if present
-        if modifier_text:
-            from universal.universal import build_object, link_modifiers
-            speed_obj['modifiers'] = link_modifiers([
-                build_object('stat_block_section', 'modifier', modifier_text)
-            ])
+    # Add modifiers if present
+    if modifier_text:
+        from universal.universal import build_object, link_modifiers
+        speed_obj['modifiers'] = link_modifiers([
+            build_object('stat_block_section', 'modifier', modifier_text)
+        ])
 
-        sb['speed'] = speed_obj
-    except ValueError as e:
-        raise ValueError(f"Could not parse speed value: '{sb['speed']}'") from e
+    sb['speed'] = speed_obj
 
 
 def _normalize_weapon_mode(mode_obj):
@@ -2386,19 +2362,16 @@ def _normalize_range(sb):
         value_str = value_str[:-5]
 
     # Parse to int
-    try:
-        value = int(value_str.strip())
-        # Create range object
-        range_obj = {
-            'type': 'stat_block_section',
-            'subtype': 'range',
-            'value': value
-        }
-        if unit:
-            range_obj['unit'] = unit
-        sb['range'] = range_obj
-    except ValueError as e:
-        raise ValueError(f"Could not parse range value: '{sb['range']}'") from e
+    value = int(value_str.strip())
+    # Create range object
+    range_obj = {
+        'type': 'stat_block_section',
+        'subtype': 'range',
+        'value': value
+    }
+    if unit:
+        range_obj['unit'] = unit
+    sb['range'] = range_obj
 
 
 def _normalize_reload(sb):
@@ -2413,32 +2386,29 @@ def _normalize_reload(sb):
     # Parse value and unit
     parts = value_str.strip().split(' ', 1)
 
-    try:
-        value = int(parts[0])
-        reload_obj = {
-            'type': 'stat_block_section',
-            'subtype': 'reload',
-            'value': value
-        }
+    value = int(parts[0])
+    reload_obj = {
+        'type': 'stat_block_section',
+        'subtype': 'reload',
+        'value': value
+    }
 
-        # Add unit if specified (e.g., "minute", "rounds")
-        if len(parts) > 1:
-            # Normalize common units
-            unit = parts[1].lower()
-            if unit in ['minute', 'minutes']:
-                unit = 'minute'
-            elif unit in ['round', 'rounds']:
-                unit = 'round'
-            elif unit in ['action', 'actions']:
-                unit = 'action'
-            reload_obj['unit'] = unit
-        else:
-            # No unit specified means actions (default)
-            reload_obj['unit'] = 'action'
+    # Add unit if specified (e.g., "minute", "rounds")
+    if len(parts) > 1:
+        # Normalize common units
+        unit = parts[1].lower()
+        if unit in ['minute', 'minutes']:
+            unit = 'minute'
+        elif unit in ['round', 'rounds']:
+            unit = 'round'
+        elif unit in ['action', 'actions']:
+            unit = 'action'
+        reload_obj['unit'] = unit
+    else:
+        # No unit specified means actions (default)
+        reload_obj['unit'] = 'action'
 
-        sb['reload'] = reload_obj
-    except ValueError as e:
-        raise ValueError(f"Could not parse reload value: '{sb['reload']}'") from e
+    sb['reload'] = reload_obj
 
 
 def trait_db_pass(struct):
