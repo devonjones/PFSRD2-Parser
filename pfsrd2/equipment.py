@@ -49,6 +49,20 @@ def _normalize_whitespace(text):
     return text.strip()
 
 
+def _trait_class_matcher(c):
+    """Match BeautifulSoup class attributes that start with 'trait'.
+
+    BeautifulSoup passes class as string if single class, list if multiple, or None if no class.
+    This matcher function works with all formats.
+    """
+    if not c:
+        return False
+    if isinstance(c, str):
+        return c.startswith('trait')
+    else:  # list of classes
+        return any(cls.startswith('trait') for cls in c)
+
+
 def _count_links_in_html(html_text, exclude_name=None, debug=False):
     """Count all <a> tags with game-obj attribute in HTML.
 
@@ -916,16 +930,8 @@ def _extract_combination_weapon(bs, sb, struct, config):
     if first_h2:
         # Extract shared traits (before first h2)
         # Use trait_class_matcher to match trait, traituncommon, traitrare, etc.
-        def trait_class_matcher(c):
-            if not c:
-                return False
-            if isinstance(c, str):
-                return c.startswith('trait')
-            else:  # list of classes
-                return any(cls.startswith('trait') for cls in c)
-
         shared_traits = []
-        for span in bs.find_all('span', class_=trait_class_matcher):
+        for span in bs.find_all('span', class_=_trait_class_matcher):
             if first_h2.sourceline and span.sourceline and span.sourceline < first_h2.sourceline:
                 # This trait is before the h2, so it's shared
                 shared_traits.append(span)
@@ -1017,16 +1023,8 @@ def _extract_combination_weapon(bs, sb, struct, config):
 
         # Find mode-specific traits (after this h2, before next h2 or hr)
         # Use trait_class_matcher to match trait, traituncommon, traitrare, etc.
-        def trait_class_matcher(c):
-            if not c:
-                return False
-            if isinstance(c, str):
-                return c.startswith('trait')
-            else:  # list of classes
-                return any(cls.startswith('trait') for cls in c)
-
         next_h2 = h2.find_next_sibling('h2', class_='title')
-        for span in bs.find_all('span', class_=trait_class_matcher):
+        for span in bs.find_all('span', class_=_trait_class_matcher):
             if not span.sourceline or not h2.sourceline:
                 continue
             if span.sourceline <= h2.sourceline:
@@ -1144,16 +1142,7 @@ def _extract_traits(bs, sb):
     """Extract traits from <span class="trait*"> tags (trait, traitrare, traitsize, etc.)."""
     traits = []
     # Match spans where any class starts with 'trait'
-    def trait_class_matcher(c):
-        if not c:
-            return False
-        # BeautifulSoup passes class as string if single class, list if multiple
-        if isinstance(c, str):
-            return c.startswith('trait')
-        else:  # list of classes
-            return any(cls.startswith('trait') for cls in c)
-
-    trait_spans = bs.find_all('span', class_=trait_class_matcher)
+    trait_spans = bs.find_all('span', class_=_trait_class_matcher)
     for span in trait_spans:
         # Filter out whitespace text nodes to get actual element children
         children = [c for c in span.children if hasattr(c, 'name') and c.name is not None]
