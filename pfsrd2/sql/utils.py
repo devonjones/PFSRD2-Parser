@@ -36,7 +36,6 @@ def create_legacy_remastered_relations(curs, link_cache, fetch_item_by_id, item_
     """
     relations = set()
     for link in link_cache:
-        print(link)
         target_aonid = link.get('target_aonid')
         item = fetch_item_by_id(curs, link['item_id'])
         if not item:

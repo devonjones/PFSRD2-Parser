@@ -577,6 +577,12 @@ def get_links(bs, unwrap=False):
     all_a = bs.find_all("a")
     links = []
     for a in all_a:
+        # Only extract links with game-obj attribute (structured references to game objects)
+        # Skip arbitrary navigation links without game-obj
+        if not a.has_attr('game-obj'):
+            if unwrap:
+                a.unwrap()
+            continue
         _, link = extract_link(a)
         links.append(link)
         if unwrap:

@@ -227,6 +227,21 @@ source dir.conf
 
 The `dir.conf` file sets up necessary environment variables that point to the web and data directories.
 
+### Output Directory Handling
+
+**You don't need to delete the data directory between runs.** The parsers overwrite existing JSON files automatically. This means:
+
+```bash
+# ❌ Not needed - wastes time
+rm -rf ../../pfsrd2-data/shields
+./pf2_run_equipment.sh shield
+
+# ✅ Just run directly - files are overwritten
+./pf2_run_equipment.sh shield
+```
+
+Exception: Only delete data directories when you need to ensure removed items are actually gone (e.g., testing deletion of deprecated content).
+
 ### Viewing Content on Archives of Nethys
 
 To see how content renders on the actual website, you can construct URLs from file IDs:
@@ -595,15 +610,31 @@ Pathfinder 2e has specific bonus stacking rules: bonuses of the same type don't 
 - Armor bonus + shield bonus DO stack (different `bonus_type`)
 - Consistent structure across all bonus/penalty fields
 
+**IMPORTANT - Choosing bonus_type:**
+
+When implementing bonuses and penalties, **always check with the user about what `bonus_type` to use**. The correct bonus_type depends on game mechanics:
+
+- **Armor**: `bonus_type: "armor"` for AC bonuses and penalties from wearing armor
+- **Shields**: `bonus_type: "shield"` for AC bonuses and speed penalties from shields
+- **Dexterity**: `bonus_type: "dexterity"` for dex cap on armor
+
+Don't assume - different equipment types may use different bonus_type values even for similar-looking fields. For example:
+- Armor speed penalty: `bonus_type: "armor"`
+- Shield speed penalty: `bonus_type: "shield"`
+
 **Common bonus patterns:**
 ```json
 // AC bonuses
 {"type": "bonus", "subtype": "ac", "bonus_type": "armor", "bonus_value": 4}
+{"type": "bonus", "subtype": "ac", "bonus_type": "shield", "bonus_value": 2}
 {"type": "bonus", "subtype": "ac", "bonus_type": "dexterity", "bonus_cap": 3}
 
-// Penalties (negative values)
-{"type": "bonus", "subtype": "skill", "bonus_type": "armor", "bonus_value": -2}
+// Speed penalties (negative values)
 {"type": "bonus", "subtype": "speed", "bonus_type": "armor", "bonus_value": -5, "unit": "feet"}
+{"type": "bonus", "subtype": "speed", "bonus_type": "shield", "bonus_value": -5, "unit": "feet"}
+
+// Skill penalties
+{"type": "bonus", "subtype": "skill", "bonus_type": "armor", "bonus_value": -2}
 ```
 
 ### Complex Field Structures

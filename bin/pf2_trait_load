@@ -5,7 +5,7 @@ import json
 from sh import find
 from optparse import OptionParser
 from pfsrd2.sql import get_db_path, create_db
-from pfsrd2.sql.traits import insert_trait, truncate_traits, insert_trait_link, drop_trait_link_cache, fetch_trait_by_id
+from pfsrd2.sql.traits import insert_trait, truncate_traits, truncate_trait_links, insert_trait_link, drop_trait_link_cache, fetch_trait_by_id
 from pfsrd2.sql.utils import create_link_cache_table, insert_link_cache, fetch_all_link_cache, drop_link_cache_table, create_legacy_remastered_relations
 
 
@@ -27,6 +27,8 @@ def load_traits(conn, options):
                 insert_link_cache(curs, trait_id, data['aonid'], data['alternate_link']['aonid'])
     link_cache = fetch_all_link_cache(curs)
     relations = create_legacy_remastered_relations(curs, link_cache, fetch_trait_by_id, item_id_col='trait_id')
+    # Clear old trait_links before inserting new ones
+    truncate_trait_links(curs)
     for legacy_id, remastered_id in relations:
         print(f"Legacy trait_id: {legacy_id}, Remastered trait_id: {remastered_id}")
         insert_trait_link(curs, legacy_id, remastered_id)
