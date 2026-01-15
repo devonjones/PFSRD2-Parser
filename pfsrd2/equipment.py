@@ -2443,14 +2443,12 @@ def trait_db_pass(struct):
         original_name = trait["name"]
 
         # First try to look up the full name as-is
-        fetch_trait_by_name(curs, trait["name"])
-        data = curs.fetchone()
+        data = fetch_trait_by_name(curs, trait["name"])
 
         # If not found, try extracting value from trait name
         if not data:
             _handle_value(trait)
-            fetch_trait_by_name(curs, trait["name"])
-            data = curs.fetchone()
+            data = fetch_trait_by_name(curs, trait["name"])
 
         assert data, "Trait not found in database: %s (original: %s)" % (trait["name"], original_name)
 
