@@ -1994,10 +1994,6 @@ def _normalize_ammunition(obj):
     html_str = obj['ammunition']
     # Empty field cleanup is handled by a separate pass - don't delete here
 
-    # Check if it's already a structured object (shouldn't be, but be defensive)
-    if isinstance(html_str, dict):
-        return
-
     # Parse HTML to extract text and links
     soup = BeautifulSoup(html_str, 'html.parser')
     links = get_links(soup, unwrap=True)  # Extract links and unwrap <a> tags
