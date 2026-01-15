@@ -384,8 +384,9 @@ def parse_equipment(filename, options):
 
     # Enrich traits with database data (must be after edition is set)
     trait_db_pass(struct)
-    # Enrich equipment groups with database data
-    equipment_group_pass(struct, config)
+    # Enrich equipment groups with database data (only for equipment types that have groups)
+    if 'group_table' in config:
+        equipment_group_pass(struct, config)
     remove_empty_sections_pass(struct)
 
     if not options.skip_schema:
@@ -2494,10 +2495,6 @@ def trait_db_pass(struct):
 
 def equipment_group_pass(struct, config):
     """Enrich equipment group objects with full data from database."""
-    # Skip if equipment type doesn't have groups (e.g., shields)
-    if 'group_table' not in config:
-        return
-
     sb = struct.get('stat_block', {})
 
     group_table = config['group_table']
