@@ -1246,7 +1246,7 @@ def _extract_source(bs, struct):
         struct['sources'] = sources
 
 
-def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, group_subtype=None):
+def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, group_subtype):
     """Extract stats into a dictionary - works for any equipment type based on configuration."""
     # Find all bold tags before the hr (stats section)
     hr = bs.find('hr')
