@@ -1333,9 +1333,13 @@ def _extract_stat_value(label_tag, preserve_html=False):
     # Combine collected parts and clean up
     value_text = ''.join(value_parts).strip()
 
-    # Handle em dash (—) as None/absent
-    if value_text == '—' or value_text == '':
+    # Handle em dash (—) as None/absent (explicit "no value" marker in HTML)
+    if value_text == '—':
         return None
+
+    # Empty string indicates malformed HTML (stat label with no value)
+    if value_text == '':
+        raise ValueError(f"Empty value for stat label")
 
     return value_text
 
