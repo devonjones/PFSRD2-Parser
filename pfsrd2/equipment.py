@@ -234,11 +234,11 @@ EQUIPMENT_TYPES = {
             'Strength': 'strength',
             'Bulk': 'bulk',
             'Category': 'category',
-            'Group': 'group'
+            'Group': 'armor_group'
         },
         # Fields that are shared (top-level) vs armor-specific (nested in armor object)
         'shared_fields': ['access', 'price', 'bulk'],
-        'nested_fields': ['category', 'ac_bonus', 'dex_cap', 'check_penalty', 'speed_penalty', 'strength', 'group'],
+        'nested_fields': ['category', 'ac_bonus', 'dex_cap', 'check_penalty', 'speed_penalty', 'strength', 'armor_group'],
         'group_table': 'armor_groups',
         'group_sql_module': 'pfsrd2.sql.armor_groups',
         'group_subtype': 'armor_group',
@@ -258,7 +258,7 @@ EQUIPMENT_TYPES = {
             'Reload': 'reload',
             'Type': 'weapon_type',  # Renamed to avoid collision with structural 'type' field
             'Category': 'category',
-            'Group': 'group',
+            'Group': 'weapon_group',
             'Ammunition': 'ammunition',
             'Favored Weapon': 'favored_weapon',  # Deities that favor this weapon
             'PFS Note': None,  # Skip - PFS-specific note, not weapon stat
@@ -266,11 +266,11 @@ EQUIPMENT_TYPES = {
         # Fields at different nesting levels:
         # - shared_fields: top-level stat_block (price, bulk, access)
         # - weapon_fields: nested in weapon object (category, favored_weapon)
-        # - mode_fields: nested in melee/ranged objects (damage, weapon_type, group, range, reload, ammunition, hands)
+        # - mode_fields: nested in melee/ranged objects (damage, weapon_type, weapon_group, range, reload, ammunition, hands)
         #   Note: ammunition and hands can appear in weapon_fields OR mode_fields (combination weapons have them mode-specific)
         'shared_fields': ['access', 'price', 'bulk'],
         'weapon_fields': ['category', 'hands', 'ammunition', 'favored_weapon'],
-        'mode_fields': ['damage', 'weapon_type', 'group', 'range', 'reload', 'ammunition', 'hands'],
+        'mode_fields': ['damage', 'weapon_type', 'weapon_group', 'range', 'reload', 'ammunition', 'hands'],
         'group_table': 'weapon_groups',
         'group_sql_module': 'pfsrd2.sql.weapon_groups',
         'group_subtype': 'weapon_group',
@@ -2529,7 +2529,7 @@ def equipment_group_pass(struct, config):
 
         # Replace equipment group in parent (similar to trait enrichment)
         assert isinstance(parent, dict), parent
-        parent["group"] = db_equipment_group
+        parent[group_subtype] = db_equipment_group
 
     db_path = get_db_path("pfsrd2.db")
     with get_db_connection(db_path) as conn:
