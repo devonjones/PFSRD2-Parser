@@ -1557,46 +1557,19 @@ def _extract_description(bs, struct):
         # Remove everything from the action element onwards
         current = first_action_element
 
-        # If it's an action icon span, also remove preceding action name text and <br> tags
+        # If it's an action icon span, also remove preceding action name and <br> tag
         if isinstance(first_action_element, Tag) and first_action_element.name == 'span':
-            # Walk back to remove action name text and any <br> tags
+            # Action icons follow action names. Remove span, preceding action name text, and br.
             prev = first_action_element.previous_sibling
-            to_remove = []
-            found_action_name = False
-
-            while prev:
-                if isinstance(prev, NavigableString):
-                    text = prev.strip()
-                    if text:
-                        # Check if this looks like an action name
-                        words = text.split()
-                        if words and words[-1] in known_actions:
-                            # Found the action name, mark for removal
-                            to_remove.append(prev)
-                            found_action_name = True
-                            # Continue backwards to remove <br> tags
-                            prev = prev.previous_sibling
-                            continue
-                        elif text and found_action_name:
-                            # Already found action name, now hit other text, stop
-                            break
-                        elif text:
-                            # Hit non-action text before finding action, stop
-                            break
-                    # Empty text, continue backwards
-                    to_remove.append(prev)
-                elif isinstance(prev, Tag):
-                    # If it's a <br> tag after finding action name, also remove it
-                    if prev.name == 'br':
-                        to_remove.append(prev)
-                    else:
-                        # Hit another tag, stop
-                        break
-                prev = prev.previous_sibling
-
-            # Remove everything we marked
-            for elem in to_remove:
-                elem.extract()
+            # Remove preceding br tag
+            if isinstance(prev, Tag) and prev.name == 'br':
+                prev.extract()
+                prev = prev.previous_sibling if prev else None
+            # Remove preceding action name text (if it's a NavigableString with an action name)
+            if prev and isinstance(prev, NavigableString):
+                text = prev.strip()
+                if any(action in text for action in known_actions):
+                    prev.extract()
 
         # Remove the action element and everything after it
         while current:
