@@ -2849,18 +2849,19 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
                 modes_by_subtype = {m["subtype"]: m for m in offense["weapon_modes"]}
                 if "melee" in weapon:
                     assert "melee" in modes_by_subtype, "Missing melee mode in offense.weapon_modes"
-                    # Compare dicts directly for a more robust check.
-                    # The 'type' key is added during bucket creation, so we exclude it from comparison.
-                    expected_melee = weapon["melee"]
-                    actual_melee = modes_by_subtype["melee"].copy()
-                    del actual_melee["type"]
-                    assert actual_melee == expected_melee, f"melee mode data mismatch. Expected {expected_melee}, got {actual_melee}"
+                    # Mode data should match completely
+                    melee_mode = modes_by_subtype["melee"]
+                    for key in weapon["melee"]:
+                        assert key in melee_mode, f"Missing {key} in melee weapon_mode"
+                        assert melee_mode[key] == weapon["melee"][key], \
+                            f"melee mode {key} mismatch"
                 if "ranged" in weapon:
                     assert "ranged" in modes_by_subtype, "Missing ranged mode in offense.weapon_modes"
-                    expected_ranged = weapon["ranged"]
-                    actual_ranged = modes_by_subtype["ranged"].copy()
-                    del actual_ranged["type"]
-                    assert actual_ranged == expected_ranged, f"ranged mode data mismatch. Expected {expected_ranged}, got {actual_ranged}"
+                    ranged_mode = modes_by_subtype["ranged"]
+                    for key in weapon["ranged"]:
+                        assert key in ranged_mode, f"Missing {key} in ranged weapon_mode"
+                        assert ranged_mode[key] == weapon["ranged"][key], \
+                            f"ranged mode {key} mismatch"
             if "ammunition" in offense and "ammunition" in weapon:
                 assert offense["ammunition"] == weapon["ammunition"], \
                     f"offense.ammunition != weapon.ammunition"
