@@ -2764,10 +2764,10 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
                 f"statistics.price mismatch: {statistics['price']} != {stat_block['price']}"
         if "bulk" in statistics:
             assert statistics["bulk"] == stat_block["bulk"], \
-                f"statistics.bulk mismatch"
+                f"statistics.bulk mismatch: {statistics['bulk']} != {stat_block['bulk']}"
         if "access" in statistics:
             assert statistics["access"] == stat_block["access"], \
-                f"statistics.access mismatch"
+                f"statistics.access mismatch: {statistics['access']} != {stat_block['access']}"
 
         # Check weapon fields
         if "weapon" in stat_block:
@@ -2780,7 +2780,7 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
                     f"statistics.hands != weapon.hands"
             if "favored_weapon" in statistics:
                 assert statistics["favored_weapon"] == weapon["favored_weapon"], \
-                    f"statistics.favored_weapon mismatch"
+                    f"statistics.favored_weapon mismatch: {statistics['favored_weapon']} != {weapon['favored_weapon']}"
 
         # Check armor fields
         if "armor" in stat_block:
@@ -2858,19 +2858,18 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
                 modes_by_subtype = {m["subtype"]: m for m in offense["weapon_modes"]}
                 if "melee" in weapon:
                     assert "melee" in modes_by_subtype, "Missing melee mode in offense.weapon_modes"
-                    # Mode data should match completely
-                    melee_mode = modes_by_subtype["melee"]
-                    for key in weapon["melee"]:
-                        assert key in melee_mode, f"Missing {key} in melee weapon_mode"
-                        assert melee_mode[key] == weapon["melee"][key], \
-                            f"melee mode {key} mismatch"
+                    # Compare dicts directly for a more robust check.
+                    # The 'type' key is added during bucket creation, so we exclude it from comparison.
+                    expected_melee = weapon["melee"]
+                    actual_melee = modes_by_subtype["melee"].copy()
+                    del actual_melee["type"]
+                    assert actual_melee == expected_melee, f"melee mode data mismatch. Expected {expected_melee}, got {actual_melee}"
                 if "ranged" in weapon:
                     assert "ranged" in modes_by_subtype, "Missing ranged mode in offense.weapon_modes"
-                    ranged_mode = modes_by_subtype["ranged"]
-                    for key in weapon["ranged"]:
-                        assert key in ranged_mode, f"Missing {key} in ranged weapon_mode"
-                        assert ranged_mode[key] == weapon["ranged"][key], \
-                            f"ranged mode {key} mismatch"
+                    expected_ranged = weapon["ranged"]
+                    actual_ranged = modes_by_subtype["ranged"].copy()
+                    del actual_ranged["type"]
+                    assert actual_ranged == expected_ranged, f"ranged mode data mismatch. Expected {expected_ranged}, got {actual_ranged}"
             if "ammunition" in offense and "ammunition" in weapon:
                 assert offense["ammunition"] == weapon["ammunition"], \
                     f"offense.ammunition != weapon.ammunition"
@@ -2918,19 +2917,11 @@ def populate_equipment_buckets_pass(struct):
 
     # Phase 4 cleanup: Remove deprecated old structures now that buckets are populated
     # These old objects are no longer in the schema
-    if "weapon" in stat_block:
-        del stat_block["weapon"]
-    if "armor" in stat_block:
-        del stat_block["armor"]
-    if "shield" in stat_block:
-        del stat_block["shield"]
-    if "siege_weapon" in stat_block:
-        del stat_block["siege_weapon"]
+    for key in ("weapon", "armor", "shield", "siege_weapon"):
+        if key in stat_block:
+            del stat_block[key]
 
     # Remove top-level fields that have been moved into statistics bucket
-    if "price" in stat_block:
-        del stat_block["price"]
-    if "bulk" in stat_block:
-        del stat_block["bulk"]
-    if "access" in stat_block:
-        del stat_block["access"]
+    for key in ("price", "bulk", "access"):
+        if key in stat_block:
+            del stat_block[key]
