@@ -2086,11 +2086,9 @@ def _normalize_item_hitpoints(sb):
 
     # Parse immunities string into protection objects if present
     if 'immunities' in sb:
-        immunities_str = sb['immunities']
-        if immunities_str and immunities_str.strip():
-            immunities = _parse_immunities(immunities_str)
-            if immunities:
-                hitpoints['immunities'] = immunities
+        immunities = _parse_immunities(sb['immunities'])
+        if immunities:
+            hitpoints['immunities'] = immunities
         del sb['immunities']
 
     # Only add hitpoints object if we have at least hp
