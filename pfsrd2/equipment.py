@@ -2744,6 +2744,132 @@ def _build_offense_bucket(stat_block):
     return None
 
 
+def _validate_bucket_data(stat_block, statistics, defense, offense):
+    """
+    Validate that bucket data matches the old structure data.
+
+    This ensures the migration is correct by verifying that fields copied
+    to buckets have the same values as their source in the old structure.
+    """
+    # Validate statistics bucket
+    if statistics:
+        # Check price, bulk, access match top-level
+        if "price" in statistics:
+            assert statistics["price"] == stat_block["price"], \
+                f"statistics.price mismatch: {statistics['price']} != {stat_block['price']}"
+        if "bulk" in statistics:
+            assert statistics["bulk"] == stat_block["bulk"], \
+                f"statistics.bulk mismatch"
+        if "access" in statistics:
+            assert statistics["access"] == stat_block["access"], \
+                f"statistics.access mismatch"
+
+        # Check weapon fields
+        if "weapon" in stat_block:
+            weapon = stat_block["weapon"]
+            if "category" in statistics:
+                assert statistics["category"] == weapon["category"], \
+                    f"statistics.category != weapon.category"
+            if "hands" in statistics:
+                assert statistics["hands"] == weapon["hands"], \
+                    f"statistics.hands != weapon.hands"
+            if "favored_weapon" in statistics:
+                assert statistics["favored_weapon"] == weapon["favored_weapon"], \
+                    f"statistics.favored_weapon mismatch"
+
+        # Check armor fields
+        if "armor" in stat_block:
+            armor = stat_block["armor"]
+            if "category" in statistics and "category" in armor:
+                assert statistics["category"] == armor["category"], \
+                    f"statistics.category != armor.category"
+            if "strength_requirement" in statistics:
+                assert statistics["strength_requirement"] == armor["strength"], \
+                    f"statistics.strength_requirement != armor.strength"
+
+    # Validate defense bucket
+    if defense:
+        # Check armor fields
+        if "armor" in stat_block:
+            armor = stat_block["armor"]
+            if "ac_bonus" in defense and "ac_bonus" in armor:
+                assert defense["ac_bonus"] == armor["ac_bonus"], \
+                    f"defense.ac_bonus != armor.ac_bonus"
+            if "dex_cap" in defense:
+                assert defense["dex_cap"] == armor["dex_cap"], \
+                    f"defense.dex_cap != armor.dex_cap"
+            if "check_penalty" in defense:
+                assert defense["check_penalty"] == armor["check_penalty"], \
+                    f"defense.check_penalty != armor.check_penalty"
+            if "speed_penalty" in defense and "speed_penalty" in armor:
+                assert defense["speed_penalty"] == armor["speed_penalty"], \
+                    f"defense.speed_penalty != armor.speed_penalty"
+            if "armor_group" in defense:
+                assert defense["armor_group"] == armor["armor_group"], \
+                    f"defense.armor_group != armor.armor_group"
+
+        # Check shield fields
+        if "shield" in stat_block:
+            shield = stat_block["shield"]
+            if "ac_bonus" in defense and "ac_bonus" in shield:
+                assert defense["ac_bonus"] == shield["ac_bonus"], \
+                    f"defense.ac_bonus != shield.ac_bonus"
+            if "speed_penalty" in defense and "speed_penalty" in shield:
+                assert defense["speed_penalty"] == shield["speed_penalty"], \
+                    f"defense.speed_penalty != shield.speed_penalty"
+            if "hitpoints" in defense:
+                assert defense["hitpoints"] == shield["hitpoints"], \
+                    f"defense.hitpoints != shield.hitpoints"
+
+        # Check siege weapon fields
+        if "siege_weapon" in stat_block:
+            siege = stat_block["siege_weapon"]
+            if "ac" in defense:
+                assert defense["ac"] == siege["ac"], \
+                    f"defense.ac != siege_weapon.ac"
+            if "hitpoints" in defense and "hitpoints" in siege:
+                assert defense["hitpoints"] == siege["hitpoints"], \
+                    f"defense.hitpoints != siege_weapon.hitpoints"
+            if "speed" in defense:
+                assert defense["speed"] == siege["speed"], \
+                    f"defense.speed != siege_weapon.speed"
+
+    # Validate offense bucket
+    if offense:
+        # Check weapon fields - weapon_modes should match melee/ranged
+        if "weapon" in stat_block:
+            weapon = stat_block["weapon"]
+            if "weapon_modes" in offense:
+                modes_by_type = {m["mode_type"]: m for m in offense["weapon_modes"]}
+                if "melee" in weapon:
+                    assert "melee" in modes_by_type, "Missing melee mode in offense.weapon_modes"
+                    # Mode data should match except for mode_type which is new
+                    melee_mode = modes_by_type["melee"]
+                    for key in weapon["melee"]:
+                        if key not in ("type", "subtype"):  # type/subtype are structural
+                            assert key in melee_mode, f"Missing {key} in melee weapon_mode"
+                            assert melee_mode[key] == weapon["melee"][key], \
+                                f"melee mode {key} mismatch"
+                if "ranged" in weapon:
+                    assert "ranged" in modes_by_type, "Missing ranged mode in offense.weapon_modes"
+                    ranged_mode = modes_by_type["ranged"]
+                    for key in weapon["ranged"]:
+                        if key not in ("type", "subtype"):
+                            assert key in ranged_mode, f"Missing {key} in ranged weapon_mode"
+                            assert ranged_mode[key] == weapon["ranged"][key], \
+                                f"ranged mode {key} mismatch"
+            if "ammunition" in offense and "ammunition" in weapon:
+                assert offense["ammunition"] == weapon["ammunition"], \
+                    f"offense.ammunition != weapon.ammunition"
+
+        # Check siege weapon ammunition
+        if "siege_weapon" in stat_block:
+            siege = stat_block["siege_weapon"]
+            if "ammunition" in offense and "ammunition" in siege:
+                assert offense["ammunition"] == siege["ammunition"], \
+                    f"offense.ammunition != siege_weapon.ammunition"
+
+
 def populate_equipment_buckets_pass(struct):
     """
     Populate creature-style buckets (statistics, defense, offense) from existing
@@ -2764,6 +2890,9 @@ def populate_equipment_buckets_pass(struct):
     statistics = _build_statistics_bucket(stat_block)
     defense = _build_defense_bucket(stat_block)
     offense = _build_offense_bucket(stat_block)
+
+    # Validate that bucket data matches old structure (data integrity check)
+    _validate_bucket_data(stat_block, statistics, defense, offense)
 
     # Add buckets to stat_block (only if they have content)
     if statistics:
