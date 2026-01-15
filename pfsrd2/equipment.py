@@ -2138,9 +2138,6 @@ def _parse_immunities(html_text):
     """
     from universal.universal import link_objects
 
-    if not html_text or not html_text.strip():
-        return []
-
     # Parse the HTML to handle links
     bs = BeautifulSoup(html_text, 'html.parser')
 
