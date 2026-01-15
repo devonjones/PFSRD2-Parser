@@ -65,9 +65,6 @@ def _count_links_in_html(html_text, exclude_name=None, debug=False):
         exclude_name: If provided, exclude links whose text matches this name (for self-references)
         debug: If True, print debug info about found links
     """
-    if not html_text:
-        return 0
-
     soup = BeautifulSoup(html_text, 'html.parser')
     # Find all <a> tags that have game-obj attribute (internal game links)
     all_links = soup.find_all('a', attrs={'game-obj': True})
