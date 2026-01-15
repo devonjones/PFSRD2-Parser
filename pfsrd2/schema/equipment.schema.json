@@ -290,31 +290,6 @@
 			"required": ["type", "subtype", "text"],
 			"additionalProperties": false
 		},
-		"weapon_object": {
-			"type": "object",
-			"properties": {
-				"category": {"enum": ["Unarmed", "Simple", "Martial", "Advanced", "Ammunition"]},
-				"hands": {"type": ["integer", "string"]},
-				"ammunition": {"$ref": "#/definitions/ammunition"},
-				"favored_weapon": {"$ref": "#/definitions/favored_weapon"},
-				"melee": {"$ref": "#/definitions/weapon_mode"},
-				"ranged": {"$ref": "#/definitions/weapon_mode"}
-			},
-			"additionalProperties": false
-		},
-		"armor_object": {
-			"type": "object",
-			"properties": {
-				"category": {"enum": ["Unarmored", "Light", "Medium", "Heavy"]},
-				"ac_bonus": {"$ref": "#/definitions/bonus"},
-				"dex_cap": {"$ref": "#/definitions/bonus"},
-				"check_penalty": {"$ref": "#/definitions/bonus"},
-				"speed_penalty": {"$ref": "#/definitions/bonus"},
-				"strength": {"$ref": "#/definitions/stat_requirement"},
-				"armor_group": {"$ref": "#/definitions/armor_group"}
-			},
-			"additionalProperties": false
-		},
 		"protection": {
 			"type": "object",
 			"properties": {
@@ -344,15 +319,6 @@
 			"required": ["type", "subtype", "hp"],
 			"additionalProperties": false
 		},
-		"shield_object": {
-			"type": "object",
-			"properties": {
-				"ac_bonus": {"$ref": "#/definitions/bonus"},
-				"speed_penalty": {"$ref": "#/definitions/bonus"},
-				"hitpoints": {"$ref": "#/definitions/item_hitpoints"}
-			},
-			"additionalProperties": false
-		},
 		"save": {
 			"type": "object",
 			"properties": {
@@ -377,22 +343,6 @@
 				}
 			},
 			"required": ["type", "subtype", "value"],
-			"additionalProperties": false
-		},
-		"siege_weapon_object": {
-			"type": "object",
-			"properties": {
-				"usage": {"type": "string"},
-				"crew": {"type": "string"},
-				"proficiency": {"type": "string"},
-				"ammunition": {"$ref": "#/definitions/ammunition"},
-				"space": {"type": "string"},
-				"ac": {"type": "integer"},
-				"fort": {"type": "integer"},
-				"ref": {"type": "integer"},
-				"hitpoints": {"$ref": "#/definitions/item_hitpoints"},
-				"speed": {"$ref": "#/definitions/speed_with_modifiers"}
-			},
 			"additionalProperties": false
 		},
 		"equipment_saves": {
@@ -476,11 +426,7 @@
 				"abilities": {"$ref": "#/definitions/abilities"},
 				"price": {"type": "string"},
 				"bulk": {"$ref": "#/definitions/bulk"},
-				"access": {"type": "string"},
-				"weapon": {"$ref": "#/definitions/weapon_object"},
-				"armor": {"$ref": "#/definitions/armor_object"},
-				"shield": {"$ref": "#/definitions/shield_object"},
-				"siege_weapon": {"$ref": "#/definitions/siege_weapon_object"}
+				"access": {"type": "string"}
 			},
 			"required": ["type", "subtype", "level"],
 			"additionalProperties": false

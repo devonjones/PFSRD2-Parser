@@ -2663,6 +2663,7 @@ def _build_defense_bucket(stat_block):
                 defense["hardness"] = siege["hitpoints"]["hardness"]
 
         # Build saves container if fort or ref exist
+        # Note: old structure has fort/ref as raw integers, need to wrap in save objects
         saves = None
         if "fort" in siege or "ref" in siege:
             saves = {
@@ -2670,9 +2671,17 @@ def _build_defense_bucket(stat_block):
                 "subtype": "saves"
             }
             if "fort" in siege:
-                saves["fort"] = siege["fort"]
+                saves["fort"] = {
+                    "type": "stat_block_section",
+                    "subtype": "save",
+                    "value": siege["fort"]
+                }
             if "ref" in siege:
-                saves["ref"] = siege["ref"]
+                saves["ref"] = {
+                    "type": "stat_block_section",
+                    "subtype": "save",
+                    "value": siege["ref"]
+                }
         if saves:
             defense["saves"] = saves
 
@@ -2708,21 +2717,17 @@ def _build_offense_bucket(stat_block):
         # Convert melee mode if exists
         if "melee" in weapon:
             melee = weapon["melee"].copy()
-            # Ensure it has the right type/subtype
+            # Ensure it has the right type/subtype (subtype should already be "melee")
             melee["type"] = "stat_block_section"
-            melee["subtype"] = "weapon_mode"
-            # Add mode_type to distinguish melee from ranged
-            melee["mode_type"] = "melee"
+            melee["subtype"] = "melee"
             weapon_modes.append(melee)
 
         # Convert ranged mode if exists
         if "ranged" in weapon:
             ranged = weapon["ranged"].copy()
-            # Ensure it has the right type/subtype
+            # Ensure it has the right type/subtype (subtype should already be "ranged")
             ranged["type"] = "stat_block_section"
-            ranged["subtype"] = "weapon_mode"
-            # Add mode_type to distinguish melee from ranged
-            ranged["mode_type"] = "ranged"
+            ranged["subtype"] = "ranged"
             weapon_modes.append(ranged)
 
         if weapon_modes:
@@ -2833,6 +2838,16 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
             if "speed" in defense:
                 assert defense["speed"] == siege["speed"], \
                     f"defense.speed != siege_weapon.speed"
+            # Validate saves (old structure has integers, new has save objects)
+            if "saves" in defense:
+                if "fort" in siege:
+                    assert "fort" in defense["saves"], "Missing fort in defense.saves"
+                    assert defense["saves"]["fort"]["value"] == siege["fort"], \
+                        f"defense.saves.fort.value != siege_weapon.fort"
+                if "ref" in siege:
+                    assert "ref" in defense["saves"], "Missing ref in defense.saves"
+                    assert defense["saves"]["ref"]["value"] == siege["ref"], \
+                        f"defense.saves.ref.value != siege_weapon.ref"
 
     # Validate offense bucket
     if offense:
@@ -2840,24 +2855,22 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
         if "weapon" in stat_block:
             weapon = stat_block["weapon"]
             if "weapon_modes" in offense:
-                modes_by_type = {m["mode_type"]: m for m in offense["weapon_modes"]}
+                modes_by_subtype = {m["subtype"]: m for m in offense["weapon_modes"]}
                 if "melee" in weapon:
-                    assert "melee" in modes_by_type, "Missing melee mode in offense.weapon_modes"
-                    # Mode data should match except for mode_type which is new
-                    melee_mode = modes_by_type["melee"]
+                    assert "melee" in modes_by_subtype, "Missing melee mode in offense.weapon_modes"
+                    # Mode data should match completely
+                    melee_mode = modes_by_subtype["melee"]
                     for key in weapon["melee"]:
-                        if key not in ("type", "subtype"):  # type/subtype are structural
-                            assert key in melee_mode, f"Missing {key} in melee weapon_mode"
-                            assert melee_mode[key] == weapon["melee"][key], \
-                                f"melee mode {key} mismatch"
+                        assert key in melee_mode, f"Missing {key} in melee weapon_mode"
+                        assert melee_mode[key] == weapon["melee"][key], \
+                            f"melee mode {key} mismatch"
                 if "ranged" in weapon:
-                    assert "ranged" in modes_by_type, "Missing ranged mode in offense.weapon_modes"
-                    ranged_mode = modes_by_type["ranged"]
+                    assert "ranged" in modes_by_subtype, "Missing ranged mode in offense.weapon_modes"
+                    ranged_mode = modes_by_subtype["ranged"]
                     for key in weapon["ranged"]:
-                        if key not in ("type", "subtype"):
-                            assert key in ranged_mode, f"Missing {key} in ranged weapon_mode"
-                            assert ranged_mode[key] == weapon["ranged"][key], \
-                                f"ranged mode {key} mismatch"
+                        assert key in ranged_mode, f"Missing {key} in ranged weapon_mode"
+                        assert ranged_mode[key] == weapon["ranged"][key], \
+                            f"ranged mode {key} mismatch"
             if "ammunition" in offense and "ammunition" in weapon:
                 assert offense["ammunition"] == weapon["ammunition"], \
                     f"offense.ammunition != weapon.ammunition"
@@ -2872,12 +2885,13 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
 
 def populate_equipment_buckets_pass(struct):
     """
-    Populate creature-style buckets (statistics, defense, offense) from existing
-    type-specific equipment objects.
+    Populate creature-style buckets (statistics, defense, offense) from old
+    type-specific equipment objects, then remove the old objects.
 
-    This maintains backward compatibility by keeping the old structure (weapon,
-    armor, shield, siege_weapon objects) while also populating the new bucket-based
-    structure.
+    This completes the migration to the new bucket-based structure by:
+    1. Building buckets from old structure
+    2. Validating bucket data matches old structure
+    3. Removing old deprecated structures (weapon, armor, shield, siege_weapon objects)
 
     Args:
         struct: The equipment structure with stat_block containing old-style objects
@@ -2901,3 +2915,14 @@ def populate_equipment_buckets_pass(struct):
         stat_block["defense"] = defense
     if offense:
         stat_block["offense"] = offense
+
+    # Phase 4 cleanup: Remove deprecated old structures now that buckets are populated
+    # These old objects are no longer in the schema
+    if "weapon" in stat_block:
+        del stat_block["weapon"]
+    if "armor" in stat_block:
+        del stat_block["armor"]
+    if "shield" in stat_block:
+        del stat_block["shield"]
+    if "siege_weapon" in stat_block:
+        del stat_block["siege_weapon"]
