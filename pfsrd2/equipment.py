@@ -808,8 +808,8 @@ def _extract_vehicle_stats(bs, stats_dict, recognized_stats, equipment_type):
         if field_name is None:
             continue
 
-        # Extract the value - preserve HTML for immunities/weaknesses to keep links
-        preserve_html = (label in ['Immunities', 'Weaknesses'])
+        # Extract the value - preserve HTML for fields with links
+        preserve_html = (label in ['Immunities', 'Weaknesses', 'Piloting Check'])
         value = _extract_stat_value(bold_tag, preserve_html=preserve_html)
         if value:
             stats_dict[field_name] = value
@@ -2180,12 +2180,52 @@ def normalize_vehicle_fields(sb):
                 _normalize_int_field(vehicle_obj, field)
         # Normalize speed field if present
         _normalize_speed(vehicle_obj)
+        # Normalize piloting_check field (extract links from HTML)
+        if 'piloting_check' in vehicle_obj:
+            _normalize_text_with_links(vehicle_obj, 'piloting_check')
         # Build hitpoints object from hp_bt, hardness, immunities, weaknesses fields
         # This must come last since it deletes the source fields
         _normalize_vehicle_hitpoints(vehicle_obj)
 
 # Register normalizer in EQUIPMENT_TYPES config
 EQUIPMENT_TYPES['vehicle']['normalize_fields'] = normalize_vehicle_fields
+
+
+def _normalize_text_with_links(sb, field_name):
+    """Convert HTML text field with links to structured object with extracted links.
+
+    Args:
+        sb: stat block dict containing the field
+        field_name: name of the field to normalize
+    """
+    from universal.universal import get_links
+    from universal.utils import clear_tags
+
+    if field_name not in sb:
+        return
+
+    html_text = sb[field_name]
+    if not html_text:
+        return
+
+    # Parse HTML and extract links (unwrap=True removes <a> tags)
+    bs = BeautifulSoup(html_text, 'html.parser')
+    links = get_links(bs, unwrap=True)
+
+    # Get the text with links unwrapped
+    text = clear_tags(str(bs), ["i"])
+
+    # Create a structured object with text and links
+    text_obj = {
+        'type': 'stat_block_section',
+        'subtype': field_name,
+        'text': text.strip()
+    }
+
+    if links:
+        text_obj['links'] = links
+
+    sb[field_name] = text_obj
 
 
 def _normalize_vehicle_hitpoints(sb):
@@ -2217,12 +2257,15 @@ def _normalize_vehicle_hitpoints(sb):
 
     # Add hardness as integer if present
     if 'hardness' in sb:
-        hitpoints['hardness'] = sb['hardness']
+        hardness_str = str(sb['hardness']).strip().rstrip(',')  # Clean up trailing commas
+        hitpoints['hardness'] = int(hardness_str)
         del sb['hardness']
 
-    # Handle immunities (already parsed with links from HTML)
+    # Parse immunities string into protection objects if present
     if 'immunities' in sb:
-        hitpoints['immunities'] = sb['immunities']
+        immunities = _parse_immunities(sb['immunities'])
+        if immunities:
+            hitpoints['immunities'] = immunities
         del sb['immunities']
 
     # Replace the individual fields with the hitpoints object

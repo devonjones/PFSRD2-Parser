@@ -336,13 +336,15 @@
 				"subtype": {"enum": ["speed"]},
 				"value": {"type": "integer"},
 				"unit": {"enum": ["feet"]},
+				"movement_type": {"type": "string"},
+				"special": {"type": "string"},
 				"modifiers": {
 					"type": "array",
 					"items": {"type": "object"},
 					"additionalItems": false
 				}
 			},
-			"required": ["type", "subtype", "value"],
+			"required": ["type", "subtype"],
 			"additionalProperties": false
 		},
 		"equipment_saves": {
@@ -376,7 +378,25 @@
 				"strength_requirement": {"$ref": "#/definitions/stat_requirement"},
 				"favored_weapon": {"$ref": "#/definitions/favored_weapon"},
 				"passengers": {"type": "string"},
-				"piloting_check": {"type": "string"}
+				"piloting_check": {
+					"oneOf": [
+						{"type": "string"},
+						{
+							"type": "object",
+							"properties": {
+								"type": {"enum": ["stat_block_section"]},
+								"subtype": {"enum": ["piloting_check"]},
+								"text": {"type": "string"},
+								"links": {
+									"type": "array",
+									"items": {"$ref": "#/definitions/link"}
+								}
+							},
+							"required": ["type", "subtype", "text"],
+							"additionalProperties": false
+						}
+					]
+				}
 			},
 			"required": ["type", "subtype"],
 			"additionalProperties": false
@@ -412,7 +432,9 @@
 					"items": {"$ref": "#/definitions/weapon_mode"},
 					"additionalItems": false
 				},
-				"ammunition": {"$ref": "#/definitions/ammunition"}
+				"ammunition": {"$ref": "#/definitions/ammunition"},
+				"speed": {"$ref": "#/definitions/speed_with_modifiers"},
+				"collision": {"type": "string"}
 			},
 			"required": ["type", "subtype"],
 			"additionalProperties": false
@@ -552,7 +574,7 @@
 	"type": "object",
 	"properties": {
 		"name": {"type": "string"},
-		"type": {"enum": ["weapon", "armor", "shield", "siege_weapon"]},
+		"type": {"enum": ["weapon", "armor", "shield", "siege_weapon", "vehicle"]},
 		"text": {"type": "string"},
 		"links": {
 			"type": "array",
@@ -560,7 +582,7 @@
 			"additionalItems": false
 		},
 		"aonid": {"type": "integer"},
-		"game-obj": {"enum": ["Weapons", "Armor", "Shields", "SiegeWeapons"]},
+		"game-obj": {"enum": ["Weapons", "Armor", "Shields", "SiegeWeapons", "Vehicles"]},
 		"game-id": {"type": "string"},
 		"stat_block": {"$ref": "#/definitions/equipment_stat_block"},
 		"sources": {"$ref": "#/definitions/sources"},
