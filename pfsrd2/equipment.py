@@ -2068,16 +2068,13 @@ def _normalize_item_hitpoints(sb):
     if 'hp_bt' in sb:
         value_str = sb['hp_bt']
         if value_str:
-            try:
-                # Match both "6 (3)" and "40 (BT 20)" formats
-                match = re.match(r'(\d+)\s*\((?:BT\s+)?(\d+)\)', value_str.strip())
-                if match:
-                    hitpoints['hp'] = int(match.group(1))
-                    hitpoints['break_threshold'] = int(match.group(2))
-                else:
-                    raise ValueError(f"Could not parse hp_bt format: '{value_str}'")
-            except (ValueError, AttributeError) as e:
-                raise ValueError(f"Could not parse hp_bt value: '{value_str}'") from e
+            # Match both "6 (3)" and "40 (BT 20)" formats
+            match = re.match(r'(\d+)\s*\((?:BT\s+)?(\d+)\)', value_str.strip())
+            if not match:
+                raise ValueError(f"Could not parse hp_bt format: '{value_str}'")
+
+            hitpoints['hp'] = int(match.group(1))
+            hitpoints['break_threshold'] = int(match.group(2))
         del sb['hp_bt']
 
     # Add hardness to hitpoints object if present
