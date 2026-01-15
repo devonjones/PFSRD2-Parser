@@ -331,6 +331,33 @@ EQUIPMENT_TYPES = {
         'output_subdir': 'siege_weapons',
         'normalize_fields': None,  # Set after function definition
     },
+    'vehicle': {
+        'recognized_stats': {
+            'Source': None,  # Handled separately
+            'Price': 'price',
+            'Space': 'space',
+            'Crew': 'crew',
+            'Passengers': 'passengers',
+            'Piloting Check': 'piloting_check',
+            'AC': 'ac',
+            'Fort': 'fort',
+            'Hardness': 'hardness',
+            'HP': 'hp_bt',  # HTML has just "HP" (value includes "(BT 20)" part)
+            'Immunities': 'immunities',
+            'Weaknesses': 'weaknesses',
+            'Speed': 'speed',
+            'Collision': 'collision',
+        },
+        # Fields at different nesting levels:
+        # - shared_fields: top-level stat_block (price)
+        # - nested_fields: nested in vehicle object (all others)
+        'shared_fields': ['price'],
+        'nested_fields': ['space', 'crew', 'passengers', 'piloting_check',
+                          'ac', 'fort', 'hardness', 'hp_bt', 'immunities', 'weaknesses', 'speed', 'collision'],
+        'schema_file': 'equipment.schema.json',
+        'output_subdir': 'vehicles',
+        'normalize_fields': None,  # Set after function definition
+    },
 }
 
 
@@ -488,26 +515,26 @@ def extract_name_link(container):
     """
     Extract the equipment name link, skipping legacy/remastered note links.
     Try game-obj attribute first (after pfsrd2-web transform), fallback to href.
-    Works for armor, weapons, shields, and siege weapons.
+    Works for armor, weapons, shields, siege weapons, and vehicles.
     """
     # Try game-obj attribute (from pfsrd2-web transform)
-    # Could be 'Armor', 'Weapons', 'Shields', or 'SiegeWeapons'
-    for game_obj in ['Armor', 'Weapons', 'Shields', 'SiegeWeapons']:
+    # Could be 'Armor', 'Weapons', 'Shields', 'SiegeWeapons', or 'Vehicles'
+    for game_obj in ['Armor', 'Weapons', 'Shields', 'SiegeWeapons', 'Vehicles']:
         all_links = container.find_all('a', attrs={'game-obj': game_obj})
         for link in all_links:
             if not link.has_attr('noredirect'):
                 return link
 
     # Fallback: use href attribute
-    # Could be 'Armor.aspx?ID=', 'Weapons.aspx?ID=', 'Shields.aspx?ID=', or 'SiegeWeapons.aspx?ID='
-    for pattern in ['Armor.aspx?ID=', 'Weapons.aspx?ID=', 'Shields.aspx?ID=', 'SiegeWeapons.aspx?ID=']:
+    # Could be 'Armor.aspx?ID=', 'Weapons.aspx?ID=', 'Shields.aspx?ID=', 'SiegeWeapons.aspx?ID=', or 'Vehicles.aspx?ID='
+    for pattern in ['Armor.aspx?ID=', 'Weapons.aspx?ID=', 'Shields.aspx?ID=', 'SiegeWeapons.aspx?ID=', 'Vehicles.aspx?ID=']:
         all_links = container.find_all('a', href=lambda x: x and pattern in x)
         for link in all_links:
             href = link.get('href', '')
             if 'NoRedirect' not in href:
                 return link
 
-    assert False, "Could not find equipment name link (tried Armor, Weapons, Shields, and SiegeWeapons)"
+    assert False, "Could not find equipment name link (tried Armor, Weapons, Shields, SiegeWeapons, and Vehicles)"
 
 
 def restructure_equipment_pass(details, equipment_type):
@@ -560,6 +587,8 @@ def section_pass(struct, config):
         return _weapon_section_pass(struct, config)
     elif equipment_type == 'siege_weapon':
         return _siege_weapon_section_pass(struct, config)
+    elif equipment_type == 'vehicle':
+        return _vehicle_section_pass(struct, config)
     else:
         # Generic equipment handling (armor, shields, etc.)
         return _generic_section_pass(struct, config)
@@ -695,6 +724,95 @@ def _siege_weapon_section_pass(struct, config):
     _cleanup_stat_block(sb)
 
     return links_removed
+
+
+def _vehicle_section_pass(struct, config):
+    """Vehicle-specific section pass that handles stats similar to siege weapons.
+
+    Returns the number of links removed from redundant sections.
+    """
+    sb = find_stat_block(struct)
+    text = sb['text']  # Fail if missing
+    if not text:
+        raise ValueError(f"Stat block text is empty for {struct.get('name', 'unknown')}")
+
+    bs = BeautifulSoup(text, 'html.parser')
+
+    _extract_traits(bs, sb)
+    _extract_source(bs, struct)
+
+    # Extract stats into a temporary dictionary
+    # Vehicles have stats similar to siege weapons
+    stats = {}
+    _extract_vehicle_stats(bs, stats, config['recognized_stats'], struct['type'])
+
+    # Separate shared vs nested fields
+    shared_fields = config.get('shared_fields', [])
+    nested_fields = config.get('nested_fields', [])
+
+    # Add shared fields to top level
+    for field in shared_fields:
+        if field in stats:
+            sb[field] = stats[field]
+
+    # Add nested fields to vehicle object
+    vehicle_obj = {}
+    for field in nested_fields:
+        if field in stats:
+            vehicle_obj[field] = stats[field]
+
+    if vehicle_obj:
+        sb['vehicle'] = vehicle_obj
+
+    # Extract action sections as abilities (if any)
+    abilities = _extract_abilities(bs)
+    if abilities:
+        sb['abilities'] = abilities
+
+    links_removed = _remove_redundant_sections(bs)
+    _extract_alternate_link(bs, struct)
+    _extract_legacy_content_section(bs, struct)
+    _extract_description(bs, struct)
+    _cleanup_stat_block(sb)
+
+    return links_removed
+
+
+def _extract_vehicle_stats(bs, stats_dict, recognized_stats, equipment_type):
+    """Extract vehicle stats which span across multiple <hr> tags.
+
+    Vehicles have stats similar to siege weapons but different fields.
+    """
+    # Find all bold tags that are stats (not action names)
+    # Vehicles typically don't have action names like siege weapons
+    action_names = ['Effect', 'Requirements']  # Keep minimal list just in case
+
+    for bold_tag in bs.find_all('b'):
+        label = bold_tag.get_text().strip()
+
+        # Skip empty labels
+        if not label:
+            continue
+
+        # Skip action names (they're handled separately)
+        if label in action_names:
+            continue
+
+        # Fail fast if we encounter an unknown label
+        if label not in recognized_stats:
+            # Check if this might be part of the description
+            continue
+
+        # Skip labels we handle elsewhere (like Source)
+        field_name = recognized_stats[label]
+        if field_name is None:
+            continue
+
+        # Extract the value - preserve HTML for immunities/weaknesses to keep links
+        preserve_html = (label in ['Immunities', 'Weaknesses'])
+        value = _extract_stat_value(bold_tag, preserve_html=preserve_html)
+        if value:
+            stats_dict[field_name] = value
 
 
 def _extract_siege_weapon_stats(bs, stats_dict, recognized_stats, equipment_type):
@@ -2047,6 +2165,70 @@ def normalize_siege_weapon_fields(sb):
 EQUIPMENT_TYPES['siege_weapon']['normalize_fields'] = normalize_siege_weapon_fields
 
 
+def normalize_vehicle_fields(sb):
+    """Normalize vehicle-specific fields."""
+    # Normalize shared field at top level (price only for vehicles)
+    # Note: vehicles don't have bulk
+
+    # Normalize vehicle-specific fields within vehicle object
+    if 'vehicle' in sb:
+        vehicle_obj = sb['vehicle']
+        # Normalize defensive stats (AC, Fort) - vehicles don't have Ref
+        # Must come before hitpoints
+        for field in ['ac', 'fort']:
+            if field in vehicle_obj:
+                _normalize_int_field(vehicle_obj, field)
+        # Normalize speed field if present
+        _normalize_speed(vehicle_obj)
+        # Build hitpoints object from hp_bt, hardness, immunities, weaknesses fields
+        # This must come last since it deletes the source fields
+        _normalize_vehicle_hitpoints(vehicle_obj)
+
+# Register normalizer in EQUIPMENT_TYPES config
+EQUIPMENT_TYPES['vehicle']['normalize_fields'] = normalize_vehicle_fields
+
+
+def _normalize_vehicle_hitpoints(sb):
+    """Build hitpoints object from hp_bt, hardness, and immunities fields.
+
+    Note: weaknesses field stays separate at vehicle level (not in hitpoints).
+    """
+    if 'hp_bt' not in sb and 'hardness' not in sb and 'immunities' not in sb:
+        return
+
+    # Build hitpoints object
+    hitpoints = {
+        'type': 'stat_block_section',
+        'subtype': 'hitpoints'
+    }
+
+    # Parse HP (BT) string like "6 (3)", "20 (10)", or "40 (BT 20)" if present
+    if 'hp_bt' in sb:
+        value_str = sb['hp_bt']
+        if value_str:
+            # Match both "6 (3)" and "40 (BT 20)" formats
+            match = re.match(r'(\d+)\s*\((?:BT\s+)?(\d+)\)', value_str.strip())
+            if not match:
+                raise ValueError(f"Could not parse hp_bt format: '{value_str}'")
+
+            hitpoints['hp'] = int(match.group(1))
+            hitpoints['break_threshold'] = int(match.group(2))
+        del sb['hp_bt']
+
+    # Add hardness as integer if present
+    if 'hardness' in sb:
+        hitpoints['hardness'] = sb['hardness']
+        del sb['hardness']
+
+    # Handle immunities (already parsed with links from HTML)
+    if 'immunities' in sb:
+        hitpoints['immunities'] = sb['immunities']
+        del sb['immunities']
+
+    # Replace the individual fields with the hitpoints object
+    sb['hp_bt'] = hitpoints
+
+
 def _normalize_item_hitpoints(sb):
     """Build hitpoints object from hp_bt, hardness, and immunities fields.
 
@@ -2186,6 +2368,7 @@ def _normalize_speed(sb):
     Examples:
       "20 feet (pulled or pushed)" -> {value: 20, unit: "feet", modifiers: [{name: "pulled or pushed"}]}
       "10 feet" -> {value: 10, unit: "feet"}
+      "fly 50 feet" -> {value: 50, unit: "feet", movement_type: "fly"}
     """
     if 'speed' not in sb:
         return
@@ -2201,6 +2384,15 @@ def _normalize_speed(sb):
         value_str = match.group(1).strip()
         modifier_text = match.group(2).strip()
 
+    # Check for movement type prefix (fly, swim, burrow, climb, etc.)
+    movement_type = None
+    movement_types = ['fly', 'swim', 'burrow', 'climb', 'land']
+    for mtype in movement_types:
+        if value_str.lower().startswith(mtype + ' '):
+            movement_type = mtype
+            value_str = value_str[len(mtype):].strip()
+            break
+
     # Extract unit and value
     unit = None
     if value_str.endswith(' feet'):
@@ -2210,16 +2402,30 @@ def _normalize_speed(sb):
         unit = 'feet'
         value_str = value_str[:-4]
 
-    # Parse to int
-    value = int(value_str.strip())
-    # Create speed object
-    speed_obj = {
-        'type': 'stat_block_section',
-        'subtype': 'speed',
-        'value': value
-    }
-    if unit:
-        speed_obj['unit'] = unit
+    # Parse to int - but handle special text cases
+    value_str_trimmed = value_str.strip()
+    if value_str_trimmed.isdigit():
+        value = int(value_str_trimmed)
+        # Create speed object with numeric value
+        speed_obj = {
+            'type': 'stat_block_section',
+            'subtype': 'speed',
+            'value': value
+        }
+        if unit:
+            speed_obj['unit'] = unit
+        if movement_type:
+            speed_obj['movement_type'] = movement_type
+    else:
+        # Handle special text cases like "the speed of the slowest pulling creature"
+        # Store as text in a 'special' field
+        speed_obj = {
+            'type': 'stat_block_section',
+            'subtype': 'speed',
+            'special': value_str_trimmed
+        }
+        if movement_type:
+            speed_obj['movement_type'] = movement_type
 
     # Add modifiers if present
     if modifier_text:
@@ -2600,6 +2806,18 @@ def _build_statistics_bucket(stat_block):
         if "space" in siege:
             statistics["space"] = siege["space"]
 
+    # Vehicle-specific statistics
+    if "vehicle" in stat_block:
+        vehicle = stat_block["vehicle"]
+        if "space" in vehicle:
+            statistics["space"] = vehicle["space"]
+        if "crew" in vehicle:
+            statistics["crew"] = vehicle["crew"]
+        if "passengers" in vehicle:
+            statistics["passengers"] = vehicle["passengers"]
+        if "piloting_check" in vehicle:
+            statistics["piloting_check"] = vehicle["piloting_check"]
+
     # Only return statistics if it has fields beyond type/subtype
     if len(statistics) > 2:
         return statistics
@@ -2686,6 +2904,35 @@ def _build_defense_bucket(stat_block):
         if "speed" in siege:
             defense["speed"] = siege["speed"]
 
+    # Vehicle defensive properties
+    if "vehicle" in stat_block:
+        vehicle = stat_block["vehicle"]
+        # Vehicles have raw AC value, not a bonus
+        if "ac" in vehicle:
+            defense["ac"] = vehicle["ac"]
+        if "hardness" in vehicle:
+            defense["hardness"] = vehicle["hardness"]
+        if "hp_bt" in vehicle:
+            # Parse HP (BT X) into hitpoints structure
+            defense["hitpoints"] = vehicle["hp_bt"]
+        if "immunities" in vehicle:
+            defense["immunities"] = vehicle["immunities"]
+        if "weaknesses" in vehicle:
+            defense["weaknesses"] = vehicle["weaknesses"]
+
+        # Build saves container for fort (vehicles don't have ref)
+        if "fort" in vehicle:
+            saves = {
+                "type": "stat_block_section",
+                "subtype": "saves",
+                "fort": {
+                    "type": "stat_block_section",
+                    "subtype": "save",
+                    "value": vehicle["fort"]
+                }
+            }
+            defense["saves"] = saves
+
     # Only return defense if it has fields beyond type/subtype
     if len(defense) > 2:
         return defense
@@ -2733,6 +2980,14 @@ def _build_offense_bucket(stat_block):
             if "ammunition" in offense and offense["ammunition"] != siege["ammunition"]:
                 raise ValueError("Conflicting 'ammunition' definitions for hybrid weapon/siege_weapon item.")
             offense["ammunition"] = siege["ammunition"]
+
+    # Vehicle offensive properties
+    if "vehicle" in stat_block:
+        vehicle = stat_block["vehicle"]
+        if "speed" in vehicle:
+            offense["speed"] = vehicle["speed"]
+        if "collision" in vehicle:
+            offense["collision"] = vehicle["collision"]
 
     # Only return offense if it has fields beyond type/subtype
     if len(offense) > 2:
@@ -2873,6 +3128,56 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
                 assert offense["ammunition"] == siege["ammunition"], \
                     f"offense.ammunition != siege.ammunition"
 
+        # Check vehicle collision and speed
+        if "vehicle" in stat_block:
+            vehicle = stat_block["vehicle"]
+            if "speed" in offense:
+                assert offense["speed"] == vehicle["speed"], \
+                    f"offense.speed != vehicle.speed"
+            if "collision" in offense:
+                assert offense["collision"] == vehicle["collision"], \
+                    f"offense.collision != vehicle.collision"
+
+    # Validate vehicle fields in statistics
+    if statistics and "vehicle" in stat_block:
+        vehicle = stat_block["vehicle"]
+        if "space" in statistics:
+            assert statistics["space"] == vehicle["space"], \
+                f"statistics.space != vehicle.space"
+        if "crew" in statistics:
+            assert statistics["crew"] == vehicle["crew"], \
+                f"statistics.crew != vehicle.crew"
+        if "passengers" in statistics:
+            assert statistics["passengers"] == vehicle["passengers"], \
+                f"statistics.passengers != vehicle.passengers"
+        if "piloting_check" in statistics:
+            assert statistics["piloting_check"] == vehicle["piloting_check"], \
+                f"statistics.piloting_check != vehicle.piloting_check"
+
+    # Validate vehicle fields in defense
+    if defense and "vehicle" in stat_block:
+        vehicle = stat_block["vehicle"]
+        if "ac" in defense:
+            assert defense["ac"] == vehicle["ac"], \
+                f"defense.ac != vehicle.ac"
+        if "hardness" in defense:
+            assert defense["hardness"] == vehicle["hardness"], \
+                f"defense.hardness != vehicle.hardness"
+        if "hitpoints" in defense and "hp_bt" in vehicle:
+            assert defense["hitpoints"] == vehicle["hp_bt"], \
+                f"defense.hitpoints != vehicle.hp_bt"
+        if "immunities" in defense:
+            assert defense["immunities"] == vehicle["immunities"], \
+                f"defense.immunities != vehicle.immunities"
+        if "weaknesses" in defense:
+            assert defense["weaknesses"] == vehicle["weaknesses"], \
+                f"defense.weaknesses != vehicle.weaknesses"
+        # Validate fort save
+        if "saves" in defense and "fort" in vehicle:
+            assert "fort" in defense["saves"], "Missing fort in defense.saves"
+            assert defense["saves"]["fort"]["value"] == vehicle["fort"], \
+                f"defense.saves.fort.value != vehicle.fort"
+
 
 def populate_equipment_buckets_pass(struct):
     """
@@ -2908,7 +3213,7 @@ def populate_equipment_buckets_pass(struct):
         stat_block["offense"] = offense
 
     # Phase 4 cleanup: Remove deprecated old structures and moved fields
-    deprecated_keys = ("weapon", "armor", "shield", "siege_weapon", "price", "bulk", "access")
+    deprecated_keys = ("weapon", "armor", "shield", "siege_weapon", "vehicle", "price", "bulk", "access")
     for key in deprecated_keys:
         if key in stat_block:
             del stat_block[key]

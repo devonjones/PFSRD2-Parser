@@ -374,7 +374,9 @@
 				"proficiency": {"type": "string"},
 				"space": {"type": "string"},
 				"strength_requirement": {"$ref": "#/definitions/stat_requirement"},
-				"favored_weapon": {"$ref": "#/definitions/favored_weapon"}
+				"favored_weapon": {"$ref": "#/definitions/favored_weapon"},
+				"passengers": {"type": "string"},
+				"piloting_check": {"type": "string"}
 			},
 			"required": ["type", "subtype"],
 			"additionalProperties": false
@@ -386,13 +388,16 @@
 				"subtype": {"enum": ["defense"]},
 				"ac_bonus": {"$ref": "#/definitions/bonus"},
 				"ac": {"type": "integer"},
+				"hardness": {"type": "integer"},
 				"hitpoints": {"$ref": "#/definitions/item_hitpoints"},
 				"speed_penalty": {"$ref": "#/definitions/bonus"},
 				"check_penalty": {"$ref": "#/definitions/bonus"},
 				"dex_cap": {"$ref": "#/definitions/bonus"},
 				"armor_group": {"$ref": "#/definitions/armor_group"},
 				"saves": {"$ref": "#/definitions/equipment_saves"},
-				"speed": {"$ref": "#/definitions/speed_with_modifiers"}
+				"speed": {"$ref": "#/definitions/speed_with_modifiers"},
+				"immunities": {"$ref": "#/definitions/protections"},
+				"weaknesses": {"$ref": "#/definitions/protections"}
 			},
 			"required": ["type", "subtype"],
 			"additionalProperties": false
@@ -416,7 +421,7 @@
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block"]},
-				"subtype": {"enum": ["weapon", "armor", "shield", "siege_weapon"]},
+				"subtype": {"enum": ["weapon", "armor", "shield", "siege_weapon", "vehicle"]},
 				"level": {"type": "integer"},
 				"traits": {"$ref": "#/definitions/traits"},
 				"statistics": {"$ref": "#/definitions/statistics"},
