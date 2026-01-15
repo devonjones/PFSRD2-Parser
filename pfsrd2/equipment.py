@@ -2612,7 +2612,7 @@ def _build_defense_bucket(stat_block):
 
     Maps fields from:
     - ac_bonus (from armor, shield)
-    - ac → ac_value (from siege_weapon - raw AC value, not bonus)
+    - ac (from siege_weapon - raw AC value, not bonus)
     - hardness, hitpoints (from shield, siege_weapon)
     - speed_penalty (from armor, shield)
     - check_penalty, dex_cap (from armor)
@@ -2763,7 +2763,7 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
         # Check weapon fields
         if "weapon" in stat_block:
             weapon = stat_block["weapon"]
-            if "category" in statistics:
+            if "category" in statistics and "category" in weapon:
                 assert statistics["category"] == weapon["category"], \
                     f"statistics.category != weapon.category"
             if "hands" in statistics:
