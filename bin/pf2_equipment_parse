@@ -9,13 +9,18 @@ from universal.options import exec_main, option_parser
 def main():
     valid_types = list(EQUIPMENT_TYPES.keys())
     valid_types_str = ", ".join(valid_types)
-    usage = f"usage: %prog [options] --type TYPE [filenames]\nParses equipment ({valid_types_str}) from pfsrd2 html to json and writes them to the specified directory"
+    usage = f"usage: %prog [options] TYPE [filenames]\nParses equipment ({valid_types_str}) from pfsrd2 html to json and writes them to the specified directory"
     parser = option_parser(usage)
-    parser.add_option("--type", dest="equipment_type", type="choice", choices=valid_types, help=f"Equipment type: {valid_types_str}")
+    parser.add_option("--type", dest="equipment_type", type="choice", choices=valid_types, help=f"Equipment type: {valid_types_str} (can also be specified as first positional argument)")
     (options, args) = parser.parse_args()
 
+    # Accept equipment type as first positional argument or --type flag
     if not options.equipment_type:
-        parser.error(f"--type is required (one of: {valid_types_str})")
+        if args and args[0] in valid_types:
+            options.equipment_type = args[0]
+            args = args[1:]  # Remove type from filenames
+        else:
+            parser.error(f"Equipment type required as first argument or --type flag (one of: {valid_types_str})")
 
     exec_main(options, args, parse_equipment, options.equipment_type)
 
