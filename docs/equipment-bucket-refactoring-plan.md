@@ -92,7 +92,7 @@ Maps from: weapon, siege_weapon
 - `reload` (weapon_mode)
 - `ammunition` (weapon, weapon_mode, siege_weapon)
 - `weapon_modes` → replaces melee/ranged:
-  - `type`: "melee" | "ranged"
+  - `subtype`: "melee" | "ranged"
   - `traits` (weapon-specific traits like finesse, trip)
   - `damage` array
   - `weapon_type`: "Melee" | "Ranged"
