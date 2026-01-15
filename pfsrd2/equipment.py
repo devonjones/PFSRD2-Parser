@@ -2581,6 +2581,8 @@ def _build_statistics_bucket(stat_block):
     if "armor" in stat_block:
         armor = stat_block["armor"]
         if "category" in armor:
+            if "category" in statistics and statistics["category"] != armor["category"]:
+                raise ValueError(f"Conflicting 'category' definitions for hybrid weapon/armor item: {statistics['category']} vs {armor['category']}")
             statistics["category"] = armor["category"]
         if "strength" in armor:
             # Rename strength to strength_requirement in new structure
@@ -2658,6 +2660,8 @@ def _build_defense_bucket(stat_block):
         if "ac" in siege:
             defense["ac"] = siege["ac"]
         if "hitpoints" in siege:
+            if "hitpoints" in defense and defense["hitpoints"] != siege["hitpoints"]:
+                raise ValueError("Conflicting 'hitpoints' definitions for hybrid item.")
             defense["hitpoints"] = siege["hitpoints"]
 
         # Build saves container if fort or ref exist
@@ -2735,6 +2739,8 @@ def _build_offense_bucket(stat_block):
     if "siege_weapon" in stat_block:
         siege = stat_block["siege_weapon"]
         if "ammunition" in siege:
+            if "ammunition" in offense and offense["ammunition"] != siege["ammunition"]:
+                raise ValueError("Conflicting 'ammunition' definitions for hybrid weapon/siege_weapon item.")
             offense["ammunition"] = siege["ammunition"]
 
     # Only return offense if it has fields beyond type/subtype

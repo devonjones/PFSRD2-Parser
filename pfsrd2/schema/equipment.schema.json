@@ -423,10 +423,7 @@
 				"statistics": {"$ref": "#/definitions/statistics"},
 				"defense": {"$ref": "#/definitions/defense"},
 				"offense": {"$ref": "#/definitions/offense"},
-				"abilities": {"$ref": "#/definitions/abilities"},
-				"price": {"type": "string"},
-				"bulk": {"$ref": "#/definitions/bulk"},
-				"access": {"type": "string"}
+				"abilities": {"$ref": "#/definitions/abilities"}
 			},
 			"required": ["type", "subtype", "level"],
 			"additionalProperties": false
