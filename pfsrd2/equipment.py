@@ -234,11 +234,11 @@ EQUIPMENT_TYPES = {
             'Strength': 'strength',
             'Bulk': 'bulk',
             'Category': 'category',
-            'Group': 'group'
+            'Group': 'armor_group'
         },
         # Fields that are shared (top-level) vs armor-specific (nested in armor object)
         'shared_fields': ['access', 'price', 'bulk'],
-        'nested_fields': ['category', 'ac_bonus', 'dex_cap', 'check_penalty', 'speed_penalty', 'strength', 'group'],
+        'nested_fields': ['category', 'ac_bonus', 'dex_cap', 'check_penalty', 'speed_penalty', 'strength', 'armor_group'],
         'group_table': 'armor_groups',
         'group_sql_module': 'pfsrd2.sql.armor_groups',
         'group_subtype': 'armor_group',
@@ -258,7 +258,7 @@ EQUIPMENT_TYPES = {
             'Reload': 'reload',
             'Type': 'weapon_type',  # Renamed to avoid collision with structural 'type' field
             'Category': 'category',
-            'Group': 'group',
+            'Group': 'weapon_group',
             'Ammunition': 'ammunition',
             'Favored Weapon': 'favored_weapon',  # Deities that favor this weapon
             'PFS Note': None,  # Skip - PFS-specific note, not weapon stat
@@ -266,11 +266,11 @@ EQUIPMENT_TYPES = {
         # Fields at different nesting levels:
         # - shared_fields: top-level stat_block (price, bulk, access)
         # - weapon_fields: nested in weapon object (category, favored_weapon)
-        # - mode_fields: nested in melee/ranged objects (damage, weapon_type, group, range, reload, ammunition, hands)
+        # - mode_fields: nested in melee/ranged objects (damage, weapon_type, weapon_group, range, reload, ammunition, hands)
         #   Note: ammunition and hands can appear in weapon_fields OR mode_fields (combination weapons have them mode-specific)
         'shared_fields': ['access', 'price', 'bulk'],
         'weapon_fields': ['category', 'hands', 'ammunition', 'favored_weapon'],
-        'mode_fields': ['damage', 'weapon_type', 'group', 'range', 'reload', 'ammunition', 'hands'],
+        'mode_fields': ['damage', 'weapon_type', 'weapon_group', 'range', 'reload', 'ammunition', 'hands'],
         'group_table': 'weapon_groups',
         'group_sql_module': 'pfsrd2.sql.weapon_groups',
         'group_subtype': 'weapon_group',
@@ -387,6 +387,9 @@ def parse_equipment(filename, options):
     # Enrich equipment groups with database data (only for equipment types that have groups)
     if 'group_table' in config:
         equipment_group_pass(struct, config)
+    # Populate creature-style buckets (statistics, defense, offense) from old structure
+    # This maintains backward compatibility during migration
+    populate_equipment_buckets_pass(struct)
     remove_empty_sections_pass(struct)
 
     if not options.skip_schema:
@@ -2529,7 +2532,7 @@ def equipment_group_pass(struct, config):
 
         # Replace equipment group in parent (similar to trait enrichment)
         assert isinstance(parent, dict), parent
-        parent["group"] = db_equipment_group
+        parent[group_subtype] = db_equipment_group
 
     db_path = get_db_path("pfsrd2.db")
     with get_db_connection(db_path) as conn:
@@ -2537,3 +2540,374 @@ def equipment_group_pass(struct, config):
 
         # Walk the structure and enrich all equipment groups
         walk(struct, test_key_is_value("subtype", group_subtype), _check_equipment_group)
+
+
+def _build_statistics_bucket(stat_block):
+    """
+    Build the statistics bucket from existing equipment data.
+
+    Maps fields from various sources:
+    - price, bulk, access (from stat_block top-level)
+    - category (from weapon/armor object)
+    - hands (from weapon object or weapon_mode)
+    - usage, crew, proficiency, space (from siege_weapon)
+    - strength → strength_requirement (from armor)
+    - favored_weapon (from weapon)
+    """
+    statistics = {
+        "type": "stat_block_section",
+        "subtype": "statistics"
+    }
+
+    # Top-level fields
+    if "price" in stat_block:
+        statistics["price"] = stat_block["price"]
+    if "bulk" in stat_block:
+        statistics["bulk"] = stat_block["bulk"]
+    if "access" in stat_block:
+        statistics["access"] = stat_block["access"]
+
+    # Weapon-specific statistics
+    if "weapon" in stat_block:
+        weapon = stat_block["weapon"]
+        if "category" in weapon:
+            statistics["category"] = weapon["category"]
+        if "hands" in weapon:
+            statistics["hands"] = weapon["hands"]
+        if "favored_weapon" in weapon:
+            statistics["favored_weapon"] = weapon["favored_weapon"]
+
+    # Armor-specific statistics
+    if "armor" in stat_block:
+        armor = stat_block["armor"]
+        if "category" in armor:
+            if "category" in statistics and statistics["category"] != armor["category"]:
+                raise ValueError(f"Conflicting 'category' definitions for hybrid weapon/armor item: {statistics['category']} vs {armor['category']}")
+            statistics["category"] = armor["category"]
+        if "strength" in armor:
+            # Rename strength to strength_requirement in new structure
+            statistics["strength_requirement"] = armor["strength"]
+
+    # Siege weapon-specific statistics
+    if "siege_weapon" in stat_block:
+        siege = stat_block["siege_weapon"]
+        if "usage" in siege:
+            statistics["usage"] = siege["usage"]
+        if "crew" in siege:
+            statistics["crew"] = siege["crew"]
+        if "proficiency" in siege:
+            statistics["proficiency"] = siege["proficiency"]
+        if "space" in siege:
+            statistics["space"] = siege["space"]
+
+    # Only return statistics if it has fields beyond type/subtype
+    if len(statistics) > 2:
+        return statistics
+    return None
+
+
+def _build_defense_bucket(stat_block):
+    """
+    Build the defense bucket from existing equipment data.
+
+    Maps fields from:
+    - ac_bonus (from armor, shield)
+    - ac (from siege_weapon - raw AC value, not bonus)
+    - hardness, hitpoints (from shield, siege_weapon)
+    - speed_penalty (from armor, shield)
+    - check_penalty, dex_cap (from armor)
+    - armor_group (from armor)
+    - saves (fort, ref from siege_weapon)
+    - speed (from siege_weapon)
+    """
+    defense = {
+        "type": "stat_block_section",
+        "subtype": "defense"
+    }
+
+    # Armor defensive properties
+    if "armor" in stat_block:
+        armor = stat_block["armor"]
+        if "ac_bonus" in armor:
+            defense["ac_bonus"] = armor["ac_bonus"]
+        if "dex_cap" in armor:
+            defense["dex_cap"] = armor["dex_cap"]
+        if "check_penalty" in armor:
+            defense["check_penalty"] = armor["check_penalty"]
+        if "speed_penalty" in armor:
+            defense["speed_penalty"] = armor["speed_penalty"]
+        if "armor_group" in armor:
+            defense["armor_group"] = armor["armor_group"]
+
+    # Shield defensive properties
+    if "shield" in stat_block:
+        shield = stat_block["shield"]
+        if "ac_bonus" in shield:
+            if "ac_bonus" in defense:
+                raise ValueError("Conflicting 'ac_bonus' definitions for hybrid armor/shield item.")
+            defense["ac_bonus"] = shield["ac_bonus"]
+        if "speed_penalty" in shield:
+            if "speed_penalty" in defense:
+                raise ValueError("Conflicting 'speed_penalty' definitions for hybrid armor/shield item.")
+            defense["speed_penalty"] = shield["speed_penalty"]
+        if "hitpoints" in shield:
+            defense["hitpoints"] = shield["hitpoints"]
+
+    # Siege weapon defensive properties
+    if "siege_weapon" in stat_block:
+        siege = stat_block["siege_weapon"]
+        # Siege weapons have raw AC value, not a bonus
+        if "ac" in siege:
+            defense["ac"] = siege["ac"]
+        if "hitpoints" in siege:
+            if "hitpoints" in defense and defense["hitpoints"] != siege["hitpoints"]:
+                raise ValueError("Conflicting 'hitpoints' definitions for hybrid item.")
+            defense["hitpoints"] = siege["hitpoints"]
+
+        # Build saves container if fort or ref exist
+        # Note: old structure has fort/ref as raw integers, need to wrap in save objects
+        saves = None
+        save_keys = ["fort", "ref"]
+        if any(key in siege for key in save_keys):
+            saves = {
+                "type": "stat_block_section",
+                "subtype": "saves"
+            }
+            for key in save_keys:
+                if key in siege:
+                    saves[key] = {
+                        "type": "stat_block_section",
+                        "subtype": "save",
+                        "value": siege[key]
+                    }
+        if saves:
+            defense["saves"] = saves
+
+        if "speed" in siege:
+            defense["speed"] = siege["speed"]
+
+    # Only return defense if it has fields beyond type/subtype
+    if len(defense) > 2:
+        return defense
+    return None
+
+
+def _build_offense_bucket(stat_block):
+    """
+    Build the offense bucket from existing equipment data.
+
+    Maps fields from:
+    - weapon_modes (from weapon.melee, weapon.ranged)
+    - ammunition (from weapon, siege_weapon)
+
+    For weapons, converts the old melee/ranged structure into a weapon_modes array.
+    """
+    offense = {
+        "type": "stat_block_section",
+        "subtype": "offense"
+    }
+
+    # Weapon offensive properties
+    if "weapon" in stat_block:
+        weapon = stat_block["weapon"]
+        weapon_modes = []
+
+        # Convert melee and ranged modes if they exist
+        for mode_type in ["melee", "ranged"]:
+            if mode_type in weapon:
+                mode = weapon[mode_type].copy()
+                mode["type"] = "stat_block_section"
+                weapon_modes.append(mode)
+
+        if weapon_modes:
+            offense["weapon_modes"] = weapon_modes
+
+        # Top-level ammunition for weapons (not mode-specific)
+        if "ammunition" in weapon:
+            offense["ammunition"] = weapon["ammunition"]
+
+    # Siege weapon offensive properties
+    if "siege_weapon" in stat_block:
+        siege = stat_block["siege_weapon"]
+        if "ammunition" in siege:
+            if "ammunition" in offense and offense["ammunition"] != siege["ammunition"]:
+                raise ValueError("Conflicting 'ammunition' definitions for hybrid weapon/siege_weapon item.")
+            offense["ammunition"] = siege["ammunition"]
+
+    # Only return offense if it has fields beyond type/subtype
+    if len(offense) > 2:
+        return offense
+    return None
+
+
+def _validate_bucket_data(stat_block, statistics, defense, offense):
+    """
+    Validate that bucket data matches the old structure data.
+
+    This ensures the migration is correct by verifying that fields copied
+    to buckets have the same values as their source in the old structure.
+    """
+    # Validate statistics bucket
+    if statistics:
+        # Check price, bulk, access match top-level
+        if "price" in statistics:
+            assert statistics["price"] == stat_block["price"], \
+                f"statistics.price mismatch: {statistics['price']} != {stat_block['price']}"
+        if "bulk" in statistics:
+            assert statistics["bulk"] == stat_block["bulk"], \
+                f"statistics.bulk mismatch: {statistics['bulk']} != {stat_block['bulk']}"
+        if "access" in statistics:
+            assert statistics["access"] == stat_block["access"], \
+                f"statistics.access mismatch: {statistics['access']} != {stat_block['access']}"
+
+        # Check weapon fields
+        if "weapon" in stat_block:
+            weapon = stat_block["weapon"]
+            if "category" in statistics and "category" in weapon:
+                assert statistics["category"] == weapon["category"], \
+                    f"statistics.category != weapon.category"
+            if "hands" in statistics:
+                assert statistics["hands"] == weapon["hands"], \
+                    f"statistics.hands != weapon.hands"
+            if "favored_weapon" in statistics:
+                assert statistics["favored_weapon"] == weapon["favored_weapon"], \
+                    f"statistics.favored_weapon mismatch: {statistics['favored_weapon']} != {weapon['favored_weapon']}"
+
+        # Check armor fields
+        if "armor" in stat_block:
+            armor = stat_block["armor"]
+            if "category" in statistics and "category" in armor:
+                assert statistics["category"] == armor["category"], \
+                    f"statistics.category != armor.category"
+            if "strength_requirement" in statistics:
+                assert statistics["strength_requirement"] == armor["strength"], \
+                    f"statistics.strength_requirement != armor.strength"
+
+    # Validate defense bucket
+    if defense:
+        # Check armor fields
+        if "armor" in stat_block:
+            armor = stat_block["armor"]
+            if "ac_bonus" in defense and "ac_bonus" in armor:
+                assert defense["ac_bonus"] == armor["ac_bonus"], \
+                    f"defense.ac_bonus != armor.ac_bonus"
+            if "dex_cap" in defense:
+                assert defense["dex_cap"] == armor["dex_cap"], \
+                    f"defense.dex_cap != armor.dex_cap"
+            if "check_penalty" in defense:
+                assert defense["check_penalty"] == armor["check_penalty"], \
+                    f"defense.check_penalty != armor.check_penalty"
+            if "speed_penalty" in defense and "speed_penalty" in armor:
+                assert defense["speed_penalty"] == armor["speed_penalty"], \
+                    f"defense.speed_penalty != armor.speed_penalty"
+            if "armor_group" in defense:
+                assert defense["armor_group"] == armor["armor_group"], \
+                    f"defense.armor_group != armor.armor_group"
+
+        # Check shield fields
+        if "shield" in stat_block:
+            shield = stat_block["shield"]
+            if "ac_bonus" in defense and "ac_bonus" in shield:
+                assert defense["ac_bonus"] == shield["ac_bonus"], \
+                    f"defense.ac_bonus != shield.ac_bonus"
+            if "speed_penalty" in defense and "speed_penalty" in shield:
+                assert defense["speed_penalty"] == shield["speed_penalty"], \
+                    f"defense.speed_penalty != shield.speed_penalty"
+            if "hitpoints" in defense:
+                assert defense["hitpoints"] == shield["hitpoints"], \
+                    f"defense.hitpoints != shield.hitpoints"
+
+        # Check siege weapon fields
+        if "siege_weapon" in stat_block:
+            siege = stat_block["siege_weapon"]
+            if "ac" in defense:
+                assert defense["ac"] == siege["ac"], \
+                    f"defense.ac != siege.ac"
+            if "hitpoints" in defense and "hitpoints" in siege:
+                assert defense["hitpoints"] == siege["hitpoints"], \
+                    f"defense.hitpoints != siege.hitpoints"
+            if "speed" in defense:
+                assert defense["speed"] == siege["speed"], \
+                    f"defense.speed != siege.speed"
+            # Validate saves (old structure has integers, new has save objects)
+            if "saves" in defense:
+                if "fort" in siege:
+                    assert "fort" in defense["saves"], "Missing fort in defense.saves"
+                    assert defense["saves"]["fort"]["value"] == siege["fort"], \
+                        f"defense.saves.fort.value != siege.fort"
+                if "ref" in siege:
+                    assert "ref" in defense["saves"], "Missing ref in defense.saves"
+                    assert defense["saves"]["ref"]["value"] == siege["ref"], \
+                        f"defense.saves.ref.value != siege.ref"
+
+    # Validate offense bucket
+    if offense:
+        # Check weapon fields - weapon_modes should match melee/ranged
+        if "weapon" in stat_block:
+            weapon = stat_block["weapon"]
+            if "weapon_modes" in offense:
+                modes_by_subtype = {m["subtype"]: m for m in offense["weapon_modes"]}
+                if "melee" in weapon:
+                    assert "melee" in modes_by_subtype, "Missing melee mode in offense.weapon_modes"
+                    # Compare dicts directly for a more robust check.
+                    # The 'type' key is added during bucket creation, so we exclude it from comparison.
+                    expected_melee = weapon["melee"]
+                    actual_melee = modes_by_subtype["melee"].copy()
+                    del actual_melee["type"]
+                    assert actual_melee == expected_melee, f"melee mode data mismatch. Expected {expected_melee}, got {actual_melee}"
+                if "ranged" in weapon:
+                    assert "ranged" in modes_by_subtype, "Missing ranged mode in offense.weapon_modes"
+                    expected_ranged = weapon["ranged"]
+                    actual_ranged = modes_by_subtype["ranged"].copy()
+                    del actual_ranged["type"]
+                    assert actual_ranged == expected_ranged, f"ranged mode data mismatch. Expected {expected_ranged}, got {actual_ranged}"
+            if "ammunition" in offense and "ammunition" in weapon:
+                assert offense["ammunition"] == weapon["ammunition"], \
+                    f"offense.ammunition != weapon.ammunition"
+
+        # Check siege weapon ammunition
+        if "siege_weapon" in stat_block:
+            siege = stat_block["siege_weapon"]
+            if "ammunition" in offense and "ammunition" in siege:
+                assert offense["ammunition"] == siege["ammunition"], \
+                    f"offense.ammunition != siege.ammunition"
+
+
+def populate_equipment_buckets_pass(struct):
+    """
+    Populate creature-style buckets (statistics, defense, offense) from old
+    type-specific equipment objects, then remove the old objects.
+
+    This completes the migration to the new bucket-based structure by:
+    1. Building buckets from old structure
+    2. Validating bucket data matches old structure
+    3. Removing old deprecated structures (weapon, armor, shield, siege_weapon objects)
+
+    Args:
+        struct: The equipment structure with stat_block containing old-style objects
+    """
+    stat_block = struct.get("stat_block")
+    if not stat_block:
+        return
+
+    # Build each bucket from existing data
+    statistics = _build_statistics_bucket(stat_block)
+    defense = _build_defense_bucket(stat_block)
+    offense = _build_offense_bucket(stat_block)
+
+    # Validate that bucket data matches old structure (data integrity check)
+    _validate_bucket_data(stat_block, statistics, defense, offense)
+
+    # Add buckets to stat_block (only if they have content)
+    if statistics:
+        stat_block["statistics"] = statistics
+    if defense:
+        stat_block["defense"] = defense
+    if offense:
+        stat_block["offense"] = offense
+
+    # Phase 4 cleanup: Remove deprecated old structures and moved fields
+    deprecated_keys = ("weapon", "armor", "shield", "siege_weapon", "price", "bulk", "access")
+    for key in deprecated_keys:
+        if key in stat_block:
+            del stat_block[key]
