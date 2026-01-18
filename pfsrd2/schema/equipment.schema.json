@@ -104,10 +104,16 @@
 				"range": {"$ref": "#/definitions/range"},
 				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"damage": {
-					"type": "array",
-					"items": {"$ref": "#/definitions/attack_damage"},
-					"additionalItems": false
+					"oneOf": [
+						{"type": "string"},
+						{
+							"type": "array",
+							"items": {"$ref": "#/definitions/attack_damage"},
+							"additionalItems": false
+						}
+					]
 				},
+				"target": {"type": "string"},
 				"failure": {"type": "string"},
 				"success": {"type": "string"},
 				"critical_failure": {"type": "string"},
@@ -135,9 +141,9 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["bulk"]},
 				"value": {"type": ["integer", "null"]},
-				"display": {"type": "string"}
+				"text": {"type": "string"}
 			},
-			"required": ["type", "subtype", "value", "display"],
+			"required": ["type", "subtype", "value", "text"],
 			"additionalProperties": false
 		},
 		"bonus": {
@@ -165,13 +171,13 @@
 			"required": ["type", "subtype", "stat", "legacy_value", "remastered_value"],
 			"additionalProperties": false
 		},
-		"armor_group": {
+		"equipment_group": {
 			"type": "object",
 			"properties": {
-				"type": {"enum": ["armor_group"]},
+				"type": {"enum": ["armor_group", "weapon_group"]},
 				"name": {"type": "string"},
 				"game-id": {"type": "string"},
-				"game-obj": {"enum": ["ArmorGroups"]},
+				"game-obj": {"enum": ["ArmorGroups", "WeaponGroups"]},
 				"text": {"type": "string"},
 				"sources": {"$ref": "#/definitions/sources"},
 				"sections": {"$ref": "#/definitions/sections"},
@@ -185,26 +191,8 @@
 			"required": ["type", "name", "game-id", "game-obj", "text", "sources", "edition"],
 			"additionalProperties": false
 		},
-		"weapon_group": {
-			"type": "object",
-			"properties": {
-				"type": {"enum": ["weapon_group"]},
-				"name": {"type": "string"},
-				"game-id": {"type": "string"},
-				"game-obj": {"enum": ["WeaponGroups"]},
-				"text": {"type": "string"},
-				"sources": {"$ref": "#/definitions/sources"},
-				"sections": {"$ref": "#/definitions/sections"},
-				"edition": {"enum": ["legacy", "remastered"]},
-				"links": {
-					"type": "array",
-					"items": {"$ref": "#/definitions/link"},
-					"additionalItems": false
-				}
-			},
-			"required": ["type", "name", "game-id", "game-obj", "text", "sources", "edition"],
-			"additionalProperties": false
-		},
+		"armor_group": {"$ref": "#/definitions/equipment_group"},
+		"weapon_group": {"$ref": "#/definitions/equipment_group"},
 		"range": {
 			"type": "object",
 			"properties": {
@@ -296,7 +284,9 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["immunity", "resistance", "weakness"]},
 				"name": {"type": "string"},
-				"value": {"type": "integer"}
+				"value": {"type": "integer"},
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"link": {"$ref": "#/definitions/link"}
 			},
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
@@ -329,22 +319,40 @@
 			"required": ["type", "subtype", "value"],
 			"additionalProperties": false
 		},
-		"speed_with_modifiers": {
+		"speed": {
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["speed"]},
+				"name": {"type": "string"},
 				"value": {"type": "integer"},
-				"unit": {"enum": ["feet"]},
 				"movement_type": {"type": "string"},
-				"special": {"type": "string"},
 				"modifiers": {
 					"type": "array",
 					"items": {"type": "object"},
 					"additionalItems": false
 				}
 			},
-			"required": ["type", "subtype"],
+			"required": ["type", "subtype", "name"],
+			"additionalProperties": false
+		},
+		"speeds": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["speeds"]},
+				"movement": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/speed"},
+					"additionalItems": false
+				},
+				"modifiers": {
+					"type": "array",
+					"items": {"type": "object"},
+					"additionalItems": false
+				}
+			},
+			"required": ["type", "subtype", "movement"],
 			"additionalProperties": false
 		},
 		"equipment_saves": {
@@ -363,8 +371,6 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["statistics"]},
-				"price": {"type": "string"},
-				"bulk": {"$ref": "#/definitions/bulk"},
 				"access": {"type": "string"},
 				"hands": {"type": ["integer", "string"]},
 				"usage": {"type": "string"},
@@ -415,7 +421,7 @@
 				"dex_cap": {"$ref": "#/definitions/bonus"},
 				"armor_group": {"$ref": "#/definitions/armor_group"},
 				"saves": {"$ref": "#/definitions/equipment_saves"},
-				"speed": {"$ref": "#/definitions/speed_with_modifiers"},
+				"speed": {"$ref": "#/definitions/speeds"},
 				"immunities": {"$ref": "#/definitions/protections"},
 				"weaknesses": {"$ref": "#/definitions/protections"}
 			},
@@ -433,8 +439,9 @@
 					"additionalItems": false
 				},
 				"ammunition": {"$ref": "#/definitions/ammunition"},
-				"speed": {"$ref": "#/definitions/speed_with_modifiers"},
-				"collision": {"type": "string"}
+				"speed": {"$ref": "#/definitions/speeds"},
+				"collision": {"type": "string"},
+				"offensive_abilities": {"$ref": "#/definitions/abilities"}
 			},
 			"required": ["type", "subtype"],
 			"additionalProperties": false
@@ -446,10 +453,11 @@
 				"subtype": {"enum": ["weapon", "armor", "shield", "siege_weapon", "vehicle"]},
 				"level": {"type": "integer"},
 				"traits": {"$ref": "#/definitions/traits"},
+				"price": {"type": "string"},
+				"bulk": {"$ref": "#/definitions/bulk"},
 				"statistics": {"$ref": "#/definitions/statistics"},
 				"defense": {"$ref": "#/definitions/defense"},
-				"offense": {"$ref": "#/definitions/offense"},
-				"abilities": {"$ref": "#/definitions/abilities"}
+				"offense": {"$ref": "#/definitions/offense"}
 			},
 			"required": ["type", "subtype", "level"],
 			"additionalProperties": false
