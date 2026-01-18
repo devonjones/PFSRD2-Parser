@@ -1106,11 +1106,17 @@ def _extract_abilities(bs, equipment_type='siege_weapon', recognized_stats=None)
     """
     from universal.universal import get_links
 
+    # Constants for vehicle ability heuristics
+    VEHICLE_ABILITY_PREVIEW_CHAR_LIMIT = 30  # Max chars to preview when detecting abilities
+    VEHICLE_ABILITY_MIN_LENGTH = 15  # Min chars of description text to qualify as ability
+
     # Main abilities that are top-level abilities (siege weapons)
     # For siege weapons, these are the known action names
     main_abilities = ['Aim', 'Load', 'Launch', 'Ram', 'Effect', 'Requirements']
     # Result fields that are nested within abilities
     result_fields = ['Success', 'Failure', 'Critical Success', 'Critical Failure']
+    # Addon names - use shared constant from pfsrd2.constants
+    addon_names = constants.CREATURE_ABILITY_ADDON_NAMES
 
     # Track which bold tags we've already processed (to skip result fields)
     processed_bolds = set()
@@ -1151,7 +1157,7 @@ def _extract_abilities(bs, equipment_type='siege_weapon', recognized_stats=None)
             content_preview = []
             preview_sib = bold_tag.next_sibling
             char_count = 0
-            while preview_sib and char_count < 30:
+            while preview_sib and char_count < VEHICLE_ABILITY_PREVIEW_CHAR_LIMIT:
                 if isinstance(preview_sib, NavigableString):
                     content_preview.append(str(preview_sib))
                     char_count += len(str(preview_sib).strip())
@@ -1162,9 +1168,9 @@ def _extract_abilities(bs, equipment_type='siege_weapon', recognized_stats=None)
                     char_count += len(preview_sib.get_text().strip())
                 preview_sib = preview_sib.next_sibling if hasattr(preview_sib, 'next_sibling') else None
 
-            # If we found substantial text (>15 chars), treat as ability
+            # If we found substantial text, treat as ability
             preview_text = ''.join(content_preview).strip()
-            if len(preview_text) > 15:
+            if len(preview_text) > VEHICLE_ABILITY_MIN_LENGTH:
                 is_vehicle_ability = True
 
         if not (is_main_ability or has_action_icon or is_vehicle_ability):
@@ -1181,10 +1187,6 @@ def _extract_abilities(bs, equipment_type='siege_weapon', recognized_stats=None)
         # Extract main ability text (up to first <br>)
         # Note: Don't stop at <b> tags - those are addons like Requirements, Effect, etc.
         # But do mark addon <b> tags as processed so they don't create separate abilities
-        addon_names = ['Frequency', 'Trigger', 'Effect', 'Duration', 'Requirement',
-                       'Requirements', 'Prerequisite', 'Critical Success', 'Success',
-                       'Failure', 'Critical Failure', 'Range', 'Cost']
-
         content_parts = []
         current = bold_tag.next_sibling
 
@@ -1221,11 +1223,7 @@ def _extract_abilities(bs, equipment_type='siege_weapon', recognized_stats=None)
 
                 # Extract addons (Requirements, Effect, etc.) after unwrapping links
                 # Addons are marked by <b> tags within the ability text
-                # Similar to creature ability addon handling
-                addon_names = ['Frequency', 'Trigger', 'Effect', 'Duration', 'Requirement',
-                               'Requirements', 'Prerequisite', 'Critical Success', 'Success',
-                               'Failure', 'Critical Failure', 'Range', 'Cost']
-
+                # Similar to creature ability addon handling (uses addon_names from function scope)
                 addons = {}
                 current_addon = None
                 nodes_to_remove = []  # Track addon nodes to remove after extraction
