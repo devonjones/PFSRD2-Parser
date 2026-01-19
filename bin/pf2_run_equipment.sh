@@ -2,7 +2,7 @@
 
 if [ $# -ne 1 ]; then
 	echo "Usage: $0 <equipment_type>"
-	echo "  equipment_type: weapon, armor, shield, or siege_weapon"
+	echo "  equipment_type: weapon, armor, shield, siege_weapon, or vehicle"
 	exit 1
 fi
 
@@ -27,8 +27,12 @@ case "$EQUIPMENT_TYPE" in
 		PLURAL="SiegeWeapons"
 		ERROR_SUFFIX="siege_weapons"
 		;;
+	vehicle)
+		PLURAL="Vehicles"
+		ERROR_SUFFIX="vehicles"
+		;;
 	*)
-		echo "Error: Invalid equipment type '$EQUIPMENT_TYPE'. Must be weapon, armor, shield, or siege_weapon"
+		echo "Error: Invalid equipment type '$EQUIPMENT_TYPE'. Must be weapon, armor, shield, siege_weapon, or vehicle"
 		exit 1
 		;;
 esac
@@ -43,14 +47,14 @@ if test -f "errors.pf2.${ERROR_SUFFIX}"; then
 		if [[ "$i" == "done" ]]; then
 			exit
 		fi
-		if ! ./pf2_equipment_parse --type "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
+		if ! ./pf2_equipment_parse "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
 			echo "$i" >> errors.pf2.${ERROR_SUFFIX}.log
 		fi
 	done
 else
 	for i in `ls $PF2_WEB_DIR/$PLURAL/$PLURAL.aspx.ID_*.html | msort -j -q -l -n 1 -c hybrid`
 	do
-		if ! ./pf2_equipment_parse --type "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
+		if ! ./pf2_equipment_parse "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
 			echo "$i" >> errors.pf2.${ERROR_SUFFIX}.log
 		fi
 	done
