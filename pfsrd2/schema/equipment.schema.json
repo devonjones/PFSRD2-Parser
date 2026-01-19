@@ -450,14 +450,26 @@
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block"]},
-				"subtype": {"enum": ["weapon", "armor", "shield", "siege_weapon", "vehicle"]},
+				"subtype": {"enum": ["weapon", "armor", "shield", "siege_weapon", "vehicle", "equipment"]},
+				"name": {"type": "string"},
 				"level": {"type": "integer"},
 				"traits": {"$ref": "#/definitions/traits"},
 				"price": {"type": "string"},
 				"bulk": {"$ref": "#/definitions/bulk"},
+				"text": {"type": "string"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				},
 				"statistics": {"$ref": "#/definitions/statistics"},
 				"defense": {"$ref": "#/definitions/defense"},
-				"offense": {"$ref": "#/definitions/offense"}
+				"offense": {"$ref": "#/definitions/offense"},
+				"variants": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/equipment_stat_block"},
+					"additionalItems": false
+				}
 			},
 			"required": ["type", "subtype", "level"],
 			"additionalProperties": false
@@ -582,7 +594,7 @@
 	"type": "object",
 	"properties": {
 		"name": {"type": "string"},
-		"type": {"enum": ["weapon", "armor", "shield", "siege_weapon", "vehicle"]},
+		"type": {"enum": ["weapon", "armor", "shield", "siege_weapon", "vehicle", "equipment"]},
 		"text": {"type": "string"},
 		"links": {
 			"type": "array",
@@ -590,7 +602,7 @@
 			"additionalItems": false
 		},
 		"aonid": {"type": "integer"},
-		"game-obj": {"enum": ["Weapons", "Armor", "Shields", "SiegeWeapons", "Vehicles"]},
+		"game-obj": {"enum": ["Weapons", "Armor", "Shields", "SiegeWeapons", "Vehicles", "Equipment"]},
 		"game-id": {"type": "string"},
 		"stat_block": {"$ref": "#/definitions/equipment_stat_block"},
 		"sources": {"$ref": "#/definitions/sources"},

@@ -2177,7 +2177,7 @@ def _extract_legacy_content_section(bs, struct):
 
 
 def _extract_description(bs, struct):
-    """Extract description text and links, adding them to the top-level structure.
+    """Extract description text and links, adding them to the stat_block.
 
     For equipment with multiple <hr> separators (siege weapons, vehicles), splits by <hr>
     and finds the section with the fewest bold stat labels - this is the description.
@@ -2187,7 +2187,7 @@ def _extract_description(bs, struct):
     For equipment without <hr> separators (armor, weapons), extracts all remaining
     text in the stat block as description.
 
-    Text is added to struct['text'], and links (if any) to struct['links'].
+    Text is added to stat_block['text'], and links (if any) to stat_block['links'].
     Only creates sections if there are actual headings (h2, h3) after the description.
     """
     import sys
@@ -2342,13 +2342,18 @@ def _extract_description(bs, struct):
     # Get the cleaned text
     desc_text = _normalize_whitespace(str(desc_soup))
 
-    # Add text and links to top-level structure (not as a section)
+    # Add text and links to stat_block (not top-level structure)
+    # Always clear raw HTML from stat_block's text - replace with clean description or remove
+    sb = find_stat_block(struct)
     if desc_text:
-        struct['text'] = desc_text
+        sb['text'] = desc_text
+    elif 'text' in sb:
+        # No description found - remove raw HTML that was set by restructure_equipment_pass
+        del sb['text']
 
     # Store extracted links if any exist (excluding trait links)
     if non_trait_links:
-        struct['links'] = non_trait_links
+        sb['links'] = non_trait_links
 
 
 def _extract_alternate_link(bs, struct):
@@ -2401,9 +2406,12 @@ def _extract_alternate_link(bs, struct):
 
 
 def _cleanup_stat_block(sb):
-    """Remove text field from stat_block (no longer needed after extraction)."""
-    if 'text' in sb:
-        del sb['text']
+    """Clean up stat_block after extraction.
+
+    Note: text and links now remain in stat_block (not moved to top level).
+    """
+    # Previously deleted text here, but now text stays in stat_block
+    pass
 
 
 def normalize_numeric_fields_pass(struct, config):
