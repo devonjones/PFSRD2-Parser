@@ -73,6 +73,29 @@ Review code for duplication of shared utilities. Before reviewing, READ these fi
 3. If yes, flag it with the specific function that should be used instead
 4. Consider edge cases - sometimes a custom version is justified, but demand justification
 
+## schema-consistency-reviewer
+
+Review JSON schema changes in `pfsrd2/schema/` for consistency with existing patterns. Before reviewing, READ the existing schemas to understand established conventions.
+
+**Core rules to enforce:**
+
+1. **Arrays must contain typed objects**: Arrays should be arrays of objects with `type` and `subtype` properties, not arrays of primitives (unless matching an existing pattern).
+
+2. **Object structure consistency**: If an object represents the same concept as one in another schema (e.g., `link`, `source`, `ability`), it should have the same superset of fields. Enum values can differ, but field names and types should match.
+
+3. **Definition reuse**: Common objects should be defined in `#/definitions` and referenced with `$ref`, not duplicated inline.
+
+4. **Required fields**: Objects should declare appropriate `required` fields matching the pattern of similar objects elsewhere.
+
+**Review approach:**
+1. For each schema change, identify the object type being added/modified
+2. Search other schemas for the same object type (by subtype value or structure)
+3. Compare field sets - flag missing fields that exist in other schemas
+4. Verify arrays use object wrappers with type/subtype, not bare primitives
+5. Check that new definitions are reused via `$ref` where appropriate
+
+**Note:** It is acceptable to acknowledge a schema inconsistency and defer the fix by creating a beads ticket for schema re-alignment, rather than fixing it in the current PR.
+
 # Parser Testing Protocol
 
 **Before starting a fix loop**, check for uncommitted changes in the output directory:
