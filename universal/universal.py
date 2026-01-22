@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup, BeautifulStoneSoup, Tag, NavigableString
 # FULLWIDTH COMMA = ，
 
 
-class Heading():
+class Heading:
     def __init__(self, level, name, subname=None):
         self.level = level
         self._handle_name(name)
@@ -20,12 +20,12 @@ class Heading():
 
     def _handle_name(self, name):
         try:
-            bs = BeautifulSoup(str(name), 'html.parser')
+            bs = BeautifulSoup(str(name), "html.parser")
             children = list(bs.children)
             assert len(children) == 1, bs
             top = children[0]
             self.name = get_text(bs).strip()
-            self.name_html = ''.join([str(i) for i in top])
+            self.name_html = "".join([str(i) for i in top])
             top.clear()
             self.name_tag = str(bs)
         except Exception as e:
@@ -34,28 +34,26 @@ class Heading():
 
     def __repr__(self):
         if self.subname:
-            return "<Heading %s:%s (%s) %s>" % (
-                self.level, self.name, self.subname, self.details)
+            return "<Heading %s:%s (%s) %s>" % (self.level, self.name, self.subname, self.details)
         else:
-            return "<Heading %s:%s %s>" % (
-                self.level, self.name, self.details)
+            return "<Heading %s:%s %s>" % (self.level, self.name, self.details)
 
 
 def href_filter(soup):
-    for href in soup.findAll('a'):
-        if not href.has_attr('href'):
+    for href in soup.findAll("a"):
+        if not href.has_attr("href"):
             href.decompose()
             continue
         if ".aspx?ID=" in href["href"]:
             o = urlparse(href["href"])
             for a in list(href.attrs):
                 del href[a]
-            href["game-obj"] = o.path.split(".")[0].lstrip('/')
+            href["game-obj"] = o.path.split(".")[0].lstrip("/")
             q = parse_qs(o.query)
             for k, vs in q.items():
                 for v in vs:
                     href[k.lower() if k != "ID" else "aonid"] = v
-        elif (href["href"] == "javascript:void(0);"):
+        elif href["href"] == "javascript:void(0);":
             body = BeautifulSoup(href.renderContents(), "lxml")
             if len(body.contents) == 1:
                 href.replaceWith(body.contents[0])
@@ -64,9 +62,9 @@ def href_filter(soup):
 
 
 def span_formatting_filter(soup):
-    spans = soup.findAll('span')
+    spans = soup.findAll("span")
     for span in spans:
-        if span.has_attr('style') and len(list(span.children)) == 1:
+        if span.has_attr("style") and len(list(span.children)) == 1:
             text = get_text(span)
             if len(text.strip()) == 0:
                 span.decompose()
@@ -98,16 +96,16 @@ def entity_pass(details):
         text = text.replace("\u00ca\u00bc", "’")  # u2019 (was u02BC)
         text = text.replace("\u00c2\u00a0", " ")
         text = text.replace("\u00a0", " ")
-        text = ' '.join([part.strip() for part in text.split("\n")])
+        text = " ".join([part.strip() for part in text.split("\n")])
         return text
 
     for detail in details:
-        if 'sections' in detail:
-            entity_pass(detail['sections'])
+        if "sections" in detail:
+            entity_pass(detail["sections"])
         if "text" in detail:
-            detail['text'] = _replace_entities(detail['text'])
+            detail["text"] = _replace_entities(detail["text"])
         if "name" in detail:
-            detail['name'] = _replace_entities(detail['name'])
+            detail["name"] = _replace_entities(detail["name"])
     return details
 
 
@@ -116,7 +114,7 @@ def handle_alternate_link(details):
     if "Legacy version" in d or "Remastered version" in d:
         details.pop(0)
         text, links = extract_links(d)
-        bs = BeautifulSoup(text.strip(), 'html.parser')
+        bs = BeautifulSoup(text.strip(), "html.parser")
         assert len(list(bs.children)) == 1, bs
         div = list(bs.children)[0]
         assert div.name == "div", div
@@ -124,30 +122,29 @@ def handle_alternate_link(details):
         text = get_text(div)
         assert len(links) == 1, links
         link = links[0]
-        del link['alt']
-        del link['name']
-        link['type'] = 'alternate_link'
+        del link["alt"]
+        del link["name"]
+        link["type"] = "alternate_link"
         if "Legacy version" in d:
-            link['alternate_type'] = 'legacy'
+            link["alternate_type"] = "legacy"
         else:
-            link['alternate_type'] = 'remastered'
+            link["alternate_type"] = "remastered"
         return link
 
 
 def nethys_search_pass(details):
     for detail in details:
-        if 'text' in detail:
-            detail['text'] = clear_end_whitespace(
-                clear_tags(detail['text'], ["nethys-search"]))
-        if 'sections' in detail:
-            nethys_search_pass(detail['sections'])
+        if "text" in detail:
+            detail["text"] = clear_end_whitespace(clear_tags(detail["text"], ["nethys-search"]))
+        if "sections" in detail:
+            nethys_search_pass(detail["sections"])
     return details
 
 
 def title_pass(details, max_title):
     retdetails = []
     for detail in details:
-        if has_name(detail, 'h1') and max_title >= 1:
+        if has_name(detail, "h1") and max_title >= 1:
             subname = None
             after = []
             spans = detail.findAll("span")
@@ -164,7 +161,7 @@ def title_pass(details, max_title):
                 h.details.extend(img)
             retdetails.append(h)
             retdetails.extend(after)
-        elif has_name(detail, 'h2') and max_title >= 2:
+        elif has_name(detail, "h2") and max_title >= 2:
             details = img_details(detail)
             h = Heading(2, detail)
             h.details = details
@@ -194,21 +191,21 @@ def title_collapse_pass(details, level, add_statblocks=True):
 def subtitle_pass(details, max_title):
     retdetails = []
     for detail in details:
-        if hasattr(detail, 'name'):
+        if hasattr(detail, "name"):
             if issubclass(detail.__class__, Heading):
                 detail.details = subtitle_pass(detail.details, max_title)
                 retdetails.append(detail)
-            elif has_name(detail, 'h3') and max_title >= 3:
+            elif has_name(detail, "h3") and max_title >= 3:
                 sub = img_details(detail)
                 h = Heading(3, detail)
                 h.details = sub
                 retdetails.append(h)
-            elif has_name(detail, 'span') and not is_trait(detail) and not is_action(detail):
+            elif has_name(detail, "span") and not is_trait(detail) and not is_action(detail):
                 try:
                     retdetails.append(span_to_heading(detail, 3))
                 except IndexError as e:
                     pprint(detail)
-                    raise(e)
+                    raise (e)
             else:
                 retdetails.append(detail)
         else:
@@ -222,14 +219,14 @@ def subtitle_text_pass(details, max_title):
     for detail in details:
         try:
             if issubclass(detail.__class__, str):
-                bs = BeautifulSoup(detail, 'html.parser')
+                bs = BeautifulSoup(detail, "html.parser")
                 objs = list(bs.children)
-                fo = ''
-                while str(fo).strip() == '':
+                fo = ""
+                while str(fo).strip() == "":
                     fo = objs.pop(0)
                 if fo.name == "b" and get_text(fo) != "Source" and max_title > 2:
                     h = Heading(3, fo)
-                    h.details = ''.join([str(o) for o in objs])
+                    h.details = "".join([str(o) for o in objs])
                     retdetails.append(h)
                 else:
                     retdetails.append(detail)
@@ -238,7 +235,7 @@ def subtitle_text_pass(details, max_title):
         except IndexError as e:
             pprint(prev)
             pprint(detail)
-            raise(e)
+            raise (e)
         prev = detail
     return retdetails
 
@@ -251,16 +248,17 @@ def section_pass(struct):
         oldstruct = struct
         struct = {
             # 'name': filter_name(oldstruct.name),
-            'name': oldstruct.name_html,
-            'type': 'section',
-            'sections': []
+            "name": oldstruct.name_html,
+            "type": "section",
+            "sections": [],
         }
         if oldstruct.subname:
-            struct['subname'] = oldstruct.subname
+            struct["subname"] = oldstruct.subname
         if len(proclist) > 0:
-            struct['sections'] = proclist
+            struct["sections"] = proclist
         struct = section_text_pass(struct)
     return struct
+
 
 # Adds text to sections
 
@@ -268,7 +266,7 @@ def section_pass(struct):
 def section_text_pass(struct):
     text = []
     newsections = []
-    for item in struct.get('sections', []):
+    for item in struct.get("sections", []):
         if item.__class__ == Tag or item.__class__ == NavigableString:
             # Item is text, append it to the text list for attaching to an obj
             text.append(str(item))
@@ -277,16 +275,17 @@ def section_text_pass(struct):
         else:
             newsections.append(item)
     if len(text) > 0:
-        if 'text' in struct:
-            newsections.append(section_text_pass(
-                {'type': 'section', 'text': text.strip(), 'sections': []}))
+        if "text" in struct:
+            newsections.append(
+                section_text_pass({"type": "section", "text": text.strip(), "sections": []})
+            )
         else:
-            struct['text'] = ''.join(text)
+            struct["text"] = "".join(text)
     if len(newsections) > 0:
-        struct['sections'] = newsections
+        struct["sections"] = newsections
     else:
-        if 'sections' in struct:
-            struct['sections'] = []
+        if "sections" in struct:
+            struct["sections"] = []
     return struct
 
 
@@ -296,7 +295,7 @@ def text_pass(lines):
     for line in lines:
         if line.__class__ == Heading:
             if len(text) > 0:
-                newlines.append(''.join(text))
+                newlines.append("".join(text))
                 text = []
             line.details = text_pass(line.details)
             newlines.append(line)
@@ -305,7 +304,7 @@ def text_pass(lines):
         else:
             assert False, line
     if len(text) > 0:
-        newlines.append(''.join(text))
+        newlines.append("".join(text))
     return newlines
 
 
@@ -334,10 +333,15 @@ def parse_body(div, book=False, title=False, subtitle_text=False, max_title=5):
 
 
 def parse_universal(
-        filename, title=False, subtitle_text=False, max_title=5,
-        cssclass="ctl00_MainContent_DetailedOutput", pre_filters=None):
+    filename,
+    title=False,
+    subtitle_text=False,
+    max_title=5,
+    cssclass="ctl00_MainContent_DetailedOutput",
+    pre_filters=None,
+):
     with open(filename) as fp:
-        data = fp.read().replace('\n', '')
+        data = fp.read().replace("\n", "")
         soup = BeautifulSoup(data, "lxml")
         if pre_filters:
             for pre_filter in pre_filters:
@@ -346,7 +350,9 @@ def parse_universal(
         span_formatting_filter(soup)
         content = soup.find(id=cssclass)
         if content:
-            return parse_body(content, title=title, subtitle_text=subtitle_text, max_title=max_title)
+            return parse_body(
+                content, title=title, subtitle_text=subtitle_text, max_title=max_title
+            )
 
 
 def print_struct(top, level=0):
@@ -357,14 +363,14 @@ def print_struct(top, level=0):
         print("]")
     if not top:
         return
-    sys.stdout.write(''.join(["-" for i in range(0, level)]))
+    sys.stdout.write("".join(["-" for i in range(0, level)]))
     if top.__class__ == dict:
-        if 'name' in top:
-            print("# " + top['name'])
+        if "name" in top:
+            print("# " + top["name"])
         else:
             print("# <Anonymous>")
-        if 'sections' in top:
-            for s in top['sections']:
+        if "sections" in top:
+            for s in top["sections"]:
                 print_struct(s, level + 2)
     elif issubclass(top.__class__, Heading):
         print("* " + top.name)
@@ -376,30 +382,30 @@ def print_struct(top, level=0):
 
 def filter_name(name):
     name = name.strip()
-    if name[-1] == ':':
+    if name[-1] == ":":
         name = name[:-1]
     return name.strip()
 
 
 def is_trait(span):
-    if (span.has_attr('class')):
-        c = span['class']
-        if "".join(c).startswith('trait'):
+    if span.has_attr("class"):
+        c = span["class"]
+        if "".join(c).startswith("trait"):
             return True
     return False
 
 
 def is_action(span):
-    if (span.has_attr('class')):
-        c = span['class']
-        if "".join(c).startswith('action'):
+    if span.has_attr("class"):
+        c = span["class"]
+        if "".join(c).startswith("action"):
             return True
     return False
 
 
 def span_to_heading(span, level):
     def _handle_actions(span):
-        subspans = span.findAll('span')
+        subspans = span.findAll("span")
         if len(subspans) == 0:
             return
         for action in subspans:
@@ -408,7 +414,7 @@ def span_to_heading(span, level):
                 return
             if len(list(action.children)) == 0:
                 return
-            contents = ' '.join([str(e) for e in action.contents]).strip()
+            contents = " ".join([str(e) for e in action.contents]).strip()
             if contents == "" or (contents.startswith("[") and contents.endswith("]")):
                 for c in action.contents:
                     c.extract()
@@ -416,8 +422,8 @@ def span_to_heading(span, level):
                 assert False, span
 
     _handle_actions(span)
-    details_text = ''.join([str(i) for i in span.contents]).strip()
-    details = list(BeautifulSoup(details_text, 'html.parser').children)
+    details_text = "".join([str(i) for i in span.contents]).strip()
+    details = list(BeautifulSoup(details_text, "html.parser").children)
     title = details.pop(0)
     h = Heading(level, title)
     h.details = details
@@ -433,18 +439,18 @@ def img_details(detail):
 def extract_link(a):
     assert a.name == "a"
     name = get_text(a)
-    link = {'type': 'link', 'name': name.strip(), 'alt': name.strip()}
-    if a.has_attr('game-obj'):
-        link['game-obj'] = a['game-obj']
-    if a.has_attr('aonid'):
-        link['aonid'] = int(a['aonid'])
-    if a.has_attr('href'):
-        link['href'] = a['href']
+    link = {"type": "link", "name": name.strip(), "alt": name.strip()}
+    if a.has_attr("game-obj"):
+        link["game-obj"] = a["game-obj"]
+    if a.has_attr("aonid"):
+        link["aonid"] = int(a["aonid"])
+    if a.has_attr("href"):
+        link["href"] = a["href"]
     return name, link
 
 
 def extract_links(text):
-    bs = BeautifulSoup(text.strip(), 'html.parser')
+    bs = BeautifulSoup(text.strip(), "html.parser")
     all_a = bs.find_all("a")
     links = []
     for a in all_a:
@@ -456,43 +462,43 @@ def extract_links(text):
 
 def source_pass(struct, find_object_fxn):
     def _extract_source(section):
-        if 'text' in section:
-            bs = BeautifulSoup(section['text'], 'html.parser')
+        if "text" in section:
+            bs = BeautifulSoup(section["text"], "html.parser")
             children = list(bs.children)
             if children[0].name == "b" and get_text(children[0]) == "Source":
-                children = [c for c in children if str(c).strip() != '']
+                children = [c for c in children if str(c).strip() != ""]
                 children.pop(0)
-                book = ''
-                while str(book).strip() == '' and children:
+                book = ""
+                while str(book).strip() == "" and children:
                     book = children.pop(0)
                 source = extract_source(book)
                 if children[0].name == "sup":
                     sup = children.pop(0)
                     errata = extract_link(sup.find("a"))
-                    source['errata'] = errata[1]
+                    source["errata"] = errata[1]
                 if children[0].name == "br":
                     children.pop(0)
-                section['text'] = ''.join([str(c) for c in children])
+                section["text"] = "".join([str(c) for c in children])
                 return [source]
 
     def propagate_sources(section, sources):
-        if 'sources' in section and not section['sources']:
-            del section['sources']
+        if "sources" in section and not section["sources"]:
+            del section["sources"]
         retval = _extract_source(section)
         if retval:
             sources = retval
-        if 'sources' in section:
-            sources = section['sources']
+        if "sources" in section:
+            sources = section["sources"]
         else:
-            section['sources'] = sources
-        for s in section['sections']:
+            section["sources"] = sources
+        for s in section["sections"]:
             propagate_sources(s, sources)
 
-    if 'sources' not in struct:
+    if "sources" not in struct:
         sb = find_object_fxn(struct)
-        struct['sources'] = sb['sources']
-    sources = struct['sources']
-    for section in struct['sections']:
+        struct["sources"] = sb["sources"]
+    sources = struct["sources"]
+    for section in struct["sections"]:
         propagate_sources(section, sources)
 
 
@@ -500,10 +506,10 @@ def extract_source(obj):
     text, link = extract_link(obj)
     parts = text.split(" pg. ")
     name = parts.pop(0)
-    source = {'type': 'source', 'name': name, 'link': link}
+    source = {"type": "source", "name": name, "link": link}
     if len(parts) == 1:
         page = int(parts.pop(0))
-        source['page'] = page
+        source["page"] = page
     return source
 
 
@@ -518,31 +524,31 @@ def aon_pass(struct, basename):
 def restructure_pass(struct, obj_name, find_object_fxn):
     sb = find_object_fxn(struct)
     struct[obj_name] = sb
-    struct['sections'].remove(sb)
+    struct["sections"].remove(sb)
 
 
 def html_pass(section):
-    if 'sections' in section:
-        for s in section['sections']:
+    if "sections" in section:
+        for s in section["sections"]:
             html_pass(s)
-    if 'stat_block' in section:
-        html_pass(section['stat_block'])
-    if 'text' in section:
-        section['html'] = section['text'].strip()
-        del section['text']
+    if "stat_block" in section:
+        html_pass(section["stat_block"])
+    if "text" in section:
+        section["html"] = section["text"].strip()
+        del section["text"]
 
 
 def remove_empty_sections_pass(struct):
-    if 'sections' in struct:
-        for section in struct['sections']:
+    if "sections" in struct:
+        for section in struct["sections"]:
             remove_empty_sections_pass(section)
-            if len(struct.get('sections', [])) == 0:
-                del section['sections']
+            if len(struct.get("sections", [])) == 0:
+                del section["sections"]
     if "stat_block" in struct:
-        remove_empty_sections_pass(struct['stat_block'])
-    if 'sections' in struct:
-        if len(struct.get('sections', [])) == 0:
-            del struct['sections']
+        remove_empty_sections_pass(struct["stat_block"])
+    if "sections" in struct:
+        if len(struct.get("sections", [])) == 0:
+            del struct["sections"]
 
 
 def walk(struct, test, function, parent=None):
@@ -559,18 +565,19 @@ def walk(struct, test, function, parent=None):
 def test_key_is_value(k, v):
     def test(struct):
         if isinstance(struct, dict):
-            if 'type' in struct:
+            if "type" in struct:
                 if struct.get(k) == v:
                     return True
         return False
+
     return test
 
 
 def game_id_pass(struct):
-    source = struct['sources'][0]
-    name = struct['name']
-    pre_id = "%s: %s: %s" % (source['name'], source.get('page'), name)
-    struct['game-id'] = md5(str.encode(pre_id)).hexdigest()
+    source = struct["sources"][0]
+    name = struct["name"]
+    pre_id = "%s: %s: %s" % (source["name"], source.get("page"), name)
+    struct["game-id"] = md5(str.encode(pre_id)).hexdigest()
 
 
 def get_links(bs, unwrap=False):
@@ -579,7 +586,7 @@ def get_links(bs, unwrap=False):
     for a in all_a:
         # Only extract links with game-obj attribute (structured references to game objects)
         # Skip arbitrary navigation links without game-obj
-        if not a.has_attr('game-obj'):
+        if not a.has_attr("game-obj"):
             if unwrap:
                 a.unwrap()
             continue
@@ -592,27 +599,26 @@ def get_links(bs, unwrap=False):
 
 def link_modifiers(modifiers):
     for m in modifiers:
-        bs = BeautifulSoup(m['name'], 'html.parser')
+        bs = BeautifulSoup(m["name"], "html.parser")
         links = get_links(bs, True)
         if links:
-            m['name'] = clear_tags(str(bs), ["i"])
-            m['links'] = links
+            m["name"] = clear_tags(str(bs), ["i"])
+            m["links"] = links
     return modifiers
 
 
 def link_value(value, field="name", singleton=False):
     if field in value:
-        bs = BeautifulSoup(value[field], 'html.parser')
+        bs = BeautifulSoup(value[field], "html.parser")
         links = get_links(bs, True)
         if links:
             if singleton:
-                assert len(
-                    links) == 1, "Multiple links found where one expected: %s" % value[field]
+                assert len(links) == 1, "Multiple links found where one expected: %s" % value[field]
                 value[field] = str(bs)
-                value['link'] = links[0]
+                value["link"] = links[0]
             else:
                 value[field] = str(bs)
-                value['links'] = links
+                value["links"] = links
     return value
 
 
@@ -624,14 +630,12 @@ def link_values(values, field="name", singleton=False):
 
 def extract_modifiers(text):
     if text.find("(") > -1:
-        assert text.endswith(
-            ")"), "Modifiers should be at the end only: %s" % text
+        assert text.endswith(")"), "Modifiers should be at the end only: %s" % text
         parts = [p.strip() for p in text.split("(")]
         assert len(parts) == 2, text
         text = parts.pop(0)
         mods = parts.pop()
-        mtext = split_comma_and_semicolon(
-            mods[0:-1], parenleft="[", parenright="]")
+        mtext = split_comma_and_semicolon(mods[0:-1], parenleft="[", parenright="]")
         modifiers = modifiers_from_string_list(mtext)
         return text, link_modifiers(modifiers)
     return text, []
@@ -640,10 +644,7 @@ def extract_modifiers(text):
 def string_values_from_string_list(strlist, subtype, check_modifiers=True):
     svs = []
     for part in strlist:
-        sv = {
-            "type": "stat_block_section",
-            "subtype": subtype
-        }
+        sv = {"type": "stat_block_section", "subtype": subtype}
         if check_modifiers:
             part, modifiers = extract_modifiers(part)
             if modifiers:
@@ -661,10 +662,7 @@ def string_with_modifiers_from_string_list(strlist, subtype):
 
 
 def string_with_modifiers(mpart, subtype):
-    swm = {
-        "type": "stat_block_section",
-        "subtype": subtype
-    }
+    swm = {"type": "stat_block_section", "subtype": subtype}
     mpart, modifiers = extract_modifiers(mpart)
     if modifiers:
         swm["modifiers"] = modifiers
@@ -674,10 +672,10 @@ def string_with_modifiers(mpart, subtype):
 
 def parse_number(text):
     negative = False
-    if text.startswith('–') or text.startswith('-'):
+    if text.startswith("–") or text.startswith("-"):
         negative = True
         text = text[1:]
-    if text == '—':
+    if text == "—":
         return None
     value = int(text)
     if negative:
@@ -686,10 +684,7 @@ def parse_number(text):
 
 
 def number_with_modifiers(mpart, subtype):
-    nwm = {
-        "type": "stat_block_section",
-        "subtype": subtype
-    }
+    nwm = {"type": "stat_block_section", "subtype": subtype}
     mpart, modifiers = extract_modifiers(mpart)
     if modifiers:
         nwm["modifiers"] = modifiers
@@ -701,11 +696,7 @@ def modifiers_from_string_list(modlist, subtype="modifier"):
     modifiers = []
     for mpart in modlist:
         mpart = clear_tags(mpart, "i")
-        modifiers.append({
-            "type": "stat_block_section",
-            "subtype": subtype,
-            "name": mpart
-        })
+        modifiers.append({"type": "stat_block_section", "subtype": subtype, "name": mpart})
     return modifiers
 
 
@@ -740,11 +731,7 @@ def build_objects(dtype, subtype, names, keys=None):
 
 def build_object(dtype, subtype, name, keys=None):
     assert type(name) is str
-    obj = {
-        'type': dtype,
-        'subtype': subtype,
-        'name': name.strip()
-    }
+    obj = {"type": dtype, "subtype": subtype, "name": name.strip()}
     if keys:
         obj.update(keys)
     return obj
@@ -759,11 +746,7 @@ def build_value_objects(dtype, subtype, names, keys=None):
 
 def build_value_object(dtype, subtype, value, keys=None):
     assert type(value) is str
-    obj = {
-        'type': dtype,
-        'subtype': subtype,
-        'value': value
-    }
+    obj = {"type": dtype, "subtype": subtype, "value": value}
     if keys:
         obj.update(keys)
     return obj
@@ -771,21 +754,22 @@ def build_value_object(dtype, subtype, value, keys=None):
 
 def link_objects(objects):
     for o in objects:
-        bs = BeautifulSoup(o['name'], 'html.parser')
+        bs = BeautifulSoup(o["name"], "html.parser")
         links = get_links(bs)
         if len(links) > 0:
-            o['name'] = get_text(bs)
-            o['link'] = links[0]
+            o["name"] = get_text(bs)
+            o["link"] = links[0]
             if len(links) > 1:
                 # TODO: fix []
                 assert False, objects
     return objects
 
+
 def edition_pass(details):
     for detail in details:
-        if detail['name'] == "Legacy Content":
+        if detail["name"] == "Legacy Content":
             return "legacy"
-        result = edition_pass(detail['sections'])
+        result = edition_pass(detail["sections"])
         if result == "legacy":
             return result
     return "remastered"

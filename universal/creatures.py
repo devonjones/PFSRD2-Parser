@@ -15,15 +15,15 @@ from bs4 import BeautifulSoup
 
 
 def write_creature(jsondir, struct, source):
-    print("%s (%s): %s" % (struct['game-obj'], source, struct['name']))
+    print("%s (%s): %s" % (struct["game-obj"], source, struct["name"]))
     filename = create_creature_filename(jsondir, struct)
-    fp = open(filename, 'w')
+    fp = open(filename, "w")
     json.dump(struct, fp, indent=4)
     fp.close()
 
 
 def create_creature_filename(jsondir, struct):
-    title = jsondir + "/" + char_replace(struct['name']) + ".json"
+    title = jsondir + "/" + char_replace(struct["name"]) + ".json"
     return os.path.abspath(title)
 
 
@@ -41,7 +41,7 @@ def universal_handle_modifier_breakout(section):
             return modifier
         range = universal_handle_range(modifier["name"])
         if range:
-            section['range'] = range
+            section["range"] = range
             return None
         return modifier
 
@@ -62,10 +62,7 @@ def universal_handle_modifier_breakout(section):
             if "damage" in section:
                 damage = section["damage"]
             else:
-                damage = {
-                    "type": "stat_block_section",
-                    "subtype": "attack_damage"
-                }
+                damage = {"type": "stat_block_section", "subtype": "attack_damage"}
             damage["formula"] = groups[0]
             damage_types = {
                 "A": "Acid",
@@ -81,14 +78,16 @@ def universal_handle_modifier_breakout(section):
                 "B & F": "Bludgeoning & Fire",
                 "B & S": "Bludgeoning & Slashing",
                 "P & F": "Piercing & Fire",
-                "random": "Random type"
+                "random": "Random type",
             }
             damage_type = groups[1]
-            if 'plus' in damage_type:
+            if "plus" in damage_type:
                 damage_type, effect = damage_type.split("plus")
                 damage_type = damage_type.strip()
                 assert "effect" not in damage, "Damage already has effect: %s, %s" % (
-                    damage, effect)
+                    damage,
+                    effect,
+                )
                 damage["effect"] = effect.strip()
             if damage_type not in damage_types:
                 return modifier
@@ -100,10 +99,10 @@ def universal_handle_modifier_breakout(section):
         if modifier:
             if "[" in modifier["name"]:
                 return modifier
-            m = re.search(r'^(\d*d\d*) (.*)$', modifier["name"])
+            m = re.search(r"^(\d*d\d*) (.*)$", modifier["name"])
             if m:
                 return _handle_dam(m)
-            m = re.search(r'^(\d*d\d*\+\d*) (.*)$', modifier["name"])
+            m = re.search(r"^(\d*d\d*\+\d*) (.*)$", modifier["name"])
             if m:
                 return _handle_dam(m)
         return modifier
@@ -112,20 +111,18 @@ def universal_handle_modifier_breakout(section):
         if modifier:
             if "[" in modifier["name"]:
                 return modifier
-            m = re.search(
-                r'^([a-zA-Z]*) (\d*)d?(\d?) ([a-zA-Z]*)$', modifier["name"])
+            m = re.search(r"^([a-zA-Z]*) (\d*)d?(\d?) ([a-zA-Z]*)$", modifier["name"])
             if m:
                 groups = m.groups()
                 assert len(groups) == 4, groups
                 if "damage" in section:
                     damage = section["damage"]
                 else:
-                    damage = {
-                        "type": "stat_block_section",
-                        "subtype": "attack_damage"
-                    }
+                    damage = {"type": "stat_block_section", "subtype": "attack_damage"}
                 assert "effect" not in damage, "Damage already has effect: %s, %s" % (
-                    damage, damage["effect"])
+                    damage,
+                    damage["effect"],
+                )
                 damage["effect"] = modifier["name"]
                 section["damage"] = damage
                 return None
@@ -135,7 +132,7 @@ def universal_handle_modifier_breakout(section):
         if modifier:
             if "[" in modifier["name"]:
                 return modifier
-            m = re.search(r'^(\d*) hp$', modifier["name"].lower())
+            m = re.search(r"^(\d*) hp$", modifier["name"].lower())
             if m:
                 groups = m.groups()
                 assert len(groups) == 1, groups
@@ -147,7 +144,7 @@ def universal_handle_modifier_breakout(section):
         if modifier:
             if "[" in modifier["name"]:
                 return modifier
-            m = re.search(r'^kac (\d*)$', modifier["name"].lower())
+            m = re.search(r"^kac (\d*)$", modifier["name"].lower())
             if m:
                 groups = m.groups()
                 assert len(groups) == 1, groups
@@ -159,7 +156,7 @@ def universal_handle_modifier_breakout(section):
         if modifier:
             if "[" in modifier["name"]:
                 return modifier
-            m = re.search(r'^eac (\d*)$', modifier["name"].lower())
+            m = re.search(r"^eac (\d*)$", modifier["name"].lower())
             if m:
                 groups = m.groups()
                 assert len(groups) == 1, groups
@@ -169,7 +166,7 @@ def universal_handle_modifier_breakout(section):
 
     newmods = []
     if "modifiers" in section:
-        for modifier in section['modifiers']:
+        for modifier in section["modifiers"]:
             modifier = _handle_modifier_range(section, modifier)
             modifier = _handle_modifier_dc(section, modifier)
             modifier = _handle_modifier_damage(section, modifier)
@@ -187,8 +184,8 @@ def universal_handle_modifier_breakout(section):
 
 def universal_handle_aura(value):
     auras = string_with_modifiers_from_string_list(
-        split_maintain_parens(str(value).strip(), ","),
-        "aura")
+        split_maintain_parens(str(value).strip(), ","), "aura"
+    )
     auras = link_values(auras)
     for aura in auras:
         universal_handle_modifier_breakout(aura)
@@ -197,13 +194,13 @@ def universal_handle_aura(value):
 
 def universal_handle_range(text):
     text = text.strip()
-    m = re.search(r'^(\d*) (.*)$', text)
+    m = re.search(r"^(\d*) (.*)$", text)
     if m:
         groups = m.groups()
         assert len(groups) == 2, groups
         unit = groups[1]
         unit, modifiers = extract_modifiers(unit)
-        if unit.endswith('.'):
+        if unit.endswith("."):
             unit = unit[:-1]
         if unit in ["ft", "feet", "mile", "miles"]:
             if unit == "ft":
@@ -216,7 +213,7 @@ def universal_handle_range(text):
                 "subtype": "range",
                 "text": text,
                 "range": int(groups[0]),
-                "unit": unit
+                "unit": unit,
             }
             if modifiers:
                 range["modifiers"] = modifiers
@@ -233,11 +230,7 @@ def universal_handle_save_dc(text):
     assert "DC" in text, "Saves must have DCs: %s" % text
     if text.endswith(","):
         text = text[:-1]
-    save_dc = {
-        "type": "stat_block_section",
-        "subtype": "save_dc",
-        "text": text
-    }
+    save_dc = {"type": "stat_block_section", "subtype": "save_dc", "text": text}
     text, modifiers = extract_modifiers(text)
     if modifiers:
         save_dc["modifiers"] = modifiers
@@ -249,7 +242,7 @@ def universal_handle_save_dc(text):
         "Ref": "Ref",
         "Will": "Will",
         "Strength": "Str",
-        "flat": "Flat Check"
+        "flat": "Flat Check",
     }
     newparts = []
     for part in parts:
@@ -268,11 +261,11 @@ def universal_handle_save_dc(text):
     if newparts:
         result = " ".join(newparts)
         if "half" == result.strip():
-            save_dc['result'] = result
+            save_dc["result"] = result
         elif "negates" == result.strip():
-            save_dc['result'] = result
+            save_dc["result"] = result
         elif "basic" == result.strip():
-            save_dc['result'] = result
+            save_dc["result"] = result
         else:
             assert False, "Broken DC: %s" % text
     return save_dc
@@ -287,16 +280,13 @@ def universal_handle_perception(value):
     # +8 (or +13)
     # +28 (32 to detect illusions)
 
-    perception = {
-        "type": "stat_block_section",
-        "subtype": "perception"
-    }
+    perception = {"type": "stat_block_section", "subtype": "perception"}
     text = str(value).strip()
-    if text.startswith('+'):
+    if text.startswith("+"):
         text = text[1:].strip()
     text, modifiers = extract_modifiers(text)
     if modifiers:
-        perception['modifiers'] = modifiers
+        perception["modifiers"] = modifiers
     perception["value"] = int(text)
     return perception
 
@@ -311,16 +301,15 @@ def universal_handle_special_senses(parts):
     # sense through (vision [crystal only])
 
     def _get_link(part):
-        bs = BeautifulSoup(part, 'html.parser')
+        bs = BeautifulSoup(part, "html.parser")
         links = get_links(bs)
-        assert len(
-            links) <= 1, "Multiple links found where one expected: %s" % part
+        assert len(links) <= 1, "Multiple links found where one expected: %s" % part
         if len(links) == 1:
-            sense['link'] = links[0]
+            sense["link"] = links[0]
         return get_text(bs)
 
     def _handle_special_sense_range(text, sense):
-        m = re.search(r'(.*) (\d*) (.*)', text)
+        m = re.search(r"(.*) (\d*) (.*)", text)
         if m:
             range = {
                 "type": "stat_block_section",
@@ -336,8 +325,7 @@ def universal_handle_special_senses(parts):
                 unit = "feet"
             if unit == "mile":
                 unit = "miles"
-            assert unit in [
-                "feet", "miles"], "Bad special sense range: %s" % text
+            assert unit in ["feet", "miles"], "Bad special sense range: %s" % text
             range["unit"] = unit
             sense["range"] = range
             text = groups[0].strip()
@@ -369,8 +357,16 @@ def universal_handle_special_senses(parts):
 
 def universal_handle_size(s):
     sizes = [
-        "Fine", "Diminutive", "Tiny", "Small", "Medium", "Large", "Huge",
-        "Gargantuan", "Colossal"]
+        "Fine",
+        "Diminutive",
+        "Tiny",
+        "Small",
+        "Medium",
+        "Large",
+        "Huge",
+        "Gargantuan",
+        "Colossal",
+    ]
     if s in sizes:
         return s
     assert s in sizes, s
@@ -378,17 +374,17 @@ def universal_handle_size(s):
 
 def universal_handle_alignment(abbrev):
     alignments = {
-        'LG': "Lawful Good",
-        'LN': "Lawful Neutral",
-        'LE': "Lawful Evil",
-        'NG': "Neutral Good",
-        'N': "Neutral",
-        'NE': "Neutral Evil",
-        'CG': "Chaotic Good",
-        'CN': "Chaotic Neutral",
-        'CE': "Chaotic Evil",
-        'Any': "Any Alignment",
-        'No Alignment': "No Alignment",
+        "LG": "Lawful Good",
+        "LN": "Lawful Neutral",
+        "LE": "Lawful Evil",
+        "NG": "Neutral Good",
+        "N": "Neutral",
+        "NE": "Neutral Evil",
+        "CG": "Chaotic Good",
+        "CN": "Chaotic Neutral",
+        "CE": "Chaotic Evil",
+        "Any": "Any Alignment",
+        "No Alignment": "No Alignment",
     }
     if abbrev in alignments:
         return alignments[abbrev]
@@ -399,23 +395,33 @@ def universal_handle_creature_type(ct, subtype):
         subtype = subtype.replace(")", "")
         assert subtype.find(")") == -1, "Malformed subtypes: %s" % subtype
         subtypes = string_values_from_string_list(
-            split_maintain_parens(subtype, ","),
-            "creature_subtype")
+            split_maintain_parens(subtype, ","), "creature_subtype"
+        )
         return subtypes
 
     types = [
-        "Aberration", "Animal", "Construct", "Dragon", "Fey", "Humanoid",
-        "Magical Beast", "Monstrous Humanoid", "Ooze", "Outsider", "Plant",
-        "Undead", "Vermin"]
+        "Aberration",
+        "Animal",
+        "Construct",
+        "Dragon",
+        "Fey",
+        "Humanoid",
+        "Magical Beast",
+        "Monstrous Humanoid",
+        "Ooze",
+        "Outsider",
+        "Plant",
+        "Undead",
+        "Vermin",
+    ]
     if ct in types:
         creature_type = {
             "type": "stat_block_section",
             "subtype": "creature_type",
-            "creature_type": ct
+            "creature_type": ct,
         }
         if subtype and len(subtype) > 0:
-            creature_type['creature_subtypes'] = _handle_creature_subtypes(
-                subtype)
+            creature_type["creature_subtypes"] = _handle_creature_subtypes(subtype)
         return creature_type
     assert ct in types, ct
 
@@ -430,24 +436,24 @@ def universal_handle_languages(text):
             com = string_with_modifiers(text, "communication_ability")
             if crange:
                 com["range"] = crange
-            if 'modifiers' in com:
+            if "modifiers" in com:
                 newmods = []
-                for modifier in com['modifiers']:
-                    crange = universal_handle_range(modifier['name'])
+                for modifier in com["modifiers"]:
+                    crange = universal_handle_range(modifier["name"])
                     if crange:
-                        assert 'range' not in com, "broken communication ability: %s" % comtext
-                        com['range'] = crange
+                        assert "range" not in com, "broken communication ability: %s" % comtext
+                        com["range"] = crange
                     else:
                         newmods.append(modifier)
                 if len(newmods) > 0:
-                    com['modifiers'] = newmods
+                    com["modifiers"] = newmods
                 else:
-                    del com['modifiers']
+                    del com["modifiers"]
             coms.append(com)
         return coms
 
     def _handle_communication_ability_range(text):
-        m = re.search(r'^(.*) (\d*) (.*)$', text)
+        m = re.search(r"^(.*) (\d*) (.*)$", text)
         if m:
             groups = m.groups()
             assert len(groups) == 3, groups
@@ -459,11 +465,7 @@ def universal_handle_languages(text):
         return text, None
 
     parts = text.split(";")
-    languages = {
-        "type": "stat_block_section",
-        "subtype": "languages",
-        "languages": []
-    }
+    languages = {"type": "stat_block_section", "subtype": "languages", "languages": []}
     langs = parts.pop(0)
     lparts = split_maintain_parens(langs, ",")
 
@@ -478,42 +480,42 @@ def universal_handle_languages(text):
                 "subtype": "language",
             }
             ltext, modifiers = extract_modifiers(lpart)
-            bs = BeautifulSoup(ltext, 'html.parser')
+            bs = BeautifulSoup(ltext, "html.parser")
             links = get_links(bs)
             if len(links) > 0:
                 assert len(links) == 1, "Malformed language: %s" % ltext
-                language['link'] = links[0]
+                language["link"] = links[0]
                 ltext = get_text(bs)
             language["name"] = ltext
 
             if len(modifiers) > 0:
-                language['modifiers'] = modifiers
-            languages['languages'].append(language)
-    if len(languages['languages']) == 0:
-        del languages['languages']
+                language["modifiers"] = modifiers
+            languages["languages"].append(language)
+    if len(languages["languages"]) == 0:
+        del languages["languages"]
     if len(parts) > 0:
-        languages['communication_abilities'] = _handle_communication_abilities(
-            parts)
+        languages["communication_abilities"] = _handle_communication_abilities(parts)
     return languages
 
 
 def universal_handle_sr(value):
     sr = {
-        'type': 'stat_block_section',
-        'subtype': 'sr',
+        "type": "stat_block_section",
+        "subtype": "sr",
     }
     parts = value.split(" ")
-    sr['value'] = int(parts.pop(0))
+    sr["value"] = int(parts.pop(0))
     if len(parts) > 0:
         modifier_text = " ".join(parts)
         if modifier_text.startswith("(") and modifier_text.endswith(")"):
             modifier_text = modifier_text[1:-1]
-        assert modifier_text.find(
-            ",") < 0, "SR modifiers apparently do need to be split: %s" % modifier_text
-        assert modifier_text.find(
-            ";") < 0, "SR modifiers apparently do need to be split: %s" % modifier_text
-        sr['modifiers'] = modifiers_from_string_list(
-            [m.strip() for m in modifier_text.split(",")])
+        assert modifier_text.find(",") < 0, (
+            "SR modifiers apparently do need to be split: %s" % modifier_text
+        )
+        assert modifier_text.find(";") < 0, (
+            "SR modifiers apparently do need to be split: %s" % modifier_text
+        )
+        sr["modifiers"] = modifiers_from_string_list([m.strip() for m in modifier_text.split(",")])
     return sr
 
 
@@ -550,18 +552,12 @@ def universal_handle_dr(value):
         parts = value.split("/")
         assert len(parts) == 2, "Bad DR: %s" % value
         num = int(parts[0])
-        dr = {
-            "type": "stat_block_section",
-            "subtype": "dr",
-            "value": num,
-            "text": value
-        }
+        dr = {"type": "stat_block_section", "subtype": "dr", "value": num, "text": value}
         text = parts[1].strip()
         if text.find("(") > -1:
             text, modtext = text.split("(")
             modtext = modtext.replace(")", "").strip()
-            dr['modifiers'] = modifiers_from_string_list(
-                [m.strip() for m in modtext.split(",")])
+            dr["modifiers"] = modifiers_from_string_list([m.strip() for m in modtext.split(",")])
         _break_out_damage_types(dr, text.strip())
         drs.append(dr)
     return drs
@@ -571,8 +567,8 @@ def universal_handle_weaknesses(value):
     if value.endswith(";"):
         value = value[:-1]
     weaknesses = string_with_modifiers_from_string_list(
-        split_maintain_parens(str(value), ","),
-        "weakness")
+        split_maintain_parens(str(value), ","), "weakness"
+    )
     weaknesses = link_values(weaknesses)
     for weakness in weaknesses:
         if re.search("\d", weakness["name"]):
@@ -586,24 +582,20 @@ def universal_handle_resistances(value):
     values = split_maintain_parens(str(value), ",")
     resistances = []
     for value in values:
-        resistance = {
-            "type": "stat_block_section",
-            "subtype": "resistance"
-        }
+        resistance = {"type": "stat_block_section", "subtype": "resistance"}
         if value.find("(") > -1:
             portions = value.split("(")
-            assert len(
-                portions) == 2, "Badly formatted resistance with modifier: %s" % value
+            assert len(portions) == 2, "Badly formatted resistance with modifier: %s" % value
             value = portions[0].strip()
             modtext = portions[1].strip()
-            assert modtext.endswith(
-                ")"), "Badly formatted resistance with modifier: %s" % value
+            assert modtext.endswith(")"), "Badly formatted resistance with modifier: %s" % value
             modtext = modtext[:-1]
             resistance["modifiers"] = modifiers_from_string_list(
-                [m.strip() for m in modtext.split(",")])
+                [m.strip() for m in modtext.split(",")]
+            )
         parts = value.split(" ")
-        resistance['value'] = int(parts.pop().strip())
-        resistance['name'] = " ".join(parts).strip()
+        resistance["value"] = int(parts.pop().strip())
+        resistance["name"] = " ".join(parts).strip()
         resistances.append(resistance)
     return resistances
 
@@ -613,8 +605,8 @@ def universal_handle_immunities(value):
         value = value[:-1]
     value = value.replace(" and ", ", ")
     immunities = string_with_modifiers_from_string_list(
-        split_maintain_parens(str(value), ","),
-        "immunity")
+        split_maintain_parens(str(value), ","), "immunity"
+    )
     immunities = link_values(immunities)
     for immunity in immunities:
         if re.search("\d", immunity["name"]):
@@ -624,7 +616,7 @@ def universal_handle_immunities(value):
 
 def universal_handle_defensive_abilities(value):
     def _handle_da_number(da):
-        m = re.search(r'^(.*) (\d*)$', da["name"])
+        m = re.search(r"^(.*) (\d*)$", da["name"])
         if m:
             groups = m.groups()
             da["name"] = groups[0]
@@ -633,8 +625,8 @@ def universal_handle_defensive_abilities(value):
     if value.endswith(";"):
         value = value[:-1]
     das = string_with_modifiers_from_string_list(
-        split_maintain_parens(str(value), ","),
-        "defensive_ability")
+        split_maintain_parens(str(value), ","), "defensive_ability"
+    )
     das = link_values(das)
     for da in das:
         _handle_da_number(da)
@@ -682,7 +674,7 @@ def universal_handle_gear(text):
             if len(item["modifiers"]) == 0:
                 del item["modifiers"]
         name = item["name"]
-        m = re.search(r'^([0-9,]*) (.*)$', name)
+        m = re.search(r"^([0-9,]*) (.*)$", name)
         if m:
             groups = m.groups()
             quantity = groups[0]
@@ -696,10 +688,10 @@ def universal_handle_gear(text):
         return item
 
     def _clear_sup(text):
-        bs = BeautifulSoup(text, 'html.parser')
-        sups = bs.find_all('sup')
+        bs = BeautifulSoup(text, "html.parser")
+        sups = bs.find_all("sup")
         for sup in sups:
-            sup.replace_with('')
+            sup.replace_with("")
         return str(bs)
 
     text = clear_tags(text, ["i", "br"])
@@ -712,11 +704,7 @@ def universal_handle_gear(text):
     parts = _fix_split_quantities(parts)
     gear = []
     for part in parts:
-        item = {
-            "type": "stat_block_section",
-            "subtype": "item",
-            "name": part
-        }
+        item = {"type": "stat_block_section", "subtype": "item", "name": part}
         item = _handle_with(item)
         item["name"], modifiers = extract_modifiers(item["name"])
         if modifiers:

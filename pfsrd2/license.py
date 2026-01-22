@@ -19,12 +19,12 @@ def parse_license(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
         sys.stderr.write("%s\n" % basename)
-    details = parse_universal(filename, max_title=4,
-                              cssclass="main")
+    details = parse_universal(filename, max_title=4, cssclass="main")
     ogl = ogl_pass(details)
-    sec8 = parse_universal(filename, max_title=4,
-                           cssclass="ctl00_RadDrawer1_Content_MainContent_FullSourcesLabel")
-    ogl['sections'] = entity_pass(sec8)
+    sec8 = parse_universal(
+        filename, max_title=4, cssclass="ctl00_RadDrawer1_Content_MainContent_FullSourcesLabel"
+    )
+    ogl["sections"] = entity_pass(sec8)
     additional_sections_pass(ogl)
     remove_empty_sections_pass(ogl)
     basename.split("_")
@@ -32,16 +32,16 @@ def parse_license(filename, options):
     # validate_against_schema(struct, "trait.schema.json")
     if not options.dryrun:
         output = options.output
-        jsondir = makedirs(output, 'license')
+        jsondir = makedirs(output, "license")
         write_license(jsondir, ogl)
     elif options.stdout:
         print(json.dumps(ogl, indent=2))
 
 
 def ogl_pass(details):
-    license = details[1]['sections'][0]
-    assert len(license['sections']) == 0
-    bs = BeautifulSoup(license['text'].strip(), 'html.parser')
+    license = details[1]["sections"][0]
+    assert len(license["sections"]) == 0
+    bs = BeautifulSoup(license["text"].strip(), "html.parser")
     span = bs.find(id="ctl00_RadDrawer1_Content_MainContent_FullSourcesLabel")
     span.decompose()
     bs.table.decompose()
@@ -50,30 +50,29 @@ def ogl_pass(details):
     new_b = bs.new_tag("b")
     new_b.string = "Pathfinder Open Reference"
     last_p.append(new_b)
-    last_p.append(
-        ". © 2023 Masterwork Tools LLC, Authors: Devon Jones, Monica Jones.")
-    license['text'] = str(bs).strip()
+    last_p.append(". © 2023 Masterwork Tools LLC, Authors: Devon Jones, Monica Jones.")
+    license["text"] = str(bs).strip()
     return license
 
 
 def additional_sections_pass(ogl):
     added_sections = get_data("additional_ogl.json")
-    section_names = [s['name'] for s in ogl['sections']]
+    section_names = [s["name"] for s in ogl["sections"]]
     for section in added_sections:
-        assert section['name'] not in section_names, "Section 8 conflict: %s" % section['name']
-        ogl['sections'].append(section)
+        assert section["name"] not in section_names, "Section 8 conflict: %s" % section["name"]
+        ogl["sections"].append(section)
 
 
 def write_license(jsondir, struct):
-    print("%s: %s" % ('license', struct['name']))
+    print("%s: %s" % ("license", struct["name"]))
     filename = create_license_filename(jsondir, struct)
-    fp = open(filename, 'w')
+    fp = open(filename, "w")
     json.dump(struct, fp, indent=4)
     fp.close()
 
 
 def create_license_filename(jsondir, struct):
-    title = jsondir + "/" + char_replace(struct['name']) + ".json"
+    title = jsondir + "/" + char_replace(struct["name"]) + ".json"
     return os.path.abspath(title)
 
 
@@ -83,12 +82,12 @@ def get_license(license, attribution_section, sec_8, sources):
     for source in sources:
         found = False
         for sec in sec_8:
-            if sec['name'] == source['name']:
+            if sec["name"] == source["name"]:
                 new_sec_8.append(sec)
                 found = True
                 break
         if not found:
-            missing_sources.append(source['name'])
+            missing_sources.append(source["name"])
     if missing_sources:
         for name in missing_sources:
             print(f"Warning: Source not found in license: {name}")
@@ -102,11 +101,12 @@ def get_orc_license(sources):
         with open(path) as f:
             license_data = json.load(f)
         return license_data["sections"]
+
     license = ORC_LICENSE
     sec_8 = _get_sec_8()
     result = get_license(license, license["sections"][0], sec_8, sources)
     for source in sources:
-        found = any(sec['name'] == source['name'] for sec in sec_8)
+        found = any(sec["name"] == source["name"] for sec in sec_8)
         if not found:
             print(f"Could not find source in license: {source['name']}")
     return result
@@ -124,7 +124,7 @@ def get_ogl_license(sources):
         return get_license(license, license, sec_8, sources)
     finally:
         for source in sources:
-            found = any(sec['name'] == source['name'] for sec in sec_8)
+            found = any(sec["name"] == source["name"] for sec in sec_8)
             if not found:
                 print(f"Could not find source in license: {source['name']}")
         return license
@@ -132,18 +132,18 @@ def get_ogl_license(sources):
 
 def license_pass(struct):
     if "edition" in struct and struct["edition"] == "remastered":
-        license = get_orc_license(struct['sources'])
+        license = get_orc_license(struct["sources"])
     else:
-        license = get_ogl_license(struct['sources'])
+        license = get_ogl_license(struct["sources"])
     struct["license"] = license
 
 
 def license_consolidation_pass(struct):
     def _get_licenses(struct):
         retlist = []
-        if 'license' in struct:
-            retlist.append(struct['license'])
-            del struct['license']
+        if "license" in struct:
+            retlist.append(struct["license"])
+            del struct["license"]
         for k, v in struct.items():
             if isinstance(v, dict):
                 retlist.extend(_get_licenses(v))
@@ -152,11 +152,12 @@ def license_consolidation_pass(struct):
                     if isinstance(item, dict):
                         retlist.extend(_get_licenses(item))
         return retlist
+
     licenses = _get_licenses(struct)
     ogl = licenses.pop(0)
     for sl in licenses:
-        section_names = [s['name'] for s in ogl['sections']]
-        for section in sl['sections']:
-            if section['name'] not in section_names:
-                ogl['sections'].append(section)
-    struct['license'] = ogl
+        section_names = [s["name"] for s in ogl["sections"]]
+        for section in sl["sections"]:
+            if section["name"] not in section_names:
+                ogl["sections"].append(section)
+    struct["license"] = ogl
