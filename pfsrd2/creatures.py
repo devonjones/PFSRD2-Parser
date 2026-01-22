@@ -76,7 +76,7 @@ def parse_creature(filename, options):
     if alternate_link:
         struct["alternate_link"] = alternate_link
     # TODO Deal with remaining sections
-    #assert len(details) == 0, details
+    # assert len(details) == 0, details
     creature_stat_block_pass(struct)
     source_pass(struct, find_stat_block)
     sidebar_pass(struct)
@@ -91,8 +91,7 @@ def parse_creature(filename, options):
     monster_ability_db_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
-    markdown_pass(struct, struct["name"], "",
-                  fxn_valid_tags=markdown_valid_set)
+    markdown_pass(struct, struct["name"], "", fxn_valid_tags=markdown_valid_set)
     remove_empty_sections_pass(struct)
     basename.split("_")
     if not options.skip_schema:
@@ -191,14 +190,11 @@ def section_pass(struct):
                     if current == "Requirements":
                         current = "Requirement"
                 elif current:
-                    assert current in addon_names, "%s, %s" % (
-                        current, addon_names)
+                    assert current in addon_names, "%s, %s" % (current, addon_names)
                     addon_text = str(child)
                     if addon_text.strip().endswith(";"):
                         addon_text = addon_text.rstrip()[:-1]
-                    addons.setdefault(current.lower().replace(" ", "_"), []).append(
-                        addon_text
-                    )
+                    addons.setdefault(current.lower().replace(" ", "_"), []).append(addon_text)
                 else:
                     parts.append(str(child))
             for k, v in addons.items():
@@ -394,7 +390,7 @@ def trait_db_pass(struct):
 
 def monster_ability_db_pass(struct):
     def _template_get_magical_tradition(curs, ability):
-        if 'traits' in ability:
+        if "traits" in ability:
             for trait in ability["traits"]:
                 if trait["name"] in ["Arcane", "Divine", "Occult", "Primal"]:
                     return trait
@@ -443,9 +439,7 @@ def restructure_creature_pass(details, subtype, edition):
                 for img in imgs:
                     if img["alt"].startswith("PFS"):
                         _, pfs = img["alt"].split(" ")
-                        assert pfs in ["Standard", "Limited", "Restricted"], (
-                            "Bad PFS: %s" % pfs
-                        )
+                        assert pfs in ["Standard", "Limited", "Restricted"], "Bad PFS: %s" % pfs
                         sb["creature_type"]["pfs"] = pfs
                         img.extract()
                 obj["text"] = str(bs)
@@ -475,7 +469,7 @@ def restructure_creature_pass(details, subtype, edition):
     del sb["subname"]
     _handle_sanctioning(rest)
     top["sections"].extend(rest)
-    top['edition'] = edition
+    top["edition"] = edition
     return top
 
 
@@ -525,10 +519,7 @@ def trait_pass(struct):
 def creature_stat_block_pass(struct):
     def add_to_data(key, value, data, link, action):
         if key:
-            data.append(
-                (key.strip(), "".join([str(v)
-                 for v in value]).strip(), link, action)
-            )
+            data.append((key.strip(), "".join([str(v) for v in value]).strip(), link, action))
             key = None
             value = []
             link = None
@@ -539,8 +530,7 @@ def creature_stat_block_pass(struct):
         k, v, _, _ = data.pop()
         newvalue = [v]
         newvalue.extend(value)
-        data.append((k, "".join([str(v)
-                    for v in newvalue]).strip(), link, None))
+        data.append((k, "".join([str(v) for v in newvalue]).strip(), link, None))
         return [], data
 
     def _handle_sections(sb, struct):
@@ -562,9 +552,9 @@ def creature_stat_block_pass(struct):
     def _handle_title_before_speed(sb):
         if not "text" in sb:
             # TODO add this to the creature
-            assert sb['sections'][0]['name'] == "Legacy Content", sb
-            section = sb['sections'].pop(0)
-            sb['text'] = section['text']
+            assert sb["sections"][0]["name"] == "Legacy Content", sb
+            section = sb["sections"].pop(0)
+            sb["text"] = section["text"]
         text = sb["text"]
         if not "<b>Speed</b>" in text:
             sections = []
@@ -581,8 +571,7 @@ def creature_stat_block_pass(struct):
             sb["sections"] = sections
             for section in parts:
                 assert len(section["sections"]) == 0, section
-                text = text + \
-                    "<b>%s</b>%s" % (section["name"], section.get("text", ""))
+                text = text + "<b>%s</b>%s" % (section["name"], section.get("text", ""))
         sb["text"] = text
 
     def _strip_br(data):
@@ -592,8 +581,7 @@ def creature_stat_block_pass(struct):
             children = list(bs.children)
             while len(children) > 0 and children[-1].name == "br":
                 children.pop()
-            newdata.append(
-                (k, "".join([str(c) for c in children]).strip(), l, a))
+            newdata.append((k, "".join([str(c) for c in children]).strip(), l, a))
         return newdata
 
     sb = find_stat_block(struct)
@@ -616,12 +604,10 @@ def creature_stat_block_pass(struct):
             if last_key == "Source":
                 key = "Graft"
             last_key = key
-            key, value, data, link, action = add_to_data(
-                key, value, data, link, action)
+            key, value, data, link, action = add_to_data(key, value, data, link, action)
         elif obj.name == "hr":
             last_key = key
-            key, value, data, link, action = add_to_data(
-                key, value, data, link, action)
+            key, value, data, link, action = add_to_data(key, value, data, link, action)
             if len(value) > 0:
                 assert link == None
                 value, data = add_remnants(value, data)
@@ -630,8 +616,7 @@ def creature_stat_block_pass(struct):
             data = []
         elif obj.name == "b":
             last_key = key
-            key, value, data, link, action = add_to_data(
-                key, value, data, link, action)
+            key, value, data, link, action = add_to_data(key, value, data, link, action)
             key = get_text(obj)
             if obj.a:
                 _, link = extract_link(obj.a)
@@ -640,8 +625,7 @@ def creature_stat_block_pass(struct):
         else:
             value.append(obj)
     if key:
-        key, value, data, link, action = add_to_data(
-            key, value, data, link, action)
+        key, value, data, link, action = add_to_data(key, value, data, link, action)
     data = _strip_br(data)
     sections.append(data)
     assert len(sections) == 3, sections
@@ -669,8 +653,7 @@ def sidebar_pass(struct):
             struct["subtype"] = "sidebar"
             struct["sidebar_type"] = subtype.lower().replace(" ", "_")
             struct["sidebar_heading"] = subtype
-            struct["image"] = {"type": "image",
-                               "name": subtype, "image": image}
+            struct["image"] = {"type": "image", "name": subtype, "image": image}
             struct["text"] = "".join([str(c) for c in children])
             _handle_fixing_name(struct)
 
@@ -794,8 +777,7 @@ def validate_dict_pass(top, struct, parent, field):
                 if type(item) is dict:
                     validate_dict_pass(top, item, struct, "")
                 else:
-                    raise Exception(
-                        "%s: lists should only have dicts" % struct)
+                    raise Exception("%s: lists should only have dicts" % struct)
         elif type(struct) is str:
             # if field == "name" and struct.startswith(top.get("name", "")):
             # 	pass
@@ -812,8 +794,7 @@ def validate_dict_pass(top, struct, parent, field):
             elif struct.find("(") > -1:
                 bs = BeautifulSoup(struct, "html.parser")
                 if not bs.table:
-                    raise Exception(
-                        "%s: '(' should have been parsed out" % struct)
+                    raise Exception("%s: '(' should have been parsed out" % struct)
     except Exception as e:
         pprint(struct)
         raise e
@@ -869,9 +850,7 @@ def process_stat_block(sb, sections):
     defense = sections.pop(0)
     sb["defense"] = {"type": "stat_block_section", "subtype": "defense"}
     sb["defense"]["ac"] = process_ac(defense.pop(0))
-    sb["defense"]["saves"] = process_saves(
-        defense.pop(0), defense.pop(0), defense.pop(0)
-    )
+    sb["defense"]["saves"] = process_saves(defense.pop(0), defense.pop(0), defense.pop(0))
     sb["defense"]["hitpoints"] = []
     hp = process_hp(defense.pop(0), "hitpoints")
     sb["defense"]["hitpoints"].append(hp)
@@ -939,7 +918,7 @@ def process_source(sb, sections):
         }
 
     section = sections.pop(0)
-    if section[0] == 'Legacy Content':
+    if section[0] == "Legacy Content":
         # TODO add this to the creature
         c = handle_image(section)
         assert len(c) == 0, c
@@ -981,9 +960,7 @@ def process_grafts(sb, stats):
         section = stats.pop(0)
         assert not section[2], section
         assert not section[3], section
-        tokens = split_maintain_parens(
-            section[1].strip(), " ", parenleft="<", parenright=">"
-        )
+        tokens = split_maintain_parens(section[1].strip(), " ", parenleft="<", parenright=">")
         newtokens = []
         for token in tokens:
             if token.startswith("("):
@@ -1051,8 +1028,7 @@ def process_languages(section):
     assert section[2] == None
     assert section[3] == None
     text = section[1]
-    languages = {"type": "stat_block_section",
-                 "subtype": "languages", "languages": []}
+    languages = {"type": "stat_block_section", "subtype": "languages", "languages": []}
     if text.find(";") > -1:
         parts = text.split(";")
         text = parts.pop(0)
@@ -1086,10 +1062,7 @@ def process_languages(section):
                 if modifier:
                     # TODO: fix []
                     ability["modifiers"] = link_modifiers(
-                        build_objects(
-                            "stat_block_section", "modifier", [
-                                modifier.strip()]
-                        )
+                        build_objects("stat_block_section", "modifier", [modifier.strip()])
                     )
                 abilities.append(ability)
         if len(abilities) > 0:
@@ -1200,12 +1173,10 @@ def process_items(section):
         text, modifier = extract_modifier(part)
         bs = unwrap_formatting(BeautifulSoup(text, "html.parser"))
         name = get_text(bs)
-        item = {"type": "stat_block_section",
-                "subtype": "item", "name": name.strip()}
+        item = {"type": "stat_block_section", "subtype": "item", "name": name.strip()}
         if modifier:
             item["modifiers"] = link_modifiers(
-                build_objects("stat_block_section",
-                              "modifier", modifier.split(","))
+                build_objects("stat_block_section", "modifier", modifier.split(","))
             )
         links = []
         while bs.a:
@@ -1301,9 +1272,7 @@ def process_ac(section):
         "value": int(value.strip()),
     }
     if len(modifiers) > 0:
-        ac["modifiers"] = link_modifiers(
-            build_objects("stat_block_section", "modifier", modifiers)
-        )
+        ac["modifiers"] = link_modifiers(build_objects("stat_block_section", "modifier", modifiers))
     return ac
 
 
@@ -1394,8 +1363,7 @@ def process_hp(section, subtype):
     _handle_component()
     if len(specials) > 0:
         special_sections = build_objects(
-            "stat_block_section", "ability", specials, {
-                "ability_type": "automatic"}
+            "stat_block_section", "ability", specials, {"ability_type": "automatic"}
         )
         for s in special_sections:
             parse_section_modifiers(s, "name")
@@ -1431,8 +1399,7 @@ def process_threshold(hp, section):
 
 def process_defense(hp, section, ret=False):
     def create_defense(defense):
-        d = {"type": "stat_block_section",
-             "subtype": subtype[section[0]], "name": part}
+        d = {"type": "stat_block_section", "subtype": subtype[section[0]], "name": part}
         d = parse_section_modifiers(d, "name")
         d = parse_section_value(d, "name")
         return d
@@ -1450,8 +1417,7 @@ def process_defense(hp, section, ret=False):
         text = text[:-1].strip()
     parts = rebuilt_split_modifiers(split_stat_block_line(text))
     defense = build_object(
-        "stat_block_section", section[0].lower(), section[0], {
-            section[0].lower(): []}
+        "stat_block_section", section[0].lower(), section[0], {section[0].lower(): []}
     )
     for part in parts:
         defense[section[0].lower()].append(create_defense(part))
@@ -1510,8 +1476,7 @@ def handle_aura(sb, ability):
                         range = universal_handle_range(test_part.strip())
                         assert range, "Malformed range and DC: %s" % ability["text"]
                         assert "range" not in ability, (
-                            "Can't add a range to an object that as a range already: %s"
-                            % ability
+                            "Can't add a range to an object that as a range already: %s" % ability
                         )
                         ability["range"] = range
                     elif "damage" in test_part:
@@ -1532,8 +1497,7 @@ def handle_aura(sb, ability):
 
 
 def process_defensive_ability(section, sections, sb):
-    assert section[0].strip() not in [
-        "Immunities", "Resistances", "Weaknesses"], section[0]
+    assert section[0].strip() not in ["Immunities", "Resistances", "Weaknesses"], section[0]
     description = section[1]
     link = section[2]
     action = section[3]
@@ -1676,8 +1640,7 @@ def process_speed(section):
         modifiers = [p.strip() for p in parts.pop().split(",")]
     assert len(parts) == 0, section
     movement = build_movement(text)
-    speed = {"type": "stat_block_section",
-             "subtype": "speeds", "movement": movement}
+    speed = {"type": "stat_block_section", "subtype": "speeds", "movement": movement}
     if modifiers:
         speed["modifiers"] = link_modifiers(
             build_objects("stat_block_section", "modifier", modifiers)
@@ -1779,15 +1742,16 @@ def process_offensive_action(section):
                     requirements = "<b>Requirements</b>" + parts.pop()
                     text = parts.pop()
                 bs = BeautifulSoup(requirements, "html.parser")
-                b_tags = bs.findAll('b')
+                b_tags = bs.findAll("b")
                 assert len(b_tags) in [1, 2], bs
                 for b in b_tags:
                     b.extract()
                 requirements = get_text(bs).strip()
                 if requirements.endswith(";"):
                     requirements = requirements[:-1]
-                section['requirement'] = requirements
+                section["requirement"] = requirements
             return text
+
         # tentacle +16 [<a aonid="322" game-obj="Rules"><u>+12/+8</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>, <a aonid="192" game-obj="Traits"><u>reach 15 feet</u></a>), <b>Damage</b> 2d8+10 bludgeoning plus slime
         # trident +10 [<a aonid="322" game-obj="Rules"><u>+5/+0</u></a>], <b>Damage</b> 1d8+4 piercing
         # trident +7 [<a aonid="322" game-obj="Rules"><u>+2/-3</u></a>] (<a aonid="195" game-obj="Traits"><u>thrown 20 feet</u></a>), <b>Damage</b> 1d8+3 piercing
@@ -1901,11 +1865,9 @@ def process_offensive_action(section):
             elif tt.startswith("attack") or tt.startswith("spell attack"):
                 section["spell_attack"] = int(chunks.pop())
             elif tt.endswith("Focus Points"):
-                section["focus_points"] = int(
-                    tt.replace(" Focus Points", "").strip())
+                section["focus_points"] = int(tt.replace(" Focus Points", "").strip())
             elif tt.endswith("Focus Point"):
-                section["focus_points"] = int(
-                    tt.replace(" Focus Point", "").strip())
+                section["focus_points"] = int(tt.replace(" Focus Point", "").strip())
             else:
                 remains.append(tt)
         if len(remains) > 0 and remains != tt_parts:
@@ -1926,9 +1888,10 @@ def process_offensive_action(section):
                         addon,
                         note,
                     )
-                    assert (
-                        addon.lower() not in note
-                    ), "%s should not be in spell notes: %s" % (addon, note)
+                    assert addon.lower() not in note, "%s should not be in spell notes: %s" % (
+                        addon,
+                        note,
+                    )
             remains = []
         if len(remains) > 0:
             parts.insert(0, ", ".join(remains))
@@ -1990,8 +1953,7 @@ def process_offensive_action(section):
                 for part in count_text.split(split):
                     m = re.match(r"^x\d*$", part.strip())
                     if m:
-                        assert count == None, "Failed to parse spell: %s" % (
-                            html)
+                        assert count == None, "Failed to parse spell: %s" % (html)
                         count = int(part.strip()[1:])
                     else:
                         remainder.append(part)
@@ -2092,12 +2054,10 @@ def process_offensive_action(section):
                     )
         parent_section["affliction"] = section
 
-
-
-    #<b>Mythic Power</b> 3 Mythic Points <ul><li><i>Mythic Skill</i> <span class="action" title="Free Action" role="img" aria-label="Free Action">[free-action]</span> <b>Cost</b> 1 Mythic Point; <a style="text-decoration:underline" href="Skills.aspx?ID=36">Athletics</a> or <a style="text-decoration:underline" href="Skills.aspx?ID=48">Stealth</a> (page 168)</li><li><i>Remove a Condition</i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b>1 Mythic Point; <b>Effect</b> The gogiteth ends one condition affecting it.</li></ul>
-    #<b><a style="text-decoration:underline" href="MonsterTemplates.aspx?ID=32">Mythic Ferocity</a>  <span class="action" title="Reaction" role="img" aria-label="Reaction">[reaction]</span> </b> <b>cost</b> 1 Mythic Point, 65 HP
-    #<b>Mythic Power</b> 3 Mythic Points <ul><li><i>Mythic Skill</i><span class="action" title="Free Action" role="img" aria-label="Free Action">[free-action]</span><b>Cost</b> 1 Mythic Point; <a style="text-decoration:underline" href="Skills.aspx?ID=36">Athletics</a></li></ul>
-    #<b>Mythic Power</b> 3 Mythic Points <ul><li><i><a style="text-decoration:underline" href="MonsterTemplates.aspx?ID=33">Recharge Spell</a></i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b> 1 Mythic Point; <b>Effect</b> The mythic lich regains one spell.</li><li><i>Remove a Condition</i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b> 1 Mythic Point; <b>Effect</b> The mythic lich ends one condition affecting it.</li></ul>
+    # <b>Mythic Power</b> 3 Mythic Points <ul><li><i>Mythic Skill</i> <span class="action" title="Free Action" role="img" aria-label="Free Action">[free-action]</span> <b>Cost</b> 1 Mythic Point; <a style="text-decoration:underline" href="Skills.aspx?ID=36">Athletics</a> or <a style="text-decoration:underline" href="Skills.aspx?ID=48">Stealth</a> (page 168)</li><li><i>Remove a Condition</i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b>1 Mythic Point; <b>Effect</b> The gogiteth ends one condition affecting it.</li></ul>
+    # <b><a style="text-decoration:underline" href="MonsterTemplates.aspx?ID=32">Mythic Ferocity</a>  <span class="action" title="Reaction" role="img" aria-label="Reaction">[reaction]</span> </b> <b>cost</b> 1 Mythic Point, 65 HP
+    # <b>Mythic Power</b> 3 Mythic Points <ul><li><i>Mythic Skill</i><span class="action" title="Free Action" role="img" aria-label="Free Action">[free-action]</span><b>Cost</b> 1 Mythic Point; <a style="text-decoration:underline" href="Skills.aspx?ID=36">Athletics</a></li></ul>
+    # <b>Mythic Power</b> 3 Mythic Points <ul><li><i><a style="text-decoration:underline" href="MonsterTemplates.aspx?ID=33">Recharge Spell</a></i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b> 1 Mythic Point; <b>Effect</b> The mythic lich regains one spell.</li><li><i>Remove a Condition</i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b> 1 Mythic Point; <b>Effect</b> The mythic lich ends one condition affecting it.</li></ul>
 
     def parse_mythic_ability(parent_section):
         def _handle_addons(activation, text):
@@ -2120,9 +2080,7 @@ def process_offensive_action(section):
                     addon_text = str(child)
                     if addon_text.strip().endswith(";"):
                         addon_text = addon_text.rstrip()[:-1]
-                    addons.setdefault(current.lower().replace(" ", "_"), []).append(
-                        addon_text
-                    )
+                    addons.setdefault(current.lower().replace(" ", "_"), []).append(addon_text)
                 else:
                     parts.append(str(child))
             for k, v in addons.items():
@@ -2164,16 +2122,18 @@ def process_offensive_action(section):
             "subtype": "mythic_ability",
             "name": parent_section["name"],
             "mythic_points": int(point_text.split(" ")[0].strip()),
-            "mythic_activations": []
+            "mythic_activations": [],
         }
         l = children[1]
         assert l.name == "ul", l
         parent_section["mythic_ability"] = mythic_ability
         for li in l.find_all("li"):
             cont = list(li.contents)
-            assert is_tag_named(cont[0], ['i', 'b']), li
+            assert is_tag_named(cont[0], ["i", "b"]), li
             title = get_text(cont.pop(0))
-            mythic_ability["mythic_activations"].append(_parse_mythic_activation(title, ''.join([str(c) for c in cont])))
+            mythic_ability["mythic_activations"].append(
+                _parse_mythic_activation(title, "".join([str(c) for c in cont]))
+            )
 
     def parse_offensive_ability(parent_section):
         def _handle_name(parent_section, new_section):
@@ -2249,9 +2209,7 @@ def process_offensive_action(section):
                     addon_text = str(child)
                     if addon_text.strip().endswith(";"):
                         addon_text = addon_text.rstrip()[:-1]
-                    addons.setdefault(current.lower().replace(" ", "_"), []).append(
-                        addon_text
-                    )
+                    addons.setdefault(current.lower().replace(" ", "_"), []).append(addon_text)
                 else:
                     parts.append(str(child))
         for k, v in addons.items():
@@ -2269,7 +2227,7 @@ def process_offensive_action(section):
 
     def _is_spell(section):
         parts = section["name"].split(" ")
-        if section['name'] in constants.CREATURE_NOT_SPELLS:
+        if section["name"] in constants.CREATURE_NOT_SPELLS:
             return False
         if (
             "Spells" in parts
@@ -2355,9 +2313,7 @@ def get_attacks(sb):
     attacks = []
     for section in sections:
         if is_attack(section):
-            if section["name"].endswith("Spells") or section["name"].endswith(
-                "Rituals"
-            ):
+            if section["name"].endswith("Spells") or section["name"].endswith("Rituals"):
                 text = section["text"]
                 bs = BeautifulSoup(text.strip(), "html.parser")
                 if bs.br:

@@ -1,7 +1,7 @@
 import sys
 
 
-class WarningReporting():
+class WarningReporting:
     def __init__(self):
         self.context = None
         self.book = None

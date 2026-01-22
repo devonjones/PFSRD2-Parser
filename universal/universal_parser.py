@@ -6,21 +6,19 @@ from universal.universal import parse_universal
 
 
 def exec_main(parser):
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
     title = False
-    if hasattr(options, 'title'):
+    if hasattr(options, "title"):
         title = True
 
     if not options.output:
         sys.stderr.write("-o/--output required")
         sys.exit(1)
     if not os.path.exists(options.output):
-        sys.stderr.write(
-            "-o/--output points to a directory that does not exist")
+        sys.stderr.write("-o/--output points to a directory that does not exist")
         sys.exit(1)
     if not os.path.isdir(options.output):
-        sys.stderr.write(
-            "-o/--output points to a file, it must point to a directory")
+        sys.stderr.write("-o/--output points to a file, it must point to a directory")
         sys.exit(1)
     if not options.book:
         sys.stderr.write("-b/--book required")
@@ -40,10 +38,13 @@ def main():
 
 def optionParser():
     parser = OptionParser(usage=usage)
-    parser.add_option("-b", "--book", dest="book",
-                      help="Book spells are from (required)")
-    parser.add_option("-o", "--output", dest="output",
-                      help="Output data directory.  Should be top level directory of psrd data. (required)")
+    parser.add_option("-b", "--book", dest="book", help="Book spells are from (required)")
+    parser.add_option(
+        "-o",
+        "--output",
+        dest="output",
+        help="Output data directory.  Should be top level directory of psrd data. (required)",
+    )
     return parser
 
 
