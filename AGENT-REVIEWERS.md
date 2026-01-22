@@ -118,6 +118,34 @@ Review code for function complexity. Apply these heuristics:
 
 **Note:** It is acceptable to acknowledge complexity and defer refactoring by creating a beads ticket, rather than fixing it in the current PR.
 
+## import-reviewer
+
+Review code for PEP8-compliant import practices. Imports belong at the top of the file, not inside functions.
+
+**Rules to enforce:**
+
+1. **Imports at top of file**: All imports should be at module level, after any module docstring and before any code.
+
+2. **No function-level imports**: Flag any `import` or `from ... import` statements inside functions. These should be moved to the top of the file.
+
+3. **Import ordering** (PEP8):
+   - Standard library imports first
+   - Blank line
+   - Related third-party imports
+   - Blank line
+   - Local application/library imports
+
+**Exceptions:**
+- Conditional imports for optional dependencies (wrapped in try/except)
+- Imports that would cause circular dependency issues (should be documented with a comment explaining why)
+
+**Review approach:**
+1. Search for `import` statements inside function bodies (`def` blocks)
+2. Flag each with the specific function name and line
+3. Suggest moving to the appropriate import section at file top
+
+**Note:** It is acceptable to acknowledge import issues and defer cleanup by creating a beads ticket, rather than fixing it in the current PR.
+
 # Parser Testing Protocol
 
 **Before starting a fix loop**, check for uncommitted changes in the output directory:
