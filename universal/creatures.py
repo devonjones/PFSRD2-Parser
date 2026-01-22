@@ -10,13 +10,16 @@ from universal.universal import (
     get_links,
     link_values,
     modifiers_from_string_list,
-    split_comma_and_semicolon,
-    split_maintain_parens,
     string_values_from_string_list,
     string_with_modifiers,
     string_with_modifiers_from_string_list,
 )
-from universal.utils import clear_tags, get_text
+from universal.utils import (
+    clear_tags,
+    get_text,
+    split_comma_and_semicolon,
+    split_maintain_parens,
+)
 
 
 def write_creature(jsondir, struct, source):
