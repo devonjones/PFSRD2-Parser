@@ -105,16 +105,20 @@ Review code for function complexity. Apply these heuristics:
    - Bad: "This function extracts traits AND normalizes them AND adds links AND handles edge cases for variants"
 
 2. **One-screen rule**: Functions should fit on one screen (~50-60 lines) so they can be reviewed at a glance. Longer functions are harder to reason about.
+   - **Internal functions don't count**: When a function contains internal helper functions (defined with `def` inside the parent), the lines of those internal functions do NOT count against the parent's line limit. Only the "main body" lines count.
+   - **Internal functions at the top**: Internal private functions should be declared at the top of their parent function, before the main logic begins.
 
-3. **Extractable inner structures**: If a block of code within a function can be described on its own (has a clear purpose), it should be extracted to:
-   - A private helper function (prefixed with `_`) if only used locally
-   - A reusable utility function if the pattern appears elsewhere
+3. **Extractable inner structures**: If a block of code within a function can be described on its own (has a clear purpose), consider extraction:
+   - **First choice**: Extract to `universal/` if the pattern is reusable across multiple parsers
+   - **Second choice**: Extract to module level (prefixed with `_`) if reusable within the file
+   - **Last choice**: Keep as internal function if truly specific to the parent function's context
 
 **Review approach:**
 1. For each new/modified function, try to describe it in one sentence without "and"/"or"
 2. If the description requires conjunctions, identify which parts should be separate functions
-3. Flag functions over ~50 lines and suggest logical split points
+3. Flag functions over ~50 lines (excluding internal function definitions) and suggest logical split points
 4. Look for nested loops, long conditionals, or repeated patterns that could be extracted
+5. For extractable code, prefer moving to `universal/` over local extraction when the pattern would benefit other parsers
 
 **Note:** It is acceptable to acknowledge complexity and defer refactoring by creating a beads ticket, rather than fixing it in the current PR.
 

@@ -392,7 +392,7 @@ def trait_db_pass(struct):
 
 
 def monster_ability_db_pass(struct):
-    # Remastered source names
+    # TODO: Remove this workaround once monster abilities have edition field
     REMASTERED_SOURCES = {"Monster Core", "Player Core", "GM Core", "Player Core 2", "Rage of Elements"}
 
     def _get_ability_edition(ability_json):
