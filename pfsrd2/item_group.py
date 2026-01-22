@@ -1,24 +1,32 @@
-import os
 import json
+import os
 import sys
-from pprint import pprint
+
 from bs4 import BeautifulSoup, Tag
-from universal.markdown import markdown_pass
-from universal.universal import parse_universal, entity_pass
-from universal.universal import extract_link, extract_links, extract_source
-from universal.universal import aon_pass, remove_empty_sections_pass, game_id_pass
-from universal.utils import is_tag_named, get_text
-from universal.files import makedirs, char_replace
-from universal.creatures import write_creature
+
+from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
-from pfsrd2.license import license_pass, license_consolidation_pass
+from universal.creatures import write_creature
+from universal.files import char_replace, makedirs
+from universal.markdown import markdown_pass
+from universal.universal import (
+    aon_pass,
+    entity_pass,
+    extract_link,
+    extract_links,
+    extract_source,
+    game_id_pass,
+    parse_universal,
+    remove_empty_sections_pass,
+)
+from universal.utils import get_text
 
 
 def parse_item_group(filename, options):
     """Main parsing function - entry point for the armor/weapon group parser"""
     basename = os.path.basename(filename)
     if not options.stdout:
-        sys.stderr.write("%s\n" % basename)
+        sys.stderr.write(f"{basename}\n")
 
     # Determine subtype (armor_group or weapon_group)
     subtype = getattr(options, "subtype", "armor_group")

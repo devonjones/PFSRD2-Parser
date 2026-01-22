@@ -1,12 +1,17 @@
 import sys
-import json
-from universal.utils import split_maintain_parens, clear_tags, filter_entities
-from universal.utils import split_comma_and_semicolon, get_text, has_name
-from universal.utils import clear_end_whitespace
 from hashlib import md5
 from pprint import pprint
-from urllib.parse import urlparse, parse_qs
-from bs4 import BeautifulSoup, BeautifulStoneSoup, Tag, NavigableString
+from urllib.parse import parse_qs, urlparse
+
+from bs4 import BeautifulSoup, NavigableString, Tag
+
+from universal.utils import (
+    clear_end_whitespace,
+    clear_tags,
+    get_text,
+    has_name,
+    split_comma_and_semicolon,
+)
 
 # FULLWIDTH COMMA = ，
 
@@ -34,9 +39,9 @@ class Heading:
 
     def __repr__(self):
         if self.subname:
-            return "<Heading %s:%s (%s) %s>" % (self.level, self.name, self.subname, self.details)
+            return f"<Heading {self.level}:{self.name} ({self.subname}) {self.details}>"
         else:
-            return "<Heading %s:%s %s>" % (self.level, self.name, self.details)
+            return f"<Heading {self.level}:{self.name} {self.details}>"
 
 
 def href_filter(soup):
@@ -148,7 +153,7 @@ def title_pass(details, max_title):
             subname = None
             after = []
             spans = detail.findAll("span")
-            assert len(spans) < 2, "Unexpected number of subtitles %s" % spans
+            assert len(spans) < 2, f"Unexpected number of subtitles {spans}"
             if len(spans) == 1:
                 obj = spans[0]
                 if is_action(obj) or is_trait(obj):
@@ -302,7 +307,7 @@ def text_pass(lines):
         elif line.__class__ == Tag or line.__class__ == NavigableString:
             text.append(str(line))
         else:
-            assert False, line
+            raise AssertionError(line)
     if len(text) > 0:
         newlines.append("".join(text))
     return newlines
@@ -419,7 +424,7 @@ def span_to_heading(span, level):
                 for c in action.contents:
                     c.extract()
             else:
-                assert False, span
+                raise AssertionError(span)
 
     _handle_actions(span)
     details_text = "".join([str(i) for i in span.contents]).strip()
@@ -546,16 +551,15 @@ def remove_empty_sections_pass(struct):
                 del section["sections"]
     if "stat_block" in struct:
         remove_empty_sections_pass(struct["stat_block"])
-    if "sections" in struct:
-        if len(struct.get("sections", [])) == 0:
-            del struct["sections"]
+    if "sections" in struct and len(struct.get("sections", [])) == 0:
+        del struct["sections"]
 
 
 def walk(struct, test, function, parent=None):
     if test(struct):
         function(struct, parent)
     if isinstance(struct, dict):
-        for k, v in struct.items():
+        for _k, v in struct.items():
             walk(v, test, function, struct)
     elif isinstance(struct, list):
         for i in struct:
@@ -564,11 +568,7 @@ def walk(struct, test, function, parent=None):
 
 def test_key_is_value(k, v):
     def test(struct):
-        if isinstance(struct, dict):
-            if "type" in struct:
-                if struct.get(k) == v:
-                    return True
-        return False
+        return bool(isinstance(struct, dict) and "type" in struct and struct.get(k) == v)
 
     return test
 
@@ -576,7 +576,7 @@ def test_key_is_value(k, v):
 def game_id_pass(struct):
     source = struct["sources"][0]
     name = struct["name"]
-    pre_id = "%s: %s: %s" % (source["name"], source.get("page"), name)
+    pre_id = "{}: {}: {}".format(source["name"], source.get("page"), name)
     struct["game-id"] = md5(str.encode(pre_id)).hexdigest()
 
 
@@ -613,7 +613,7 @@ def link_value(value, field="name", singleton=False):
         links = get_links(bs, True)
         if links:
             if singleton:
-                assert len(links) == 1, "Multiple links found where one expected: %s" % value[field]
+                assert len(links) == 1, f"Multiple links found where one expected: {value[field]}"
                 value[field] = str(bs)
                 value["link"] = links[0]
             else:
@@ -630,7 +630,7 @@ def link_values(values, field="name", singleton=False):
 
 def extract_modifiers(text):
     if text.find("(") > -1:
-        assert text.endswith(")"), "Modifiers should be at the end only: %s" % text
+        assert text.endswith(")"), f"Modifiers should be at the end only: {text}"
         parts = [p.strip() for p in text.split("(")]
         assert len(parts) == 2, text
         text = parts.pop(0)
@@ -648,7 +648,7 @@ def string_values_from_string_list(strlist, subtype, check_modifiers=True):
         if check_modifiers:
             part, modifiers = extract_modifiers(part)
             if modifiers:
-                assert False, "String Values have no modifiers: %s" % part
+                raise AssertionError(f"String Values have no modifiers: {part}")
         sv["name"] = part
         svs.append(sv)
     return svs
@@ -761,7 +761,7 @@ def link_objects(objects):
             o["link"] = links[0]
             if len(links) > 1:
                 # TODO: fix []
-                assert False, objects
+                raise AssertionError(objects)
     return objects
 
 

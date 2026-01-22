@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-import sys
 import os
+import sys
+
 from universal.options import option_parser
 from universal.universal import parse_universal
 
@@ -34,18 +35,6 @@ def main():
     usage = "usage: %prog [options] [filenames]\nParses spells from psrd html to json and writes them to the specified directory"
     parser = option_parser(usage, title=True)
     exec_main(parser)
-
-
-def optionParser():
-    parser = OptionParser(usage=usage)
-    parser.add_option("-b", "--book", dest="book", help="Book spells are from (required)")
-    parser.add_option(
-        "-o",
-        "--output",
-        dest="output",
-        help="Output data directory.  Should be top level directory of psrd data. (required)",
-    )
-    return parser
 
 
 if __name__ == "__main__":

@@ -1,33 +1,35 @@
-import os
 import json
+import os
 import sys
-import re
-from pprint import pprint
+
 from bs4 import BeautifulSoup, Tag
-from universal.markdown import markdown_pass
-from universal.universal import parse_universal, entity_pass
-from universal.universal import extract_link
-from universal.universal import extract_source
-from universal.universal import aon_pass
-from universal.universal import remove_empty_sections_pass
-from universal.universal import walk, test_key_is_value
-from universal.universal import remove_empty_sections_pass, game_id_pass
-from universal.files import makedirs, char_replace
-from universal.creatures import write_creature
-from universal.creatures import universal_handle_range
-from universal.utils import is_tag_named, get_text
-from universal.utils import get_text
+
+from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
-from pfsrd2.trait import extract_starting_traits
-from pfsrd2.license import license_pass, license_consolidation_pass
-from pfsrd2.sql import get_db_path, get_db_connection
+from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.traits import fetch_trait_by_name
+from pfsrd2.trait import extract_starting_traits
+from universal.creatures import universal_handle_range, write_creature
+from universal.files import char_replace, makedirs
+from universal.markdown import markdown_pass
+from universal.universal import (
+    aon_pass,
+    entity_pass,
+    extract_link,
+    extract_source,
+    game_id_pass,
+    parse_universal,
+    remove_empty_sections_pass,
+    test_key_is_value,
+    walk,
+)
+from universal.utils import get_text, is_tag_named
 
 
 def parse_monster_ability(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
-        sys.stderr.write("%s\n" % basename)
+        sys.stderr.write(f"{basename}\n")
     details = parse_universal(
         filename,
         subtitle_text=True,
@@ -63,7 +65,7 @@ def restructure_monster_ability_pass(details):
     sb = None
     rest = []
     for obj in details:
-        if sb == None:
+        if sb is None:
             sb = obj
         else:
             rest.append(obj)
@@ -85,9 +87,7 @@ def section_pass(struct):
         def _tag_is_action(tag):
             assert "class" in tag.attrs, tag
             tag_class = tag["class"]
-            if "action" in tag_class:
-                return True
-            return False
+            return "action" in tag_class
 
         if "text" not in section:
             return
@@ -98,7 +98,7 @@ def section_pass(struct):
             if _tag_is_action(tag):
                 _handle_action(section, tag)
             else:
-                assert False, tag
+                raise AssertionError(tag)
         section["text"] = str(bs)
 
     def _fix_name(section):
@@ -125,7 +125,7 @@ def section_pass(struct):
 
     def _handle_source(section):
         def _extract_source_info(children):
-            if not type(children[0]) == Tag:
+            if type(children[0]) != Tag:
                 return None
 
             if get_text(children[0]).strip() == "Source":
@@ -184,7 +184,7 @@ def section_pass(struct):
 
 
 def build_action(child, action=None):
-    assert not action, "Multiple actions detected: %s" % child
+    assert not action, f"Multiple actions detected: {child}"
     action_name = child["title"]
     action = build_object("stat_block_section", "action_type", action_name)
     if action_name == "Single Action":
@@ -210,7 +210,7 @@ def addon_pass(struct):
     def _handle_ranges(addons):
         for k, v in addons.items():
             if k == "range":
-                assert len(v) == 1, "Malformed range: %s" % v
+                assert len(v) == 1, f"Malformed range: {v}"
                 struct["range"] = universal_handle_range(v[0])
             else:
                 struct[k] = _oa_html_reduction(v)
@@ -237,7 +237,7 @@ def addon_pass(struct):
             "Range",
             "Cost",
         ]
-        assert current in addon_names, "%s, %s" % (current, text)
+        assert current in addon_names, f"{current}, {text}"
         addon_text = str(child)
         if addon_text.strip().endswith(";"):
             addon_text = addon_text.rstrip()[:-1]
@@ -276,11 +276,11 @@ def trait_db_pass(struct):
 
     def _check_trait(trait, parent):
         data = fetch_trait_by_name(curs, trait["name"])
-        assert data, "%s | %s" % (data, trait)
+        assert data, f"{data} | {trait}"
         db_trait = json.loads(data["trait"])
         _merge_classes(trait, db_trait)
         if "link" in trait and trait["link"]["game-obj"] == "Trait":
-            assert trait["link"]["aonid"] == db_trait["aonid"], "%s : %s" % (trait, db_trait)
+            assert trait["link"]["aonid"] == db_trait["aonid"], f"{trait} : {db_trait}"
         assert isinstance(parent, list), parent
         index = parent.index(trait)
         if "value" in trait:

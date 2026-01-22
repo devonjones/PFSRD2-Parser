@@ -1,5 +1,6 @@
-import os
 import json
+import os
+
 import jsonschema
 
 
@@ -9,7 +10,6 @@ def get_schema(schema_name):
     schema_file = os.path.join(this_dir, schema_name)
     with open(schema_file) as fp:
         return json.load(fp)
-    raise "No schema found"
 
 
 def validate_against_schema(data, schema_name):

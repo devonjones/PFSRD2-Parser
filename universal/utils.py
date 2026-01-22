@@ -1,6 +1,6 @@
 import warnings
-from pprint import pprint
-from bs4 import BeautifulSoup, Tag, MarkupResemblesLocatorWarning
+
+from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning, Tag
 
 warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
@@ -104,9 +104,7 @@ def is_tag_named(element, taglist):
 
 
 def has_name(tag, name):
-    if hasattr(tag, "name") and tag.name == name:
-        return True
-    return False
+    return bool(hasattr(tag, "name") and tag.name == name)
 
 
 def get_text(detail):
@@ -117,9 +115,7 @@ def bs_pop_spaces(children):
     clean = False
     while not clean:
         testval = children[0]
-        if type(testval) == Tag:
-            clean = True
-        elif testval.strip() != "":
+        if type(testval) == Tag or testval.strip() != "":
             clean = True
         else:
             children.pop(0)
@@ -127,7 +123,7 @@ def bs_pop_spaces(children):
 
 def get_unique_tag_set(text):
     bs = BeautifulSoup(text, "html.parser")
-    return set([tag.name for tag in bs.find_all()])
+    return {tag.name for tag in bs.find_all()}
 
 
 def split_on_tag(text, tag):

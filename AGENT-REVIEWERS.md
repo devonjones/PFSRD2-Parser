@@ -150,6 +150,136 @@ Review code for PEP8-compliant import practices. Imports belong at the top of th
 
 **Note:** It is acceptable to acknowledge import issues and defer cleanup by creating a beads ticket, rather than fixing it in the current PR.
 
+## strategic-fragility-reviewer
+
+Review code to ensure it follows the **strategic fragility** design philosophy. This parser deliberately uses fail-fast, assertion-heavy patterns because **wrong data is worse than no data**.
+
+**Core principle:** The parser should fail loudly and immediately when encountering unexpected conditions, rather than silently producing incorrect data.
+
+**Reference:** Read `docs/architecture.md` section "Design Philosophy: Strict Validation Over Graceful Degradation" for full context.
+
+**Patterns to FLAG (these damage strategic fragility):**
+
+1. **Silent exception swallowing:**
+   ```python
+   # BAD - hides errors
+   try:
+       parse_data(html)
+   except Exception:
+       pass  # Silent failure!
+
+   # BAD - returns default on error
+   try:
+       return parse_data(html)
+   except:
+       return {}  # Wrong data is worse than no data
+   ```
+
+2. **Return in finally blocks:**
+   ```python
+   # BAD - return in finally silences exceptions
+   try:
+       return do_something()
+   finally:
+       return default  # This silences any exception!
+   ```
+
+3. **Overly defensive defaults that mask missing data:**
+   ```python
+   # BAD - masks parsing failures
+   defense = sections.pop(0) if sections else {}
+
+   # GOOD - fails fast if section missing
+   defense = sections.pop(0)  # Will raise IndexError if missing
+   ```
+
+4. **Generic exception handling without re-raising:**
+   ```python
+   # BAD - catches too much, doesn't re-raise
+   try:
+       complex_operation()
+   except Exception as e:
+       log.warning(f"Error: {e}")
+       # Continues silently!
+   ```
+
+5. **Fallback logic that hides structural problems:**
+   ```python
+   # BAD - tries to "handle" bad HTML instead of failing
+   if malformed_html:
+       try_to_fix_it()
+   elif missing_section:
+       use_default()
+   ```
+
+**Patterns that ARE ACCEPTABLE:**
+
+1. **Assertions with context:**
+   ```python
+   # GOOD - fails immediately with context
+   assert len(children) == 2, f"Expected 2 children, got {len(children)}"
+   ```
+
+2. **Specific exception handling with re-raise:**
+   ```python
+   # GOOD - handles specific case, re-raises with context
+   try:
+       value = int(text.strip())
+   except ValueError as e:
+       raise ParseError(f"Invalid number format: {text}") from e
+   ```
+
+3. **Known exception handling for expected cases:**
+   ```python
+   # GOOD - handles documented case (creatures can have "-" for scores)
+   try:
+       ability_score = int(stat_text.strip())
+   except ValueError:
+       # Known case: creatures can have "-" for missing scores
+       ability_score = None  # This is the CORRECT value for this case
+   ```
+
+4. **Bare except with re-raise (for cleanup):**
+   ```python
+   # GOOD - catches for cleanup, always re-raises
+   try:
+       do_something()
+   except:
+       cleanup()
+       raise  # Re-raises original exception
+   ```
+
+**Why this matters:**
+
+- Archives of Nethys HTML contains bugs and inconsistencies
+- If parser silently handles bad HTML, bugs propagate to output data
+- Users rely on accurate game data; incorrect AC/HP/abilities break gameplay
+- Fail-fast surfaces problems immediately for human investigation
+- HTML bugs should be fixed in pfsrd2-web, not worked around in parser
+
+**Review approach:**
+1. Search for `try/except` blocks - evaluate if they're swallowing errors
+2. Check for `return` statements inside `finally` blocks
+3. Look for defensive defaults like `x if y else {}` that could mask missing data
+4. Identify bare `except:` without `raise`
+5. Flag generic `except Exception` that doesn't re-raise
+
+**Well-documented exceptions are acceptable:**
+
+If the code includes a comment explaining *why* a particular pattern is used (e.g., a default value or exception handling), and the reasoning is sound and battle-tested, it's acceptable. The key is intentionality - the developer understood the trade-off and made a deliberate choice.
+
+```python
+# ACCEPTABLE - well-documented intentional choice
+try:
+    value = parse_optional_field(html)
+except FieldNotFound:
+    # This field was added in Bestiary 3; older creatures won't have it.
+    # None is the correct value for pre-Bestiary 3 creatures.
+    value = None
+```
+
+**Note:** If unsure whether a pattern damages strategic fragility, ask: "If the HTML is malformed here, would this code silently produce wrong data?" If yes and there's no documentation explaining the intentional choice, it should be flagged.
+
 # Parser Testing Protocol
 
 **Before starting a fix loop**, check for uncommitted changes in the output directory:

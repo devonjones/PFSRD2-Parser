@@ -1,22 +1,31 @@
+import json
 import os
 import sys
-import json
-from pprint import pprint
-from bs4 import BeautifulSoup
-from universal.universal import parse_universal, entity_pass
-from universal.universal import restructure_pass, aon_pass
-from universal.universal import source_pass, get_links
-from pfsrd2.schema import validate_against_schema
-from dateutil import parser as dateparser
-from universal.files import makedirs, char_replace
 from hashlib import md5
+
+from bs4 import BeautifulSoup
+from dateutil import parser as dateparser
+
 from pfsrd2.license import get_ogl_license, get_orc_license
+from pfsrd2.schema import validate_against_schema
+from universal.files import char_replace, makedirs
+from universal.universal import (
+    aon_pass,
+    entity_pass,
+    extract_link,
+    extract_source,
+    get_links,
+    parse_universal,
+    restructure_pass,
+    source_pass,
+)
+from universal.utils import bs_pop_spaces, get_text
 
 
 def parse_source(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
-        sys.stderr.write("%s\n" % basename)
+        sys.stderr.write(f"{basename}\n")
     struct = {"name": basename, "type": "source"}
     details = parse_universal(
         filename,
@@ -100,7 +109,7 @@ def restructure_source_pass(details):
     sb = None
     rest = []
     for obj in details:
-        if sb == None:
+        if sb is None:
             sb = obj
         else:
             rest.append(obj)
@@ -243,7 +252,7 @@ def drop_sources_fields_pass(struct):
 
 
 def write_source(jsondir, struct):
-    print("%s: %s" % (struct["game-obj"], struct["name"]))
+    print("{}: {}".format(struct["game-obj"], struct["name"]))
     filename = create_source_filename(jsondir, struct)
     fp = open(filename, "w")
     json.dump(struct, fp, indent=4)

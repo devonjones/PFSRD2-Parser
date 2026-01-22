@@ -1,29 +1,37 @@
-import os
 import json
+import os
 import sys
-import re
+
 import html2markdown
-from pprint import pprint
-from bs4 import BeautifulSoup, NavigableString
-from universal.universal import parse_universal, print_struct, entity_pass
-from universal.universal import extract_link, nethys_search_pass
-from universal.universal import source_pass, extract_source, get_links
-from universal.universal import aon_pass, restructure_pass, html_pass
-from universal.universal import remove_empty_sections_pass, game_id_pass
-from universal.universal import build_object, handle_alternate_link
-from universal.creatures import universal_handle_alignment
-from universal.markdown import md
-from universal.files import makedirs, char_replace
-from universal.utils import get_text, bs_pop_spaces
-from universal.utils import log_element, get_unique_tag_set
-from pfsrd2.schema import validate_against_schema
+from bs4 import BeautifulSoup
+
 from pfsrd2.license import license_pass
+from pfsrd2.schema import validate_against_schema
+from universal.creatures import universal_handle_alignment
+from universal.files import char_replace, makedirs
+from universal.markdown import md
+from universal.universal import (
+    aon_pass,
+    build_object,
+    entity_pass,
+    extract_link,
+    extract_source,
+    game_id_pass,
+    get_links,
+    handle_alternate_link,
+    nethys_search_pass,
+    parse_universal,
+    remove_empty_sections_pass,
+    restructure_pass,
+    source_pass,
+)
+from universal.utils import bs_pop_spaces, get_text, get_unique_tag_set, log_element
 
 
 def parse_trait(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
-        sys.stderr.write("%s\n" % basename)
+        sys.stderr.write(f"{basename}\n")
     details = parse_universal(
         filename, max_title=4, cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput"
     )
@@ -63,7 +71,7 @@ def restructure_trait_pass(details):
     sb = None
     rest = []
     for obj in details:
-        if sb == None:
+        if sb is None:
             sb = obj
         else:
             rest.append(obj)
@@ -250,7 +258,7 @@ def trait_cleanup_pass(struct):
         if len(trait["sections"]) == 0:
             del trait["sections"]
         else:
-            assert False, struct
+            raise AssertionError(struct)
         # assert 'sections' not in struct, struct
 
     def _clean_classes():
@@ -282,7 +290,7 @@ def trait_cleanup_pass(struct):
 
 
 def write_trait(jsondir, struct, source):
-    print("%s (%s): %s" % (struct["game-obj"], source, struct["name"]))
+    print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
     filename = create_trait_filename(jsondir, struct)
     fp = open(filename, "w")
     json.dump(struct, fp, indent=4)
@@ -296,27 +304,25 @@ def create_trait_filename(jsondir, struct):
 
 def markdown_pass(struct, name, path):
     def _validate_acceptable_tags(text):
-        validset = set(["i", "b", "u", "strong", "ol", "ul", "li", "br", "table", "tr", "td", "hr"])
+        validset = {"i", "b", "u", "strong", "ol", "ul", "li", "br", "table", "tr", "td", "hr"}
         if "license" in struct:
             validset.add("p")
         tags = get_unique_tag_set(text)
-        assert tags.issubset(validset), "%s : %s - %s" % (name, text, tags)
+        assert tags.issubset(validset), f"{name} : {text} - {tags}"
 
     for k, v in struct.items():
         if isinstance(v, dict):
-            markdown_pass(v, name, "%s/%s" % (path, k))
+            markdown_pass(v, name, f"{path}/{k}")
         elif isinstance(v, list):
             for item in v:
                 if isinstance(item, dict):
-                    markdown_pass(item, name, "%s/%s" % (path, k))
-                elif isinstance(item, str):
-                    if item.find("<") > -1:
-                        assert False  # For now, I'm unaware of any tags in lists of strings
-        elif isinstance(v, str):
-            if v.find("<") > -1:
-                _validate_acceptable_tags(v)
-                struct[k] = md(v).strip()
-                log_element("markdown.log")("%s : %s" % ("%s/%s" % (path, k), name))
+                    markdown_pass(item, name, f"{path}/{k}")
+                elif isinstance(item, str) and item.find("<") > -1:
+                    raise AssertionError()  # For now, I'm unaware of any tags in lists of strings
+        elif isinstance(v, str) and v.find("<") > -1:
+            _validate_acceptable_tags(v)
+            struct[k] = md(v).strip()
+            log_element("markdown.log")("{} : {}".format(f"{path}/{k}", name))
 
 
 def extract_starting_traits(description):

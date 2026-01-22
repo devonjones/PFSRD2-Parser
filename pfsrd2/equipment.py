@@ -1,47 +1,54 @@
-import os
-import json
-import sys
-import re
 import importlib
-from pprint import pprint
+import json
+import os
+import re
+import sys
+
 from bs4 import BeautifulSoup, NavigableString, Tag
-from universal.markdown import markdown_pass
-from universal.universal import parse_universal, entity_pass
-from universal.universal import is_trait, extract_link, extract_links
-from universal.universal import string_with_modifiers_from_string_list
-from universal.utils import split_maintain_parens
-from universal.universal import source_pass, extract_source
-from universal.universal import aon_pass, restructure_pass
-from universal.universal import remove_empty_sections_pass, get_links
-from universal.universal import walk, test_key_is_value
-from universal.universal import remove_empty_sections_pass, game_id_pass
-from universal.universal import link_modifiers
-from universal.universal import link_values, link_value
-from universal.universal import edition_pass
-from universal.universal import build_object, build_objects
-from universal.universal import href_filter
-from universal.files import makedirs, char_replace
-from universal.creatures import write_creature
-from universal.utils import log_element, is_tag_named, get_text
-from universal.utils import get_unique_tag_set
-from universal.utils import get_text, bs_pop_spaces
-from universal.utils import clear_garbage
-from universal.utils import clear_tags, split_on_tag, split_comma_and_semicolon
-from pfsrd2.schema import validate_against_schema
-from pfsrd2.trait import trait_parse
-from pfsrd2.trait import extract_span_traits
-from pfsrd2.action import extract_action_type
-from pfsrd2.license import license_pass, license_consolidation_pass
-from pfsrd2.sql import get_db_path, get_db_connection
-from pfsrd2.sql.traits import fetch_trait_by_name, fetch_trait_by_link
+
 import pfsrd2.constants as constants
+from pfsrd2.action import extract_action_type
 
 # Import stat block parsing utilities from creatures.py
-from pfsrd2.creatures import split_stat_block_line, rebuilt_split_modifiers
-from pfsrd2.creatures import parse_section_modifiers, parse_section_value
+from pfsrd2.creatures import (
+    parse_section_modifiers,
+    rebuilt_split_modifiers,
+    split_stat_block_line,
+)
+from pfsrd2.license import license_consolidation_pass, license_pass
+from pfsrd2.schema import validate_against_schema
+from pfsrd2.sql import get_db_connection, get_db_path
+from pfsrd2.sql.traits import fetch_trait_by_link, fetch_trait_by_name
 
 # Import DC/save parsing from universal
-from universal.creatures import universal_handle_save_dc, universal_handle_range
+from universal.creatures import universal_handle_range, universal_handle_save_dc, write_creature
+from universal.files import char_replace, makedirs
+from universal.markdown import markdown_pass
+from universal.universal import (
+    aon_pass,
+    build_object,
+    build_objects,
+    edition_pass,
+    extract_link,
+    extract_links,
+    extract_source,
+    game_id_pass,
+    get_links,
+    href_filter,
+    link_modifiers,
+    remove_empty_sections_pass,
+    restructure_pass,
+    test_key_is_value,
+    walk,
+)
+from universal.utils import (
+    clear_garbage,
+    clear_tags,
+    get_text,
+    split_comma_and_semicolon,
+    split_maintain_parens,
+    split_on_tag,
+)
 
 
 # Equipment Type Configuration Registry
@@ -243,9 +250,7 @@ def _count_links_in_html(html_text, exclude_name=None, debug=False):
                     from universal.utils import get_text
 
                     div_text = get_text(parent).strip()
-                    if "Legacy version" in div_text or "Remastered version" in div_text:
-                        return True
-                    return False
+                    return bool("Legacy version" in div_text or "Remastered version" in div_text)
             parent = parent.parent
         return False
 
@@ -628,7 +633,7 @@ def parse_equipment(filename, options):
 
     basename = os.path.basename(filename)
     if not options.stdout:
-        sys.stderr.write("%s\n" % basename)
+        sys.stderr.write(f"{basename}\n")
 
     # Equipment HTML has flat structure - parse directly from HTML
     details = parse_equipment_html(filename, equipment_type)
@@ -883,7 +888,7 @@ def extract_name_link(detailed_output, equipment_type=None):
         if link and is_name_link(link):
             return link
 
-    assert False, f"Could not find equipment name link (type={equipment_type})"
+    raise AssertionError(f"Could not find equipment name link (type={equipment_type})")
 
 
 def restructure_equipment_pass(details, equipment_type):
@@ -921,9 +926,9 @@ def find_stat_block(struct):
     for s in struct.get("sections", []):
         if s.get("type") == "stat_block":
             return s
-    assert (
-        False
-    ), f"No stat_block found in equipment structure. Type: {struct.get('type', 'unknown')}"
+    raise AssertionError(
+        f"No stat_block found in equipment structure. Type: {struct.get('type', 'unknown')}"
+    )
 
 
 def section_pass(struct, config, debug=False):
@@ -1424,15 +1429,12 @@ def _parse_siege_weapon_launch(text):
 
     # Find where the DC ends
     dc_end = match.end()
-    before_dc = text[:dc_end].strip()
+    text[:dc_end].strip()
     after_dc = text[dc_end:].strip()
 
     # Split after_dc by ; or . to separate remaining text
     remaining_text = ""
-    if after_dc.startswith(";"):
-        remaining_text = after_dc[1:].strip()
-        after_dc = ""
-    elif after_dc.startswith("."):
+    if after_dc.startswith(";") or after_dc.startswith("."):
         remaining_text = after_dc[1:].strip()
         after_dc = ""
     elif ";" in after_dc:
@@ -1440,26 +1442,26 @@ def _parse_siege_weapon_launch(text):
         # The save might have extra text before the semicolon
         if parts[0].strip():
             # This means there's extra text attached to the save - HTML needs fixing
-            assert (
-                False
-            ), f"Save DC has extra text before semicolon - HTML needs fixing. Text: '{text}'"
+            raise AssertionError(
+                f"Save DC has extra text before semicolon - HTML needs fixing. Text: '{text}'"
+            )
         remaining_text = parts[1].strip()
     elif "." in after_dc:
         # Period is used as separator (HTML error, but we'll handle it)
         parts = after_dc.split(".", 1)
         if parts[0].strip():
             # Extra text before period
-            assert (
-                False
-            ), f"Save DC has extra text before period - HTML needs fixing. Text: '{text}'"
+            raise AssertionError(
+                f"Save DC has extra text before period - HTML needs fixing. Text: '{text}'"
+            )
         remaining_text = parts[1].strip()
     else:
         # No separator found - save is at the end
         if after_dc.strip():
             # There's extra text but no separator - needs fixing
-            assert (
-                False
-            ), f"Save DC has extra text but no separator - HTML needs fixing. Text: '{text}'"
+            raise AssertionError(
+                f"Save DC has extra text but no separator - HTML needs fixing. Text: '{text}'"
+            )
 
     # Parse the DC text
     dc_text = match.group(1)
@@ -1485,9 +1487,9 @@ def _parse_siege_weapon_launch(text):
         target = parts[1]
     else:
         # Unexpected format
-        assert (
-            False
-        ), f"Launch should have damage, target (or just target) before save. Got {len(parts)} parts. Text: '{text}'"
+        raise AssertionError(
+            f"Launch should have damage, target (or just target) before save. Got {len(parts)} parts. Text: '{text}'"
+        )
 
     # Parse the DC using the universal function
     save_dc = universal_handle_save_dc(dc_text)
@@ -1622,7 +1624,7 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
                 if tag_text in addon_names:
                     processed_bolds.add(current)
 
-            if isinstance(current, NavigableString) or isinstance(current, Tag):
+            if isinstance(current, (NavigableString, Tag)):
                 content_parts.append(str(current))
 
             current = current.next_sibling
@@ -1830,7 +1832,7 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
                     del ability["text"]
             except AssertionError as e:
                 # Re-raise assertion errors with context about which siege weapon
-                raise AssertionError(f"Launch action parsing failed: {e}")
+                raise AssertionError(f"Launch action parsing failed: {e}") from e
 
         # Now look for result fields (Success, Failure, etc.) after the <br>
         # Continue from where we stopped
@@ -1861,9 +1863,7 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
                             "br",
                         ):
                             break
-                        if isinstance(field_current, NavigableString) or isinstance(
-                            field_current, Tag
-                        ):
+                        if isinstance(field_current, (NavigableString, Tag)):
                             field_parts.append(str(field_current))
                         field_current = field_current.next_sibling
 
@@ -2316,9 +2316,9 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
             if equipment_type == "equipment":
                 continue  # Skip - might be ability name like Activate, Effect, etc.
             else:
-                assert (
-                    False
-                ), f"Unknown {equipment_type} stat label: '{label}'. Add it to EQUIPMENT_TYPES['{equipment_type}']['recognized_stats']."
+                raise AssertionError(
+                    f"Unknown {equipment_type} stat label: '{label}'. Add it to EQUIPMENT_TYPES['{equipment_type}']['recognized_stats']."
+                )
 
         # Skip labels we handle elsewhere (like Source)
         field_name = recognized_stats[label]
@@ -2438,7 +2438,6 @@ def _extract_stat_value(label_tag, preserve_html=False):
     # e.g., "swim 20 feet (alchemical; underwater only); Collision 2d8" splits to
     # ["swim 20 feet (alchemical; underwater only)", "Collision 2d8"]
     # We only want the first value for this stat
-    from universal.utils import split_maintain_parens
 
     parts = split_maintain_parens(value_text, ";")
     if parts:
@@ -2449,7 +2448,7 @@ def _extract_stat_value(label_tag, preserve_html=False):
 
     # Empty string indicates malformed HTML (stat label with no value)
     if value_text == "":
-        raise ValueError(f"Empty value for stat label")
+        raise ValueError("Empty value for stat label")
 
     return value_text
 
@@ -2574,6 +2573,7 @@ def _should_exclude_link(link):
     Returns True if the link should be excluded (not counted).
     """
     from bs4 import NavigableString, Tag
+
     from universal.utils import get_text
 
     # Exclude trait links ONLY if inside <span class="trait*"> tags (stat block traits)
@@ -2619,9 +2619,7 @@ def _should_exclude_link(link):
             div_classes = parent.get("class", [])
             if "siderbarlook" in div_classes:
                 div_text = get_text(parent).strip()
-                if "Legacy version" in div_text or "Remastered version" in div_text:
-                    return True
-                return False
+                return bool("Legacy version" in div_text or "Remastered version" in div_text)
         parent = parent.parent
 
     return False
@@ -2772,7 +2770,7 @@ def _extract_base_material(bs, sb, debug=False):
                         break
 
             if debug:
-                sys.stderr.write(f"DEBUG: _extract_base_material returning 1\n")
+                sys.stderr.write("DEBUG: _extract_base_material returning 1\n")
             return 1  # One link was extracted (moved outside br loop)
 
     return 0
@@ -2792,8 +2790,6 @@ def _extract_description(bs, struct, debug=False):
     Text is added to stat_block['text'], and links (if any) to stat_block['links'].
     Only creates sections if there are actual headings (h2, h3) after the description.
     """
-    import sys
-    from universal.utils import split_on_tag
     from universal.universal import get_links
 
     # Split by <hr> tags to get sections
@@ -3042,9 +3038,8 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
                 isinstance(current, Tag)
                 and current.name == "b"
                 and current.get_text().strip() == "Activate"
-            ):
-                if current in activate_bolds[i + 1 :]:
-                    break
+            ) and current in activate_bolds[i + 1 :]:
+                break
             # Stop at <hr> tags - content after hr is description, not ability
             if isinstance(current, Tag) and current.name == "hr":
                 break
@@ -3076,7 +3071,7 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
         # Extract sub-fields: Frequency, Trigger, Effect, Requirements
         ability_fields = ["Frequency", "Trigger", "Effect", "Requirements"]
         for field in ability_fields:
-            field_bold = ability_soup.find("b", string=lambda s: s and s.strip() == field)
+            field_bold = ability_soup.find("b", string=lambda s, f=field: s and s.strip() == f)
             if field_bold:
                 # Get value after the bold tag until next bold or end
                 value_parts = []
@@ -3198,7 +3193,7 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
                     if paren_end > paren_start:
                         parens_content = text[paren_start + 1 : paren_end].strip()
                         text_before = text[:paren_start].strip()
-                        text_after = text[paren_end + 1 :].strip()
+                        text[paren_end + 1 :].strip()
 
                         # Check which trait links are in the parentheses
                         for trait_link in trait_links:
@@ -4291,8 +4286,7 @@ def _normalize_speed(sb):
     if not value_str:
         return
 
-    from universal.universal import build_objects, link_modifiers
-    from universal.utils import split_maintain_parens, split_comma_and_semicolon
+    from universal.utils import split_maintain_parens
 
     # Split by comma while respecting parentheses to get individual speed entries
     speed_entries = split_maintain_parens(value_str.strip(), ",")
@@ -4311,8 +4305,7 @@ def _normalize_speed(sb):
 
 def _parse_single_speed(entry):
     """Parse a single speed entry like 'fly 40 feet (magical)' into a speed object."""
-    from universal.universal import build_objects, link_modifiers
-    from universal.utils import split_comma_and_semicolon
+    from universal.universal import build_objects
 
     # Extract modifiers from parentheses at end
     modifier_text = None
@@ -4563,7 +4556,7 @@ def trait_db_pass(struct):
         else:
             kwargs["remastered_trait_id"] = db_trait["trait_id"]
         data = fetch_trait_by_link(curs, **kwargs)
-        assert data, "%s | %s" % (data, trait)
+        assert data, f"{data} | {trait}"
         return json.loads(data["trait"])
 
     def _handle_value(trait):
@@ -4601,7 +4594,7 @@ def trait_db_pass(struct):
             _handle_value(trait)
             data = fetch_trait_by_name(curs, trait["name"])
 
-        assert data, "Trait not found in database: %s (original: %s)" % (
+        assert data, "Trait not found in database: {} (original: {})".format(
             trait["name"],
             original_name,
         )
@@ -4641,7 +4634,7 @@ def trait_db_pass(struct):
 
 def equipment_group_pass(struct, config):
     """Enrich equipment group objects with full data from database."""
-    sb = struct.get("stat_block", {})
+    struct.get("stat_block", {})
 
     group_table = config["group_table"]
     group_subtype = config["group_subtype"]
@@ -4952,9 +4945,9 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
             if "category" in statistics and "category" in weapon:
                 assert (
                     statistics["category"] == weapon["category"]
-                ), f"statistics.category != weapon.category"
+                ), "statistics.category != weapon.category"
             if "hands" in statistics:
-                assert statistics["hands"] == weapon["hands"], f"statistics.hands != weapon.hands"
+                assert statistics["hands"] == weapon["hands"], "statistics.hands != weapon.hands"
             if "favored_weapon" in statistics:
                 assert (
                     statistics["favored_weapon"] == weapon["favored_weapon"]
@@ -4966,11 +4959,11 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
             if "category" in statistics and "category" in armor:
                 assert (
                     statistics["category"] == armor["category"]
-                ), f"statistics.category != armor.category"
+                ), "statistics.category != armor.category"
             if "strength_requirement" in statistics:
                 assert (
                     statistics["strength_requirement"] == armor["strength"]
-                ), f"statistics.strength_requirement != armor.strength"
+                ), "statistics.strength_requirement != armor.strength"
 
     # Validate defense bucket
     if defense:
@@ -4980,21 +4973,21 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
             if "ac_bonus" in defense and "ac_bonus" in armor:
                 assert (
                     defense["ac_bonus"] == armor["ac_bonus"]
-                ), f"defense.ac_bonus != armor.ac_bonus"
+                ), "defense.ac_bonus != armor.ac_bonus"
             if "dex_cap" in defense:
-                assert defense["dex_cap"] == armor["dex_cap"], f"defense.dex_cap != armor.dex_cap"
+                assert defense["dex_cap"] == armor["dex_cap"], "defense.dex_cap != armor.dex_cap"
             if "check_penalty" in defense:
                 assert (
                     defense["check_penalty"] == armor["check_penalty"]
-                ), f"defense.check_penalty != armor.check_penalty"
+                ), "defense.check_penalty != armor.check_penalty"
             if "speed_penalty" in defense and "speed_penalty" in armor:
                 assert (
                     defense["speed_penalty"] == armor["speed_penalty"]
-                ), f"defense.speed_penalty != armor.speed_penalty"
+                ), "defense.speed_penalty != armor.speed_penalty"
             if "armor_group" in defense:
                 assert (
                     defense["armor_group"] == armor["armor_group"]
-                ), f"defense.armor_group != armor.armor_group"
+                ), "defense.armor_group != armor.armor_group"
 
         # Check shield fields
         if "shield" in stat_block:
@@ -5002,39 +4995,39 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
             if "ac_bonus" in defense and "ac_bonus" in shield:
                 assert (
                     defense["ac_bonus"] == shield["ac_bonus"]
-                ), f"defense.ac_bonus != shield.ac_bonus"
+                ), "defense.ac_bonus != shield.ac_bonus"
             if "speed_penalty" in defense and "speed_penalty" in shield:
                 assert (
                     defense["speed_penalty"] == shield["speed_penalty"]
-                ), f"defense.speed_penalty != shield.speed_penalty"
+                ), "defense.speed_penalty != shield.speed_penalty"
             if "hitpoints" in defense:
                 assert (
                     defense["hitpoints"] == shield["hitpoints"]
-                ), f"defense.hitpoints != shield.hitpoints"
+                ), "defense.hitpoints != shield.hitpoints"
 
         # Check siege weapon fields
         if "siege_weapon" in stat_block:
             siege = stat_block["siege_weapon"]
             if "ac" in defense:
-                assert defense["ac"] == siege["ac"], f"defense.ac != siege.ac"
+                assert defense["ac"] == siege["ac"], "defense.ac != siege.ac"
             if "hitpoints" in defense and "hitpoints" in siege:
                 assert (
                     defense["hitpoints"] == siege["hitpoints"]
-                ), f"defense.hitpoints != siege.hitpoints"
+                ), "defense.hitpoints != siege.hitpoints"
             if "speed" in defense:
-                assert defense["speed"] == siege["speed"], f"defense.speed != siege.speed"
+                assert defense["speed"] == siege["speed"], "defense.speed != siege.speed"
             # Validate saves (old structure has integers, new has save objects)
             if "saves" in defense:
                 if "fort" in siege:
                     assert "fort" in defense["saves"], "Missing fort in defense.saves"
                     assert (
                         defense["saves"]["fort"]["value"] == siege["fort"]
-                    ), f"defense.saves.fort.value != siege.fort"
+                    ), "defense.saves.fort.value != siege.fort"
                 if "ref" in siege:
                     assert "ref" in defense["saves"], "Missing ref in defense.saves"
                     assert (
                         defense["saves"]["ref"]["value"] == siege["ref"]
-                    ), f"defense.saves.ref.value != siege.ref"
+                    ), "defense.saves.ref.value != siege.ref"
 
     # Validate offense bucket
     if offense:
@@ -5063,7 +5056,7 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
             if "ammunition" in offense and "ammunition" in weapon:
                 assert (
                     offense["ammunition"] == weapon["ammunition"]
-                ), f"offense.ammunition != weapon.ammunition"
+                ), "offense.ammunition != weapon.ammunition"
 
         # Check siege weapon ammunition
         if "siege_weapon" in stat_block:
@@ -5071,59 +5064,59 @@ def _validate_bucket_data(stat_block, statistics, defense, offense):
             if "ammunition" in offense and "ammunition" in siege:
                 assert (
                     offense["ammunition"] == siege["ammunition"]
-                ), f"offense.ammunition != siege.ammunition"
+                ), "offense.ammunition != siege.ammunition"
 
         # Check vehicle collision and speed
         if "vehicle" in stat_block:
             vehicle = stat_block["vehicle"]
             if "speed" in offense:
-                assert offense["speed"] == vehicle["speed"], f"offense.speed != vehicle.speed"
+                assert offense["speed"] == vehicle["speed"], "offense.speed != vehicle.speed"
             if "collision" in offense:
                 assert (
                     offense["collision"] == vehicle["collision"]
-                ), f"offense.collision != vehicle.collision"
+                ), "offense.collision != vehicle.collision"
 
     # Validate vehicle fields in statistics
     if statistics and "vehicle" in stat_block:
         vehicle = stat_block["vehicle"]
         if "space" in statistics:
-            assert statistics["space"] == vehicle["space"], f"statistics.space != vehicle.space"
+            assert statistics["space"] == vehicle["space"], "statistics.space != vehicle.space"
         if "crew" in statistics:
-            assert statistics["crew"] == vehicle["crew"], f"statistics.crew != vehicle.crew"
+            assert statistics["crew"] == vehicle["crew"], "statistics.crew != vehicle.crew"
         if "passengers" in statistics:
             assert (
                 statistics["passengers"] == vehicle["passengers"]
-            ), f"statistics.passengers != vehicle.passengers"
+            ), "statistics.passengers != vehicle.passengers"
         if "piloting_check" in statistics:
             assert (
                 statistics["piloting_check"] == vehicle["piloting_check"]
-            ), f"statistics.piloting_check != vehicle.piloting_check"
+            ), "statistics.piloting_check != vehicle.piloting_check"
 
     # Validate vehicle fields in defense
     if defense and "vehicle" in stat_block:
         vehicle = stat_block["vehicle"]
         if "ac" in defense:
-            assert defense["ac"] == vehicle["ac"], f"defense.ac != vehicle.ac"
+            assert defense["ac"] == vehicle["ac"], "defense.ac != vehicle.ac"
         if "hardness" in defense:
             assert (
                 defense["hardness"] == vehicle["hardness"]
-            ), f"defense.hardness != vehicle.hardness"
+            ), "defense.hardness != vehicle.hardness"
         if "hitpoints" in defense and "hp_bt" in vehicle:
-            assert defense["hitpoints"] == vehicle["hp_bt"], f"defense.hitpoints != vehicle.hp_bt"
+            assert defense["hitpoints"] == vehicle["hp_bt"], "defense.hitpoints != vehicle.hp_bt"
         if "immunities" in defense:
             assert (
                 defense["immunities"] == vehicle["immunities"]
-            ), f"defense.immunities != vehicle.immunities"
+            ), "defense.immunities != vehicle.immunities"
         if "weaknesses" in defense:
             assert (
                 defense["weaknesses"] == vehicle["weaknesses"]
-            ), f"defense.weaknesses != vehicle.weaknesses"
+            ), "defense.weaknesses != vehicle.weaknesses"
         # Validate fort save
         if "saves" in defense and "fort" in vehicle:
             assert "fort" in defense["saves"], "Missing fort in defense.saves"
             assert (
                 defense["saves"]["fort"]["value"] == vehicle["fort"]
-            ), f"defense.saves.fort.value != vehicle.fort"
+            ), "defense.saves.fort.value != vehicle.fort"
 
 
 def populate_equipment_buckets_pass(struct):

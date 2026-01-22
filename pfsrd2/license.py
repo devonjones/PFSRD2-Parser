@@ -1,16 +1,14 @@
-import os
 import json
+import os
 import sys
-import re
-import html2markdown
-from pprint import pprint
+
 from bs4 import BeautifulSoup
-from universal.universal import parse_universal, entity_pass
-from universal.universal import remove_empty_sections_pass
-from universal.files import makedirs, char_replace
+
+from pfsrd2.constants import ORC_LICENSE
 from pfsrd2.data import get_data
 from pfsrd2.sql import get_db_path
-from pfsrd2.constants import ORC_LICENSE
+from universal.files import char_replace, makedirs
+from universal.universal import entity_pass, parse_universal, remove_empty_sections_pass
 
 # TODO markdown the licenses
 
@@ -18,7 +16,7 @@ from pfsrd2.constants import ORC_LICENSE
 def parse_license(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
-        sys.stderr.write("%s\n" % basename)
+        sys.stderr.write(f"{basename}\n")
     details = parse_universal(filename, max_title=4, cssclass="main")
     ogl = ogl_pass(details)
     sec8 = parse_universal(
@@ -59,12 +57,14 @@ def additional_sections_pass(ogl):
     added_sections = get_data("additional_ogl.json")
     section_names = [s["name"] for s in ogl["sections"]]
     for section in added_sections:
-        assert section["name"] not in section_names, "Section 8 conflict: %s" % section["name"]
+        assert section["name"] not in section_names, "Section 8 conflict: {}".format(
+            section["name"]
+        )
         ogl["sections"].append(section)
 
 
 def write_license(jsondir, struct):
-    print("%s: %s" % ("license", struct["name"]))
+    print("{}: {}".format("license", struct["name"]))
     filename = create_license_filename(jsondir, struct)
     fp = open(filename, "w")
     json.dump(struct, fp, indent=4)
@@ -120,14 +120,12 @@ def get_ogl_license(sources):
     license["subtype"] = "license"
     license["license"] = license["name"]
     sec_8 = license_data["sections"]
-    try:
-        return get_license(license, license, sec_8, sources)
-    finally:
-        for source in sources:
-            found = any(sec["name"] == source["name"] for sec in sec_8)
-            if not found:
-                print(f"Could not find source in license: {source['name']}")
-        return license
+    result = get_license(license, license, sec_8, sources)
+    for source in sources:
+        found = any(sec["name"] == source["name"] for sec in sec_8)
+        if not found:
+            print(f"Could not find source in license: {source['name']}")
+    return result
 
 
 def license_pass(struct):
@@ -144,7 +142,7 @@ def license_consolidation_pass(struct):
         if "license" in struct:
             retlist.append(struct["license"])
             del struct["license"]
-        for k, v in struct.items():
+        for _k, v in struct.items():
             if isinstance(v, dict):
                 retlist.extend(_get_licenses(v))
             elif isinstance(v, list):

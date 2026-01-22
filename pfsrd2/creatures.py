@@ -1,43 +1,63 @@
-import deepdiff
-import os
 import json
-import sys
+import os
 import re
+import sys
 from pprint import pprint
+
 from bs4 import BeautifulSoup, NavigableString, Tag
-from universal.markdown import markdown_pass
-from universal.universal import parse_universal, entity_pass
-from universal.universal import is_trait, extract_link
-from universal.universal import string_with_modifiers_from_string_list
-from universal.universal import string_with_modifiers
-from universal.utils import split_maintain_parens
-from universal.utils import split_on_tag
-from universal.utils import clear_garbage
-from universal.universal import source_pass, extract_source
-from universal.universal import aon_pass, restructure_pass
-from universal.universal import remove_empty_sections_pass, get_links
-from universal.universal import handle_alternate_link
-from universal.universal import walk, test_key_is_value
-from universal.universal import link_modifiers, edition_pass
-from universal.universal import link_values, link_value, extract_links
-from universal.universal import build_object, build_objects, link_objects
-from universal.files import makedirs, char_replace
-from universal.creatures import write_creature
-from universal.creatures import universal_handle_special_senses
-from universal.creatures import universal_handle_perception
-from universal.creatures import universal_handle_senses
-from universal.creatures import universal_handle_save_dc
-from universal.creatures import universal_handle_range
-from universal.utils import log_element, is_tag_named, get_text
-from universal.utils import get_unique_tag_set
-from pfsrd2.schema import validate_against_schema
-from pfsrd2.trait import trait_parse, extract_starting_traits
-from pfsrd2.license import license_pass, license_consolidation_pass
-from pfsrd2.action import extract_action_type, build_action_type
-from pfsrd2.sql import get_db_path, get_db_connection
-from pfsrd2.sql.traits import fetch_trait_by_name, fetch_trait_by_link
-from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
+
 import pfsrd2.constants as constants
+from pfsrd2.action import build_action_type, extract_action_type
+from pfsrd2.license import license_consolidation_pass, license_pass
+from pfsrd2.schema import validate_against_schema
+from pfsrd2.sql import get_db_connection, get_db_path
+from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
+from pfsrd2.sql.traits import fetch_trait_by_link, fetch_trait_by_name
+from pfsrd2.trait import extract_starting_traits, trait_parse
+from universal.creatures import (
+    universal_handle_perception,
+    universal_handle_range,
+    universal_handle_save_dc,
+    universal_handle_senses,
+    universal_handle_special_senses,
+    write_creature,
+)
+from universal.files import char_replace, makedirs
+from universal.markdown import markdown_pass
+from universal.universal import (
+    aon_pass,
+    build_object,
+    build_objects,
+    edition_pass,
+    entity_pass,
+    extract_link,
+    extract_links,
+    extract_source,
+    get_links,
+    handle_alternate_link,
+    is_trait,
+    link_modifiers,
+    link_objects,
+    link_value,
+    link_values,
+    parse_universal,
+    remove_empty_sections_pass,
+    restructure_pass,
+    source_pass,
+    string_with_modifiers,
+    string_with_modifiers_from_string_list,
+    test_key_is_value,
+    walk,
+)
+from universal.utils import (
+    clear_garbage,
+    get_text,
+    get_unique_tag_set,
+    is_tag_named,
+    log_element,
+    split_maintain_parens,
+    split_on_tag,
+)
 
 # TODO: Greater barghest (43), deal with mutations
 # TODO: Some creatures have actions that are inlined in text.  Example are the
@@ -62,7 +82,7 @@ import pfsrd2.constants as constants
 def parse_creature(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
-        sys.stderr.write("%s\n" % basename)
+        sys.stderr.write(f"{basename}\n")
     details = parse_universal(
         filename,
         subtitle_text=True,
@@ -124,18 +144,14 @@ def section_pass(struct):
         def _tag_is_action(tag):
             assert "class" in tag.attrs, tag
             tag_class = tag["class"]
-            if "action" in tag_class:
-                return True
-            return False
+            return "action" in tag_class
 
         def _tag_is_trait(tag):
             assert "class" in tag.attrs, tag
             tag_class = tag["class"]
             if "trait" in tag_class:
                 return True
-            if "traitrare" in tag_class:
-                return True
-            return False
+            return "traitrare" in tag_class
 
         if "text" in section:
             bs = BeautifulSoup(section["text"].strip(), "html.parser")
@@ -147,7 +163,7 @@ def section_pass(struct):
                 elif _tag_is_trait(tag):
                     _handle_trait(section, tag)
                 else:
-                    assert False, tag
+                    raise AssertionError(tag)
             section["text"] = str(bs)
 
     def _handle_called_actions(section):
@@ -190,7 +206,7 @@ def section_pass(struct):
                     if current == "Requirements":
                         current = "Requirement"
                 elif current:
-                    assert current in addon_names, "%s, %s" % (current, addon_names)
+                    assert current in addon_names, f"{current}, {addon_names}"
                     addon_text = str(child)
                     if addon_text.strip().endswith(";"):
                         addon_text = addon_text.rstrip()[:-1]
@@ -199,14 +215,14 @@ def section_pass(struct):
                     parts.append(str(child))
             for k, v in addons.items():
                 if k == "range":
-                    assert len(v) == 1, "Malformed range: %s" % v
+                    assert len(v) == 1, f"Malformed range: {v}"
                     called_action["range"] = universal_handle_range(v[0])
                 else:
                     called_action[k] = clear_garbage(v)
             if len(parts) > 0:
                 called_action["text"] = clear_garbage(parts)
 
-        if not "text" in section:
+        if "text" not in section:
             return
         bs = BeautifulSoup(section["text"].strip(), "html.parser")
         content = bs.findAll("div", {"class": "calledAction"})
@@ -252,7 +268,7 @@ def section_pass(struct):
                 children.pop(0).decompose()
             if children:
                 children = [c for c in children if str(c).strip() != ""]
-                if not type(children[0]) == Tag:
+                if type(children[0]) != Tag:
                     return
                 if get_text(children[0]).strip() == "Source":
                     children.pop(0).decompose()
@@ -314,7 +330,7 @@ def trait_db_pass(struct):
         else:
             kwargs["remastered_trait_id"] = db_trait["trait_id"]
         data = fetch_trait_by_link(curs, **kwargs)
-        assert data, "%s | %s" % (data, trait)
+        assert data, f"{data} | {trait}"
         return json.loads(data["trait"])
 
     def _check_trait(trait, parent):
@@ -323,14 +339,11 @@ def trait_db_pass(struct):
             _handle_alignment_trait(trait, parent)
         else:
             data = fetch_trait_by_name(curs, trait["name"])
-            assert data, "%s | %s" % (data, trait)
+            assert data, f"{data} | {trait}"
             db_trait = _handle_trait_link(data)
             _merge_classes(trait, db_trait)
             if "link" in trait and trait["link"]["game-obj"] == "Trait":
-                assert trait["link"]["aonid"] == db_trait["aonid"], "%s : %s" % (
-                    trait,
-                    db_trait,
-                )
+                assert trait["link"]["aonid"] == db_trait["aonid"], f"{trait} : {db_trait}"
             assert isinstance(parent, list), parent
             index = parent.index(trait)
             if "value" in trait:
@@ -451,7 +464,7 @@ def monster_ability_db_pass(struct):
             if newtrait:
                 db_ability["traits"].append(newtrait)
                 return
-        assert False, "Shouldn't get here"
+        raise AssertionError("Shouldn't get here")
 
     def _check_ability(ability, parent):
         abilities = fetch_monster_abilities_by_name(curs, ability["name"])
@@ -476,7 +489,7 @@ def restructure_creature_pass(details, subtype, edition):
                 for img in imgs:
                     if img["alt"].startswith("PFS"):
                         _, pfs = img["alt"].split(" ")
-                        assert pfs in ["Standard", "Limited", "Restricted"], "Bad PFS: %s" % pfs
+                        assert pfs in ["Standard", "Limited", "Restricted"], f"Bad PFS: {pfs}"
                         sb["creature_type"]["pfs"] = pfs
                         img.extract()
                 obj["text"] = str(bs)
@@ -488,7 +501,7 @@ def restructure_creature_pass(details, subtype, edition):
     sb = None
     rest = []
     for obj in details:
-        if sb == None and "subname" in obj and obj["subname"].startswith("Creature"):
+        if sb is None and "subname" in obj and obj["subname"].startswith("Creature"):
             assert not sb
             sb = obj
         else:
@@ -543,14 +556,14 @@ def trait_pass(struct):
             trait["classes"].append("monsters")
             consumed = True
         if not consumed:
-            assert False, "Trait not consumed: %s" % trait
+            raise AssertionError(f"Trait not consumed: {trait}")
 
     if "rarity" not in sb["creature_type"]:
         sb["creature_type"]["rarity"] = "Common"
     if "creature_types" not in sb["creature_type"]:
-        assert False, "Has no creature types"
+        raise AssertionError("Has no creature types")
     if "size" not in sb["creature_type"]:
-        assert False, "Has no size"
+        raise AssertionError("Has no size")
 
 
 def creature_stat_block_pass(struct):
@@ -587,13 +600,13 @@ def creature_stat_block_pass(struct):
                 paste_sections.append(section)
 
     def _handle_title_before_speed(sb):
-        if not "text" in sb:
+        if "text" not in sb:
             # TODO add this to the creature
             assert sb["sections"][0]["name"] == "Legacy Content", sb
             section = sb["sections"].pop(0)
             sb["text"] = section["text"]
         text = sb["text"]
-        if not "<b>Speed</b>" in text:
+        if "<b>Speed</b>" not in text:
             sections = []
             parts = []
             found = False
@@ -608,7 +621,7 @@ def creature_stat_block_pass(struct):
             sb["sections"] = sections
             for section in parts:
                 assert len(section["sections"]) == 0, section
-                text = text + "<b>%s</b>%s" % (section["name"], section.get("text", ""))
+                text = text + "<b>{}</b>{}".format(section["name"], section.get("text", ""))
         sb["text"] = text
 
     def _strip_br(data):
@@ -646,7 +659,7 @@ def creature_stat_block_pass(struct):
             last_key = key
             key, value, data, link, action = add_to_data(key, value, data, link, action)
             if len(value) > 0:
-                assert link == None
+                assert link is None
                 value, data = add_remnants(value, data)
             data = _strip_br(data)
             sections.append(data)
@@ -710,7 +723,7 @@ def recall_knowledge_pass(struct):
                 # Unspecific and Specific Lore are AoN constructs
                 continue
             else:
-                assert ")" in text, "Unparsable Knowledge: %s" % knowledge
+                assert ")" in text, f"Unparsable Knowledge: {knowledge}"
                 text, skill = text.split("(")
                 skill = skill[:-1]
                 k["name"] = text.strip()
@@ -770,9 +783,7 @@ def elite_pass(struct):
     for s in remove:
         struct["sections"].remove(s)
     name = get_text(BeautifulSoup(str(struct["name"]), "html.parser"))
-    if name.startswith("Elite") and name.endswith("Level"):
-        return False
-    return True
+    return not (name.startswith("Elite") and name.endswith("Level"))
 
 
 def index_pass(struct, sb):
@@ -806,32 +817,34 @@ def validate_dict_pass(top, struct, parent, field):
             for k, v in struct.items():
                 validate_dict_pass(top, v, struct, k)
             if "type" not in struct:
-                raise Exception("%s missing type" % struct)
+                raise Exception(f"{struct} missing type")
             if "name" not in struct:
-                raise Exception("%s missing name" % struct)
+                raise Exception(f"{struct} missing name")
         elif type(struct) is list:
             for item in struct:
                 if type(item) is dict:
                     validate_dict_pass(top, item, struct, "")
                 else:
-                    raise Exception("%s: lists should only have dicts" % struct)
+                    raise Exception(f"{struct}: lists should only have dicts")
         elif type(struct) is str:
             # if field == "name" and struct.startswith(top.get("name", "")):
             # 	pass
-            if type(parent) is dict and parent["type"] in ["section", "sidebar"]:
-                pass
-            elif type(parent) is dict and parent.get("subtype") in ["modifier"]:
-                pass
-            elif (
+            if (
                 type(parent) is dict
-                and parent.get("subtype") == "ability"
-                and field in constants.CREATURE_ABILITY_ADDON_KEYS
+                and parent["type"] in ["section", "sidebar"]
+                or type(parent) is dict
+                and parent.get("subtype") in ["modifier"]
+                or (
+                    type(parent) is dict
+                    and parent.get("subtype") == "ability"
+                    and field in constants.CREATURE_ABILITY_ADDON_KEYS
+                )
             ):
                 pass
             elif struct.find("(") > -1:
                 bs = BeautifulSoup(struct, "html.parser")
                 if not bs.table:
-                    raise Exception("%s: '(' should have been parsed out" % struct)
+                    raise Exception(f"{struct}: '(' should have been parsed out")
     except Exception as e:
         pprint(struct)
         raise e
@@ -895,7 +908,7 @@ def process_stat_block(sb, sections):
         hardness = process_hp(defense.pop(0), "hardness")
         hp["hardness"] = hardness["hardness"]
         if "automatic_abilities" in hardness:
-            assert False, "Hardness has automatic abilities: %s" % hardness
+            raise AssertionError(f"Hardness has automatic abilities: {hardness}")
     if len(defense) > 0 and defense[0][0] == "Thresholds":
         process_threshold(hp, defense.pop(0))
     if len(defense) > 0 and defense[0][0] == "Immunities":
@@ -939,7 +952,7 @@ def process_source(sb, sections):
 
     def handle_image(section):
         bs = BeautifulSoup(section[1], "html.parser")
-        c = [c for c in list(bs.children)]  # if c.name != "sup"]
+        c = list(bs.children)  # if c.name != "sup"]
         if c[0].find("img"):
             set_image(c.pop(0), sb["name"])
         return c
@@ -978,12 +991,10 @@ def process_source(sb, sections):
         elif c[0].name == "strong":
             assert not note, "Should be no more than one note."
             note = extract_link(c.pop(0).find("a"))
-        elif isinstance(c[0], str) and c[0].strip() in [",", ";"]:
-            c.pop(0)
-        elif c[0].name == "br":
+        elif isinstance(c[0], str) and c[0].strip() in [",", ";"] or c[0].name == "br":
             c.pop(0)
         else:
-            raise Exception("Source has unexpected text: %s" % c[0])
+            raise Exception(f"Source has unexpected text: {c[0]}")
     for source in sources:
         if note:
             source["note"] = note[1]
@@ -1001,7 +1012,7 @@ def process_grafts(sb, stats):
         newtokens = []
         for token in tokens:
             if token.startswith("("):
-                newtokens[-1] = "%s %s" % (newtokens[-1], token)
+                newtokens[-1] = f"{newtokens[-1]} {token}"
             else:
                 newtokens.append(token)
         grafts = []
@@ -1016,15 +1027,15 @@ def process_grafts(sb, stats):
 
 def process_senses(section):
     assert section[0] == "Perception"
-    assert section[2] == None
-    assert section[3] == None
+    assert section[2] is None
+    assert section[3] is None
     senses = universal_handle_senses()
 
     parts = split_maintain_parens(section[1], ";")
-    assert len(parts) in [1, 2, 3], "Malformed senses line: %s" % section[1]
+    assert len(parts) in [1, 2, 3], f"Malformed senses line: {section[1]}"
     perc = parts.pop(0)
     if len(parts) > 0 and parts[0].startswith("("):
-        perc = "%s %s" % (perc, parts.pop(0))
+        perc = f"{perc} {parts.pop(0)}"
     senses["perception"] = universal_handle_perception(perc)
 
     if len(parts) > 0:
@@ -1062,8 +1073,8 @@ def process_languages(section):
     #  <b>Languages</b> <a href="Languages.aspx?ID=12"><u>Abyssal</a></u>, <a href="Languages.aspx?ID=16"><u>Celestial</a></u>, <a href="Languages.aspx?ID=1"><u>Common</a></u>, <a href="Languages.aspx?ID=2"><u>Draconic</a></u>; three additional mortal languages; telepathy 100 feet, <a style="text-decoration:underline" href="Spells.aspx?ID=340"><i>tongues</i></a>
 
     assert section[0] == "Languages"
-    assert section[2] == None
-    assert section[3] == None
+    assert section[2] is None
+    assert section[3] is None
     text = section[1]
     languages = {"type": "stat_block_section", "subtype": "languages", "languages": []}
     if text.find(";") > -1:
@@ -1152,8 +1163,8 @@ def process_languages(section):
 
 def process_skills(section):
     assert section[0] == "Skills"
-    assert section[2] == None
-    assert section[3] == None
+    assert section[2] is None
+    assert section[3] is None
     parts = split_stat_block_line(section[1])
     parts = rebuilt_split_modifiers(parts)
     skills = []
@@ -1181,8 +1192,8 @@ def process_skills(section):
 
 def process_attr(section):
     assert section[0] in ["Str", "Dex", "Con", "Int", "Wis", "Cha"]
-    assert section[2] == None
-    assert section[3] == None
+    assert section[2] is None
+    assert section[3] is None
     value = int(section[1].replace(",", "").replace("+", ""))
     return value
 
@@ -1202,8 +1213,8 @@ def unwrap_formatting(bs):
 def process_items(section):
     # TODO: Handle quantity
     assert section[0] == "Items"
-    assert section[2] == None
-    assert section[3] == None
+    assert section[2] is None
+    assert section[3] is None
     parts = rebuilt_split_modifiers(split_stat_block_line(section[1]))
     items = []
     for part in parts:
@@ -1245,7 +1256,7 @@ def process_interaction_ability(sb, section):
     elif title_action:
         ability["action_type"] = title_action
     elif action and title_action:
-        assert False, section
+        raise AssertionError(section)
 
     if len(traits) > 0:
         ability["traits"] = traits
@@ -1290,8 +1301,8 @@ def process_ac(section):
 
     assert section[0] == "AC"
     assert section[1].endswith(";")
-    assert section[2] == None
-    assert section[3] == None
+    assert section[2] is None
+    assert section[3] is None
     text = section[1][:-1]
     modifiers = []
     value, modifiers = extract_ac_modifier(text)
@@ -1318,8 +1329,8 @@ def process_saves(fort, ref, will):
 
     def process_save(section):
         assert section[0] in ["Fort", "Ref", "Will"]
-        assert section[2] == None
-        assert section[3] == None
+        assert section[2] is None
+        assert section[3] is None
         name = section[0].lower()
         value = section[1]
         if value.endswith(","):
@@ -1378,8 +1389,8 @@ def process_hp(section, subtype):
             [specials.remove(r) for r in remove]
 
     assert section[0] in ["HP", "Hardness"]
-    assert section[2] == None
-    assert section[3] == None
+    assert section[2] is None
+    assert section[3] is None
     text = section[1].strip()
     name = section[0]
     value, text = re.search(r"^(\d*)(.*)", text).groups()
@@ -1414,8 +1425,8 @@ def process_hp(section, subtype):
 
 def process_threshold(hp, section):
     _, text, _, _ = section
-    assert section[2] == None
-    assert section[3] == None
+    assert section[2] is None
+    assert section[3] is None
     if text.endswith(";"):
         text = text[:-1]
     thresholds = string_with_modifiers_from_string_list(
@@ -1424,7 +1435,7 @@ def process_threshold(hp, section):
     for t in thresholds:
         t["value"] = int(t["name"])
         del t["name"]
-        assert len(t["modifiers"]) == 1, "Broken thresholds: %s" % text
+        assert len(t["modifiers"]) == 1, f"Broken thresholds: {text}"
         squares_text = t["modifiers"][0]["name"]
         del t["modifiers"]
         s, f = squares_text.split(" ")
@@ -1442,8 +1453,8 @@ def process_defense(hp, section, ret=False):
         return d
 
     assert section[0] in ["Immunities", "Resistances", "Weaknesses"]
-    assert section[2] == None
-    assert section[3] == None
+    assert section[2] is None
+    assert section[3] is None
     text = section[1].strip()
     subtype = {
         "Immunities": "immunity",
@@ -1468,19 +1479,16 @@ def handle_aura(sb, ability):
             return True
         if "DC" in test:
             return True
-        if "feet" in test or "miles" in test or "mile" in test:
-            return True
-        return False
+        return bool("feet" in test or "miles" in test or "mile" in test)
 
     def _test_aura_dc(ability):
         if sb["name"] in ["Weykoward", "Watch Officer", "Twins of Rowan"]:
             return
-        if "saving_throw" not in ability:
-            if "DC " in ability["text"]:
-                # TODO: Find a more graceful way to deal with 1816
-                if sb["name"] in constants.CREATURE_IGNORE_DC_AURA:
-                    return
-                assert False, "DC in text, but no save in aura: %s" % ability
+        if "saving_throw" not in ability and "DC " in ability["text"]:
+            # TODO: Find a more graceful way to deal with 1816
+            if sb["name"] in constants.CREATURE_IGNORE_DC_AURA:
+                return
+            raise AssertionError(f"DC in text, but no save in aura: {ability}")
 
     found = False
     if "traits" in ability and "text" in ability:
@@ -1503,24 +1511,23 @@ def handle_aura(sb, ability):
                     test_part = test_parts.pop(0)
                     if "DC" in test_part:
                         save = universal_handle_save_dc(test_part.strip())
-                        assert save, "Malformed range and DC: %s" % ability["text"]
-                        assert "saving_throw" not in ability, (
-                            "Can't add a save_dc to an object that as a save_dc already: %s"
-                            % ability
-                        )
+                        assert save, "Malformed range and DC: {}".format(ability["text"])
+                        assert (
+                            "saving_throw" not in ability
+                        ), f"Can't add a save_dc to an object that as a save_dc already: {ability}"
                         ability["saving_throw"] = save
                     elif "feet" in test_part or "miles" in test_part or "mile" in test:
                         range = universal_handle_range(test_part.strip())
-                        assert range, "Malformed range and DC: %s" % ability["text"]
-                        assert "range" not in ability, (
-                            "Can't add a range to an object that as a range already: %s" % ability
-                        )
+                        assert range, "Malformed range and DC: {}".format(ability["text"])
+                        assert (
+                            "range" not in ability
+                        ), f"Can't add a range to an object that as a range already: {ability}"
                         ability["range"] = range
                     elif "damage" in test_part:
                         dam = parse_attack_damage(test_part)
                         ability["damage"] = dam
                     else:
-                        assert False, "Malformed aura stats: %s" % ability["text"]
+                        raise AssertionError("Malformed aura stats: {}".format(ability["text"]))
                 parts.pop(0)
                 ability["text"] = ".".join(parts).strip()
                 _test_aura_dc(ability)
@@ -1528,7 +1535,7 @@ def handle_aura(sb, ability):
                 if "Merlokrep" in ability["text"]:
                     # TODO: Find a more graceful way to deal with 2179
                     return
-                assert False, ability["text"]
+                raise AssertionError(ability["text"])
         if ability["text"] == "":
             del ability["text"]
 
@@ -1560,7 +1567,7 @@ def process_defensive_ability(section, sections, sb):
     ]
     while len(sections) > 0 and sections[0][0] in addons:
         addon = sections.pop(0)
-        assert addon[2] == None
+        assert addon[2] is None
         addon_name = addon[0].lower().replace(" ", "_")
         value = addon[1].strip()
         if value.endswith(";"):
@@ -1664,11 +1671,11 @@ def process_speed(section):
             movement["link"] = links[0]
             return
         log_element("speed.log")(data)
-        assert False, data
+        raise AssertionError(data)
 
     assert section[0] == "Speed", section
-    assert section[2] == None, section
-    assert section[3] == None, section
+    assert section[2] is None, section
+    assert section[3] is None, section
     text = section[1].strip()
     parts = [t.strip() for t in text.split(";")]
     text = parts.pop(0)
@@ -1719,7 +1726,7 @@ def parse_attack_damage(text):
                 parts = damage_type.split("(")
                 damage_type = parts.pop(0).strip()
                 notes = parts.pop(0).replace(")", "").strip()
-                assert len(parts) == 0, "Failed to parse damage: %s" % (text)
+                assert len(parts) == 0, f"Failed to parse damage: {text}"
                 bs = BeautifulSoup(notes, "html.parser")
                 links = get_links(bs, unwrap=True)
                 if len(links) > 0:
@@ -1814,13 +1821,13 @@ def process_offensive_action(section):
         m = re.search(r"^(.*) ([+-]\d*) \[(.*)\] \((.*)\), (.*)$", text)
         if not m:
             m = re.search(r"^(.*) ([+-]\d*) \[(.*)\], (.*)$", text)
-        assert m, "Failed to parse: %s" % (text)
+        assert m, f"Failed to parse: {text}"
         attack_data = list(m.groups())
         section["weapon"] = remove_html_weapon(attack_data.pop(0), section)
         attacks = [attack_data.pop(0)]
         bs = BeautifulSoup(attack_data.pop(0), "html.parser")
         children = list(bs.children)
-        assert len(children) == 1, "Failed to parse: %s" % (text)
+        assert len(children) == 1, f"Failed to parse: {text}"
         data, link = extract_link(children[0])
         attacks.extend(data.split("/"))
         attacks = [int(a) for a in attacks]
@@ -1836,10 +1843,10 @@ def process_offensive_action(section):
         section["damage"] = parse_attack_damage(" ".join(damage).strip())
 
         if len(attack_data) > 0:
-            _, traits = extract_starting_traits("(%s)" % (attack_data.pop()))
+            _, traits = extract_starting_traits(f"({attack_data.pop()})")
             assert "traits" not in section
             section["traits"] = traits
-        assert len(attack_data) == 0, "Failed to parse: %s" % (text)
+        assert len(attack_data) == 0, f"Failed to parse: {text}"
         parent_section["attack"] = section
 
     def parse_spells(parent_section):
@@ -1853,7 +1860,7 @@ def process_offensive_action(section):
                 "Cleric": "Divine",
                 "Druid": "Primal",
             }
-            for caster in tradition.keys():
+            for caster in tradition:
                 if caster in name_parts:
                     if tradition[caster] not in name_parts:
                         name_parts.insert(0, tradition[caster])
@@ -1921,14 +1928,10 @@ def process_offensive_action(section):
             addons = ["DC", "attack", "Focus"]
             for addon in addons:
                 for note in section["notes"]:
-                    assert addon not in note, "%s should not be in spell notes: %s" % (
-                        addon,
-                        note,
-                    )
-                    assert addon.lower() not in note, "%s should not be in spell notes: %s" % (
-                        addon,
-                        note,
-                    )
+                    assert addon not in note, f"{addon} should not be in spell notes: {note}"
+                    assert (
+                        addon.lower() not in note
+                    ), f"{addon} should not be in spell notes: {note}"
             remains = []
         if len(remains) > 0:
             parts.insert(0, ", ".join(remains))
@@ -1954,7 +1957,7 @@ def process_offensive_action(section):
                     spell_list["cantrips"] = True
                     level_text = get_text(bs.b.extract())
                 m = re.match(r"^\(?(\d*)[snrt][tdh]\)?$", level_text)
-                assert m, "Failed to parse spells: %s" % (part)
+                assert m, f"Failed to parse spells: {part}"
                 spell_list["level"] = int(m.groups()[0])
                 spell_list["level_text"] = level_text
             spells_html = split_maintain_parens(str(bs), ",")
@@ -1980,7 +1983,7 @@ def process_offensive_action(section):
         text = get_text(bsh)
         if text.find("(") > -1:
             parts = [t.strip() for t in text.split("(")]
-            assert len(parts) == 2, "Failed to parse spell: %s" % (html)
+            assert len(parts) == 2, f"Failed to parse spell: {html}"
             spell["name"] = parts.pop(0)
             count_text = parts.pop().replace(")", "")
             spell["count_text"] = count_text
@@ -1990,7 +1993,7 @@ def process_offensive_action(section):
                 for part in count_text.split(split):
                     m = re.match(r"^x\d*$", part.strip())
                     if m:
-                        assert count == None, "Failed to parse spell: %s" % (html)
+                        assert count is None, f"Failed to parse spell: {html}"
                         count = int(part.strip()[1:])
                     else:
                         remainder.append(part)
@@ -2058,7 +2061,7 @@ def process_offensive_action(section):
                 elif title.startswith("Stage"):
                     _handle_affliction_stage(title, newtext)
                 else:
-                    assert False, text
+                    raise AssertionError(text)
             else:
                 if first:
                     section["context"] = get_text(bs)
@@ -2070,9 +2073,9 @@ def process_offensive_action(section):
             if section["text"] == "":
                 del section["text"]
             else:
-                assert section["text"].endswith(".") or section["text"].endswith(")"), (
-                    "Affliction modification fail %s" % section["text"]
-                )
+                assert section["text"].endswith(".") or section["text"].endswith(
+                    ")"
+                ), "Affliction modification fail {}".format(section["text"])
                 addons = [
                     "Saving Throw",
                     "Requirements",
@@ -2085,7 +2088,7 @@ def process_offensive_action(section):
                 for addon in addons:
                     assert (
                         addon not in section["text"]
-                    ), "%s should not be in the text of Affliction: %s" % (
+                    ), "{} should not be in the text of Affliction: {}".format(
                         addon,
                         section["text"],
                     )
@@ -2113,7 +2116,7 @@ def process_offensive_action(section):
                 if child.name == "b":
                     current = get_text(child).strip()
                 elif current:
-                    assert current in addon_names, "%s, %s" % (current, text)
+                    assert current in addon_names, f"{current}, {text}"
                     addon_text = str(child)
                     if addon_text.strip().endswith(";"):
                         addon_text = addon_text.rstrip()[:-1]
@@ -2176,7 +2179,7 @@ def process_offensive_action(section):
         def _handle_name(parent_section, new_section):
             name_text = parent_section["name"]
             if "<" in name_text:
-                validset = set(["a", "b"])
+                validset = {"a", "b"}
                 tags = get_unique_tag_set(name_text)
                 assert tags.issubset(validset), parent_section
                 bs = BeautifulSoup(name_text, "html.parser")
@@ -2242,7 +2245,7 @@ def process_offensive_action(section):
                     if current == "Prerequisites":
                         current = "Prerequisite"
                 elif current:
-                    assert current in addon_names, "%s, %s" % (current, text)
+                    assert current in addon_names, f"{current}, {text}"
                     addon_text = str(child)
                     if addon_text.strip().endswith(";"):
                         addon_text = addon_text.rstrip()[:-1]
@@ -2251,10 +2254,10 @@ def process_offensive_action(section):
                     parts.append(str(child))
         for k, v in addons.items():
             if k == "range":
-                assert len(v) == 1, "Malformed range: %s" % v
+                assert len(v) == 1, f"Malformed range: {v}"
                 section["range"] = universal_handle_range(v[0])
             elif k == "damage":
-                assert len(v) == 1, "Malformed range: %s" % v
+                assert len(v) == 1, f"Malformed range: {v}"
                 section["damage"] = parse_attack_damage(v[0])
             else:
                 section[k] = clear_garbage(v)
@@ -2266,19 +2269,15 @@ def process_offensive_action(section):
         parts = section["name"].split(" ")
         if section["name"] in constants.CREATURE_NOT_SPELLS:
             return False
-        if (
+        return bool(
             "Spells" in parts
             or section["name"].endswith("Rituals")
             or section["name"].endswith("Formulas")
             or section["name"].endswith("Hexes")
-        ):
-            return True
-        return False
+        )
 
     def _is_mythic_ability(section):
-        if section["name"] == "Mythic Power":
-            return True
-        return False
+        return section["name"] == "Mythic Power"
 
     if len(section["sections"]) == 0:
         del section["sections"]
@@ -2331,19 +2330,16 @@ def split_stat_block_line(line):
 
 def get_attacks(sb):
     def is_attack(section):
-        if not "text" in section:
+        if "text" not in section:
             return False
         text = section["text"]
         children = list(BeautifulSoup(text.strip(), "html.parser").children)
         test = children.pop(0)
-        if test.name == "img":
-            if test["alt"].startswith("Sidebar"):
-                return False
-        if section["name"].startswith("All Monsters"):
+        if test.name == "img" and test["alt"].startswith("Sidebar"):
             return False
-        elif section["name"].startswith("Variant"):
-            return False
-        return True
+        return not (
+            section["name"].startswith("All Monsters") or section["name"].startswith("Variant")
+        )
 
     sections = sb["sections"]
     newsections = []

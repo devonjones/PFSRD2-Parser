@@ -1,5 +1,4 @@
 import os
-import glob
 
 
 def char_replace(instr):

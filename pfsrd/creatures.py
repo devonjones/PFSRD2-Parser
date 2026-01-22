@@ -1,46 +1,60 @@
-import os
 import json
-import sys
+import os
 import re
-import html2markdown
+import sys
 from pprint import pprint
-from bs4 import BeautifulSoup, NavigableString, Tag
-from universal.universal import parse_universal, entity_pass
-from universal.universal import get_text, break_out_subtitles
-from universal.universal import link_modifiers, modifiers_from_string_list
-from universal.universal import extract_source, get_links, extract_link
-from universal.universal import html_pass
-from universal.universal import remove_empty_sections_pass
-from universal.universal import string_with_modifiers
-from universal.universal import string_with_modifiers_from_string_list
-from universal.universal import string_values_from_string_list
-from universal.universal import number_with_modifiers, parse_number
-from universal.files import makedirs, char_replace
-from universal.utils import split_maintain_parens, split_comma_and_semicolon
-from universal.utils import filter_end, clear_tags
-from universal.utils import log_element, find_list
-from universal.creatures import write_creature
-from universal.creatures import universal_handle_alignment
-from universal.creatures import universal_handle_aura
-from universal.creatures import universal_handle_creature_type
-from universal.creatures import universal_handle_defensive_abilities
-from universal.creatures import universal_handle_dr
-from universal.creatures import universal_handle_gear
-from universal.creatures import universal_handle_immunities
-from universal.creatures import universal_handle_languages
-from universal.creatures import universal_handle_range
-from universal.creatures import universal_handle_resistances
-from universal.creatures import universal_handle_save_dc
-from universal.creatures import universal_handle_size
-from universal.creatures import universal_handle_sr
-from universal.creatures import universal_handle_weaknesses
+
+from bs4 import BeautifulSoup, NavigableString
+
 from pfsrd.schema import validate_against_schema
+from universal.creatures import (
+    universal_handle_alignment,
+    universal_handle_aura,
+    universal_handle_creature_type,
+    universal_handle_defensive_abilities,
+    universal_handle_dr,
+    universal_handle_gear,
+    universal_handle_immunities,
+    universal_handle_languages,
+    universal_handle_range,
+    universal_handle_resistances,
+    universal_handle_save_dc,
+    universal_handle_size,
+    universal_handle_sr,
+    universal_handle_weaknesses,
+    write_creature,
+)
+from universal.files import char_replace, makedirs
+from universal.universal import (
+    break_out_subtitles,
+    entity_pass,
+    extract_link,
+    extract_source,
+    get_text,
+    html_pass,
+    link_modifiers,
+    modifiers_from_string_list,
+    number_with_modifiers,
+    parse_number,
+    parse_universal,
+    remove_empty_sections_pass,
+    string_values_from_string_list,
+    string_with_modifiers,
+    string_with_modifiers_from_string_list,
+)
+from universal.utils import (
+    clear_tags,
+    filter_end,
+    find_list,
+    split_comma_and_semicolon,
+    split_maintain_parens,
+)
 
 
 def parse_creature(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
-        sys.stderr.write("%s\n" % basename)
+        sys.stderr.write(f"{basename}\n")
     details = parse_universal(filename, subtitle_text=False, max_title=3, cssclass=options.cssclass)
     details = entity_pass(details)
     struct = restructure_creature_pass(details, options.subtype, basename)
@@ -184,7 +198,7 @@ def handle_default(field):
 
 def handle_noop(name):
     def _handle_noop_impl(_, elem, text):
-        pprint("%s: %s" % (name, text))
+        pprint(f"{name}: {text}")
         # assert False
 
     return _handle_noop_impl
@@ -218,7 +232,7 @@ def restructure_creature_pass(details, subtype, basename):
     def _handle_aon(struct, basename):
         parts = basename.split("Display")
         assert len(parts) == 2
-        struct["game-obj"] = "%ss" % parts[0]
+        struct["game-obj"] = f"{parts[0]}s"
 
     struct, path = _find_stat_block(details)
     short_desc = path.pop()
@@ -359,9 +373,7 @@ def top_matter_pass(struct):
 
     def _handle_creature_type(basics, subtype):
         testtype = basics.pop().capitalize()
-        if testtype == "Beast":
-            testtype = basics.pop().capitalize() + " " + testtype
-        elif testtype == "Humanoid" and basics[-1] == "monstrous":
+        if testtype == "Beast" or testtype == "Humanoid" and basics[-1] == "monstrous":
             testtype = basics.pop().capitalize() + " " + testtype
         subtype = ", ".join(subtype)
         return universal_handle_creature_type(testtype, subtype)
@@ -524,7 +536,7 @@ def defense_pass(struct):
                 }
                 dispatch[title](struct, defense, text)
             else:
-                assert False, output
+                raise AssertionError(output)
     sb["defense"] = defense
 
 
@@ -570,10 +582,10 @@ def offense_pass(struct):
                     elif len(spell_level_text) == 3:
                         spell_list["level"] = int(spell_level_text[:-2])
                     else:
-                        assert False, deets
+                        raise AssertionError(deets)
                     spell_list["count_text"] = deetparts[1].replace(")", "").strip()
                 else:
-                    assert False, deets
+                    raise AssertionError(deets)
                 count_text = spell_list["count_text"]
                 if count_text.find("PE") > -1:
                     pe, _ = count_text.split(" ")
@@ -582,7 +594,7 @@ def offense_pass(struct):
                     c, f = count_text.split("/")
                     if c.find(" ") > -1:
                         c, time = c.split(" ")
-                        f = "%s/%s" % (time, f)
+                        f = f"{time}/{f}"
                     spell_list["count"] = int(c)
                     spell_list["frequency"] = f
                 else:
@@ -615,7 +627,7 @@ def offense_pass(struct):
                     bslist.pop(0)
                 elif first in metamagic:
                     if "metamagic" in spell:
-                        spell["metamagic"] = "%s, %s" % (spell["metamagic"], first)
+                        spell["metamagic"] = "{}, {}".format(spell["metamagic"], first)
                     else:
                         spell["metamagic"] = first
                     bslist.pop(0)
@@ -623,7 +635,7 @@ def offense_pass(struct):
                 if find_list(spell["name"], metamagic):
                     name = spell["name"]
                     mm = find_list(name, metamagic)
-                    assert not "metamagic" in spell, text
+                    assert "metamagic" not in spell, text
                     name = name.replace(mm, "").replace("  ", " ").strip()
                     spell["name"] = name
                     spell["metamagic"] = mm
@@ -634,11 +646,11 @@ def offense_pass(struct):
                     if exttext.find("<sup>") > -1:
                         bs = BeautifulSoup(exttext, "html.parser")
                         notation = bs.sup.extract().get_text()
-                        assert spell.get("notation") == None
+                        assert spell.get("notation") is None
                         spell["notation"] = notation
                         exttext = str(bs).strip()
                     if exttext.find("*") > -1:
-                        assert spell.get("notation") == None, text
+                        assert spell.get("notation") is None, text
                         spell["notation"] = "*"
                         exttext = exttext.replace("*", "").strip()
                     if len(exttext.strip()) > 0:
@@ -650,7 +662,7 @@ def offense_pass(struct):
                         m = re.match(r"^([IVX]*) (.*)", exttext)
                         if m:
                             spell_version, exttext = m.groups()
-                            spell["name"] = "%s %s" % (spell["name"], spell_version)
+                            spell["name"] = "{} {}".format(spell["name"], spell_version)
                         assert exttext.startswith("(") and exttext.endswith(")"), exttext
                         exttext = exttext[1:-1]
                         extparts = split_comma_and_semicolon(exttext, ";")
@@ -758,10 +770,10 @@ def offense_pass(struct):
                 parts = start.split(" ")
                 if "attack" in parts:
                     parts.remove("attack")
-                if "touch" == parts[-1]:
+                if parts[-1] == "touch":
                     attack["touch"] = True
                     parts.pop()
-                if "incorporeal" == parts[-1]:
+                if parts[-1] == "incorporeal":
                     attack["incorporeal"] = True
                     parts.pop()
                 if "melee" in parts:
@@ -852,12 +864,12 @@ def offense_pass(struct):
                         attack_damage["nonlethal"] = True
                         damagepart = damagepart.replace("nonlethal", "").strip()
                         damagepart = damagepart.replace("  ", " ").strip()
-                    if re.match("^\d+d\d+", damagepart):
+                    if re.match(r"^\d+d\d+", damagepart):
                         ps = damagepart.split(" ")
                         attack_damage["formula"] = ps.pop(0)
                         damage_type = " ".join(ps)
                         _handle_damage_type(damage_type)
-                    elif re.match(".* \d*d?\d+$", damagepart):
+                    elif re.match(r".* \d*d?\d+$", damagepart):
                         ps = damagepart.split(" ")
                         attack_damage["formula"] = ps.pop()
                         damagepart = " ".join(ps)
@@ -869,7 +881,7 @@ def offense_pass(struct):
                         ad = tmplist.pop(0)
                         ac = "/".join(tmplist)
                         attack_damage["formula"] = ad
-                        assert not "critical_range" in attack, attacktext
+                        assert "critical_range" not in attack, attacktext
                         attack["critical_range"] = ac
                     damage.append(attack_damage)
                 attack["damage"] = damage
@@ -991,7 +1003,7 @@ def offense_pass(struct):
                 }
                 dispatch[title](struct, offense, text)
         else:
-            assert False, output
+            raise AssertionError(output)
     sb["offense"] = offense
 
 
@@ -1004,17 +1016,16 @@ def tactics_pass(struct):
 
     def _break_out_subtitles(bs):
         text = str(bs)
-        newparts = []
         first = True
         title = None
         for child in bs.children:
             if first:
-                assert child.name == "b", "malformed tactics: %s" % str(bs)
+                assert child.name == "b", f"malformed tactics: {str(bs)}"
                 first = False
                 title = child.extract().get_text().strip()
             else:
                 break
-        assert title, "malformed tactics: %s" % text
+        assert title, f"malformed tactics: {text}"
         return title, str(bs)
 
     sb = struct["stat_block"]
@@ -1027,7 +1038,7 @@ def tactics_pass(struct):
             bs = BeautifulSoup(part, "html.parser")
             title, text = _break_out_subtitles(bs)
             titles = ["During Combat", "Before Combat", "Base Statistics", "Morale"]
-            assert title in titles, "Don't recognize tactic title: %s" % title
+            assert title in titles, f"Don't recognize tactic title: {title}"
             _handle_tactic(sb, title, text)
 
 
@@ -1050,7 +1061,7 @@ def statistics_pass(struct):
             elif text.endswith("<br/>"):
                 text = text[:-5]
             elif text.endswith("<br/>"):
-                assert False, "Unrecognized string structure: %s" % text
+                raise AssertionError(f"Unrecognized string structure: {text}")
             offense[name.lower()] = number_with_modifiers(text.strip(), name.lower())
 
         return _handle_bab_impl
@@ -1066,7 +1077,7 @@ def statistics_pass(struct):
             for sup in sups:
                 sup.replace_with("")
                 ntext = sup.extract().get_text()
-                assert notation == None
+                assert notation is None
                 notation = ntext
             link = None
             if bs.a and bs.a["href"].startswith("FeatDisplay"):
@@ -1121,7 +1132,7 @@ def statistics_pass(struct):
                     skill["name"] = parts[0]
                     skill["value"] = parse_number(parts[1])
                 else:
-                    assert False, "%s: %s" % (part, text)
+                    raise AssertionError(f"{part}: {text}")
             skills["skills"].append(skill)
         statistics["skills"] = skills
 
@@ -1150,10 +1161,10 @@ def statistics_pass(struct):
             split_maintain_parens(text, ","), "special_quality"
         )
         for sq in sqs:
-            assert sq["name"].lower() != "tricks", "Tricks should be broken out %s" % sq
-            assert ";" not in sq["name"], (
-                "Don't presently handle the SQ list having modifiers: %s" % text
-            )
+            assert sq["name"].lower() != "tricks", f"Tricks should be broken out {sq}"
+            assert (
+                ";" not in sq["name"]
+            ), f"Don't presently handle the SQ list having modifiers: {text}"
         statistics["special_qualities"] = sqs
 
     def _handle_gear(field):
@@ -1207,7 +1218,7 @@ def statistics_pass(struct):
             }
             dispatch[title](struct, statistics, text)
         else:
-            assert False, output
+            raise AssertionError(output)
     sb["statistics"] = statistics
     struct["stat_block"]["statistics"] = statistics
 
@@ -1228,17 +1239,17 @@ def ecology_pass(struct):
             bs = BeautifulSoup(part, "html.parser")
             namebs = list(bs.children).pop(0)
             if type(namebs) is NavigableString:
-                if namebs.split(" ").pop(0) in dispatch.keys():
-                    assert False, "Ecology key missing <i> tag: %s" % namebs
+                if namebs.split(" ").pop(0) in dispatch:
+                    raise AssertionError(f"Ecology key missing <i> tag: {namebs}")
                 else:
                     return
             name = namebs.get_text().strip()
             namebs.extract()
             dispatch[name](ecology, bs)
         if dupe:
-            for key in ecology.keys():
+            for key in ecology:
                 if key in struct["stat_block"]["ecology"]:
-                    assert ecology[key] == struct["stat_block"]["ecology"][key], "%s : %s" % (
+                    assert ecology[key] == struct["stat_block"]["ecology"][key], "{} : {}".format(
                         ecology,
                         struct["stat_block"]["ecology"],
                     )
@@ -1314,7 +1325,7 @@ def special_ability_pass(struct):
             affliction_sections = ["save", "frequency", "effect", "cure", "onset", None]
             if part[0] not in affliction_sections:
                 return
-            if part[0] != None:
+            if part[0] is not None:
                 only_none = False
         if only_none:
             return
@@ -1324,11 +1335,11 @@ def special_ability_pass(struct):
                 text = text[:-1]
             if title == "save":
                 affliction["saving_throw"] = universal_handle_save_dc(text)
-            elif title == None:
+            elif title is None:
                 if ":" in text:
                     name, text = text.split(":")
                     affliction["name"] = name
-                affliction["affliction_type"] = "%s; %s" % (sa["name"].strip(), text.strip())
+                affliction["affliction_type"] = "{}; {}".format(sa["name"].strip(), text.strip())
             else:
                 affliction[title] = text
         sa["affliction"] = affliction
@@ -1350,7 +1361,7 @@ def special_ability_pass(struct):
             "Ex, Su": "Extraordinary, Supernatural",
             "Ex, Sp, Su": "Extraordinary, Spell-Like, Supernatural",
         }
-        if sa_type in ability_types.keys():
+        if sa_type in ability_types:
             sa["ability_type"] = ability_types[sa_type]
             sa["ability_type_abbrev"] = sa_type
             return True

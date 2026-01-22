@@ -1,51 +1,60 @@
-import os
-import json
-import sys
-import re
 import copy
-import html2markdown
-from pprint import pprint
-from bs4 import BeautifulSoup, NavigableString, Tag
-from universal.universal import parse_universal, entity_pass
-from universal.universal import get_text, break_out_subtitles
-from universal.universal import string_with_modifiers_from_string_list
-from universal.universal import modifiers_from_string_list
-from universal.universal import extract_source
-from universal.universal import extract_link
-from universal.universal import get_links
-from universal.universal import html_pass
-from universal.universal import remove_empty_sections_pass
-from universal.files import makedirs, char_replace
-from universal.utils import split_maintain_parens, split_comma_and_semicolon
-from universal.utils import filter_end
-from universal.utils import log_element
-from universal.utils import is_tag_named
-from universal.creatures import write_creature
-from universal.creatures import universal_handle_alignment
-from universal.creatures import universal_handle_aura
-from universal.creatures import universal_handle_creature_type
-from universal.creatures import universal_handle_dr
-from universal.creatures import universal_handle_defensive_abilities
-from universal.creatures import universal_handle_gear
-from universal.creatures import universal_handle_immunities
-from universal.creatures import universal_handle_languages
-from universal.creatures import universal_handle_modifier_breakout
-from universal.creatures import universal_handle_perception
-from universal.creatures import universal_handle_range
-from universal.creatures import universal_handle_resistances
-from universal.creatures import universal_handle_save_dc
-from universal.creatures import universal_handle_senses
-from universal.creatures import universal_handle_size
-from universal.creatures import universal_handle_special_senses
-from universal.creatures import universal_handle_sr
-from universal.creatures import universal_handle_weaknesses
+import json
+import os
+import re
+import sys
+
+from bs4 import BeautifulSoup
+
 from sfsrd.schema import validate_against_schema
+from universal.creatures import (
+    universal_handle_alignment,
+    universal_handle_aura,
+    universal_handle_creature_type,
+    universal_handle_defensive_abilities,
+    universal_handle_dr,
+    universal_handle_gear,
+    universal_handle_immunities,
+    universal_handle_languages,
+    universal_handle_modifier_breakout,
+    universal_handle_perception,
+    universal_handle_range,
+    universal_handle_resistances,
+    universal_handle_save_dc,
+    universal_handle_senses,
+    universal_handle_size,
+    universal_handle_special_senses,
+    universal_handle_sr,
+    universal_handle_weaknesses,
+    write_creature,
+)
+from universal.files import char_replace, makedirs
+from universal.universal import (
+    break_out_subtitles,
+    entity_pass,
+    extract_link,
+    extract_source,
+    get_links,
+    get_text,
+    html_pass,
+    modifiers_from_string_list,
+    parse_universal,
+    remove_empty_sections_pass,
+    string_with_modifiers_from_string_list,
+)
+from universal.utils import (
+    filter_end,
+    is_tag_named,
+    log_element,
+    split_comma_and_semicolon,
+    split_maintain_parens,
+)
 
 
 def parse_alien(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
-        sys.stderr.write("%s\n" % basename)
+        sys.stderr.write(f"{basename}\n")
     details = parse_universal(
         filename,
         subtitle_text=False,
@@ -124,7 +133,6 @@ def restructure_alien_pass(details, subtype):
         del top["text"]
         return retarr
 
-    rest = []
     struct, path = _find_stat_block(details)
     top = path.pop()
     assert path == [], path
@@ -195,7 +203,7 @@ def top_matter_pass(struct):
 
     def _handle_alignment(abbrev):
         alignment = universal_handle_alignment(abbrev)
-        assert alignment, "Unrecognized alignment: %s" % abbrev
+        assert alignment, f"Unrecognized alignment: {abbrev}"
         return alignment
 
     def _handle_creature_basics(bs, sb):
@@ -235,7 +243,7 @@ def top_matter_pass(struct):
         subtype = None
         if len(type_parts) > 0:
             subtype = type_parts.pop()
-            assert subtype[-1] == ")", "Malformed subtypes: %s" % subtype
+            assert subtype[-1] == ")", f"Malformed subtypes: {subtype}"
             subtype = subtype.replace(")", "")
         return universal_handle_creature_type(ct, subtype)
 
@@ -248,7 +256,6 @@ def top_matter_pass(struct):
         # TODO: Check for parsables in modifiers
         text = text.replace("<b>Senses</b>", "")
         parts = split_maintain_parens(text, ",")
-        senses = []
         special_senses = universal_handle_special_senses(parts)
         return special_senses
 
@@ -349,7 +356,7 @@ def defense_pass(struct):
             elif name == "RP":
                 hp["rp"] = value
             else:
-                assert False, bs
+                raise AssertionError(bs)
         defense["hp"] = hp
 
     def _handle_ac(defense, text):
@@ -405,7 +412,7 @@ def defense_pass(struct):
             tests.append("Resistance")
             for t in tests:
                 if t in value:
-                    assert False, "Malformed %s: %s" % (name, value)
+                    raise AssertionError(f"Malformed {name}: {value}")
 
         for dapart in daparts:
             bs = BeautifulSoup(dapart, "html.parser")
@@ -433,8 +440,8 @@ def defense_pass(struct):
                 values = split_maintain_parens(str(value), ",")
                 defense[name] = values
                 for value in values:
-                    log_element("%s.log" % name.lower())("%s" % (value))
-                assert False, "Unexpected section in Defensive Abilities: %s: %s" % (name, value)
+                    log_element(f"{name.lower()}.log")(f"{value}")
+                raise AssertionError(f"Unexpected section in Defensive Abilities: {name}: {value}")
 
     defense_section = find_section(struct, "Defense")
     defense_text = defense_section["text"]
@@ -483,10 +490,10 @@ def offense_pass(struct):
                     elif len(spell_level_text) == 3:
                         spell_list["level"] = int(spell_level_text[:-2])
                     else:
-                        assert False, deets
+                        raise AssertionError(deets)
                     spell_list["count_text"] = deetparts[1].replace(")", "").strip()
                 else:
-                    assert False, deets
+                    raise AssertionError(deets)
                 count_text = spell_list["count_text"]
                 if count_text.find("/") > -1 and count_text.find("(") == -1:
                     c, f = count_text.split("/")
@@ -628,7 +635,7 @@ def offense_pass(struct):
                         elif part in ["&", "or"]:
                             values.append(part)
                         else:
-                            assert False, damage_type
+                            raise AssertionError(damage_type)
                         if comma:
                             values[-1] = values[-1] + ","
                     attack_damage["damage_type"] = " ".join(values)
@@ -653,7 +660,7 @@ def offense_pass(struct):
                             attack["saving_throw"] = universal_handle_save_dc(modpart)
                         elif modpart.endswith("ft."):
                             parts = modpart.split(" ")
-                            assert len(parts) == 2, "bad range: %s" % modpart
+                            assert len(parts) == 2, f"bad range: {modpart}"
                             value = int(parts[0])
                             range = {
                                 "type": "stat_block_section",
@@ -677,12 +684,12 @@ def offense_pass(struct):
                             attack_damage["nonlethal"] = True
                             damagepart = damagepart.replace("nonlethal", "").strip()
                             damagepart = damagepart.replace("  ", " ").strip()
-                        if re.match("^\d+d\d+", damagepart):
+                        if re.match(r"^\d+d\d+", damagepart):
                             ps = damagepart.split(" ")
                             attack_damage["formula"] = ps.pop(0)
                             damage_type = " ".join(ps)
                             _handle_damage_type(damage_type)
-                        elif re.match(".* \d*d?\d+$", damagepart):
+                        elif re.match(r".* \d*d?\d+$", damagepart):
                             ps = damagepart.split(" ")
                             attack_damage["formula"] = ps.pop()
                             damagepart = " ".join(ps).strip()
@@ -693,7 +700,7 @@ def offense_pass(struct):
                     attack["damage"] = damage
 
             def _handle_space_reach(attacktext, attack):
-                if not "Space" in attacktext:
+                if "Space" not in attacktext:
                     return attacktext
                 parts = [p.strip() for p in attacktext.split("Space")]
                 assert len(parts) == 2, attacktext
@@ -868,7 +875,7 @@ def statistics_pass(struct):
                     skill["name"] = parts[0]
                     skill["value"] = int(parts[1])
                 else:
-                    assert False, "%s: %s" % (part, str(bs))
+                    raise AssertionError(f"{part}: {str(bs)}")
             skills["skills"].append(skill)
         statistics["skills"] = skills
 
@@ -960,7 +967,7 @@ def special_ability_pass(struct):
         assert len(name_parts) == 1, bs
         sa_type = name_parts[0].replace(")", "").strip()
         ability_types = {"Ex": "Extraordinary", "Sp": "Spell-Like", "Su": "Supernatural"}
-        assert sa_type in ability_types.keys()
+        assert sa_type in ability_types
         sa["ability_type"] = ability_types[sa_type]
         sa["ability_type_abbrev"] = sa_type
         return sa
