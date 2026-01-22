@@ -18,6 +18,7 @@ from universal.universal import remove_empty_sections_pass, game_id_pass
 from universal.universal import link_modifiers
 from universal.universal import link_values, link_value
 from universal.universal import edition_pass
+from universal.universal import build_object, build_objects
 from universal.universal import href_filter
 from universal.files import makedirs, char_replace
 from universal.creatures import write_creature
@@ -25,6 +26,7 @@ from universal.utils import log_element, is_tag_named, get_text
 from universal.utils import get_unique_tag_set
 from universal.utils import get_text, bs_pop_spaces
 from universal.utils import clear_garbage
+from universal.utils import clear_tags, split_on_tag, split_comma_and_semicolon
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
 from pfsrd2.trait import extract_span_traits
@@ -784,7 +786,6 @@ def extract_name_link(detailed_output, equipment_type=None):
     # For general Equipment, name may be plain text (not a link)
     # Check for text node FIRST before looking for links
     if equipment_type == 'equipment':
-        from bs4 import NavigableString
         for sibling in detailed_output.next_siblings:
             if isinstance(sibling, NavigableString):
                 text = str(sibling).strip()
@@ -931,9 +932,6 @@ def _parse_variant_section(h2_tag, config, parent_name, debug=False):
     _route_fields_to_destinations(variant_sb, stats, config)
 
     # Extract any remaining text as description (with links)
-    from universal.universal import get_links
-    from universal.utils import clear_tags
-
     # Get links from remaining content and unwrap them
     desc_links = get_links(bs, unwrap=True)
     remaining_text = clear_tags(str(bs), ["i", "b", "br"])
@@ -1079,7 +1077,6 @@ def _generic_section_pass(struct, config, debug=False):
     # Also add base_material links which are stored in structured objects, not the links array
     total_removed = links_removed + (trait_links_converted or 0) + base_material_links
     if debug:
-        import sys
         sys.stderr.write(f"DEBUG _generic_section_pass: links_removed={links_removed}, trait_links_converted={trait_links_converted}, base_material_links={base_material_links}, total={total_removed}\n")
     return total_removed
 
@@ -2564,9 +2561,6 @@ def _extract_base_material(bs, sb, debug=False):
     Returns:
         int: Number of links extracted (for link accounting - 0 or 1)
     """
-    from universal.universal import extract_link
-    import sys
-
     if debug:
         h3_tags = bs.find_all('h3', class_='title')
         sys.stderr.write(f"DEBUG _extract_base_material: Found {len(h3_tags)} h3 tags with class 'title'\n")
@@ -2802,7 +2796,6 @@ def _extract_description(bs, struct, debug=False):
         # 3. Not be just "Item X" level text
         text_without_name = plain_text.replace(item_name, '').strip()
         # Remove "Item X" patterns
-        import re
         text_without_name = re.sub(r'Item\s+\d+\+?', '', text_without_name).strip()
         # Check if there's meaningful content left
         is_valid_description = len(text_without_name) > 10 and not text_without_name.isdigit()
@@ -2835,9 +2828,6 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
     Extracts them into statistics.abilities array.
     Returns the count of trait links converted (for link accounting).
     """
-    from universal.universal import build_object, get_links, build_objects
-    import sys
-
     # Find all <b>Activate</b> tags
     activate_bolds = [bold for bold in bs.find_all('b') if bold.get_text().strip() == 'Activate']
 
@@ -3764,8 +3754,6 @@ def _normalize_activate_to_ability(statistics, sb):
     Returns:
         int: Number of trait links that were converted to trait objects (for link accounting)
     """
-    from universal.universal import build_object, get_links, build_objects
-
     activate_html = statistics.get('activate')
     if not activate_html:
         return 0
