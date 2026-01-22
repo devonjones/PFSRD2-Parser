@@ -3669,8 +3669,6 @@ def _normalize_price(sb):
     - text: the price text without modifiers
     - modifiers: list of modifier objects (if parentheses found)
     """
-    from universal.universal import build_objects
-
     if "price" not in sb:
         return
 
@@ -3690,13 +3688,8 @@ def _normalize_price(sb):
     }
 
     # Extract modifiers from parentheses
-    modifier_text = None
-    main_text = value_str
-    if "(" in value_str:
-        paren_match = re.search(r"\(([^)]+)\)", value_str)
-        if paren_match:
-            modifier_text = paren_match.group(1).strip()
-            main_text = value_str[: paren_match.start()].strip()
+    modifier_texts = re.findall(r"\(([^)]+)\)", value_str)
+    main_text = re.sub(r"\s*\([^)]+\)", "", value_str).strip()
 
     # Store the main text (without modifiers)
     price_obj["text"] = main_text
@@ -3714,9 +3707,10 @@ def _normalize_price(sb):
         price_obj["value"] = None
 
     # Add modifiers if present
-    if modifier_text:
-        # Split by semicolons for multiple modifiers
-        modifier_names = [m.strip() for m in modifier_text.split(";") if m.strip()]
+    if modifier_texts:
+        modifier_names = []
+        for mod_text in modifier_texts:
+            modifier_names.extend(m.strip() for m in mod_text.split(";") if m.strip())
         if modifier_names:
             price_obj["modifiers"] = build_objects("stat_block_section", "modifier", modifier_names)
 
