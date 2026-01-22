@@ -96,6 +96,28 @@ Review JSON schema changes in `pfsrd2/schema/` for consistency with existing pat
 
 **Note:** It is acceptable to acknowledge a schema inconsistency and defer the fix by creating a beads ticket for schema re-alignment, rather than fixing it in the current PR.
 
+## complexity-reviewer
+
+Review code for function complexity. Apply these heuristics:
+
+1. **"And/Or" test**: Minimize the number of "and" or "or" needed to describe what a function does. If you need multiple conjunctions, the function is doing too much.
+   - Good: "This function extracts traits from a stat block"
+   - Bad: "This function extracts traits AND normalizes them AND adds links AND handles edge cases for variants"
+
+2. **One-screen rule**: Functions should fit on one screen (~50-60 lines) so they can be reviewed at a glance. Longer functions are harder to reason about.
+
+3. **Extractable inner structures**: If a block of code within a function can be described on its own (has a clear purpose), it should be extracted to:
+   - A private helper function (prefixed with `_`) if only used locally
+   - A reusable utility function if the pattern appears elsewhere
+
+**Review approach:**
+1. For each new/modified function, try to describe it in one sentence without "and"/"or"
+2. If the description requires conjunctions, identify which parts should be separate functions
+3. Flag functions over ~50 lines and suggest logical split points
+4. Look for nested loops, long conditionals, or repeated patterns that could be extracted
+
+**Note:** It is acceptable to acknowledge complexity and defer refactoring by creating a beads ticket, rather than fixing it in the current PR.
+
 # Parser Testing Protocol
 
 **Before starting a fix loop**, check for uncommitted changes in the output directory:
