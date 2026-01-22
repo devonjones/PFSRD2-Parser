@@ -150,6 +150,42 @@ Review code for PEP8-compliant import practices. Imports belong at the top of th
 
 **Note:** It is acceptable to acknowledge import issues and defer cleanup by creating a beads ticket, rather than fixing it in the current PR.
 
+## test-coverage-reviewer
+
+Review code changes to ensure adequate test coverage and documentation for bug fixes.
+
+**Rules to enforce:**
+
+1. **Unit tests for touched code**: Any modified or new function should have corresponding unit tests in `tests/`. If tests don't exist for the modified code path, flag it.
+
+2. **Bug fix documentation**: If the code change appears to be fixing a bug (based on commit message, PR title, variable names like `fix_`, comments mentioning "bug", "issue", "broken", etc.), require:
+   - A comment explaining what was broken and why the fix works
+   - Ideally a unit test that would have caught the bug (regression test)
+
+3. **Test file naming**: Tests should be in `tests/test_<module>.py` matching the module being tested.
+
+**Indicators of a bug fix:**
+- Commit/PR title contains "fix", "bug", "issue", "broken", "regression"
+- Code changes defensive checks or edge case handling
+- Changes to exception handling or validation logic
+- Comments in diff mentioning problems being solved
+
+**Review approach:**
+1. Identify which functions/methods were modified
+2. Check if `tests/` contains tests for those functions
+3. If the change looks like a bug fix, verify there's a comment explaining the bug
+4. Suggest specific test cases that would validate the fix
+5. For complex fixes, recommend a regression test that reproduces the original bug
+
+**Good bug fix comment example:**
+```python
+# Fix: Previously, prices with modifiers like "(can't be crafted)" were not
+# being parsed correctly - the modifier was left in the main price text.
+# Now we extract modifiers into a separate list before parsing the value.
+```
+
+**Note:** It is acceptable to acknowledge missing tests and defer by creating a beads ticket, rather than adding tests in the current PR. However, bug fixes without explanatory comments should be flagged for immediate attention.
+
 ## strategic-fragility-reviewer
 
 Review code to ensure it follows the **strategic fragility** design philosophy. This parser deliberately uses fail-fast, assertion-heavy patterns because **wrong data is worse than no data**.
