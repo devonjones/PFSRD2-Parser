@@ -3,7 +3,24 @@ import glob
 
 
 def char_replace(instr):
-    for char in {"(", ")", "[", "]", ",", "/", "'", "\u2018", "\u2019", ":", ";", "&", ".", "#", "!", "?"}:
+    for char in {
+        "(",
+        ")",
+        "[",
+        "]",
+        ",",
+        "/",
+        "'",
+        "\u2018",
+        "\u2019",
+        ":",
+        ";",
+        "&",
+        ".",
+        "#",
+        "!",
+        "?",
+    }:
         instr = instr.replace(char, "")
     instr = instr.strip()
     instr = instr.replace(" ", "_")

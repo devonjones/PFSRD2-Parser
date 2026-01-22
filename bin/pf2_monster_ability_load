@@ -18,7 +18,7 @@ def load_monster_abilities(conn, options):
     for f in files:
         with open(f) as fp:
             data = json.load(fp)
-            print(data['name'])
+            print(data["name"])
             insert_monster_ability(curs, data)
     conn.commit()
 
@@ -26,8 +26,11 @@ def load_monster_abilities(conn, options):
 def option_parser(usage):
     parser = OptionParser(usage=usage)
     parser.add_option(
-        "-o", "--output", dest="output",
-        help="Output data directory.  Should be top level directory of psrd data. (required)")
+        "-o",
+        "--output",
+        dest="output",
+        help="Output data directory.  Should be top level directory of psrd data. (required)",
+    )
     return parser
 
 

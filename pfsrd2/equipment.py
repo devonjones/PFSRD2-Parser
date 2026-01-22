@@ -319,16 +319,22 @@ def _count_links_in_json(obj, debug=False, _links_found=None, _is_top_level=Fals
             for key, value in obj.items():
                 if isinstance(value, (dict, list)):
                     count += _count_links_in_json(
-                        value, debug=debug, _links_found=_links_found, _is_top_level=False,
-                        _path=f"{_path}.{key}" if _path else key
+                        value,
+                        debug=debug,
+                        _links_found=_links_found,
+                        _is_top_level=False,
+                        _path=f"{_path}.{key}" if _path else key,
                     )
 
     elif isinstance(obj, list):
         for i, item in enumerate(obj):
             if isinstance(item, (dict, list)):
                 count += _count_links_in_json(
-                    item, debug=debug, _links_found=_links_found, _is_top_level=False,
-                    _path=f"{_path}[{i}]"
+                    item,
+                    debug=debug,
+                    _links_found=_links_found,
+                    _is_top_level=False,
+                    _path=f"{_path}[{i}]",
                 )
 
     if debug and _is_top_level and _links_found is not None:
