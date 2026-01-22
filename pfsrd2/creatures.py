@@ -373,6 +373,7 @@ def trait_db_pass(struct):
         parts = trait["name"].split(" ")
         for part in parts:
             data = fetch_trait_by_name(curs, part)
+            assert data, f"Trait '{part}' not found in database"
             db_trait = json.loads(data["trait"])
             _merge_classes(trait, db_trait)
             if "aonid" in db_trait:
