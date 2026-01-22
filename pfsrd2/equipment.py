@@ -18,6 +18,7 @@ from universal.universal import remove_empty_sections_pass, game_id_pass
 from universal.universal import link_modifiers
 from universal.universal import link_values, link_value
 from universal.universal import edition_pass
+from universal.universal import build_object, build_objects
 from universal.universal import href_filter
 from universal.files import makedirs, char_replace
 from universal.creatures import write_creature
@@ -25,6 +26,7 @@ from universal.utils import log_element, is_tag_named, get_text
 from universal.utils import get_unique_tag_set
 from universal.utils import get_text, bs_pop_spaces
 from universal.utils import clear_garbage
+from universal.utils import clear_tags, split_on_tag, split_comma_and_semicolon
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.trait import trait_parse
 from pfsrd2.trait import extract_span_traits
@@ -52,6 +54,52 @@ def _normalize_whitespace(text):
     # Replace any sequence of whitespace characters (spaces, tabs, newlines) with a single space
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
+
+
+def _replace_entities(text):
+    """Fix character encoding issues (UTF-8 interpreted as Latin-1).
+
+    Same replacements as entity_pass in universal.py but as a standalone function.
+    Also handles HTML entity encoded variants (e.g., &acirc;&#128;&#148; for em-dash).
+    """
+    text = text.replace("\u00c2\u00ba", "º")
+    text = text.replace("\u00c3\u0097", "×")
+    text = text.replace("\u00e2\u0080\u0091", "‑")
+    text = text.replace("\u00e2\u0080\u0093", "–")
+    text = text.replace("\u00e2\u0080\u0094", "—")
+    text = text.replace("\u00e2\u0080\u0098", "'")
+    text = text.replace("\u00e2\u0080\u0099", "'")
+    text = text.replace("\u00e2\u0080\u009c", """)
+    text = text.replace("\u00e2\u0080\u009d", """)
+    text = text.replace("\u00e2\u0080\u00a6", "…")
+    text = text.replace("%5C", "\\")
+    text = text.replace("&amp;", "&")
+    text = text.replace("\u00ca\u00bc", "'")
+    text = text.replace("\u00c2\u00a0", " ")
+    text = text.replace("\u00a0", " ")
+    # HTML entity encoded variants (BeautifulSoup decodes &acirc;&#128;&#148; to â€")
+    text = text.replace("\u00e2\u20ac\u201d", "—")  # em-dash from HTML entities
+    text = text.replace("\u00e2\u20ac\u201c", "–")  # en-dash from HTML entities
+    text = text.replace("\u00e2\u20ac\u2122", "'")  # right single quote
+    text = text.replace("\u00e2\u20ac\u0153", """)  # left double quote
+    text = text.replace("\u00e2\u20ac\u009d", """)  # right double quote
+    return text
+
+
+def _recursive_entity_pass(obj):
+    """Recursively apply entity replacements to all string values in a nested structure."""
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if isinstance(value, str):
+                obj[key] = _replace_entities(value)
+            elif isinstance(value, (dict, list)):
+                _recursive_entity_pass(value)
+    elif isinstance(obj, list):
+        for i, item in enumerate(obj):
+            if isinstance(item, str):
+                obj[i] = _replace_entities(item)
+            elif isinstance(item, (dict, list)):
+                _recursive_entity_pass(item)
 
 
 def _trait_class_matcher(c):
@@ -229,6 +277,10 @@ def _count_links_in_json(obj, debug=False, _links_found=None, _is_top_level=Fals
         if 'group' in subtype and subtype != 'item_group':  # item_group is different
             return 0
 
+        # Skip counting links inside base_material objects (link count already subtracted from initial)
+        if subtype == 'base_material':
+            return 0
+
         # Check if this is a link object (regular link only, not alternate_link)
         # alternate_link objects are excluded from counting because they're extracted from
         # a special siderbarlook div and already excluded from the initial HTML count
@@ -280,9 +332,18 @@ EQUIPMENT_TYPES = {
             'Category': 'category',
             'Group': 'armor_group'
         },
-        # Fields that are shared (top-level) vs armor-specific (nested in armor object)
-        'shared_fields': ['access', 'price', 'bulk'],
-        'nested_fields': ['category', 'ac_bonus', 'dex_cap', 'check_penalty', 'speed_penalty', 'strength', 'armor_group'],
+        'field_destinations': {
+            'price': None,              # top-level stat_block
+            'bulk': None,               # top-level stat_block
+            'access': 'statistics',
+            'category': 'statistics',
+            'strength': 'statistics',   # becomes strength_requirement
+            'ac_bonus': 'defense',
+            'dex_cap': 'defense',
+            'check_penalty': 'defense',
+            'speed_penalty': 'defense',
+            'armor_group': 'defense',
+        },
         'group_table': 'armor_groups',
         'group_sql_module': 'pfsrd2.sql.armor_groups',
         'group_subtype': 'armor_group',
@@ -332,11 +393,14 @@ EQUIPMENT_TYPES = {
             'Hardness': 'hardness',
             'HP (BT)': 'hp_bt',
         },
-        # Fields at different nesting levels:
-        # - shared_fields: top-level stat_block (price, bulk)
-        # - nested_fields: nested in shield object (ac_bonus, speed_penalty, hardness, hp_bt)
-        'shared_fields': ['price', 'bulk'],
-        'nested_fields': ['ac_bonus', 'speed_penalty', 'hardness', 'hp_bt'],
+        'field_destinations': {
+            'price': None,           # top-level stat_block
+            'bulk': None,            # top-level stat_block
+            'ac_bonus': 'defense',
+            'speed_penalty': 'defense',
+            'hardness': 'defense',
+            'hp_bt': 'defense',
+        },
         'schema_file': 'equipment.schema.json',
         'output_subdir': 'shields',
         'normalize_fields': None,  # Set after function definition
@@ -403,6 +467,73 @@ EQUIPMENT_TYPES = {
         'output_subdir': 'vehicles',
         'normalize_fields': None,  # Set after function definition
     },
+    'equipment': {
+        'recognized_stats': {
+            'Source': None,  # Handled separately
+            'Price': 'price',
+            'Bulk': 'bulk',
+            'Hands': 'hands',
+            'Usage': 'usage',
+            'Activate': 'activate',
+            'Requirements': None,  # Part of activation, handled separately
+            'Access': 'access',
+            'PFS Note': None,  # PFS-specific notes, ignored for now
+            'Craft Requirements': 'craft_requirements',
+            'Ammunition': 'ammunition',
+            'Base Weapon': 'base_weapon',
+            'Base Armor': 'base_armor',
+            # Intelligent item stats
+            'Perception': 'perception',
+            'Communication': 'communication',
+            'Languages': 'languages',
+            'Skills': 'skills',
+            'Int': 'int',
+            'Wis': 'wis',
+            'Cha': 'cha',
+            'Will': 'will',
+            # The following are NOT top-level equipment stats - they belong inside
+            # abilities or afflictions. Mark with 'ERROR:' prefix to throw clear errors.
+            'Effect': 'ERROR:abilities',
+            'Frequency': 'ERROR:abilities',
+            'Duration': 'ERROR:abilities',
+            'Onset': 'ERROR:afflictions',
+            'Maximum Duration': 'ERROR:afflictions',
+            'Saving Throw': 'ERROR:afflictions',
+            'Trigger': 'ERROR:abilities',
+            'Stage 1': 'ERROR:afflictions',
+            'Stage 2': 'ERROR:afflictions',
+            'Stage 3': 'ERROR:afflictions',
+            'Stage 4': 'ERROR:afflictions',
+            'Stage 5': 'ERROR:afflictions',
+            'Stage 6': 'ERROR:afflictions',
+        },
+        # Field destinations: None = stat_block top level, or 'statistics'/'offense'/'defense'
+        'field_destinations': {
+            'price': None,
+            'bulk': None,
+            'hands': 'statistics',
+            'usage': 'statistics',
+            'activate': 'statistics',  # Special handling converts to ability
+            'access': 'statistics',
+            'craft_requirements': None,
+            'ammunition': 'offense',
+            'base_weapon': 'offense',
+            'base_armor': 'defense',
+            # Intelligent item stats go in statistics
+            'perception': 'statistics',
+            'communication': 'statistics',
+            'languages': 'statistics',
+            'skills': 'statistics',
+            'int': 'statistics',
+            'wis': 'statistics',
+            'cha': 'statistics',
+            'will': 'statistics',
+        },
+        'nested_fields': [],  # No nested object for general equipment
+        'schema_file': 'equipment.schema.json',
+        'output_subdir': 'equipment',
+        'normalize_fields': None,  # Set after function definition
+    },
 }
 
 
@@ -443,7 +574,7 @@ def parse_equipment(filename, options):
     # COUNT INITIAL LINKS: Count all <a> tags with game-obj in the content HTML
     # Exclude self-references (links from item to itself, typically in title)
     item_name = struct.get('name', '')
-    debug_mode = False  # Set to filename for debugging, e.g.: basename == "Armor.aspx.ID_36.html"
+    debug_mode = False  # Set to basename == "Equipment.aspx.ID_XXX.html" for debugging
     initial_link_count = _count_links_in_html(details["text"], exclude_name=item_name, debug=debug_mode)
     aon_pass(struct, basename)
     links_removed = section_pass(struct, config, debug=debug_mode)
@@ -457,7 +588,12 @@ def parse_equipment(filename, options):
         import sys
         sys.stderr.write(f"DEBUG: initial_link_count after subtraction: {initial_link_count}\n")
     restructure_pass(struct, "stat_block", find_stat_block)
-    normalize_numeric_fields_pass(struct, config)
+    normalize_trait_links = normalize_numeric_fields_pass(struct, config)
+    # Subtract trait links converted during normalization pass (they become trait objects, not link objects)
+    initial_link_count -= normalize_trait_links
+    if debug_mode:
+        sys.stderr.write(f"DEBUG: normalize_trait_links: {normalize_trait_links}\n")
+        sys.stderr.write(f"DEBUG: initial_link_count after normalize: {initial_link_count}\n")
     game_id_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
@@ -490,6 +626,9 @@ def parse_equipment(filename, options):
     # This maintains backward compatibility during migration
     populate_equipment_buckets_pass(struct)
     remove_empty_sections_pass(struct)
+
+    # Fix character encoding issues (UTF-8 interpreted as Latin-1)
+    _recursive_entity_pass(struct)
 
     if not options.skip_schema:
         struct['schema_version'] = 1.0
@@ -546,8 +685,9 @@ def parse_equipment_html(filename, equipment_type=None):
             pfs = match.group(1).capitalize()
 
     # Extract the equipment name from the link that follows DetailedOutput
+    # For general equipment, this may return a plain string instead of a tag
     name_link = extract_name_link(detailed_output, equipment_type)
-    name = get_text(name_link).strip()
+    name = name_link if isinstance(name_link, str) else get_text(name_link).strip()
 
     # Extract item level if present (for siege weapons, vehicles, etc.)
     # Item level appears as: <span style="margin-left:auto; margin-right:0">Item 13</span>
@@ -623,6 +763,7 @@ def extract_name_link(detailed_output, equipment_type=None):
         'shield': 'Shields',
         'siege_weapon': 'SiegeWeapons',
         'vehicle': 'Vehicles',
+        'equipment': 'Equipment',
     }
 
     # All valid game-obj values (for fallback if equipment_type not provided)
@@ -642,7 +783,25 @@ def extract_name_link(detailed_output, equipment_type=None):
             return True
         return game_obj in all_gameobjs
 
-    # Try Structure A first: name link is a sibling of DetailedOutput
+    # For general Equipment, name may be plain text (not a link)
+    # Check for text node FIRST before looking for links
+    if equipment_type == 'equipment':
+        for sibling in detailed_output.next_siblings:
+            if isinstance(sibling, NavigableString):
+                text = str(sibling).strip()
+                if text and not text.startswith('Item'):  # Skip "Item X" level text
+                    # Return plain string - calling code handles this
+                    return text
+            elif hasattr(sibling, 'name') and sibling.name == 'span':
+                # Check if span contains item level - skip to next sibling
+                span_text = sibling.get_text().strip()
+                if span_text.startswith('Item'):
+                    continue
+            elif hasattr(sibling, 'name') and sibling.name in ('h3', 'b', 'br'):
+                # Reached stat block content without finding name - stop looking
+                break
+
+    # Try Structure A: name link is a sibling of DetailedOutput
     for sibling in detailed_output.next_siblings:
         if is_name_link(sibling):
             return sibling
@@ -714,6 +873,142 @@ def section_pass(struct, config, debug=False):
         return _generic_section_pass(struct, config, debug=debug)
 
 
+def _parse_variant_section(h2_tag, config, parent_name, debug=False):
+    """Parse a variant section (h2 and its content) into a variant stat block.
+
+    Args:
+        h2_tag: The h2 BeautifulSoup element marking the start of the variant
+        config: Equipment type configuration
+        parent_name: Name of the parent item (for debugging)
+        debug: Enable debug output
+
+    Returns:
+        Tuple of (variant stat block dict, link count removed from variant)
+    """
+    # Extract variant name and level from h2
+    # Format: "Artisan's Tools<span>Item 0</span>" or "Artisan's Tools (Sterling)<span>Item 3</span>"
+    h2_text = get_text(h2_tag).strip()
+    level_match = re.search(r'Item\s+(\d+)', h2_text)
+    level = int(level_match.group(1)) if level_match else 0
+
+    # Name is everything before "Item N"
+    name = re.sub(r'\s*Item\s+\d+\+?\s*$', '', h2_text).strip()
+
+    # Collect content from h2 until next h2 or end
+    content_parts = []
+    current = h2_tag.next_sibling
+    while current:
+        if hasattr(current, 'name') and current.name == 'h2':
+            break  # Stop at next variant
+        content_parts.append(str(current))
+        current = current.next_sibling
+
+    variant_html = ''.join(content_parts)
+    bs = BeautifulSoup(variant_html, 'html.parser')
+
+    # Create variant struct to hold source (like parent struct)
+    variant_struct = {'sources': []}
+
+    # Create variant stat block
+    variant_sb = {
+        'type': 'stat_block',
+        'subtype': config.get('output_subdir', 'equipment'),
+        'name': name,
+        'level': level,
+    }
+
+    # Extract source from variant (has its own source links)
+    _extract_source(bs, variant_struct)
+
+    # Extract traits from variant (some variants have their own traits like Uncommon)
+    _extract_traits(bs, variant_sb)
+
+    # Extract stats from variant content
+    stats = {}
+    group_subtype = config.get('group_subtype') if 'Group' in config.get('recognized_stats', {}) else None
+    _extract_stats_to_dict(bs, stats, config['recognized_stats'], 'equipment', group_subtype)
+
+    # Route fields to their proper destinations
+    _route_fields_to_destinations(variant_sb, stats, config)
+
+    # Extract any remaining text as description (with links)
+    # Get links from remaining content and unwrap them
+    desc_links = get_links(bs, unwrap=True)
+    remaining_text = clear_tags(str(bs), ["i", "b", "br"])
+    remaining_text = _normalize_whitespace(remaining_text).strip()
+
+    if remaining_text:
+        variant_sb['text'] = remaining_text
+
+    # Add links from description if any
+    if desc_links:
+        if 'links' not in variant_sb:
+            variant_sb['links'] = []
+        variant_sb['links'].extend(desc_links)
+
+    # Add sources to variant if extracted
+    if variant_struct['sources']:
+        variant_sb['sources'] = variant_struct['sources']
+
+    # Normalize variant fields (bulk, hands->statistics, activate->ability)
+    # Use the normalizer if this is equipment type
+    normalize_func = config.get('normalize_fields')
+    if normalize_func:
+        normalize_func(variant_sb)
+
+    return variant_sb
+
+
+def _route_fields_to_destinations(sb, stats, config):
+    """Route extracted fields to their proper destinations in the stat block.
+
+    Uses 'field_destinations' config if available, otherwise falls back to
+    'shared_fields' and 'nested_fields' for backward compatibility.
+
+    Destinations:
+        None: stat_block top level
+        'statistics': sb['statistics']
+        'offense': sb['offense']
+        'defense': sb['defense']
+    """
+    field_destinations = config.get('field_destinations')
+
+    if field_destinations:
+        # New routing system
+        for field, value in stats.items():
+            dest = field_destinations.get(field)
+            if dest is None:
+                # Top level of stat_block
+                sb[field] = value
+            else:
+                # Nested destination (statistics, offense, defense)
+                if dest not in sb:
+                    sb[dest] = {
+                        'type': 'stat_block_section',
+                        'subtype': dest
+                    }
+                sb[dest][field] = value
+    else:
+        # Legacy routing for backward compatibility
+        shared_fields = config.get('shared_fields', [])
+        nested_fields = config.get('nested_fields', [])
+        equipment_type = config.get('output_subdir', 'equipment')
+
+        # Add shared fields to top level
+        for field in shared_fields:
+            if field in stats:
+                sb[field] = stats[field]
+
+        # Add nested fields to equipment-specific object
+        nested_obj = {}
+        for field in nested_fields:
+            if field in stats:
+                nested_obj[field] = stats[field]
+
+        if nested_obj:
+            sb[equipment_type] = nested_obj
+
+
 def _generic_section_pass(struct, config, debug=False):
     """Generic section pass for non-weapon equipment (armor, etc.).
 
@@ -726,41 +1021,64 @@ def _generic_section_pass(struct, config, debug=False):
 
     bs = BeautifulSoup(text, 'html.parser')
 
-    _extract_traits(bs, sb)
-    _extract_source(bs, struct)
+    # Check for variant h2 headers (not mode headers like Melee/Ranged)
+    h2_tags = bs.find_all('h2', class_='title')
+    # Filter out mode headers - variants have "Item N" in them
+    variant_h2s = [h2 for h2 in h2_tags if re.search(r'Item\s+\d+', get_text(h2))]
 
-    # Extract stats into a temporary dictionary
+    # If we have variants, we need to extract main content (before first h2) separately
+    if variant_h2s:
+        # Find the first h2 and split content
+        first_h2 = variant_h2s[0]
+
+        # Build main content (everything before first h2)
+        main_parts = []
+        for elem in bs.children:
+            if elem == first_h2:
+                break
+            main_parts.append(str(elem))
+        main_html = ''.join(main_parts)
+        main_bs = BeautifulSoup(main_html, 'html.parser')
+    else:
+        main_bs = bs
+
+    _extract_traits(main_bs, sb)
+    _extract_source(main_bs, struct)
+
+    # Extract stats into a temporary dictionary (from main content only)
     stats = {}
     # Fail fast if Group stat requires group_subtype but it's missing from config
     group_subtype = config['group_subtype'] if 'Group' in config['recognized_stats'] else None
-    _extract_stats_to_dict(bs, stats, config['recognized_stats'], struct['type'], group_subtype)
+    _extract_stats_to_dict(main_bs, stats, config['recognized_stats'], struct['type'], group_subtype)
 
-    # Separate shared vs nested fields
-    shared_fields = config.get('shared_fields', [])
-    nested_fields = config.get('nested_fields', [])
-    equipment_type = struct['type']  # 'weapon' or 'armor'
+    # Route fields to their destinations based on config
+    _route_fields_to_destinations(sb, stats, config)
 
-    # Add shared fields to top level
-    for field in shared_fields:
-        if field in stats:
-            sb[field] = stats[field]
+    # Process variants if present
+    if variant_h2s:
+        variants = []
+        for h2 in variant_h2s:
+            variant_sb = _parse_variant_section(h2, config, struct.get('name', ''), debug=debug)
+            if variant_sb:
+                variants.append(variant_sb)
+            # Remove h2 and its content from main bs (so it doesn't affect description)
+            h2.decompose()
+        if variants:
+            sb['variants'] = variants
 
-    # Add nested fields to equipment-specific object
-    nested_obj = {}
-    for field in nested_fields:
-        if field in stats:
-            nested_obj[field] = stats[field]
-
-    if nested_obj:
-        sb[equipment_type] = nested_obj
-
-    links_removed = _remove_redundant_sections(bs, struct.get('name', ''), debug=debug)
-    _extract_alternate_link(bs, struct)
-    _extract_legacy_content_section(bs, struct)
-    _extract_description(bs, struct)
+    links_removed = _remove_redundant_sections(bs if not variant_h2s else main_bs, struct.get('name', ''), debug=debug)
+    _extract_alternate_link(bs if not variant_h2s else main_bs, struct)
+    _extract_legacy_content_section(bs if not variant_h2s else main_bs, struct)
+    base_material_links = _extract_base_material(bs if not variant_h2s else main_bs, sb, debug=debug)
+    trait_links_converted = _extract_description(bs if not variant_h2s else main_bs, struct, debug=debug)
     _cleanup_stat_block(sb)
 
-    return links_removed
+    # Add trait links converted to traits to links_removed (they were counted initially but became traits)
+    # Also add base_material links which are stored in structured objects, not the links array
+    total_removed = links_removed + (trait_links_converted or 0) + base_material_links
+    if debug:
+        sys.stderr.write(f"DEBUG _generic_section_pass: links_removed={links_removed}, trait_links_converted={trait_links_converted}, base_material_links={base_material_links}, total={total_removed}\n")
+    return total_removed
 
 
 def _weapon_section_pass(struct, config, debug=False):
@@ -788,10 +1106,11 @@ def _weapon_section_pass(struct, config, debug=False):
     links_removed = _remove_redundant_sections(bs, struct.get('name', ''), debug=debug)
     _extract_alternate_link(bs, struct)
     _extract_legacy_content_section(bs, struct)
-    _extract_description(bs, struct)
+    trait_links_converted = _extract_description(bs, struct)
     _cleanup_stat_block(sb)
 
-    return links_removed
+    # Add trait links converted to traits to links_removed (they were counted initially but became traits)
+    return links_removed + (trait_links_converted or 0)
 
 
 def _siege_weapon_section_pass(struct, config, debug=False):
@@ -840,11 +1159,11 @@ def _siege_weapon_section_pass(struct, config, debug=False):
     links_removed = _remove_redundant_sections(bs, struct.get('name', ''), debug=debug)
     _extract_alternate_link(bs, struct)
     _extract_legacy_content_section(bs, struct)
-    _extract_description(bs, struct)
+    desc_trait_links = _extract_description(bs, struct)
     _cleanup_stat_block(sb)
 
     # Add trait links converted to traits to links_removed (they were counted initially but became traits)
-    return links_removed + trait_links_converted
+    return links_removed + trait_links_converted + (desc_trait_links or 0)
 
 
 def _vehicle_section_pass(struct, config, debug=False):
@@ -893,11 +1212,11 @@ def _vehicle_section_pass(struct, config, debug=False):
     links_removed = _remove_redundant_sections(bs, struct.get('name', ''), debug=debug)
     _extract_alternate_link(bs, struct)
     _extract_legacy_content_section(bs, struct)
-    _extract_description(bs, struct)  # Use generic description extraction
+    desc_trait_links = _extract_description(bs, struct)  # Use generic description extraction
     _cleanup_stat_block(sb)
 
     # Add trait links converted to traits to links_removed (they were counted initially but became traits)
-    return links_removed + trait_links_converted
+    return links_removed + trait_links_converted + (desc_trait_links or 0)
 
 
 def _extract_vehicle_stats(bs, stats_dict, recognized_stats, equipment_type):
@@ -1846,14 +2165,24 @@ def _extract_source(bs, struct):
 
 
 def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, group_subtype):
-    """Extract stats into a dictionary - works for any equipment type based on configuration."""
-    # Find all bold tags before the hr (stats section)
+    """Extract stats into a dictionary and remove them from the soup.
+
+    Works for any equipment type based on configuration.
+    """
+    # Find all bold tags that are stats
+    # For most equipment, stats are before the hr
+    # For intelligent items (equipment type), stats can also be after the hr
     hr = bs.find('hr')
     bold_tags = []
     for tag in bs.find_all('b'):
-        if hr and tag.sourceline and hr.sourceline and tag.sourceline > hr.sourceline:
-            break
+        # For equipment type, don't stop at hr (intelligent items have stats after hr)
+        if equipment_type != 'equipment':
+            if hr and tag.sourceline and hr.sourceline and tag.sourceline > hr.sourceline:
+                break
         bold_tags.append(tag)
+
+    # Track elements to remove after extraction (bold tags and their values)
+    elements_to_remove = []
 
     # Extract and validate all labels
     for bold_tag in bold_tags:
@@ -1863,22 +2192,63 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
         if not label:
             continue
 
-        # Fail fast if we encounter an unknown label
-        assert label in recognized_stats, \
-            f"Unknown {equipment_type} stat label: '{label}'. Add it to EQUIPMENT_TYPES['{equipment_type}']['recognized_stats']."
+        # For equipment type, skip unrecognized labels (they may be ability names like Activate)
+        # For other types, fail fast on unknown labels
+        if label not in recognized_stats:
+            if equipment_type == 'equipment':
+                continue  # Skip - might be ability name like Activate, Effect, etc.
+            else:
+                assert False, \
+                    f"Unknown {equipment_type} stat label: '{label}'. Add it to EQUIPMENT_TYPES['{equipment_type}']['recognized_stats']."
 
         # Skip labels we handle elsewhere (like Source)
         field_name = recognized_stats[label]
         if field_name is None:
             continue
 
-        # Extract the value (special handling for Group which has a link)
+        # Check for ERROR: prefix - these are nested-only fields that shouldn't appear at top level
+        # For equipment type, skip these (abilities handled separately by _extract_abilities_from_description)
+        if isinstance(field_name, str) and field_name.startswith('ERROR:'):
+            if equipment_type == 'equipment':
+                continue  # Skip - handled by ability extraction
+            else:
+                nested_location = field_name.split(':')[1]
+                raise AssertionError(
+                    f"Stat label '{label}' found at top level, but it belongs inside {nested_location}. "
+                    f"This item likely has nested abilities/afflictions that need special parsing."
+                )
+
+        # For equipment type, skip "Activate" - it's handled by _extract_abilities_from_description
+        # which preserves the full ability structure (Frequency, Trigger, Effect fields with links)
+        if equipment_type == 'equipment' and label == 'Activate':
+            continue
+
+        # Extract the value (special handling for Group, Activate, and fields with links)
         if label == 'Group':
             value = _extract_group_value(bold_tag, group_subtype)
+        elif label in ('Activate', 'Base Weapon', 'Base Armor', 'Ammunition', 'Communication', 'Languages', 'Skills', 'Perception', 'Craft Requirements'):
+            # Preserve HTML for fields that may contain links or action icons
+            value = _extract_stat_value(bold_tag, preserve_html=True)
         else:
             value = _extract_stat_value(bold_tag)
         if value:
             stats_dict[field_name] = value
+
+        # Mark elements for removal: the bold tag and content until next <b>, <br>, or <hr>
+        elements_to_remove.append(bold_tag)
+        current = bold_tag.next_sibling
+        while current:
+            if isinstance(current, Tag) and current.name in ('b', 'hr', 'br'):
+                break
+            elements_to_remove.append(current)
+            current = current.next_sibling
+
+    # Remove extracted stat elements from soup
+    for elem in elements_to_remove:
+        if isinstance(elem, Tag):
+            elem.decompose()
+        elif isinstance(elem, NavigableString):
+            elem.extract()
 
 
 def _extract_stats(bs, sb, recognized_stats, equipment_type, group_subtype):
@@ -2167,16 +2537,82 @@ def _remove_h2_section(bs, match_func, debug=False, exclude_name=None):
 
 
 def _extract_legacy_content_section(bs, struct):
-    """Extract Legacy Content h3 section if present.
+    """Remove Legacy Content h3 section if present.
 
     NOTE: Legacy content is now represented via the 'edition' field on the item,
-    so we no longer need to create a separate section for it.
+    so we remove this heading rather than creating a section for it.
     """
-    # Legacy content is indicated by the 'edition' field, not a section
-    pass
+    # Find and remove Legacy Content h3
+    legacy_h3 = bs.find('h3', class_='title')
+    if legacy_h3 and 'Legacy Content' in get_text(legacy_h3):
+        legacy_h3.decompose()
 
 
-def _extract_description(bs, struct):
+def _extract_base_material(bs, sb, debug=False):
+    """Extract 'Base Material' section from special material items.
+
+    These items (e.g., Adamantine Armor, Darkwood Shield) have a section like:
+        <h3 class="title">Base Material</h3>
+        <u><a href="Equipment.aspx?ID=271">Adamantine</a></u>
+        <br>
+
+    This function extracts the material link and removes the section from the soup.
+
+    Returns:
+        int: Number of links extracted (for link accounting - 0 or 1)
+    """
+    if debug:
+        h3_tags = bs.find_all('h3', class_='title')
+        sys.stderr.write(f"DEBUG _extract_base_material: Found {len(h3_tags)} h3 tags with class 'title'\n")
+        for h3 in h3_tags:
+            sys.stderr.write(f"  - '{get_text(h3)}'\n")
+
+    # Find the "Base Material" h3 header
+    for h3 in bs.find_all('h3', class_='title'):
+        h3_text = get_text(h3)
+        if debug:
+            sys.stderr.write(f"DEBUG: Checking h3 text: '{h3_text}' - contains 'Base Material': {'Base Material' in h3_text}\n")
+        if 'Base Material' in h3_text:
+            # Found it - extract the material link from the following <u> tag
+            u_tag = h3.find_next_sibling('u')
+            if debug:
+                sys.stderr.write(f"DEBUG: Found Base Material h3, u_tag = {u_tag}\n")
+            if u_tag:
+                link_tag = u_tag.find('a')
+                if link_tag:
+                    # Extract the link - extract_link returns (name, link_dict)
+                    name, link = extract_link(link_tag)
+                    if link:
+                        # Create base_material object
+                        sb['base_material'] = {
+                            'type': 'stat_block_section',
+                            'subtype': 'base_material',
+                            'name': name,
+                            'link': link
+                        }
+
+                        # Remove the u tag
+                        u_tag.decompose()
+
+                # Remove the h3 tag
+                h3.decompose()
+
+                # Remove trailing br if present
+                for br in bs.find_all('br'):
+                    # Check if it's right after where the h3 was
+                    # Just remove the first br we find that's not inside another element
+                    if br.parent == bs or (hasattr(br, 'parent') and br.parent.name in ['div', 'span']):
+                        br.decompose()
+                        break
+
+            if debug:
+                sys.stderr.write(f"DEBUG: _extract_base_material returning 1\n")
+            return 1  # One link was extracted (moved outside br loop)
+
+    return 0
+
+
+def _extract_description(bs, struct, debug=False):
     """Extract description text and links, adding them to the stat_block.
 
     For equipment with multiple <hr> separators (siege weapons, vehicles), splits by <hr>
@@ -2345,7 +2781,26 @@ def _extract_description(bs, struct):
     # Add text and links to stat_block (not top-level structure)
     # Always clear raw HTML from stat_block's text - replace with clean description or remove
     sb = find_stat_block(struct)
+
+    # Check if desc_text is actual descriptive content or just remnant HTML
+    # Items without descriptions may have name + item level left over
+    # Skip if it only contains the item name or only has short text with no sentences
+    item_name = struct.get('name', '')
+    is_valid_description = False
     if desc_text:
+        # Get plain text without HTML tags for validation
+        plain_text = BeautifulSoup(desc_text, 'html.parser').get_text().strip()
+        # Valid description should:
+        # 1. Be more than just the item name
+        # 2. Contain at least one sentence (ends with period or has significant content)
+        # 3. Not be just "Item X" level text
+        text_without_name = plain_text.replace(item_name, '').strip()
+        # Remove "Item X" patterns
+        text_without_name = re.sub(r'Item\s+\d+\+?', '', text_without_name).strip()
+        # Check if there's meaningful content left
+        is_valid_description = len(text_without_name) > 10 and not text_without_name.isdigit()
+
+    if desc_text and is_valid_description:
         sb['text'] = desc_text
     elif 'text' in sb:
         # No description found - remove raw HTML that was set by restructure_equipment_pass
@@ -2354,6 +2809,271 @@ def _extract_description(bs, struct):
     # Store extracted links if any exist (excluding trait links)
     if non_trait_links:
         sb['links'] = non_trait_links
+
+    # Extract abilities from content after description (Activate, etc.)
+    # This uses the original bs which still has the action content
+    trait_links_converted = _extract_abilities_from_description(bs, sb, struct, debug=debug)
+
+    return trait_links_converted
+
+
+def _extract_abilities_from_description(bs, sb, struct, debug=False):
+    """Extract offensive abilities (Activate, etc.) from content after description.
+
+    These appear as bold-labeled lines after the description text:
+    <b>Activate</b> [action] command (traits); <b>Frequency</b> ...; <b>Trigger</b> ...; <b>Effect</b> ...
+
+    Items can have multiple Activate abilities, each starting with <b>Activate</b>.
+
+    Extracts them into statistics.abilities array.
+    Returns the count of trait links converted (for link accounting).
+    """
+    # Find all <b>Activate</b> tags
+    activate_bolds = [bold for bold in bs.find_all('b') if bold.get_text().strip() == 'Activate']
+
+    if not activate_bolds:
+        return 0
+
+    trait_links_converted = 0
+    abilities = []
+
+    # Process each Activate ability
+    for i, activate_bold in enumerate(activate_bolds):
+        # Collect content from this Activate until next Activate or end
+        ability_parts = [str(activate_bold)]
+        current = activate_bold.next_sibling
+
+        # Find where this ability ends (next Activate bold or end)
+        next_activate = activate_bolds[i + 1] if i + 1 < len(activate_bolds) else None
+
+        while current:
+            # Stop if we hit the next Activate bold
+            if next_activate and current == next_activate:
+                break
+            # Also check if current contains the next activate (for nested structures)
+            if isinstance(current, Tag) and current.name == 'b' and current.get_text().strip() == 'Activate':
+                if current in activate_bolds[i + 1:]:
+                    break
+            # Stop at <hr> tags - content after hr is description, not ability
+            if isinstance(current, Tag) and current.name == 'hr':
+                break
+            ability_parts.append(str(current))
+            current = current.next_sibling
+
+        ability_html = ''.join(ability_parts)
+        ability_soup = BeautifulSoup(ability_html, 'html.parser')
+
+        # Build ability object
+        ability = build_object('stat_block_section', 'ability', 'Activate')
+        ability['ability_type'] = 'offensive'
+
+        # Extract action type from action icon span
+        action_span = ability_soup.find('span', class_='action')
+        if action_span:
+            action_title = action_span.get('title', '')
+            if action_title:
+                # Normalize action names to match schema
+                if action_title == 'Single Action':
+                    action_title = 'One Action'
+                ability['action_type'] = {
+                    'type': 'stat_block_section',
+                    'subtype': 'action_type',
+                    'name': action_title
+                }
+            action_span.decompose()
+
+        # Extract sub-fields: Frequency, Trigger, Effect, Requirements
+        ability_fields = ['Frequency', 'Trigger', 'Effect', 'Requirements']
+        for field in ability_fields:
+            field_bold = ability_soup.find('b', string=lambda s: s and s.strip() == field)
+            if field_bold:
+                # Get value after the bold tag until next bold or end
+                value_parts = []
+                nodes_to_remove = []
+                field_current = field_bold.next_sibling
+                while field_current:
+                    if isinstance(field_current, Tag) and field_current.name == 'b':
+                        break
+                    value_parts.append(str(field_current))
+                    nodes_to_remove.append(field_current)
+                    field_current = field_current.next_sibling
+
+                value_html = ''.join(value_parts).strip()
+                # Clean up: remove leading semicolons and whitespace
+                value_html = re.sub(r'^[\s;]+', '', value_html)
+                # Remove trailing <br> tags and semicolons
+                value_html = re.sub(r'<br\s*/?>[\s]*$', '', value_html)
+                value_html = re.sub(r'[\s;]+$', '', value_html)
+
+                if value_html:
+                    # Extract links from value
+                    value_text, value_links = extract_links(value_html)
+                    # Convert <br> tags to newlines, then normalize whitespace
+                    value_text = re.sub(r'<br\s*/?>', '\n', value_text)
+                    # Normalize whitespace (collapse multiple spaces/newlines)
+                    value_text = _normalize_whitespace(value_text)
+
+                    field_key = field.lower()
+                    if field_key == 'requirements':
+                        field_key = 'requirement'
+
+                    ability[field_key] = value_text
+
+                    # Add links to ability's links array
+                    if value_links:
+                        if 'links' not in ability:
+                            ability['links'] = []
+                        ability['links'].extend(value_links)
+
+                # Remove the field bold and its value nodes from soup
+                for node in nodes_to_remove:
+                    if isinstance(node, Tag):
+                        node.decompose()
+                    elif isinstance(node, NavigableString):
+                        node.extract()
+                field_bold.decompose()
+
+        # Extract the main text after Activate (before first sub-field)
+        # This is typically "Interact" or "command (traits)"
+        activate_bold_new = ability_soup.find('b', string=lambda s: s and s.strip() == 'Activate')
+        if activate_bold_new:
+            # Collect content after Activate bold until next <b> tag
+            # BUT: If next <b> is a named activation (starts with em-dash), include content after it
+            content_parts = []
+            ability_name = None
+            act_current = activate_bold_new.next_sibling
+
+            # Skip whitespace NavigableStrings to find first non-whitespace sibling
+            while act_current and isinstance(act_current, NavigableString) and not act_current.strip():
+                act_current = act_current.next_sibling
+
+            # Check if immediately followed by a named activation bold (e.g., "—Dim Sight")
+            if isinstance(act_current, Tag) and act_current.name == 'b':
+                b_text = act_current.get_text().strip()
+                # Check for em-dash prefix (U+2014, en-dash U+2013, or other dash-like chars)
+                # Also check for the raw mojibake pattern that sometimes appears
+                first_char = b_text[0] if b_text else ''
+                # Mojibake check: em-dash UTF-8 (E2 80 94) decoded as latin-1 = 'â€"' (3 chars starting with â ord=226)
+                is_mojibake_emdash = len(b_text) >= 3 and ord(first_char) == 226
+                is_named = (first_char == '—' or  # em-dash U+2014
+                           first_char == '–' or  # en-dash U+2013
+                           first_char == '-' or  # regular hyphen
+                           ord(first_char) == 8212 or  # em-dash decimal
+                           b_text.startswith('\u2014') or  # em-dash unicode escape
+                           is_mojibake_emdash)  # mojibake em-dash
+                if is_named:
+                    # This is a named activation - extract the name and continue after it
+                    if is_mojibake_emdash:
+                        ability_name = b_text[3:].strip()  # Remove 3-char mojibake prefix
+                    else:
+                        ability_name = b_text[1:].strip()  # Remove the dash prefix
+                    ability['ability_name'] = ability_name
+                    act_current = act_current.next_sibling
+
+            while act_current:
+                if isinstance(act_current, Tag) and act_current.name == 'b':
+                    break
+                content_parts.append(str(act_current))
+                act_current = act_current.next_sibling
+
+            activate_content = ''.join(content_parts).strip()
+            # Clean up leading/trailing semicolons
+            activate_content = re.sub(r'^[\s;]+', '', activate_content)
+            activate_content = re.sub(r'[\s;]+$', '', activate_content)
+
+            if activate_content:
+                # Parse the activate content soup to extract links and traits
+                content_soup = BeautifulSoup(activate_content, 'html.parser')
+
+                # Extract all links first
+                all_links = get_links(content_soup, unwrap=True)
+
+                # Separate trait links from other links
+                trait_links = [link for link in all_links if link.get('game-obj') == 'Traits']
+                other_links = [link for link in all_links if link.get('game-obj') != 'Traits']
+
+                # Get text after unwrapping links
+                text = _normalize_whitespace(str(content_soup))
+
+                # Check if there are traits in parentheses
+                traits_to_convert = []
+                if '(' in text:
+                    paren_start = text.find('(')
+                    paren_end = text.find(')')
+                    if paren_end > paren_start:
+                        parens_content = text[paren_start + 1:paren_end].strip()
+                        text_before = text[:paren_start].strip()
+                        text_after = text[paren_end + 1:].strip()
+
+                        # Check which trait links are in the parentheses
+                        for trait_link in trait_links:
+                            trait_name = trait_link['name']
+                            if trait_name.lower() in parens_content.lower():
+                                traits_to_convert.append(trait_link)
+                                # Remove trait name from parens content
+                                parens_content = parens_content.replace(trait_name, '')
+                                parens_content = parens_content.replace(trait_name.lower(), '')
+                            else:
+                                # Trait link not in parentheses - keep as regular link
+                                other_links.append(trait_link)
+
+                        # Clean up commas and whitespace from parens content
+                        parens_content = parens_content.replace(',', '').strip()
+
+                        # Handle any remaining text in parentheses as unlinked trait names
+                        # BUT: filter out known activation methods that aren't traits
+                        known_activations = {'Interact', 'Command', 'Envision', 'Cast', 'Spell'}
+                        unlinked_traits = []
+                        if parens_content:
+                            for pt in parens_content.split():
+                                pt = pt.strip()
+                                if pt and not pt.isdigit() and pt not in known_activations:
+                                    unlinked_traits.append(pt)
+
+                        # Build trait objects
+                        trait_names = [tl['name'] for tl in traits_to_convert] + unlinked_traits
+                        if trait_names:
+                            traits = build_objects('stat_block_section', 'trait', trait_names)
+                            ability['traits'] = traits
+                            # Track trait links converted for link accounting
+                            trait_links_converted += len(traits_to_convert)
+
+                        # The text before parentheses is the activation (e.g., "command", "Interact")
+                        activation = text_before
+                else:
+                    # No parentheses - all trait links are body links
+                    other_links.extend(trait_links)
+                    # The entire text is the activation
+                    activation = text
+
+                # Store activation (command, Interact, etc.) - what you do to activate the ability
+                if activation:
+                    ability['activation'] = activation
+
+                if other_links:
+                    if 'links' not in ability:
+                        ability['links'] = []
+                    ability['links'].extend(other_links)
+
+        abilities.append(ability)
+
+    # Remove all Activate bold tags from original soup
+    for activate_bold in activate_bolds:
+        if activate_bold.parent:  # Check it's still in the tree
+            activate_bold.decompose()
+
+    # Add abilities to statistics.abilities
+    if abilities:
+        if 'statistics' not in sb:
+            sb['statistics'] = {
+                'type': 'stat_block_section',
+                'subtype': 'statistics'
+            }
+        if 'abilities' not in sb['statistics']:
+            sb['statistics']['abilities'] = []
+        sb['statistics']['abilities'].extend(abilities)
+
+    return trait_links_converted
 
 
 def _extract_alternate_link(bs, struct):
@@ -2416,16 +3136,22 @@ def _cleanup_stat_block(sb):
 
 def normalize_numeric_fields_pass(struct, config):
     """Convert numeric string fields to integers and structure complex fields.
-    Calls equipment-specific normalizer function from config."""
+    Calls equipment-specific normalizer function from config.
+
+    Returns:
+        int: Number of trait links converted to trait objects (for link accounting)
+    """
     # Access stat_block after it's been moved to top level by restructure_pass
     sb = struct.get('stat_block')
     if not sb:
-        return
+        return 0
 
     # Call equipment-specific normalizer function
     normalizer = config.get('normalize_fields')
     if normalizer:
-        normalizer(sb)
+        result = normalizer(sb)
+        return result if result else 0
+    return 0
 
 
 def _normalize_int_field(sb, field_name):
@@ -2485,8 +3211,9 @@ def _normalize_strength(sb):
         stat_value = value
         modifier = (stat_value - 10) // 2
 
-    # Create stat requirement object
-    sb['strength'] = {
+    # Create stat requirement object and rename to schema-expected field name
+    del sb['strength']
+    sb['strength_requirement'] = {
         'type': 'stat_block_section',
         'subtype': 'stat_requirement',
         'stat': 'strength',
@@ -2664,13 +3391,21 @@ def _normalize_bulk(sb):
             'value': None,
             'text': 'L'
         }
-    else:
+    elif value_str.isdigit():
         # Parse as integer
         int_value = int(value_str)
         sb['bulk'] = {
             'type': 'stat_block_section',
             'subtype': 'bulk',
             'value': int_value,
+            'text': value_str
+        }
+    else:
+        # Text value like "varies by armor" - no integer value
+        sb['bulk'] = {
+            'type': 'stat_block_section',
+            'subtype': 'bulk',
+            'value': None,
             'text': value_str
         }
 
@@ -2681,17 +3416,20 @@ def normalize_armor_fields(sb):
     # Normalize shared field at top level
     _normalize_bulk(sb)
 
-    # Normalize armor-specific fields within armor object
-    if 'armor' in sb:
-        armor_obj = sb['armor']
+    # Normalize statistics fields
+    if 'statistics' in sb:
+        stats_obj = sb['statistics']
         # Strength requirement object (with legacy and remastered values)
-        _normalize_strength(armor_obj)
+        _normalize_strength(stats_obj)
 
+    # Normalize defense fields
+    if 'defense' in sb:
+        defense_obj = sb['defense']
         # Bonus objects (for stacking rules)
-        _normalize_ac_bonus(armor_obj)
-        _normalize_dex_cap(armor_obj)
-        _normalize_check_penalty(armor_obj)
-        _normalize_speed_penalty(armor_obj)
+        _normalize_ac_bonus(defense_obj)
+        _normalize_dex_cap(defense_obj)
+        _normalize_check_penalty(defense_obj)
+        _normalize_speed_penalty(defense_obj)
 
 def _normalize_favored_weapon(weapon_obj):
     """Normalize favored_weapon field from HTML string to structured object with text and links.
@@ -2816,14 +3554,14 @@ def normalize_shield_fields(sb):
     # Normalize shared field at top level
     _normalize_bulk(sb)
 
-    # Normalize shield-specific fields within shield object
-    if 'shield' in sb:
-        shield_obj = sb['shield']
+    # Normalize shield-specific fields within defense bucket
+    if 'defense' in sb:
+        defense_obj = sb['defense']
         # Bonus objects (for stacking rules) - shields use bonus_type 'shield'
-        _normalize_ac_bonus(shield_obj, bonus_type='shield')
-        _normalize_speed_penalty(shield_obj, bonus_type='shield')
+        _normalize_ac_bonus(defense_obj, bonus_type='shield')
+        _normalize_speed_penalty(defense_obj, bonus_type='shield')
         # Build hitpoints object from hp_bt, hardness, immunities fields
-        _normalize_item_hitpoints(shield_obj)
+        _normalize_item_hitpoints(defense_obj)
 
 # Register normalizer in EQUIPMENT_TYPES config
 EQUIPMENT_TYPES['shield']['normalize_fields'] = normalize_shield_fields
@@ -2889,6 +3627,231 @@ def normalize_vehicle_fields(sb):
 
 # Register normalizer in EQUIPMENT_TYPES config
 EQUIPMENT_TYPES['vehicle']['normalize_fields'] = normalize_vehicle_fields
+
+
+def _html_to_stat_block_section(html_string, subtype):
+    """Convert an HTML string to a stat_block_section object with text and links.
+
+    Args:
+        html_string: HTML string that may contain <a> tags
+        subtype: The subtype for the stat_block_section (e.g., 'base_weapon')
+
+    Returns:
+        A dict with type, subtype, text, and optionally links array
+    """
+    # extract_links expects a string, returns (text_without_links, links_list)
+    text, links = extract_links(html_string)
+
+    result = {
+        'type': 'stat_block_section',
+        'subtype': subtype,
+        'text': text.strip()
+    }
+
+    if links:
+        result['links'] = links
+
+    return result
+
+
+def normalize_equipment_fields(sb):
+    """Normalize general equipment fields.
+
+    Field routing already places fields in their destinations (statistics, offense, etc.).
+    This function handles value transformations:
+    - bulk: string -> bulk object
+    - activate: string -> ability object in statistics.abilities
+    - base_weapon: HTML string -> stat_block_section with links
+    - ammunition: HTML string -> stat_block_section with links (if string)
+
+    Returns:
+        int: Number of trait links converted to trait objects (for link accounting)
+    """
+    trait_links_converted = 0
+
+    # Normalize bulk (at stat_block level)
+    _normalize_bulk(sb)
+
+    # Normalize craft_requirements - extract links and convert to plain text
+    if 'craft_requirements' in sb and isinstance(sb['craft_requirements'], str):
+        cr_text, cr_links = extract_links(sb['craft_requirements'])
+        sb['craft_requirements'] = cr_text.strip()
+        if cr_links:
+            if 'links' not in sb:
+                sb['links'] = []
+            sb['links'].extend(cr_links)
+
+    # Convert activate string to ability in statistics.abilities
+    # Activate is routed to statistics by field_destinations
+    if 'statistics' in sb and 'activate' in sb['statistics']:
+        trait_links_converted += _normalize_activate_to_ability(sb['statistics'], sb)
+
+    # Convert base_weapon and ammunition HTML strings to proper objects
+    # These are routed to offense by field_destinations
+    if 'offense' in sb:
+        offense = sb['offense']
+        if 'base_weapon' in offense and isinstance(offense['base_weapon'], str):
+            offense['base_weapon'] = _html_to_stat_block_section(offense['base_weapon'], 'base_weapon')
+        if 'ammunition' in offense and isinstance(offense['ammunition'], str):
+            offense['ammunition'] = _html_to_stat_block_section(offense['ammunition'], 'ammunition')
+
+    # Convert base_armor HTML strings to proper objects
+    # This is routed to defense by field_destinations
+    if 'defense' in sb:
+        defense = sb['defense']
+        if 'base_armor' in defense and isinstance(defense['base_armor'], str):
+            defense['base_armor'] = _html_to_stat_block_section(defense['base_armor'], 'base_armor')
+
+    # Convert intelligent item stat HTML strings to proper objects with links
+    # These are routed to statistics by field_destinations
+    if 'statistics' in sb:
+        statistics = sb['statistics']
+        for field in ('communication', 'languages', 'skills', 'perception'):
+            if field in statistics and isinstance(statistics[field], str):
+                statistics[field] = _html_to_stat_block_section(statistics[field], field)
+
+    return trait_links_converted
+
+
+def _move_to_statistics(sb, field_names):
+    """Move fields from stat_block level into statistics sub-object.
+
+    Args:
+        sb: The stat_block dict
+        field_names: List of field names to move into statistics
+    """
+    fields_to_move = {name: sb[name] for name in field_names if name in sb}
+    if not fields_to_move:
+        return
+
+    # Ensure statistics exists
+    if 'statistics' not in sb:
+        sb['statistics'] = {
+            'type': 'stat_block_section',
+            'subtype': 'statistics'
+        }
+
+    # Move fields
+    for name, value in fields_to_move.items():
+        sb['statistics'][name] = value
+        del sb[name]
+
+
+def _normalize_activate_to_ability(statistics, sb):
+    """Convert activate HTML string to a proper ability object in statistics.abilities.
+
+    The activate field contains HTML like:
+    <span class="action" title="Single Action">[one-action]</span> Interact
+    or with traits:
+    <span class="action" title="Free Action">[free-action]</span> command (<a>divination</a>, <a>magical</a>)
+
+    This should become an ability object with action_type in statistics.abilities.
+
+    Args:
+        statistics: The statistics sub-object containing the activate field
+        sb: The parent stat_block (for legacy compatibility, not used with new routing)
+
+    Returns:
+        int: Number of trait links that were converted to trait objects (for link accounting)
+    """
+    activate_html = statistics.get('activate')
+    if not activate_html:
+        return 0
+
+    trait_links_converted = 0
+
+    # Parse the HTML and extract action type
+    text, action_type = extract_action_type(activate_html)
+    text = text.strip()
+
+    # Build the ability object
+    ability = build_object('stat_block_section', 'ability', 'Activate')
+    ability['ability_type'] = 'offensive'
+
+    if action_type:
+        ability['action_type'] = action_type
+
+    if text:
+        # Parse the remaining text to extract trait links and activation type
+        text_soup = BeautifulSoup(text, 'html.parser')
+
+        # Extract all links (this unwraps them from the soup)
+        all_links = get_links(text_soup, unwrap=True)
+
+        # Get clean text after unwrapping
+        clean_text = _normalize_whitespace(str(text_soup))
+
+        # Separate trait links from other links
+        trait_links = [link for link in all_links if link.get('game-obj') == 'Traits']
+        other_links = [link for link in all_links if link.get('game-obj') != 'Traits']
+
+        # Check if there are traits in parentheses
+        if '(' in clean_text and ')' in clean_text:
+            paren_start = clean_text.find('(')
+            paren_end = clean_text.find(')')
+            if paren_end > paren_start:
+                parens_content = clean_text[paren_start + 1:paren_end].strip()
+                text_before = clean_text[:paren_start].strip()
+
+                # Match trait links to content in parentheses
+                traits_to_convert = []
+                for trait_link in trait_links:
+                    trait_name = trait_link['name']
+                    if trait_name.lower() in parens_content.lower():
+                        traits_to_convert.append(trait_link)
+                        # Remove trait name from parens content
+                        parens_content = parens_content.replace(trait_name, '')
+                        parens_content = parens_content.replace(trait_name.lower(), '')
+                    else:
+                        # Trait link not in parentheses - keep as regular link
+                        other_links.append(trait_link)
+
+                # Clean up commas and whitespace from parens content
+                parens_content = parens_content.replace(',', '').strip()
+
+                # Handle any remaining text in parentheses as unlinked trait names
+                unlinked_traits = []
+                if parens_content:
+                    for pt in parens_content.split():
+                        pt = pt.strip()
+                        if pt and not pt.isdigit():
+                            unlinked_traits.append(pt)
+
+                # Build trait objects
+                trait_names = [tl['name'] for tl in traits_to_convert] + unlinked_traits
+                if trait_names:
+                    traits = build_objects('stat_block_section', 'trait', trait_names)
+                    ability['traits'] = traits
+                    trait_links_converted = len(traits_to_convert)
+
+                # Store activation type (text before parentheses)
+                if text_before:
+                    ability['activation'] = text_before
+        else:
+            # No parentheses - all trait links are body links
+            other_links.extend(trait_links)
+            # The entire text is the activation
+            if clean_text:
+                ability['activation'] = clean_text
+
+        # Add any non-trait links to the ability
+        if other_links:
+            ability['links'] = other_links
+
+    # Add to statistics.abilities
+    if 'abilities' not in statistics:
+        statistics['abilities'] = []
+
+    statistics['abilities'].append(ability)
+
+    # Remove the raw activate field from statistics
+    del statistics['activate']
+
+    return trait_links_converted
+
+
+# Register normalizer in EQUIPMENT_TYPES config
+EQUIPMENT_TYPES['equipment']['normalize_fields'] = normalize_equipment_fields
 
 
 def _normalize_text_with_links(sb, field_name):
@@ -4021,13 +4984,30 @@ def populate_equipment_buckets_pass(struct):
     # Validate that bucket data matches old structure (data integrity check)
     _validate_bucket_data(stat_block, statistics, defense, offense)
 
-    # Add buckets to stat_block (only if they have content)
-    if statistics:
-        stat_block["statistics"] = statistics
-    if defense:
-        stat_block["defense"] = defense
-    if offense:
-        stat_block["offense"] = offense
+    # Merge buckets into stat_block (preserving existing bucket content from field_destinations)
+    # Only merge if the built bucket has content beyond type/subtype
+    if statistics and len(statistics) > 2:
+        if "statistics" in stat_block:
+            # Merge: built bucket data into existing bucket
+            for key, value in statistics.items():
+                if key not in stat_block["statistics"]:
+                    stat_block["statistics"][key] = value
+        else:
+            stat_block["statistics"] = statistics
+    if defense and len(defense) > 2:
+        if "defense" in stat_block:
+            for key, value in defense.items():
+                if key not in stat_block["defense"]:
+                    stat_block["defense"][key] = value
+        else:
+            stat_block["defense"] = defense
+    if offense and len(offense) > 2:
+        if "offense" in stat_block:
+            for key, value in offense.items():
+                if key not in stat_block["offense"]:
+                    stat_block["offense"][key] = value
+        else:
+            stat_block["offense"] = offense
 
     # Phase 4 cleanup: Remove deprecated old structures and moved fields
     # Note: price and bulk stay at stat_block level (not in statistics)
