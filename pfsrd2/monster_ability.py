@@ -275,8 +275,7 @@ def trait_db_pass(struct):
         db_trait["classes"] = list(trait_classes | db_trait_classes)
 
     def _check_trait(trait, parent):
-        fetch_trait_by_name(curs, trait["name"])
-        data = curs.fetchone()
+        data = fetch_trait_by_name(curs, trait["name"])
         assert data, "%s | %s" % (data, trait)
         db_trait = json.loads(data["trait"])
         _merge_classes(trait, db_trait)

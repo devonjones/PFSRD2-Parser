@@ -36,7 +36,7 @@ from pfsrd2.license import license_pass, license_consolidation_pass
 from pfsrd2.action import extract_action_type, build_action_type
 from pfsrd2.sql import get_db_path, get_db_connection
 from pfsrd2.sql.traits import fetch_trait_by_name, fetch_trait_by_link
-from pfsrd2.sql.monster_abilities import fetch_monster_ability_by_name
+from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 import pfsrd2.constants as constants
 
 # TODO: Greater barghest (43), deal with mutations
@@ -289,6 +289,10 @@ def markdown_valid_set(struct, name, path, validset):
     spans_allowed = constants.CREATURE_SPANS_ALLOWED
     if name in spans_allowed:
         validset.add("span")
+    # Some creatures have non-standard links (URL parameters instead of game-obj)
+    links_allowed = constants.CREATURE_LINKS_ALLOWED
+    if name in links_allowed:
+        validset.add("a")
 
 
 def trait_db_pass(struct):
@@ -318,8 +322,7 @@ def trait_db_pass(struct):
         if "alignment" in trait.get("classes", []) and trait["name"] != "No Alignment":
             _handle_alignment_trait(trait, parent)
         else:
-            fetch_trait_by_name(curs, trait["name"])
-            data = curs.fetchone()
+            data = fetch_trait_by_name(curs, trait["name"])
             assert data, "%s | %s" % (data, trait)
             db_trait = _handle_trait_link(data)
             _merge_classes(trait, db_trait)
@@ -369,8 +372,8 @@ def trait_db_pass(struct):
         parent.remove(trait)
         parts = trait["name"].split(" ")
         for part in parts:
-            fetch_trait_by_name(curs, part)
-            data = curs.fetchone()
+            data = fetch_trait_by_name(curs, part)
+            assert data, f"Trait '{part}' not found in database"
             db_trait = json.loads(data["trait"])
             _merge_classes(trait, db_trait)
             if "aonid" in db_trait:
@@ -389,13 +392,41 @@ def trait_db_pass(struct):
 
 
 def monster_ability_db_pass(struct):
+    # TODO: Remove this workaround once monster abilities have edition field
+    REMASTERED_SOURCES = {"Monster Core", "Player Core", "GM Core", "Player Core 2", "Rage of Elements"}
+
+    def _get_ability_edition(ability_json):
+        """Determine edition from ability's source names."""
+        sources = ability_json.get("sources", [])
+        for source in sources:
+            source_name = source.get("name", "")
+            if source_name in REMASTERED_SOURCES:
+                return "remastered"
+        # Default to legacy if no remastered source found
+        return "legacy"
+
+    def _pick_best_ability(abilities, target_edition):
+        """Pick the ability that best matches the target edition."""
+        if not abilities:
+            return None
+        if len(abilities) == 1:
+            return abilities[0]
+
+        # Parse all abilities and find edition matches
+        for ability_row in abilities:
+            ability_json = json.loads(ability_row["monster_ability"])
+            if _get_ability_edition(ability_json) == target_edition:
+                return ability_row
+
+        # No exact match, return first one
+        return abilities[0]
+
     def _template_get_magical_tradition(curs, ability):
         if "traits" in ability:
             for trait in ability["traits"]:
                 if trait["name"] in ["Arcane", "Divine", "Occult", "Primal"]:
                     return trait
-        fetch_trait_by_name(curs, "[Magical Tradition]")
-        data = curs.fetchone()
+        data = fetch_trait_by_name(curs, "[Magical Tradition]")
         return json.loads(data["trait"])
 
     def _handle_trait_template(curs, ability, db_ability):
@@ -417,8 +448,8 @@ def monster_ability_db_pass(struct):
         assert False, "Shouldn't get here"
 
     def _check_ability(ability, parent):
-        fetch_monster_ability_by_name(curs, ability["name"])
-        data = curs.fetchone()
+        abilities = fetch_monster_abilities_by_name(curs, ability["name"])
+        data = _pick_best_ability(abilities, struct["edition"])
         if data:
             db_ability = json.loads(data["monster_ability"])
             _handle_trait_template(curs, ability, db_ability)
