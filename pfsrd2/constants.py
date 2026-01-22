@@ -323,6 +323,13 @@ CREATURE_IGNORE_DC_AURA = [
     "Tempest Incarnate",
 ]
 
+# Creatures with non-standard links (using URL parameters instead of game-obj attributes)
+# These links can't be extracted as structured link objects, so we allow them in markdown
+CREATURE_LINKS_ALLOWED = [
+    "Scarecophagus",
+    "Talos Gadgeteer",
+]
+
 CREATURE_ATTRIBUTES = ["str", "dex", "con", "int", "wis", "cha"]
 
 KINGDOM_ATTRIBUTES = [

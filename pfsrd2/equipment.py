@@ -270,7 +270,7 @@ def _count_links_in_html(html_text, exclude_name=None, debug=False):
     return len(links)
 
 
-def _count_links_in_json(obj, debug=False, _links_found=None, _is_top_level=False):
+def _count_links_in_json(obj, debug=False, _links_found=None, _is_top_level=False, _path=""):
     """Recursively count all link objects in a JSON structure.
 
     Counts objects with type='link' or type='alternate_link'.
@@ -305,7 +305,7 @@ def _count_links_in_json(obj, debug=False, _links_found=None, _is_top_level=Fals
             count += 1
             if debug and _links_found is not None:
                 name = obj.get("name", f"<{obj_type}>")
-                _links_found.append(f"{name} ({obj.get('game-obj', '?')})")
+                _links_found.append(f"{name} ({obj.get('game-obj', '?')}) @ {_path}")
         elif obj_type == "alternate_link":
             # Skip counting alternate_link objects
             if debug and _links_found is not None:
@@ -316,17 +316,19 @@ def _count_links_in_json(obj, debug=False, _links_found=None, _is_top_level=Fals
             pass  # Don't count alternate_link objects
         else:
             # Only recurse if this is NOT a link object (to avoid double-counting)
-            for value in obj.values():
+            for key, value in obj.items():
                 if isinstance(value, (dict, list)):
                     count += _count_links_in_json(
-                        value, debug=debug, _links_found=_links_found, _is_top_level=False
+                        value, debug=debug, _links_found=_links_found, _is_top_level=False,
+                        _path=f"{_path}.{key}" if _path else key
                     )
 
     elif isinstance(obj, list):
-        for item in obj:
+        for i, item in enumerate(obj):
             if isinstance(item, (dict, list)):
                 count += _count_links_in_json(
-                    item, debug=debug, _links_found=_links_found, _is_top_level=False
+                    item, debug=debug, _links_found=_links_found, _is_top_level=False,
+                    _path=f"{_path}[{i}]"
                 )
 
     if debug and _is_top_level and _links_found is not None:
@@ -2998,7 +3000,15 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
 
     Extracts them into statistics.abilities array.
     Returns the count of trait links converted (for link accounting).
+
+    NOTE: This is only for generic equipment. Vehicles and siege weapons have their
+    abilities (including Activate) extracted by _extract_abilities() instead.
     """
+    # Skip for vehicles and siege weapons - they already have ability extraction via _extract_abilities
+    equipment_type = struct.get("type", "")
+    if equipment_type in ("vehicle", "siege_weapon"):
+        return 0
+
     # Find all <b>Activate</b> tags
     activate_bolds = [bold for bold in bs.find_all("b") if bold.get_text().strip() == "Activate"]
 

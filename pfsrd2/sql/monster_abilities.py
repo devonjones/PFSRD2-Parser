@@ -49,9 +49,19 @@ def fetch_monster_ability(curs, game_id):
     values = [game_id]
     sql = "\n".join(["SELECT *", " FROM monster_abilities", " WHERE game_id = ?"])
     curs.execute(sql, values)
+    return curs.fetchone()
 
 
 def fetch_monster_ability_by_name(curs, name):
     values = [name.lower()]
     sql = "\n".join(["SELECT ma.*", " FROM monster_abilities ma", " WHERE ma.name = ?"])
     curs.execute(sql, values)
+    return curs.fetchone()
+
+
+def fetch_monster_abilities_by_name(curs, name):
+    """Fetch all monster abilities with the given name (may have multiple editions)."""
+    values = [name.lower()]
+    sql = "\n".join(["SELECT ma.*", " FROM monster_abilities ma", " WHERE ma.name = ?"])
+    curs.execute(sql, values)
+    return curs.fetchall()
