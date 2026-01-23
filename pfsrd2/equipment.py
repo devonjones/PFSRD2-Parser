@@ -888,6 +888,23 @@ def extract_name_link(detailed_output, equipment_type=None):
         if link and is_name_link(link):
             return link
 
+    # Try Structure C: name is plain text inside h1.title (no link)
+    # e.g., <h1 class="title">Blackaxe<span>Item 25</span></h1>
+    if h1_title:
+        for child in h1_title.children:
+            if isinstance(child, NavigableString):
+                text = str(child).strip()
+                if text:
+                    return text
+            elif hasattr(child, "name") and child.name == "span":
+                # Skip item level spans like "Item 25"
+                continue
+            elif hasattr(child, "name") and child.name == "a":
+                # Skip PFS links without game-obj
+                href = child.get("href", "")
+                if "PFS" in href or not child.get("game-obj"):
+                    continue
+
     raise AssertionError(f"Could not find equipment name link (type={equipment_type})")
 
 
