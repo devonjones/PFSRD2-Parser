@@ -51,6 +51,21 @@
 			"required": ["name", "type", "subtype"],
 			"additionalProperties": false
 		},
+		"activation_type": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["activation_type"]},
+				"value": {"type": "string"}
+			},
+			"required": ["type", "subtype", "value"],
+			"additionalProperties": false
+		},
+		"activation_types": {
+			"type": "array",
+			"items": {"$ref": "#/definitions/activation_type"},
+			"additionalItems": false
+		},
 		"modifier": {
 			"type": "object",
 			"properties": {
@@ -91,9 +106,7 @@
 				"type": {"enum": ["stat_block_section", "ability"]},
 				"subtype": {"enum": ["ability"]},
 				"name": {"type": "string"},
-				"ability_name": {"type": "string"},
 				"ability_type": {"type": "string"},
-				"activation": {"type": "string"},
 				"sources": {"$ref": "#/definitions/sources"},
 				"value": {"type": "integer"},
 				"text": {"type": "string"},
@@ -132,9 +145,43 @@
 			"required": ["name", "type", "subtype", "ability_type"],
 			"additionalProperties": false
 		},
+		"activation": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["activation"]},
+				"name": {"enum": ["Activate"]},
+				"activation_name": {"type": "string"},
+				"ability_type": {"type": "string"},
+				"activation_types": {"$ref": "#/definitions/activation_types"},
+				"sources": {"$ref": "#/definitions/sources"},
+				"text": {"type": "string"},
+				"trigger": {"type": "string"},
+				"cost": {"type": "string"},
+				"effect": {"type": "string"},
+				"frequency": {"type": "string"},
+				"requirement": {"type": "string"},
+				"range": {"$ref": "#/definitions/range"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
+				"action_type": {"$ref": "#/definitions/action_type"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				},
+				"traits": {"$ref": "#/definitions/traits"}
+			},
+			"required": ["name", "type", "subtype", "ability_type"],
+			"additionalProperties": false
+		},
 		"abilities": {
 			"type": "array",
-			"items": {"$ref": "#/definitions/ability"},
+			"items": {
+				"oneOf": [
+					{"$ref": "#/definitions/ability"},
+					{"$ref": "#/definitions/activation"}
+				]
+			},
 			"additionalItems": false
 		},
 		"bulk": {
@@ -146,6 +193,19 @@
 				"text": {"type": "string"}
 			},
 			"required": ["type", "subtype", "value", "text"],
+			"additionalProperties": false
+		},
+		"price": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["price"]},
+				"value": {"type": ["integer", "null"]},
+				"currency": {"enum": ["gp", "sp", "cp", "pp"]},
+				"text": {"type": "string"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
+			},
+			"required": ["type", "subtype", "text"],
 			"additionalProperties": false
 		},
 		"bonus": {
@@ -482,7 +542,7 @@
 				"name": {"type": "string"},
 				"level": {"type": "integer"},
 				"traits": {"$ref": "#/definitions/traits"},
-				"price": {"type": "string"},
+				"price": {"$ref": "#/definitions/price"},
 				"bulk": {"$ref": "#/definitions/bulk"},
 				"text": {"type": "string"},
 				"links": {

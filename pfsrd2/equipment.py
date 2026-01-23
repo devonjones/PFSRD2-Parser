@@ -107,13 +107,13 @@ def _recursive_entity_pass(obj):
         for key, value in obj.items():
             if isinstance(value, str):
                 obj[key] = _replace_entities(value)
-            elif isinstance(value, (dict, list)):
+            elif isinstance(value, dict | list):
                 _recursive_entity_pass(value)
     elif isinstance(obj, list):
         for i, item in enumerate(obj):
             if isinstance(item, str):
                 obj[i] = _replace_entities(item)
-            elif isinstance(item, (dict, list)):
+            elif isinstance(item, dict | list):
                 _recursive_entity_pass(item)
 
 
@@ -322,7 +322,7 @@ def _count_links_in_json(obj, debug=False, _links_found=None, _is_top_level=Fals
         else:
             # Only recurse if this is NOT a link object (to avoid double-counting)
             for key, value in obj.items():
-                if isinstance(value, (dict, list)):
+                if isinstance(value, dict | list):
                     count += _count_links_in_json(
                         value,
                         debug=debug,
@@ -333,7 +333,7 @@ def _count_links_in_json(obj, debug=False, _links_found=None, _is_top_level=Fals
 
     elif isinstance(obj, list):
         for i, item in enumerate(obj):
-            if isinstance(item, (dict, list)):
+            if isinstance(item, dict | list):
                 count += _count_links_in_json(
                     item,
                     debug=debug,
@@ -1624,7 +1624,7 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
                 if tag_text in addon_names:
                     processed_bolds.add(current)
 
-            if isinstance(current, (NavigableString, Tag)):
+            if isinstance(current, NavigableString | Tag):
                 content_parts.append(str(current))
 
             current = current.next_sibling
@@ -1863,7 +1863,7 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
                             "br",
                         ):
                             break
-                        if isinstance(field_current, (NavigableString, Tag)):
+                        if isinstance(field_current, NavigableString | Tag):
                             field_parts.append(str(field_current))
                         field_current = field_current.next_sibling
 
@@ -2992,6 +2992,38 @@ def _extract_description(bs, struct, debug=False):
     return trait_links_converted
 
 
+def _parse_activation_types(activation_string):
+    """Convert activation string to a list of activation_type objects.
+
+    Args:
+        activation_string: String like "command, Interact" or "command" or "Interact"
+
+    Returns:
+        List of activation_type objects, e.g.:
+        [
+            {"type": "stat_block_section", "subtype": "activation_type", "value": "command"},
+            {"type": "stat_block_section", "subtype": "activation_type", "value": "Interact"}
+        ]
+    """
+    if not activation_string:
+        return []
+
+    # Use shared utility that respects parentheses when splitting
+    parts = split_comma_and_semicolon(activation_string)
+    result = []
+    for part in parts:
+        value = part.strip()
+        if value:
+            result.append(
+                {
+                    "type": "stat_block_section",
+                    "subtype": "activation_type",
+                    "value": value,
+                }
+            )
+    return result
+
+
 def _extract_abilities_from_description(bs, sb, struct, debug=False):
     """Extract offensive abilities (Activate, etc.) from content after description.
 
@@ -3236,14 +3268,22 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
                     # The entire text is the activation
                     activation = text
 
-                # Store activation (command, Interact, etc.) - what you do to activate the ability
+                # Store activation types as list of objects
                 if activation:
-                    ability["activation"] = activation
+                    ability["activation_types"] = _parse_activation_types(activation)
 
                 if other_links:
                     if "links" not in ability:
                         ability["links"] = []
                     ability["links"].extend(other_links)
+
+        # Transform "Activate" abilities into activation objects
+        if ability.get("name") == "Activate":
+            ability["subtype"] = "activation"
+            # If there's an ability_name, move it to activation_name
+            if "ability_name" in ability:
+                ability["activation_name"] = ability["ability_name"]
+                del ability["ability_name"]
 
         abilities.append(ability)
 
@@ -3259,6 +3299,27 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
         if "abilities" not in sb["statistics"]:
             sb["statistics"]["abilities"] = []
         sb["statistics"]["abilities"].extend(abilities)
+
+        # Clean up sb["text"] to remove activation cruft that was extracted
+        # The text may contain patterns like "**Activate** command; **Frequency** ..." that
+        # were already extracted into abilities
+        if "text" in sb and sb["text"]:
+            text = sb["text"]
+            # Remove activation patterns: <b>Activate</b> or **Activate** followed by content until end
+            # Handles: <br/> tags, whitespace, and optional space inside <b> tag
+            # Combined pattern handles both HTML and markdown formats with consistent flags
+            text = re.sub(
+                r"(?:<br\s*/?>[\s\n]*)*\s*(?:<b>\s*Activate\s*</b>|\*\*Activate\*\*).*$",
+                "",
+                text,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
+            # Normalize whitespace and trailing content
+            text = text.strip()
+            if text:
+                sb["text"] = text
+            else:
+                del sb["text"]
 
     return trait_links_converted
 
@@ -3556,10 +3617,13 @@ def _normalize_bulk(sb):
 
     value_str = value_str.strip()
 
+    # Convert mdash to dash
+    value_str = value_str.replace("—", "-")
+
     # Create bulk object with both string and integer values
-    if value_str == "—":
-        # Em dash means no bulk value
-        sb["bulk"] = {"type": "stat_block_section", "subtype": "bulk", "value": None, "text": "—"}
+    if value_str == "-":
+        # Dash means no bulk value
+        sb["bulk"] = {"type": "stat_block_section", "subtype": "bulk", "value": None, "text": "-"}
     elif value_str == "L":
         # "L" (light) gets null for integer value
         sb["bulk"] = {"type": "stat_block_section", "subtype": "bulk", "value": None, "text": "L"}
@@ -3582,11 +3646,77 @@ def _normalize_bulk(sb):
         }
 
 
+def _normalize_price(sb):
+    """Convert price string to structured price object.
+
+    Parses price strings like:
+    - "3,000 gp"
+    - "3,000 gp (can't be crafted)"
+    - "varies"
+    - "—"
+
+    Returns object with:
+    - type: "stat_block_section"
+    - subtype: "price"
+    - value: integer price value (or null if not parseable)
+    - currency: "gp", "sp", "cp", or "pp" (if found)
+    - text: the price text without modifiers
+    - modifiers: list of modifier objects (if parentheses found)
+    """
+    if "price" not in sb:
+        return
+
+    value_str = sb["price"]
+    if not value_str or not isinstance(value_str, str):
+        return
+
+    value_str = value_str.strip()
+
+    # Convert mdash to dash
+    value_str = value_str.replace("—", "-")
+
+    # Initialize price object
+    price_obj = {
+        "type": "stat_block_section",
+        "subtype": "price",
+    }
+
+    # Extract modifiers from parentheses
+    modifier_texts = re.findall(r"\(([^)]+)\)", value_str)
+    main_text = re.sub(r"\s*\([^)]+\)", "", value_str).strip()
+
+    # Store the main text (without modifiers)
+    price_obj["text"] = main_text
+
+    # Parse currency and value
+    # Pattern: optional number with commas, followed by currency code
+    currency_match = re.search(r"^([\d,]+)\s*(gp|sp|cp|pp)\b", main_text, re.IGNORECASE)
+    if currency_match:
+        # Extract numeric value (remove commas)
+        value_with_commas = currency_match.group(1)
+        price_obj["value"] = int(value_with_commas.replace(",", ""))
+        price_obj["currency"] = currency_match.group(2).lower()
+    else:
+        # No parseable price (e.g., "varies", "—", or complex text)
+        price_obj["value"] = None
+
+    # Add modifiers if present
+    if modifier_texts:
+        modifier_names = []
+        for mod_text in modifier_texts:
+            modifier_names.extend(m.strip() for m in mod_text.split(";") if m.strip())
+        if modifier_names:
+            price_obj["modifiers"] = build_objects("stat_block_section", "modifier", modifier_names)
+
+    sb["price"] = price_obj
+
+
 # Equipment-specific field normalizers
 def normalize_armor_fields(sb):
     """Normalize armor-specific fields."""
-    # Normalize shared field at top level
+    # Normalize shared fields at top level
     _normalize_bulk(sb)
+    _normalize_price(sb)
 
     # Normalize statistics fields
     if "statistics" in sb:
@@ -3698,6 +3828,7 @@ def normalize_weapon_fields(sb):
 
     # Normalize shared fields at top level
     _normalize_bulk(sb)
+    _normalize_price(sb)
 
     # Normalize weapon-specific fields within weapon object
     if "weapon" in sb:
@@ -3719,8 +3850,9 @@ EQUIPMENT_TYPES["weapon"]["normalize_fields"] = normalize_weapon_fields
 
 def normalize_shield_fields(sb):
     """Normalize shield-specific fields."""
-    # Normalize shared field at top level
+    # Normalize shared fields at top level
     _normalize_bulk(sb)
+    _normalize_price(sb)
 
     # Normalize shield-specific fields within defense bucket
     if "defense" in sb:
@@ -3738,8 +3870,9 @@ EQUIPMENT_TYPES["shield"]["normalize_fields"] = normalize_shield_fields
 
 def normalize_siege_weapon_fields(sb):
     """Normalize siege weapon-specific fields."""
-    # Normalize shared field at top level (price only for siege weapons)
+    # Normalize shared fields at top level
     # Note: siege weapons don't have bulk
+    _normalize_price(sb)
 
     # Normalize siege weapon-specific fields within siege_weapon object
     if "siege_weapon" in sb:
@@ -3761,8 +3894,9 @@ EQUIPMENT_TYPES["siege_weapon"]["normalize_fields"] = normalize_siege_weapon_fie
 
 def normalize_vehicle_fields(sb):
     """Normalize vehicle-specific fields."""
-    # Normalize shared field at top level (price only for vehicles)
+    # Normalize shared fields at top level
     # Note: vehicles don't have bulk
+    _normalize_price(sb)
 
     # Normalize vehicle-specific fields within vehicle object
     if "vehicle" in sb:
@@ -3839,10 +3973,14 @@ def normalize_equipment_fields(sb):
     # Normalize bulk (at stat_block level)
     _normalize_bulk(sb)
 
-    # Normalize craft_requirements - extract links and convert to plain text
+    # Normalize price (at stat_block level)
+    _normalize_price(sb)
+
+    # Normalize craft_requirements - extract links, normalize whitespace, and convert to plain text
     if "craft_requirements" in sb and isinstance(sb["craft_requirements"], str):
         cr_text, cr_links = extract_links(sb["craft_requirements"])
-        sb["craft_requirements"] = cr_text.strip()
+        # Normalize whitespace (collapse newlines from HTML formatting to single spaces)
+        sb["craft_requirements"] = _normalize_whitespace(cr_text)
         if cr_links:
             if "links" not in sb:
                 sb["links"] = []
@@ -3990,19 +4128,22 @@ def _normalize_activate_to_ability(statistics, sb):
                     ability["traits"] = traits
                     trait_links_converted = len(traits_to_convert)
 
-                # Store activation type (text before parentheses)
+                # Store activation types as list of objects
                 if text_before:
-                    ability["activation"] = text_before
+                    ability["activation_types"] = _parse_activation_types(text_before)
         else:
             # No parentheses - all trait links are body links
             other_links.extend(trait_links)
-            # The entire text is the activation
+            # Store activation types as list of objects
             if clean_text:
-                ability["activation"] = clean_text
+                ability["activation_types"] = _parse_activation_types(clean_text)
 
         # Add any non-trait links to the ability
         if other_links:
             ability["links"] = other_links
+
+    # Transform "Activate" abilities into activation objects
+    ability["subtype"] = "activation"
 
     # Add to statistics.abilities
     if "abilities" not in statistics:
