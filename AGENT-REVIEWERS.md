@@ -98,7 +98,9 @@ Review JSON schema changes in `pfsrd2/schema/` for consistency with existing pat
 
 ## complexity-reviewer
 
-Review code for function complexity. Apply these heuristics:
+Review **production code only** for function complexity. **Skip all files in `tests/` directory** - test files often have long test classes and helper functions that don't need the same complexity constraints.
+
+Apply these heuristics:
 
 1. **"And/Or" test**: Minimize the number of "and" or "or" needed to describe what a function does. If you need multiple conjunctions, the function is doing too much.
    - Good: "This function extracts traits from a stat block"
@@ -114,11 +116,12 @@ Review code for function complexity. Apply these heuristics:
    - **Last choice**: Keep as internal function if truly specific to the parent function's context
 
 **Review approach:**
-1. For each new/modified function, try to describe it in one sentence without "and"/"or"
-2. If the description requires conjunctions, identify which parts should be separate functions
-3. Flag functions over ~50 lines (excluding internal function definitions) and suggest logical split points
-4. Look for nested loops, long conditionals, or repeated patterns that could be extracted
-5. For extractable code, prefer moving to `universal/` over local extraction when the pattern would benefit other parsers
+1. **Skip test files** - do not review files in `tests/` directory
+2. For each new/modified function, try to describe it in one sentence without "and"/"or"
+3. If the description requires conjunctions, identify which parts should be separate functions
+4. Flag functions over ~50 lines (excluding internal function definitions) and suggest logical split points
+5. Look for nested loops, long conditionals, or repeated patterns that could be extracted
+6. For extractable code, prefer moving to `universal/` over local extraction when the pattern would benefit other parsers
 
 **Note:** It is acceptable to acknowledge complexity and defer refactoring by creating a beads ticket, rather than fixing it in the current PR.
 
