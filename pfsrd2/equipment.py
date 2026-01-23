@@ -3682,7 +3682,21 @@ def _normalize_speed_penalty(sb, bonus_type="armor"):
 
 
 def _normalize_bulk(sb):
-    """Convert bulk string to structured bulk object."""
+    """Convert bulk string to structured bulk object.
+
+    Parses bulk strings like:
+    - "L", "-", "1", "2" (simple values)
+    - "L (when not activated)" (with modifier)
+    - "1 (3 unfolded)" (with modifier)
+    - "varies by armor" (text value)
+
+    Returns object with:
+    - type: "stat_block_section"
+    - subtype: "bulk"
+    - value: integer bulk value (or null for L, -, varies, etc.)
+    - text: the base bulk text without modifiers
+    - modifiers: list of modifier objects (if parentheses found)
+    """
     if "bulk" not in sb:
         return
 
@@ -3695,30 +3709,48 @@ def _normalize_bulk(sb):
     # Convert mdash to dash
     value_str = value_str.replace("—", "-")
 
-    # Create bulk object with both string and integer values
-    if value_str == "-":
+    # Extract modifier from parentheses if present
+    modifiers = []
+    base_value = value_str
+    if "(" in value_str and ")" in value_str:
+        paren_start = value_str.find("(")
+        paren_end = value_str.rfind(")")
+        if paren_end > paren_start:
+            modifier_text = value_str[paren_start + 1 : paren_end].strip()
+            base_value = value_str[:paren_start].strip()
+            # Also capture any text after the closing paren
+            after_paren = value_str[paren_end + 1 :].strip()
+            if after_paren:
+                base_value = base_value + " " + after_paren if base_value else after_paren
+            if modifier_text:
+                modifiers.append(
+                    {"type": "stat_block_section", "subtype": "modifier", "name": modifier_text}
+                )
+
+    # Determine the numeric value
+    int_value = None
+    if base_value == "-":
         # Dash means no bulk value
-        sb["bulk"] = {"type": "stat_block_section", "subtype": "bulk", "value": None, "text": "-"}
-    elif value_str == "L":
+        pass
+    elif base_value == "L":
         # "L" (light) gets null for integer value
-        sb["bulk"] = {"type": "stat_block_section", "subtype": "bulk", "value": None, "text": "L"}
-    elif value_str.isdigit():
+        pass
+    elif base_value.isdigit():
         # Parse as integer
-        int_value = int(value_str)
-        sb["bulk"] = {
-            "type": "stat_block_section",
-            "subtype": "bulk",
-            "value": int_value,
-            "text": value_str,
-        }
-    else:
-        # Text value like "varies by armor" - no integer value
-        sb["bulk"] = {
-            "type": "stat_block_section",
-            "subtype": "bulk",
-            "value": None,
-            "text": value_str,
-        }
+        int_value = int(base_value)
+
+    # Build bulk object
+    bulk_obj = {
+        "type": "stat_block_section",
+        "subtype": "bulk",
+        "value": int_value,
+        "text": base_value,
+    }
+
+    if modifiers:
+        bulk_obj["modifiers"] = modifiers
+
+    sb["bulk"] = bulk_obj
 
 
 def _normalize_price(sb):
