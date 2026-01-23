@@ -153,7 +153,7 @@
 				"name": {"enum": ["Activate"]},
 				"activation_name": {"type": "string"},
 				"ability_type": {"type": "string"},
-				"activation": {"$ref": "#/definitions/activation_types"},
+				"activation_types": {"$ref": "#/definitions/activation_types"},
 				"sources": {"$ref": "#/definitions/sources"},
 				"text": {"type": "string"},
 				"trigger": {"type": "string"},

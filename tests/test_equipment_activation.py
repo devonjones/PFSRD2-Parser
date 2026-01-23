@@ -113,11 +113,11 @@ class TestMultipleActivationTypes:
 
         # Activation should be a list
         assert isinstance(
-            activation.get("activation"), list
+            activation.get("activation_types"), list
         ), f"Activation should be a list, got: {type(activation.get('activation'))}"
 
         # Should have both "command" and "Interact"
-        activation_values = [at["value"] for at in activation["activation"]]
+        activation_values = [at["value"] for at in activation["activation_types"]]
         assert (
             "command" in activation_values
         ), f"Activation should contain 'command', got: {activation_values}"
@@ -151,20 +151,20 @@ class TestMultipleActivationTypes:
 
         # Activation should be a list of activation_type objects
         assert isinstance(
-            activation.get("activation"), list
+            activation.get("activation_types"), list
         ), f"Activation should be a list, got: {type(activation.get('activation'))}"
         assert (
-            len(activation["activation"]) == 2
+            len(activation["activation_types"]) == 2
         ), f"Should have 2 activation types, got: {len(activation['activation'])}"
 
         # Each should be a proper activation_type object
-        for at in activation["activation"]:
+        for at in activation["activation_types"]:
             assert at["type"] == "stat_block_section", f"Type should be 'stat_block_section': {at}"
             assert at["subtype"] == "activation_type", f"Subtype should be 'activation_type': {at}"
             assert "value" in at, f"Should have 'value' field: {at}"
 
         # Should have both "command" and "Interact"
-        activation_values = [at["value"] for at in activation["activation"]]
+        activation_values = [at["value"] for at in activation["activation_types"]]
         assert (
             "command" in activation_values
         ), f"Activation should contain 'command', got: {activation_values}"

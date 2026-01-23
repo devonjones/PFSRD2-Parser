@@ -3270,7 +3270,7 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
 
                 # Store activation types as list of objects
                 if activation:
-                    ability["activation"] = _parse_activation_types(activation)
+                    ability["activation_types"] = _parse_activation_types(activation)
 
                 if other_links:
                     if "links" not in ability:
@@ -4130,13 +4130,13 @@ def _normalize_activate_to_ability(statistics, sb):
 
                 # Store activation types as list of objects
                 if text_before:
-                    ability["activation"] = _parse_activation_types(text_before)
+                    ability["activation_types"] = _parse_activation_types(text_before)
         else:
             # No parentheses - all trait links are body links
             other_links.extend(trait_links)
             # Store activation types as list of objects
             if clean_text:
-                ability["activation"] = _parse_activation_types(clean_text)
+                ability["activation_types"] = _parse_activation_types(clean_text)
 
         # Add any non-trait links to the ability
         if other_links:
