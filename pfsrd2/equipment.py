@@ -3008,8 +3008,8 @@ def _parse_activation_types(activation_string):
     if not activation_string:
         return []
 
-    # Split by comma and/or semicolon, then clean each part
-    parts = re.split(r"[,;]+", activation_string)
+    # Use shared utility that respects parentheses when splitting
+    parts = split_comma_and_semicolon(activation_string)
     result = []
     for part in parts:
         value = part.strip()
@@ -3306,19 +3306,13 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
         if "text" in sb and sb["text"]:
             text = sb["text"]
             # Remove activation patterns: <b>Activate</b> or **Activate** followed by content until end
-            # Handles: <br/> tags, whitespace, and optional space after <b> tag
-            # Pattern: optional br tags and whitespace, then <b> Activate</b> or **Activate**, then everything after
+            # Handles: <br/> tags, whitespace, and optional space inside <b> tag
+            # Combined pattern handles both HTML and markdown formats with consistent flags
             text = re.sub(
-                r"(?:<br\s*/?>[\s\n]*)*\s*<b>\s*Activate</b>.*$",
+                r"(?:<br\s*/?>[\s\n]*)*\s*(?:<b>\s*Activate\s*</b>|\*\*Activate\*\*).*$",
                 "",
                 text,
                 flags=re.DOTALL | re.IGNORECASE,
-            )
-            text = re.sub(
-                r"(?:<br\s*/?>[\s\n]*)*\s*\*\*Activate\*\*.*$",
-                "",
-                text,
-                flags=re.DOTALL,
             )
             # Normalize whitespace and trailing content
             text = text.strip()
