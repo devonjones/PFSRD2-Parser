@@ -3024,6 +3024,204 @@ def _parse_activation_types(activation_string):
     return result
 
 
+def _extract_ability_fields(ability_soup, ability):
+    """Extract sub-fields (Frequency, Trigger, Effect, Requirements) from ability soup.
+
+    Modifies ability dict in place, adding fields like 'frequency', 'trigger', etc.
+    Also adds any links found in field values to ability['links'].
+    Removes the extracted fields from ability_soup.
+
+    Args:
+        ability_soup: BeautifulSoup object containing the ability HTML
+        ability: dict to populate with extracted fields
+    """
+    field_names = ["Frequency", "Trigger", "Effect", "Requirements"]
+    for field in field_names:
+        field_bold = ability_soup.find("b", string=lambda s, f=field: s and s.strip() == f)
+        if not field_bold:
+            continue
+
+        # Get value after the bold tag until next bold or end
+        value_parts = []
+        nodes_to_remove = []
+        field_current = field_bold.next_sibling
+        while field_current:
+            if isinstance(field_current, Tag) and field_current.name == "b":
+                break
+            value_parts.append(str(field_current))
+            nodes_to_remove.append(field_current)
+            field_current = field_current.next_sibling
+
+        value_html = "".join(value_parts).strip()
+        # Clean up: remove leading semicolons and whitespace
+        value_html = re.sub(r"^[\s;]+", "", value_html)
+        # Remove trailing <br> tags and semicolons
+        value_html = re.sub(r"<br\s*/?>[\s]*$", "", value_html)
+        value_html = re.sub(r"[\s;]+$", "", value_html)
+
+        if value_html:
+            # Extract links from value
+            value_text, value_links = extract_links(value_html)
+            # Convert <br> tags to newlines, then normalize whitespace
+            value_text = re.sub(r"<br\s*/?>", "\n", value_text)
+            # Normalize whitespace (collapse multiple spaces/newlines)
+            value_text = _normalize_whitespace(value_text)
+
+            field_key = field.lower()
+            if field_key == "requirements":
+                field_key = "requirement"
+
+            ability[field_key] = value_text
+
+            # Add links to ability's links array
+            if value_links:
+                if "links" not in ability:
+                    ability["links"] = []
+                ability["links"].extend(value_links)
+
+        # Remove the field bold and its value nodes from soup
+        for node in nodes_to_remove:
+            if isinstance(node, Tag):
+                node.decompose()
+            elif isinstance(node, NavigableString):
+                node.extract()
+        field_bold.decompose()
+
+
+def _parse_named_activation(act_current):
+    """Check if the current element is a named activation bold tag (e.g., "—Dim Sight").
+
+    Named activations start with em-dash, en-dash, regular hyphen, or mojibake patterns.
+
+    Args:
+        act_current: The current BeautifulSoup element to check
+
+    Returns:
+        tuple: (ability_name, next_sibling) where ability_name is None if not a named activation
+    """
+    if not (isinstance(act_current, Tag) and act_current.name == "b"):
+        return None, act_current
+
+    b_text = act_current.get_text().strip()
+    if not b_text:
+        return None, act_current
+
+    first_char = b_text[0]
+    # Mojibake check: em-dash UTF-8 (E2 80 94) decoded as latin-1 = 'â€"' (3 chars starting with â ord=226)
+    is_mojibake_emdash = len(b_text) >= 3 and ord(first_char) == 226
+
+    is_named = (
+        first_char == "—"  # em-dash U+2014
+        or first_char == "–"  # en-dash U+2013
+        or first_char == "-"  # regular hyphen
+        or ord(first_char) == 8212  # em-dash decimal
+        or b_text.startswith("\u2014")  # em-dash unicode escape
+        or is_mojibake_emdash
+    )
+
+    if not is_named:
+        return None, act_current
+
+    # Extract the name (strip the dash prefix)
+    if is_mojibake_emdash:
+        ability_name = b_text[3:].strip()  # Remove 3-char mojibake prefix
+    else:
+        ability_name = b_text[1:].strip()  # Remove the dash prefix
+
+    return ability_name, act_current.next_sibling
+
+
+def _parse_activation_content(activate_content, ability):
+    """Parse activation content to extract traits, activation types, and links.
+
+    Handles parsing of text like "command (manipulate)" or "Interact" to extract:
+    - Traits from parentheses (e.g., "manipulate" becomes a trait object)
+    - Activation types (e.g., "command", "Interact")
+    - Links (non-trait links are added to ability["links"])
+
+    Args:
+        activate_content: HTML string of the activation content
+        ability: dict to populate with traits, activation_types, and links
+
+    Returns:
+        int: Count of trait links converted (for link accounting)
+    """
+    trait_links_converted = 0
+
+    # Parse the activate content soup to extract links and traits
+    content_soup = BeautifulSoup(activate_content, "html.parser")
+
+    # Extract all links first
+    all_links = get_links(content_soup, unwrap=True)
+
+    # Separate trait links from other links
+    trait_links = [link for link in all_links if link.get("game-obj") == "Traits"]
+    other_links = [link for link in all_links if link.get("game-obj") != "Traits"]
+
+    # Get text after unwrapping links
+    text = _normalize_whitespace(str(content_soup))
+
+    # Check if there are traits in parentheses
+    traits_to_convert = []
+    if "(" in text:
+        paren_start = text.find("(")
+        paren_end = text.find(")")
+        if paren_end > paren_start:
+            parens_content = text[paren_start + 1 : paren_end].strip()
+            text_before = text[:paren_start].strip()
+
+            # Check which trait links are in the parentheses
+            for trait_link in trait_links:
+                trait_name = trait_link["name"]
+                if trait_name.lower() in parens_content.lower():
+                    traits_to_convert.append(trait_link)
+                    # Remove trait name from parens content
+                    parens_content = parens_content.replace(trait_name, "")
+                    parens_content = parens_content.replace(trait_name.lower(), "")
+                else:
+                    # Trait link not in parentheses - keep as regular link
+                    other_links.append(trait_link)
+
+            # Clean up commas and whitespace from parens content
+            parens_content = parens_content.replace(",", "").strip()
+
+            # Handle any remaining text in parentheses as unlinked trait names
+            # BUT: filter out known activation methods that aren't traits
+            known_activations = {"Interact", "Command", "Envision", "Cast", "Spell"}
+            unlinked_traits = []
+            if parens_content:
+                for pt in parens_content.split():
+                    pt = pt.strip()
+                    if pt and not pt.isdigit() and pt not in known_activations:
+                        unlinked_traits.append(pt)
+
+            # Build trait objects
+            trait_names = [tl["name"] for tl in traits_to_convert] + unlinked_traits
+            if trait_names:
+                traits = build_objects("stat_block_section", "trait", trait_names)
+                ability["traits"] = traits
+                trait_links_converted = len(traits_to_convert)
+
+            # The text before parentheses is the activation (e.g., "command", "Interact")
+            activation = text_before
+    else:
+        # No parentheses - all trait links are body links
+        other_links.extend(trait_links)
+        # The entire text is the activation
+        activation = text
+
+    # Store activation types as list of objects
+    if activation:
+        ability["activation_types"] = _parse_activation_types(activation)
+
+    if other_links:
+        if "links" not in ability:
+            ability["links"] = []
+        ability["links"].extend(other_links)
+
+    return trait_links_converted
+
+
 def _extract_abilities_from_description(bs, sb, struct, debug=False):
     """Extract offensive abilities (Activate, etc.) from content after description.
 
@@ -3101,55 +3299,7 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
             action_span.decompose()
 
         # Extract sub-fields: Frequency, Trigger, Effect, Requirements
-        ability_fields = ["Frequency", "Trigger", "Effect", "Requirements"]
-        for field in ability_fields:
-            field_bold = ability_soup.find("b", string=lambda s, f=field: s and s.strip() == f)
-            if field_bold:
-                # Get value after the bold tag until next bold or end
-                value_parts = []
-                nodes_to_remove = []
-                field_current = field_bold.next_sibling
-                while field_current:
-                    if isinstance(field_current, Tag) and field_current.name == "b":
-                        break
-                    value_parts.append(str(field_current))
-                    nodes_to_remove.append(field_current)
-                    field_current = field_current.next_sibling
-
-                value_html = "".join(value_parts).strip()
-                # Clean up: remove leading semicolons and whitespace
-                value_html = re.sub(r"^[\s;]+", "", value_html)
-                # Remove trailing <br> tags and semicolons
-                value_html = re.sub(r"<br\s*/?>[\s]*$", "", value_html)
-                value_html = re.sub(r"[\s;]+$", "", value_html)
-
-                if value_html:
-                    # Extract links from value
-                    value_text, value_links = extract_links(value_html)
-                    # Convert <br> tags to newlines, then normalize whitespace
-                    value_text = re.sub(r"<br\s*/?>", "\n", value_text)
-                    # Normalize whitespace (collapse multiple spaces/newlines)
-                    value_text = _normalize_whitespace(value_text)
-
-                    field_key = field.lower()
-                    if field_key == "requirements":
-                        field_key = "requirement"
-
-                    ability[field_key] = value_text
-
-                    # Add links to ability's links array
-                    if value_links:
-                        if "links" not in ability:
-                            ability["links"] = []
-                        ability["links"].extend(value_links)
-
-                # Remove the field bold and its value nodes from soup
-                for node in nodes_to_remove:
-                    if isinstance(node, Tag):
-                        node.decompose()
-                    elif isinstance(node, NavigableString):
-                        node.extract()
-                field_bold.decompose()
+        _extract_ability_fields(ability_soup, ability)
 
         # Extract the main text after Activate (before first sub-field)
         # This is typically "Interact" or "command (traits)"
@@ -3158,7 +3308,6 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
             # Collect content after Activate bold until next <b> tag
             # BUT: If next <b> is a named activation (starts with em-dash), include content after it
             content_parts = []
-            ability_name = None
             act_current = activate_bold_new.next_sibling
 
             # Skip whitespace NavigableStrings to find first non-whitespace sibling
@@ -3168,29 +3317,9 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
                 act_current = act_current.next_sibling
 
             # Check if immediately followed by a named activation bold (e.g., "—Dim Sight")
-            if isinstance(act_current, Tag) and act_current.name == "b":
-                b_text = act_current.get_text().strip()
-                # Check for em-dash prefix (U+2014, en-dash U+2013, or other dash-like chars)
-                # Also check for the raw mojibake pattern that sometimes appears
-                first_char = b_text[0] if b_text else ""
-                # Mojibake check: em-dash UTF-8 (E2 80 94) decoded as latin-1 = 'â€"' (3 chars starting with â ord=226)
-                is_mojibake_emdash = len(b_text) >= 3 and ord(first_char) == 226
-                is_named = (
-                    first_char == "—"  # em-dash U+2014
-                    or first_char == "–"  # en-dash U+2013
-                    or first_char == "-"  # regular hyphen
-                    or ord(first_char) == 8212  # em-dash decimal
-                    or b_text.startswith("\u2014")  # em-dash unicode escape
-                    or is_mojibake_emdash
-                )  # mojibake em-dash
-                if is_named:
-                    # This is a named activation - extract the name and continue after it
-                    if is_mojibake_emdash:
-                        ability_name = b_text[3:].strip()  # Remove 3-char mojibake prefix
-                    else:
-                        ability_name = b_text[1:].strip()  # Remove the dash prefix
-                    ability["ability_name"] = ability_name
-                    act_current = act_current.next_sibling
+            ability_name, act_current = _parse_named_activation(act_current)
+            if ability_name:
+                ability["ability_name"] = ability_name
 
             while act_current:
                 if isinstance(act_current, Tag) and act_current.name == "b":
@@ -3204,78 +3333,7 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
             activate_content = re.sub(r"[\s;]+$", "", activate_content)
 
             if activate_content:
-                # Parse the activate content soup to extract links and traits
-                content_soup = BeautifulSoup(activate_content, "html.parser")
-
-                # Extract all links first
-                all_links = get_links(content_soup, unwrap=True)
-
-                # Separate trait links from other links
-                trait_links = [link for link in all_links if link.get("game-obj") == "Traits"]
-                other_links = [link for link in all_links if link.get("game-obj") != "Traits"]
-
-                # Get text after unwrapping links
-                text = _normalize_whitespace(str(content_soup))
-
-                # Check if there are traits in parentheses
-                traits_to_convert = []
-                if "(" in text:
-                    paren_start = text.find("(")
-                    paren_end = text.find(")")
-                    if paren_end > paren_start:
-                        parens_content = text[paren_start + 1 : paren_end].strip()
-                        text_before = text[:paren_start].strip()
-                        text[paren_end + 1 :].strip()
-
-                        # Check which trait links are in the parentheses
-                        for trait_link in trait_links:
-                            trait_name = trait_link["name"]
-                            if trait_name.lower() in parens_content.lower():
-                                traits_to_convert.append(trait_link)
-                                # Remove trait name from parens content
-                                parens_content = parens_content.replace(trait_name, "")
-                                parens_content = parens_content.replace(trait_name.lower(), "")
-                            else:
-                                # Trait link not in parentheses - keep as regular link
-                                other_links.append(trait_link)
-
-                        # Clean up commas and whitespace from parens content
-                        parens_content = parens_content.replace(",", "").strip()
-
-                        # Handle any remaining text in parentheses as unlinked trait names
-                        # BUT: filter out known activation methods that aren't traits
-                        known_activations = {"Interact", "Command", "Envision", "Cast", "Spell"}
-                        unlinked_traits = []
-                        if parens_content:
-                            for pt in parens_content.split():
-                                pt = pt.strip()
-                                if pt and not pt.isdigit() and pt not in known_activations:
-                                    unlinked_traits.append(pt)
-
-                        # Build trait objects
-                        trait_names = [tl["name"] for tl in traits_to_convert] + unlinked_traits
-                        if trait_names:
-                            traits = build_objects("stat_block_section", "trait", trait_names)
-                            ability["traits"] = traits
-                            # Track trait links converted for link accounting
-                            trait_links_converted += len(traits_to_convert)
-
-                        # The text before parentheses is the activation (e.g., "command", "Interact")
-                        activation = text_before
-                else:
-                    # No parentheses - all trait links are body links
-                    other_links.extend(trait_links)
-                    # The entire text is the activation
-                    activation = text
-
-                # Store activation types as list of objects
-                if activation:
-                    ability["activation_types"] = _parse_activation_types(activation)
-
-                if other_links:
-                    if "links" not in ability:
-                        ability["links"] = []
-                    ability["links"].extend(other_links)
+                trait_links_converted += _parse_activation_content(activate_content, ability)
 
         # Transform "Activate" abilities into activation objects
         if ability.get("name") == "Activate":

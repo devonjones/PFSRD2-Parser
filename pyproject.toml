@@ -23,7 +23,7 @@ exclude = [".git", ".venv", "build", "dist"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-exclude = [".git", ".venv", "build", "dist"]
+exclude = [".git", ".venv", "build", "dist", "bin"]
 
 [tool.ruff.lint]
 select = [
