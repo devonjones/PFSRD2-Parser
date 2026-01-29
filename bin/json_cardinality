@@ -1,0 +1,441 @@
+#!/usr/bin/env python
+"""
+Analyze field cardinality in JSON files.
+
+Two modes:
+1. JSONPath mode: Analyze values at a specific JSON path
+   json_cardinality --path '$.activation_types[*].name' equipment/
+
+2. Object type mode: Find all objects of a type and analyze a field
+   json_cardinality --type link --field game-obj equipment/
+   json_cardinality --subtype attack_damage --field damage_type monsters/
+
+Add --value to find files containing a specific value:
+   json_cardinality --subtype bulk --field text --value '—' equipment/
+"""
+import sys
+import os
+import json
+import re
+from collections import Counter
+from optparse import OptionParser
+
+
+DNE = "<DNE>"  # Does Not Exist marker
+
+
+def extract_jsonpath(data, path_parts):
+    """
+    Extract values from data following path parts.
+    Returns list of (value, existed) tuples.
+    """
+    if not path_parts:
+        return [(data, True)]
+
+    part = path_parts[0]
+    remaining = path_parts[1:]
+
+    if part == "*":
+        # Wildcard - iterate over list or dict values
+        if isinstance(data, list):
+            results = []
+            for item in data:
+                results.extend(extract_jsonpath(item, remaining))
+            return results
+        elif isinstance(data, dict):
+            results = []
+            for value in data.values():
+                results.extend(extract_jsonpath(value, remaining))
+            return results
+        else:
+            return [(DNE, False)]
+    elif part.endswith("[*]"):
+        # Array field with wildcard
+        field = part[:-3]
+        if isinstance(data, dict) and field in data:
+            arr = data[field]
+            if isinstance(arr, list):
+                results = []
+                for item in arr:
+                    results.extend(extract_jsonpath(item, remaining))
+                return results
+        return [(DNE, False)]
+    else:
+        # Regular field access
+        if isinstance(data, dict):
+            if part in data:
+                return extract_jsonpath(data[part], remaining)
+            else:
+                return [(DNE, False)]
+        else:
+            return [(DNE, False)]
+
+
+def parse_jsonpath(path):
+    """
+    Parse a JSONPath string into parts.
+    Supports: $.field, $.field[*], $.field.subfield, $[*]
+    """
+    if not path.startswith("$"):
+        raise ValueError("JSONPath must start with $")
+
+    path = path[1:]  # Remove $
+    if path.startswith("."):
+        path = path[1:]  # Remove leading dot
+
+    if not path:
+        return []
+
+    parts = []
+    current = ""
+    i = 0
+    while i < len(path):
+        c = path[i]
+        if c == ".":
+            if current:
+                parts.append(current)
+                current = ""
+        elif c == "[":
+            # Find closing bracket
+            end = path.find("]", i)
+            if end == -1:
+                raise ValueError("Unclosed bracket in path")
+            bracket_content = path[i + 1 : end]
+            if bracket_content == "*":
+                if current:
+                    parts.append(current + "[*]")
+                    current = ""
+                else:
+                    parts.append("*")
+            else:
+                # Numeric index - treat as field
+                if current:
+                    parts.append(current)
+                parts.append(bracket_content)
+                current = ""
+            i = end
+        else:
+            current += c
+        i += 1
+
+    if current:
+        parts.append(current)
+
+    return parts
+
+
+def find_objects_by_type(data, type_value=None, subtype_value=None):
+    """
+    Recursively find all objects matching type and/or subtype.
+    Returns list of matching objects.
+    """
+    results = []
+
+    if isinstance(data, dict):
+        # Check if this object matches
+        matches = True
+        if type_value is not None:
+            matches = matches and data.get("type") == type_value
+        if subtype_value is not None:
+            matches = matches and data.get("subtype") == subtype_value
+
+        if matches and (type_value is not None or subtype_value is not None):
+            results.append(data)
+
+        # Recurse into children
+        for value in data.values():
+            results.extend(find_objects_by_type(value, type_value, subtype_value))
+
+    elif isinstance(data, list):
+        for item in data:
+            results.extend(find_objects_by_type(item, type_value, subtype_value))
+
+    return results
+
+
+def analyze_file_jsonpath(filepath, path_parts):
+    """Analyze a single file using JSONPath mode."""
+    with open(filepath) as f:
+        data = json.load(f)
+    return extract_jsonpath(data, path_parts)
+
+
+def analyze_file_object_type(filepath, type_value, subtype_value, field):
+    """Analyze a single file using object type mode."""
+    with open(filepath) as f:
+        data = json.load(f)
+
+    objects = find_objects_by_type(data, type_value, subtype_value)
+    results = []
+    for obj in objects:
+        if field in obj:
+            results.append((obj[field], True))
+        else:
+            results.append((DNE, False))
+    return results
+
+
+def get_files(args):
+    """Get all JSON files from arguments (files or directories)."""
+    file_names = []
+    for arg in args:
+        abspath = os.path.abspath(arg)
+        if os.path.isfile(abspath):
+            if abspath.endswith(".json"):
+                file_names.append(abspath)
+        else:
+            for root, dirs, files in os.walk(abspath, topdown=False):
+                for file in files:
+                    if file.endswith(".json"):
+                        file_names.append(os.path.join(root, file))
+    return sorted(file_names)
+
+
+def assess_cardinality(unique_count, total_count):
+    """
+    Assess cardinality category based on unique values vs total population.
+    Returns (category, description)
+    """
+    if total_count == 0:
+        return "empty", "No values found"
+
+    ratio = unique_count / total_count
+
+    if unique_count <= 5:
+        return "very_low", "Effectively an enum (<=5 unique values)"
+    elif unique_count <= 20:
+        return "low", "Small set of values, likely controlled vocabulary"
+    elif ratio > 0.9:
+        return "very_high", "Almost all unique - likely free text or ID field"
+    elif ratio > 0.5:
+        return "high", "Many unique values - possibly text or computed"
+    elif ratio > 0.1:
+        return "medium", "Moderate variety - worth investigating for inconsistencies"
+    else:
+        return "low", "Low variety relative to population"
+
+
+def format_value(v):
+    """Format a value for display."""
+    if v is None:
+        return "<null>"
+    elif v == DNE:
+        return DNE
+    elif isinstance(v, str):
+        if len(v) > 60:
+            return f'"{v[:60]}..."'
+        return f'"{v}"'
+    elif isinstance(v, bool):
+        return str(v).lower()
+    elif isinstance(v, (dict, list)):
+        s = json.dumps(v)
+        if len(s) > 60:
+            return s[:60] + "..."
+        return s
+    else:
+        return str(v)
+
+
+def main():
+    usage = """Usage: %prog [options] <directories or files>
+
+Mode 1 - JSONPath:
+  %prog --path '$.field.subfield' directory/
+
+Mode 2 - Object Type:
+  %prog --type link --field game-obj directory/
+  %prog --subtype attack_damage --field damage_type directory/"""
+
+    parser = OptionParser(usage=usage)
+    parser.add_option(
+        "-p", "--path", dest="jsonpath", help="JSONPath to analyze (e.g., '$.activation[*].name')"
+    )
+    parser.add_option(
+        "-t", "--type", dest="type_value", help="Object type to find (e.g., 'link', 'source')"
+    )
+    parser.add_option(
+        "-s",
+        "--subtype",
+        dest="subtype_value",
+        help="Object subtype to find (e.g., 'attack_damage', 'skill')",
+    )
+    parser.add_option(
+        "-f",
+        "--field",
+        dest="field",
+        help="Field to analyze on matched objects (for type/subtype mode)",
+    )
+    parser.add_option(
+        "-n",
+        "--top",
+        dest="top_n",
+        type="int",
+        default=50,
+        help="Show top N values (default: 50, use 0 for all)",
+    )
+    parser.add_option(
+        "-a",
+        "--all",
+        dest="show_all",
+        action="store_true",
+        help="Show all values (same as --top 0)",
+    )
+    parser.add_option(
+        "-v",
+        "--value",
+        dest="find_value",
+        help="Find files containing this specific value (use <DNE> for missing, <null> for null)",
+    )
+
+    (options, args) = parser.parse_args()
+
+    if not args:
+        parser.error("Please specify directories or files to analyze")
+
+    # Determine mode
+    if options.jsonpath:
+        mode = "jsonpath"
+        try:
+            path_parts = parse_jsonpath(options.jsonpath)
+        except ValueError as e:
+            parser.error(f"Invalid JSONPath: {e}")
+    elif options.type_value or options.subtype_value:
+        mode = "object"
+        if not options.field:
+            parser.error("--field is required when using --type or --subtype")
+    else:
+        parser.error(
+            "Please specify --path for JSONPath mode, or --type/--subtype with --field for object mode"
+        )
+
+    files = get_files(args)
+    if not files:
+        print("No JSON files found", file=sys.stderr)
+        return 1
+
+    # Parse the target value if searching for specific value
+    target_value = None
+    if options.find_value is not None:
+        if options.find_value == "<DNE>":
+            target_value = DNE
+        elif options.find_value == "<null>":
+            target_value = None
+        else:
+            target_value = options.find_value
+
+    # Collect values
+    counter = Counter()
+    files_by_value = {}  # value -> list of filepaths
+    total_files = len(files)
+    files_with_matches = 0
+
+    for filepath in files:
+        try:
+            if mode == "jsonpath":
+                results = analyze_file_jsonpath(filepath, path_parts)
+            else:
+                results = analyze_file_object_type(
+                    filepath, options.type_value, options.subtype_value, options.field
+                )
+
+            if results:
+                has_match = any(existed for _, existed in results)
+                if has_match:
+                    files_with_matches += 1
+
+                for value, existed in results:
+                    # Convert to hashable
+                    if isinstance(value, (dict, list)):
+                        key = json.dumps(value, sort_keys=True)
+                    else:
+                        key = value
+                    counter[key] += 1
+
+                    # Track files by value if searching
+                    if options.find_value is not None:
+                        if key not in files_by_value:
+                            files_by_value[key] = []
+                        if filepath not in files_by_value[key]:
+                            files_by_value[key].append(filepath)
+        except Exception as e:
+            print(f"Error processing {filepath}: {e}", file=sys.stderr)
+
+    # Calculate stats
+    total_values = sum(counter.values())
+    dne_count = counter.get(DNE, 0)
+    existing_count = total_values - dne_count
+
+    # Remove DNE for unique count calculation
+    unique_values = len([k for k in counter.keys() if k != DNE])
+
+    category, description = assess_cardinality(unique_values, existing_count)
+
+    # If searching for specific value, output file list instead
+    if options.find_value is not None:
+        if target_value in files_by_value:
+            matching_files = files_by_value[target_value]
+            print(f"Files containing value {format_value(target_value)}:")
+            print(f"({len(matching_files)} files, {counter[target_value]} occurrences)")
+            print()
+            for f in sorted(matching_files):
+                print(f)
+        else:
+            print(f"No files found containing value {format_value(target_value)}")
+        return 0
+
+    # Output report
+    print("=" * 70)
+    if mode == "jsonpath":
+        print(f"JSONPath: {options.jsonpath}")
+    else:
+        type_desc = []
+        if options.type_value:
+            type_desc.append(f"type={options.type_value}")
+        if options.subtype_value:
+            type_desc.append(f"subtype={options.subtype_value}")
+        print(f"Object filter: {', '.join(type_desc)}")
+        print(f"Field: {options.field}")
+    print("=" * 70)
+    print()
+    print(f"Files scanned:        {total_files:,}")
+    print(f"Files with matches:   {files_with_matches:,}")
+    print(f"Total occurrences:    {total_values:,}")
+    print(f"  - Existing values:  {existing_count:,}")
+    print(f"  - DNE (not found):  {dne_count:,}")
+    print(f"Unique values:        {unique_values:,}")
+    print()
+    print(f"Cardinality: {category.upper()}")
+    print(f"  {description}")
+    print()
+
+    # Show value distribution
+    print("-" * 70)
+    print("Value Distribution:")
+    print("-" * 70)
+
+    sorted_items = counter.most_common()
+    if options.show_all:
+        display_items = sorted_items
+    elif options.top_n > 0:
+        display_items = sorted_items[: options.top_n]
+    else:
+        display_items = sorted_items
+
+    # Calculate column width
+    max_count_width = len(f"{sorted_items[0][1]:,}") if sorted_items else 1
+
+    for value, count in display_items:
+        pct = (count / total_values) * 100
+        formatted = format_value(value)
+        print(f"  {count:>{max_count_width},} ({pct:5.1f}%)  {formatted}")
+
+    if len(sorted_items) > len(display_items):
+        remaining = len(sorted_items) - len(display_items)
+        print(f"\n  ... and {remaining:,} more unique values (use --all to show)")
+
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

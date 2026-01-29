@@ -45,7 +45,7 @@
 					"Two Actions", "Three Actions", "One to Three Actions",
 					"One or Two Actions", "Two or Three Actions",
 					"Free Action or Single Action", "One or Three Actions",
-					"Two to Three Actions"
+					"Two to Three Actions", "Reaction or One Action"
 				]}
 			},
 			"required": ["name", "type", "subtype"],
@@ -140,7 +140,8 @@
 					"additionalItems": false
 				},
 				"traits": {"$ref": "#/definitions/traits"},
-				"modifiers": {"$ref": "#/definitions/modifiers"}
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"destruction": {"type": "string"}
 			},
 			"required": ["name", "type", "subtype", "ability_type"],
 			"additionalProperties": false
@@ -154,6 +155,7 @@
 				"activation_name": {"type": "string"},
 				"ability_type": {"type": "string"},
 				"activation_types": {"$ref": "#/definitions/activation_types"},
+				"activation_time": {"type": "string"},
 				"sources": {"$ref": "#/definitions/sources"},
 				"text": {"type": "string"},
 				"trigger": {"type": "string"},
@@ -161,6 +163,11 @@
 				"effect": {"type": "string"},
 				"frequency": {"type": "string"},
 				"requirement": {"type": "string"},
+				"critical_success": {"type": "string"},
+				"success": {"type": "string"},
+				"failure": {"type": "string"},
+				"critical_failure": {"type": "string"},
+				"destruction": {"type": "string"},
 				"range": {"$ref": "#/definitions/range"},
 				"saving_throw": {"$ref": "#/definitions/save_dc"},
 				"action_type": {"$ref": "#/definitions/action_type"},
@@ -190,7 +197,8 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["bulk"]},
 				"value": {"type": ["integer", "null"]},
-				"text": {"type": "string"}
+				"text": {"type": "string"},
+				"modifiers": {"$ref": "#/definitions/modifiers"}
 			},
 			"required": ["type", "subtype", "value", "text"],
 			"additionalProperties": false
@@ -344,7 +352,7 @@
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["base_weapon", "base_armor", "base_material"]},
+				"subtype": {"enum": ["base_weapon", "base_armor", "base_shield", "base_material"]},
 				"text": {"type": "string"},
 				"name": {"type": "string"},
 				"link": {"$ref": "#/definitions/link"},
@@ -450,9 +458,45 @@
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["statistics"]},
-				"access": {"type": "string"},
+				"access": {
+					"oneOf": [
+						{"type": "string"},
+						{
+							"type": "object",
+							"properties": {
+								"type": {"enum": ["stat_block_section"]},
+								"subtype": {"enum": ["access"]},
+								"text": {"type": "string"},
+								"links": {
+									"type": "array",
+									"items": {"$ref": "#/definitions/link"}
+								}
+							},
+							"required": ["type", "subtype", "text"],
+							"additionalProperties": false
+						}
+					]
+				},
 				"hands": {"type": ["integer", "string"]},
-				"usage": {"type": "string"},
+				"usage": {
+					"oneOf": [
+						{"type": "string"},
+						{
+							"type": "object",
+							"properties": {
+								"type": {"enum": ["stat_block_section"]},
+								"subtype": {"enum": ["usage"]},
+								"text": {"type": "string"},
+								"links": {
+									"type": "array",
+									"items": {"$ref": "#/definitions/link"}
+								}
+							},
+							"required": ["type", "subtype", "text"],
+							"additionalProperties": false
+						}
+					]
+				},
 				"category": {"enum": [
 					"Unarmed", "Simple", "Martial", "Advanced", "Ammunition",
 					"Unarmored", "Light", "Medium", "Heavy"
@@ -482,7 +526,53 @@
 						}
 					]
 				},
-				"abilities": {"$ref": "#/definitions/abilities"}
+				"abilities": {"$ref": "#/definitions/abilities"},
+				"int": {"type": "string"},
+				"wis": {"type": "string"},
+				"cha": {"type": "string"},
+				"will": {"type": "string"},
+				"perception": {
+					"type": "object",
+					"properties": {
+						"type": {"enum": ["stat_block_section"]},
+						"subtype": {"enum": ["perception"]},
+						"text": {"type": "string"},
+						"links": {
+							"type": "array",
+							"items": {"$ref": "#/definitions/link"}
+						}
+					},
+					"required": ["type", "subtype", "text"],
+					"additionalProperties": false
+				},
+				"skills": {
+					"type": "object",
+					"properties": {
+						"type": {"enum": ["stat_block_section"]},
+						"subtype": {"enum": ["skills"]},
+						"text": {"type": "string"},
+						"links": {
+							"type": "array",
+							"items": {"$ref": "#/definitions/link"}
+						}
+					},
+					"required": ["type", "subtype", "text"],
+					"additionalProperties": false
+				},
+				"communication": {
+					"type": "object",
+					"properties": {
+						"type": {"enum": ["stat_block_section"]},
+						"subtype": {"enum": ["communication"]},
+						"text": {"type": "string"},
+						"links": {
+							"type": "array",
+							"items": {"$ref": "#/definitions/link"}
+						}
+					},
+					"required": ["type", "subtype", "text"],
+					"additionalProperties": false
+				}
 			},
 			"required": ["type", "subtype"],
 			"additionalProperties": false
@@ -501,6 +591,7 @@
 				"dex_cap": {"$ref": "#/definitions/bonus"},
 				"armor_group": {"$ref": "#/definitions/armor_group"},
 				"base_armor": {"$ref": "#/definitions/base_object"},
+				"base_shield": {"$ref": "#/definitions/base_object"},
 				"saves": {"$ref": "#/definitions/equipment_saves"},
 				"speed": {"$ref": "#/definitions/speeds"},
 				"immunities": {"$ref": "#/definitions/protections"},
@@ -556,6 +647,7 @@
 				"defense": {"$ref": "#/definitions/defense"},
 				"offense": {"$ref": "#/definitions/offense"},
 				"sources": {"$ref": "#/definitions/sources"},
+				"sections": {"$ref": "#/definitions/sections"},
 				"variants": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/equipment_stat_block"},
@@ -613,7 +705,8 @@
 					"MonsterAbilities", "MonsterFamilies", "MonsterTemplates",
 					"Monsters", "Muses", "Mysteries", "NPCs", "Patrons",
 					"Planes", "Rackets", "Relics", "ResearchFields", "Rituals",
-					"Rules", "Shields", "SiegeWeapons", "Skills", "Sources", "Spells", "Traits",
+					"Rules", "Shields", "SiegeWeapons", "Skills", "Sources", "Spells",
+					"Tenets", "Traits", "Vehicles",
 					"WeaponGroups", "Weapons"
 				]},
 				"aonid": {"type": "integer"}

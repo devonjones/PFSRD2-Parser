@@ -131,20 +131,21 @@ def _trait_class_matcher(c):
         return any(cls.startswith("trait") for cls in c)
 
 
-def _count_links_in_html(html_text, exclude_name=None, debug=False):
+def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, debug=False):
     """Count all <a> tags with game-obj attribute in HTML.
 
     This counts links that need to be extracted into structured link objects.
     Only counts internal game links (with game-obj attribute).
 
     Excludes:
-    - Self-references (links whose text matches exclude_name)
+    - Self-references (links whose text AND game-obj match exclude_name/exclude_game_obj)
     - Trait name links (links inside <span class="trait*"> tags, replaced by database)
     - Equipment group links (WeaponGroups/ArmorGroups in stat lines, replaced by database)
 
     Args:
         html_text: HTML text to count links in
         exclude_name: If provided, exclude links whose text matches this name (for self-references)
+        exclude_game_obj: If provided, also require game-obj to match for self-reference exclusion
         debug: If True, print debug info about found links
     """
     soup = BeautifulSoup(html_text, "html.parser")
@@ -161,9 +162,20 @@ def _count_links_in_html(html_text, exclude_name=None, debug=False):
     links = all_links
 
     # Exclude self-references if exclude_name is provided
+    # When exclude_game_obj is also provided, both name AND game-obj must match
+    # (prevents excluding links to other game objects that share the item's name)
     if exclude_name:
         before = len(links)
-        links = [l for l in links if l.get_text().strip() != exclude_name]
+        if exclude_game_obj:
+            links = [
+                l
+                for l in links
+                if not (
+                    l.get_text().strip() == exclude_name and l.get("game-obj") == exclude_game_obj
+                )
+            ]
+        else:
+            links = [l for l in links if l.get_text().strip() != exclude_name]
         if debug and len(links) < before:
             sys.stderr.write(
                 f"DEBUG: Excluded {before - len(links)} self-references to '{exclude_name}'\n"
@@ -551,6 +563,7 @@ EQUIPMENT_TYPES = {
             "Ammunition": "ammunition",
             "Base Weapon": "base_weapon",
             "Base Armor": "base_armor",
+            "Base Shield": "base_shield",
             # Intelligent item stats
             "Perception": "perception",
             "Communication": "communication",
@@ -588,6 +601,7 @@ EQUIPMENT_TYPES = {
             "ammunition": "offense",
             "base_weapon": "offense",
             "base_armor": "defense",
+            "base_shield": "defense",
             # Intelligent item stats go in statistics
             "perception": "statistics",
             "communication": "statistics",
@@ -615,11 +629,15 @@ EQUIPMENT_SPANS_ALLOWED = [
 
 
 def equipment_markdown_valid_set(struct, name, path, validset):
-    """Allow span tags in equipment markdown for specific items with broken HTML.
+    """Allow additional tags in equipment markdown.
 
-    Like creatures, only specific equipment items are allowed to have spans.
-    This is for cases where the HTML is genuinely broken (missing <br> or <b> tags).
+    - h2/h3: Allowed for all equipment as labels for tables in effect text
+    - span: Only for specific items with broken HTML (missing <br> or <b> tags)
     """
+    # h2/h3 can appear as table labels within effect text (e.g., Rod of Wonder)
+    validset.add("h2")
+    validset.add("h3")
+
     if name in EQUIPMENT_SPANS_ALLOWED:
         validset.add("span")
 
@@ -642,10 +660,20 @@ def parse_equipment(filename, options):
 
     # COUNT INITIAL LINKS: Count all <a> tags with game-obj in the content HTML
     # Exclude self-references (links from item to itself, typically in title)
+    # Map equipment types to their game-obj values for self-reference detection
+    EQUIPMENT_TYPE_GAME_OBJ = {
+        "equipment": "Equipment",
+        "weapon": "Weapons",
+        "armor": "Armor",
+        "shield": "Shields",
+        "siege_weapon": "SiegeWeapons",
+        "vehicle": "Vehicles",
+    }
     item_name = struct.get("name", "")
+    item_game_obj = EQUIPMENT_TYPE_GAME_OBJ.get(equipment_type)
     debug_mode = False  # Set to basename == "Equipment.aspx.ID_XXX.html" for debugging
     initial_link_count = _count_links_in_html(
-        details["text"], exclude_name=item_name, debug=debug_mode
+        details["text"], exclude_name=item_name, exclude_game_obj=item_game_obj, debug=debug_mode
     )
     aon_pass(struct, basename)
     links_removed = section_pass(struct, config, debug=debug_mode)
@@ -1023,9 +1051,21 @@ def _parse_variant_section(h2_tag, config, parent_name, debug=False):
         config.get("group_subtype") if "Group" in config.get("recognized_stats", {}) else None
     )
     _extract_stats_to_dict(bs, stats, config["recognized_stats"], "equipment", group_subtype)
+    # Move unrecognized links from stats dict to variant stat block links
+    unrec_links = stats.pop("_unrecognized_links", None)
+    if unrec_links:
+        if "links" not in variant_sb:
+            variant_sb["links"] = []
+        variant_sb["links"].extend(unrec_links)
 
     # Route fields to their proper destinations
     _route_fields_to_destinations(variant_sb, stats, config)
+
+    # Extract abilities (Activate, etc.) from variant content BEFORE extracting description
+    # This removes ability content from bs so it doesn't end up in description text
+    trait_links_converted = _extract_abilities_from_description(
+        bs, variant_sb, equipment_type="equipment"
+    )
 
     # Extract any remaining text as description (with links)
     # Get links from remaining content and unwrap them
@@ -1050,9 +1090,9 @@ def _parse_variant_section(h2_tag, config, parent_name, debug=False):
     # Use the normalizer if this is equipment type
     normalize_func = config.get("normalize_fields")
     if normalize_func:
-        normalize_func(variant_sb)
+        trait_links_converted += normalize_func(variant_sb) or 0
 
-    return variant_sb
+    return variant_sb, trait_links_converted
 
 
 def _route_fields_to_destinations(sb, stats, config):
@@ -1145,17 +1185,27 @@ def _generic_section_pass(struct, config, debug=False):
     _extract_stats_to_dict(
         main_bs, stats, config["recognized_stats"], struct["type"], group_subtype
     )
+    # Move unrecognized links from stats dict to stat block links
+    unrec_links = stats.pop("_unrecognized_links", None)
+    if unrec_links:
+        if "links" not in sb:
+            sb["links"] = []
+        sb["links"].extend(unrec_links)
 
     # Route fields to their destinations based on config
     _route_fields_to_destinations(sb, stats, config)
 
     # Process variants if present
+    variant_trait_links = 0
     if variant_h2s:
         variants = []
         for h2 in variant_h2s:
-            variant_sb = _parse_variant_section(h2, config, struct.get("name", ""), debug=debug)
+            variant_sb, variant_links = _parse_variant_section(
+                h2, config, struct.get("name", ""), debug=debug
+            )
             if variant_sb:
                 variants.append(variant_sb)
+            variant_trait_links += variant_links
             # Remove h2 and its content from main bs (so it doesn't affect description)
             h2.decompose()
         if variants:
@@ -1176,10 +1226,13 @@ def _generic_section_pass(struct, config, debug=False):
 
     # Add trait links converted to traits to links_removed (they were counted initially but became traits)
     # Also add base_material links which are stored in structured objects, not the links array
-    total_removed = links_removed + (trait_links_converted or 0) + base_material_links
+    # Also add variant_trait_links for trait links converted in variant abilities
+    total_removed = (
+        links_removed + (trait_links_converted or 0) + base_material_links + variant_trait_links
+    )
     if debug:
         sys.stderr.write(
-            f"DEBUG _generic_section_pass: links_removed={links_removed}, trait_links_converted={trait_links_converted}, base_material_links={base_material_links}, total={total_removed}\n"
+            f"DEBUG _generic_section_pass: links_removed={links_removed}, trait_links_converted={trait_links_converted}, base_material_links={base_material_links}, variant_trait_links={variant_trait_links}, total={total_removed}\n"
         )
     return total_removed
 
@@ -2321,6 +2374,10 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
 
     # Extract and validate all labels
     for bold_tag in bold_tags:
+        # Skip bold tags inside table elements (table headers/cells, not stat labels)
+        if bold_tag.find_parent(["table", "td", "th"]):
+            continue
+
         label = bold_tag.get_text().strip()
 
         # Skip empty labels
@@ -2331,6 +2388,28 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
         # For other types, fail fast on unknown labels
         if label not in recognized_stats:
             if equipment_type == "equipment":
+                # Only extract links from unrecognized bolds BEFORE the <hr>
+                # (bolds after <hr> are in the ability/description section, handled by
+                # _extract_abilities_from_description sweep - extracting here would double-count)
+                # When no <hr> exists, skip entirely - description extraction handles all links
+                if hr and not bold_tag.find_previous("hr"):
+                    # This bold is in the stat area (before hr, hr exists)
+                    # Extract links to prevent link loss (e.g., "Devil" field on contracts)
+                    unrec_parts = []
+                    unrec_current = bold_tag.next_sibling
+                    while unrec_current:
+                        if isinstance(unrec_current, Tag) and unrec_current.name in ("b", "hr"):
+                            break
+                        unrec_parts.append(str(unrec_current))
+                        unrec_current = unrec_current.next_sibling
+                    unrec_html = "".join(unrec_parts)
+                    if "<a" in unrec_html:
+                        _, unrec_links = extract_links(unrec_html)
+                        unrec_links = [l for l in unrec_links if "game-obj" in l]
+                        if unrec_links:
+                            if "_unrecognized_links" not in stats_dict:
+                                stats_dict["_unrecognized_links"] = []
+                            stats_dict["_unrecognized_links"].extend(unrec_links)
                 continue  # Skip - might be ability name like Activate, Effect, etc.
             else:
                 raise AssertionError(
@@ -2363,15 +2442,19 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
         if label == "Group":
             value = _extract_group_value(bold_tag, group_subtype)
         elif label in (
+            "Access",
             "Activate",
             "Base Weapon",
             "Base Armor",
+            "Base Shield",
             "Ammunition",
             "Communication",
+            "Hands",
             "Languages",
             "Skills",
             "Perception",
             "Craft Requirements",
+            "Usage",
         ):
             # Preserve HTML for fields that may contain links or action icons
             value = _extract_stat_value(bold_tag, preserve_html=True)
@@ -2404,6 +2487,12 @@ def _extract_stats(bs, sb, recognized_stats, equipment_type, group_subtype):
     """
     equipment_stats = {}
     _extract_stats_to_dict(bs, equipment_stats, recognized_stats, equipment_type, group_subtype)
+    # Move unrecognized links from stats dict to stat block links
+    unrec_links = equipment_stats.pop("_unrecognized_links", None)
+    if unrec_links:
+        if "links" not in sb:
+            sb["links"] = []
+        sb["links"].extend(unrec_links)
     sb.update(equipment_stats)
 
 
@@ -2455,10 +2544,13 @@ def _extract_stat_value(label_tag, preserve_html=False):
     # e.g., "swim 20 feet (alchemical; underwater only); Collision 2d8" splits to
     # ["swim 20 feet (alchemical; underwater only)", "Collision 2d8"]
     # We only want the first value for this stat
+    # Skip for preserve_html fields - they need their full value for link extraction
+    # (e.g., Perception: "+25; precise vision 60 feet, imprecise hearing 30 feet")
 
-    parts = split_maintain_parens(value_text, ";")
-    if parts:
-        value_text = parts[0].strip()
+    if not preserve_html:
+        parts = split_maintain_parens(value_text, ";")
+        if parts:
+            value_text = parts[0].strip()
 
     # Return em dash as-is (let field-specific normalizers handle it)
     # E.g., bulk with "—" should become {value: null, text: "—"}
@@ -2793,6 +2885,129 @@ def _extract_base_material(bs, sb, debug=False):
     return 0
 
 
+def _extract_sections_from_headings(desc_soup, debug=False):
+    """Extract sections from headings (h1-h6) in description content.
+
+    Builds a nested section structure based on heading hierarchy:
+    - Same heading level = siblings in same sections array
+    - Larger number (h2 → h3) = child section nested inside
+    - Smaller number (h3 → h2) = back up to parent level as sibling
+
+    Args:
+        desc_soup: BeautifulSoup object containing description HTML
+        debug: Whether to print debug info
+
+    Returns:
+        Tuple of (pre_heading_html, sections_list) where:
+        - pre_heading_html: HTML content before first heading (main description)
+        - sections_list: List of section dicts with name, type, text, sections
+    """
+    from universal.universal import get_links
+
+    # Find all headings that are NOT variant markers
+    # Variant markers are headings that contain:
+    # - PFS.aspx link (PFS icon)
+    # - "Item X" level indicator (span with "Item \d+")
+    # Regular section headings may have class="title" but lack these indicators
+    headings = []
+    for tag in desc_soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
+        # Check for PFS link - indicator of variant marker
+        pfs_link = tag.find("a", href=lambda h: h and "PFS.aspx" in h)
+        if pfs_link:
+            continue  # Skip variant markers
+
+        # Check for "Item X" level indicator
+        tag_text = tag.get_text()
+        if re.search(r"Item\s+\d+", tag_text):
+            continue  # Skip variant markers
+
+        headings.append(tag)
+
+    if not headings:
+        # No section headings found - return all content as main text
+        return str(desc_soup), []
+
+    # Get content before first heading (this is the main description)
+    pre_heading_parts = []
+    for elem in desc_soup.children:
+        if elem in headings:
+            break
+        if elem == headings[0]:
+            break
+        pre_heading_parts.append(str(elem))
+    pre_heading_html = "".join(pre_heading_parts)
+
+    # Build section tree
+    # Each section has: name, type, text (content), sections (children)
+    def get_heading_level(tag):
+        return int(tag.name[1])  # h2 -> 2, h3 -> 3, etc.
+
+    def get_content_until_next_heading(start_heading, all_headings, heading_idx):
+        """Get content after a heading until the next heading or end."""
+        content_parts = []
+        current = start_heading.next_sibling
+
+        while current:
+            if current in all_headings:
+                break
+            content_parts.append(str(current))
+            current = current.next_sibling
+
+        return "".join(content_parts)
+
+    # Process headings into nested structure
+    sections = []
+    section_stack = []  # Stack of (level, section_dict) for tracking hierarchy
+
+    for i, heading in enumerate(headings):
+        level = get_heading_level(heading)
+        name = heading.get_text().strip()
+        content = get_content_until_next_heading(heading, headings, i)
+
+        # Extract links from content and unwrap <a> tags
+        content_soup = BeautifulSoup(content, "html.parser")
+        content_links = get_links(content_soup, unwrap=True)
+
+        section = {
+            "name": name,
+            "type": "section",
+            "text": _normalize_whitespace(str(content_soup)),
+        }
+        if content_links:
+            section["links"] = content_links
+
+        # Determine where this section belongs based on heading level
+        if not section_stack:
+            # First section - add to root
+            sections.append(section)
+            section_stack.append((level, section))
+        else:
+            # Pop sections from stack until we find a parent (lower level number)
+            while section_stack and section_stack[-1][0] >= level:
+                section_stack.pop()
+
+            if section_stack:
+                # Add as child of the section at top of stack
+                parent = section_stack[-1][1]
+                if "sections" not in parent:
+                    parent["sections"] = []
+                parent["sections"].append(section)
+            else:
+                # No parent - add to root
+                sections.append(section)
+
+            section_stack.append((level, section))
+
+    if debug:
+        import sys
+
+        sys.stderr.write(
+            f"DEBUG _extract_sections_from_headings: found {len(headings)} headings, {len(sections)} root sections\n"
+        )
+
+    return pre_heading_html, sections
+
+
 def _extract_description(bs, struct, debug=False):
     """Extract description text and links, adding them to the stat_block.
 
@@ -2883,16 +3098,13 @@ def _extract_description(bs, struct, debug=False):
     # Find the first action - either a bold tag with action name, or an action icon span
     # We need to find the EARLIEST action in document order, not just the first one we encounter
     known_actions = [
+        "Activate",
         "Aim",
         "Load",
         "Launch",
         "Ram",
         "Effect",
         "Requirements",
-        "Success",
-        "Failure",
-        "Critical Success",
-        "Critical Failure",
     ]
     first_action_element = None
     candidates = []
@@ -2925,7 +3137,7 @@ def _extract_description(bs, struct, debug=False):
         # Get the position of each candidate by walking through all descendants
         def get_element_index(elem):
             for idx, descendant in enumerate(desc_soup.descendants):
-                if descendant == elem:
+                if descendant is elem:
                     return idx
             return float("inf")
 
@@ -2959,16 +3171,23 @@ def _extract_description(bs, struct, debug=False):
                 current.extract()
             current = next_node
 
-    # Extract links and unwrap <a> tags
-    links = get_links(desc_soup, unwrap=True)
+    # Extract sections from headings (h2, h3, etc.) before processing links
+    # This separates main description from structured section content
+    pre_heading_html, sections = _extract_sections_from_headings(desc_soup, debug=debug)
+
+    # Create soup from pre-heading content for link extraction
+    pre_heading_soup = BeautifulSoup(pre_heading_html, "html.parser")
+
+    # Extract links and unwrap <a> tags from main description
+    links = get_links(pre_heading_soup, unwrap=True)
 
     # Keep ALL links including trait links
     # Trait links in description text should be regular link objects, not filtered out
     # (Only trait links in <span class="trait*"> tags or ability parentheses are converted to traits)
     non_trait_links = links
 
-    # Get the cleaned text
-    desc_text = _normalize_whitespace(str(desc_soup))
+    # Get the cleaned text (only pre-heading content, not sections)
+    desc_text = _normalize_whitespace(str(pre_heading_soup))
 
     # Add text and links to stat_block (not top-level structure)
     # Always clear raw HTML from stat_block's text - replace with clean description or remove
@@ -3001,6 +3220,10 @@ def _extract_description(bs, struct, debug=False):
     # Store extracted links if any exist (excluding trait links)
     if non_trait_links:
         sb["links"] = non_trait_links
+
+    # Add sections if any were extracted from headings
+    if sections:
+        sb["sections"] = sections
 
     # Extract abilities from content after description (Activate, etc.)
     # This uses the original bs which still has the action content
@@ -3035,7 +3258,7 @@ def _parse_activation_types(activation_string):
                 {
                     "type": "stat_block_section",
                     "subtype": "activation_type",
-                    "value": value,
+                    "value": value.lower(),
                 }
             )
     return result
@@ -3052,7 +3275,17 @@ def _extract_ability_fields(ability_soup, ability):
         ability_soup: BeautifulSoup object containing the ability HTML
         ability: dict to populate with extracted fields
     """
-    field_names = ["Frequency", "Trigger", "Effect", "Requirements"]
+    field_names = [
+        "Frequency",
+        "Trigger",
+        "Effect",
+        "Requirements",
+        "Critical Success",
+        "Success",
+        "Failure",
+        "Critical Failure",
+        "Destruction",
+    ]
     for field in field_names:
         field_bold = ability_soup.find("b", string=lambda s, f=field: s and s.strip() == f)
         if not field_bold:
@@ -3079,12 +3312,14 @@ def _extract_ability_fields(ability_soup, ability):
         if value_html:
             # Extract links from value
             value_text, value_links = extract_links(value_html)
+            # Only include links with game-obj attribute (for link accounting consistency)
+            value_links = [link for link in value_links if "game-obj" in link]
             # Convert <br> tags to newlines, then normalize whitespace
             value_text = re.sub(r"<br\s*/?>", "\n", value_text)
             # Normalize whitespace (collapse multiple spaces/newlines)
             value_text = _normalize_whitespace(value_text)
 
-            field_key = field.lower()
+            field_key = field.lower().replace(" ", "_")
             if field_key == "requirements":
                 field_key = "requirement"
 
@@ -3149,21 +3384,62 @@ def _parse_named_activation(act_current):
 
 
 def _parse_activation_content(activate_content, ability):
-    """Parse activation content to extract traits, activation types, and links.
+    """Parse activation content to extract traits, activation types, time, and links.
 
     Handles parsing of text like "command (manipulate)" or "Interact" to extract:
     - Traits from parentheses (e.g., "manipulate" becomes a trait object)
     - Activation types (e.g., "command", "Interact")
+    - Activation time (e.g., "1 minute" from "command, envision; 1 minute")
     - Links (non-trait links are added to ability["links"])
 
     Args:
         activate_content: HTML string of the activation content
-        ability: dict to populate with traits, activation_types, and links
+        ability: dict to populate with traits, activation_types, activation_time, and links
 
     Returns:
         int: Count of trait links converted (for link accounting)
     """
     trait_links_converted = 0
+
+    # Check for activation_time (semicolon-separated, e.g., "command, envision; 1 minute")
+    # Split on semicolon first to separate activation types from time
+    activation_time = None
+    if ";" in activate_content:
+        parts = activate_content.split(";", 1)
+        activate_content = parts[0].strip()
+        if len(parts) > 1:
+            time_part = parts[1].strip()
+            # Check if it looks like a time value (contains number + time unit)
+            if re.search(r"\d+\s*(minute|hour|round|day|action)", time_part, re.IGNORECASE):
+                # time_part may contain parenthesized trait links, e.g.,
+                # "10 minutes (fortune, mental)" with <a game-obj="Traits"> tags.
+                # Extract those traits before storing activation_time.
+                time_soup = BeautifulSoup(time_part, "html.parser")
+                time_trait_links = []
+                for a_tag in time_soup.find_all("a", attrs={"game-obj": "Traits"}):
+                    _, link = extract_link(a_tag)
+                    time_trait_links.append(link)
+                    a_tag.unwrap()
+                time_text = _normalize_whitespace(str(time_soup))
+                # Extract trait names from parentheses and build trait objects
+                if time_trait_links and "(" in time_text:
+                    paren_start = time_text.find("(")
+                    paren_end = time_text.find(")")
+                    if paren_end > paren_start:
+                        trait_names = [tl["name"] for tl in time_trait_links]
+                        if trait_names:
+                            traits = build_objects("stat_block_section", "trait", trait_names)
+                            if "traits" not in ability:
+                                ability["traits"] = traits
+                            else:
+                                ability["traits"].extend(traits)
+                            trait_links_converted += len(time_trait_links)
+                        # Remove the parenthesized section from the time text
+                        activation_time = time_text[:paren_start].strip()
+                    else:
+                        activation_time = time_text
+                else:
+                    activation_time = time_text
 
     # Parse the activate content soup to extract links and traits
     content_soup = BeautifulSoup(activate_content, "html.parser")
@@ -3199,28 +3475,27 @@ def _parse_activation_content(activate_content, ability):
                     # Trait link not in parentheses - keep as regular link
                     other_links.append(trait_link)
 
-            # Clean up commas and whitespace from parens content
-            parens_content = parens_content.replace(",", "").strip()
-
-            # Handle any remaining text in parentheses as unlinked trait names
-            # BUT: filter out known activation methods that aren't traits
-            known_activations = {"Interact", "Command", "Envision", "Cast", "Spell"}
-            unlinked_traits = []
-            if parens_content:
-                for pt in parens_content.split():
-                    pt = pt.strip()
-                    if pt and not pt.isdigit() and pt not in known_activations:
-                        unlinked_traits.append(pt)
-
-            # Build trait objects
-            trait_names = [tl["name"] for tl in traits_to_convert] + unlinked_traits
+            # Build trait objects from linked traits only
+            # Note: Plain text in parentheses (like "Treat Disease") is NOT a trait -
+            # only actual Traits.aspx links should be converted to trait objects
+            trait_names = [tl["name"] for tl in traits_to_convert]
             if trait_names:
                 traits = build_objects("stat_block_section", "trait", trait_names)
                 ability["traits"] = traits
                 trait_links_converted = len(traits_to_convert)
 
             # The text before parentheses is the activation (e.g., "command", "Interact")
-            activation = text_before
+            # BUT: If text_before looks like a time value (e.g., "1 minute"), it's activation_time, not activation
+            if text_before and re.search(
+                r"^\d+\s*(minute|hour|round|day|action)s?$", text_before, re.IGNORECASE
+            ):
+                # Text before parens is a time value
+                activation_time = text_before
+                activation = ""
+            else:
+                activation = text_before
+            # Note: In remastered format, parentheses contain traits like (concentrate, manipulate)
+            # which describe the action's traits, not the activation method. These stay as traits only.
     else:
         # No parentheses - all trait links are body links
         other_links.extend(trait_links)
@@ -3231,6 +3506,10 @@ def _parse_activation_content(activate_content, ability):
     if activation:
         ability["activation_types"] = _parse_activation_types(activation)
 
+    # Store activation time if present (e.g., "1 minute")
+    if activation_time:
+        ability["activation_time"] = activation_time
+
     if other_links:
         if "links" not in ability:
             ability["links"] = []
@@ -3239,7 +3518,7 @@ def _parse_activation_content(activate_content, ability):
     return trait_links_converted
 
 
-def _extract_abilities_from_description(bs, sb, struct, debug=False):
+def _extract_abilities_from_description(bs, sb, struct=None, debug=False, equipment_type=None):
     """Extract offensive abilities (Activate, etc.) from content after description.
 
     These appear as bold-labeled lines after the description text:
@@ -3250,122 +3529,265 @@ def _extract_abilities_from_description(bs, sb, struct, debug=False):
     Extracts them into statistics.abilities array.
     Returns the count of trait links converted (for link accounting).
 
+    Args:
+        bs: BeautifulSoup object containing the content
+        sb: Stat block dict to add abilities to
+        struct: Parent structure (optional if equipment_type provided)
+        debug: Enable debug output
+        equipment_type: Override equipment type (for variants without full struct)
+
     NOTE: This is only for generic equipment. Vehicles and siege weapons have their
     abilities (including Activate) extracted by _extract_abilities() instead.
     """
     # Skip for vehicles and siege weapons - they already have ability extraction via _extract_abilities
-    equipment_type = struct.get("type", "")
+    if equipment_type is None:
+        equipment_type = struct.get("type", "") if struct else ""
     if equipment_type in ("vehicle", "siege_weapon"):
         return 0
 
-    # Find all <b>Activate</b> tags
-    activate_bolds = [bold for bold in bs.find_all("b") if bold.get_text().strip() == "Activate"]
+    # Find all ability-starting bold tags:
+    # 1. <b>Activate</b> tags
+    # 2. Bold tags followed by action icon spans (named abilities like "Divert Lightning [reaction]")
+    sub_field_names = {
+        "Frequency",
+        "Trigger",
+        "Effect",
+        "Requirements",
+        "Critical Success",
+        "Success",
+        "Failure",
+        "Critical Failure",
+        "Destruction",
+    }
+    ability_bolds = []
+    for bold in bs.find_all("b"):
+        bold_text = bold.get_text().strip()
+        if bold_text == "Activate":
+            ability_bolds.append(bold)
+            continue
+        # Skip sub-field bolds - these are part of an ability, not a new ability
+        if bold_text in sub_field_names:
+            continue
+        # Skip named activation bolds (start with dash - these follow Activate)
+        if bold_text and (bold_text[0] in "\u2014\u2013-" or ord(bold_text[0]) == 226):
+            continue
+        # Check if followed by action icon span (named ability with action cost)
+        next_sib = bold.next_sibling
+        while next_sib and isinstance(next_sib, NavigableString) and not next_sib.strip():
+            next_sib = next_sib.next_sibling
+        if (
+            isinstance(next_sib, Tag)
+            and next_sib.name == "span"
+            and "action" in next_sib.get("class", [])
+        ):
+            ability_bolds.append(bold)
 
-    if not activate_bolds:
+    if not ability_bolds:
         return 0
 
     trait_links_converted = 0
     abilities = []
+    elements_to_remove = []  # Track all elements belonging to abilities for cleanup
 
-    # Process each Activate ability
-    for i, activate_bold in enumerate(activate_bolds):
-        # Collect content from this Activate until next Activate or end
-        ability_parts = [str(activate_bold)]
-        current = activate_bold.next_sibling
+    # Process each ability (Activate or named)
+    for i, ability_bold in enumerate(ability_bolds):
+        bold_text = ability_bold.get_text().strip()
+        is_activate = bold_text == "Activate"
 
-        # Find where this ability ends (next Activate bold or end)
-        next_activate = activate_bolds[i + 1] if i + 1 < len(activate_bolds) else None
+        # Collect content from this ability until next ability or end
+        ability_parts = [str(ability_bold)]
+        ability_elements = [ability_bold]  # Track actual elements for removal
+        current = ability_bold.next_sibling
+
+        # Find where this ability ends (next ability bold or end)
+        next_ability = ability_bolds[i + 1] if i + 1 < len(ability_bolds) else None
 
         while current:
-            # Stop if we hit the next Activate bold
-            if next_activate and current == next_activate:
+            # Stop if we hit the next ability bold (use identity, not equality)
+            if next_ability and current is next_ability:
                 break
-            # Also check if current contains the next activate (for nested structures)
-            if (
-                isinstance(current, Tag)
-                and current.name == "b"
-                and current.get_text().strip() == "Activate"
-            ) and current in activate_bolds[i + 1 :]:
+            # Also check against remaining ability bolds
+            if any(current is ab for ab in ability_bolds[i + 1 :]):
                 break
             # Stop at <hr> tags - content after hr is description, not ability
             if isinstance(current, Tag) and current.name == "hr":
                 break
             ability_parts.append(str(current))
+            ability_elements.append(current)
             current = current.next_sibling
+
+        # Track elements for later removal from bs
+        elements_to_remove.extend(ability_elements)
 
         ability_html = "".join(ability_parts)
         ability_soup = BeautifulSoup(ability_html, "html.parser")
 
         # Build ability object
-        ability = build_object("stat_block_section", "ability", "Activate")
+        ability = build_object("stat_block_section", "ability", bold_text)
         ability["ability_type"] = "offensive"
 
-        # Extract action type from action icon span
-        action_span = ability_soup.find("span", class_="action")
-        if action_span:
+        # Extract action type from action icon span(s)
+        # Some abilities have variable action cost like "[one-action] to [two-actions]"
+        action_spans = ability_soup.find_all("span", class_="action")
+        action_titles = []
+        for action_span in action_spans:
             action_title = action_span.get("title", "")
             if action_title:
                 # Normalize action names to match schema
                 if action_title == "Single Action":
                     action_title = "One Action"
+                action_titles.append(action_title)
+            action_span.decompose()
+
+        # Deduplicate action titles (nested abilities in <ul><li> can cause
+        # the parent ability to collect action spans from both itself and the nested one)
+        seen_actions = set()
+        unique_action_titles = []
+        for t in action_titles:
+            if t not in seen_actions:
+                seen_actions.add(t)
+                unique_action_titles.append(t)
+        action_titles = unique_action_titles
+
+        if action_titles:
+            if len(action_titles) == 1:
+                # Single action type
                 ability["action_type"] = {
                     "type": "stat_block_section",
                     "subtype": "action_type",
-                    "name": action_title,
+                    "name": action_titles[0],
                 }
-            action_span.decompose()
+            else:
+                # Variable action cost (e.g., "[one-action] to [two-actions]")
+                # Map to valid schema values: "One or Two Actions", "One to Three Actions", etc.
+                action_name = " or ".join(action_titles)
+                # Handle common patterns
+                action_name_map = {
+                    "One Action or Two Actions": "One or Two Actions",
+                    "Two Actions or Three Actions": "Two or Three Actions",
+                    "One Action or Three Actions": "One or Three Actions",
+                    "One Action or Two Actions or Three Actions": "One to Three Actions",
+                    "Free Action or One Action": "Free Action or Single Action",
+                    "Reaction or One Action": "Reaction or One Action",
+                }
+                action_name = action_name_map.get(action_name, action_name)
+                ability["action_type"] = {
+                    "type": "stat_block_section",
+                    "subtype": "action_type",
+                    "name": action_name,
+                }
 
-        # Extract sub-fields: Frequency, Trigger, Effect, Requirements
+        # Extract sub-fields: Frequency, Trigger, Effect, Requirements, etc.
         _extract_ability_fields(ability_soup, ability)
 
-        # Extract the main text after Activate (before first sub-field)
-        # This is typically "Interact" or "command (traits)"
-        activate_bold_new = ability_soup.find("b", string=lambda s: s and s.strip() == "Activate")
-        if activate_bold_new:
-            # Collect content after Activate bold until next <b> tag
-            # BUT: If next <b> is a named activation (starts with em-dash), include content after it
-            content_parts = []
-            act_current = activate_bold_new.next_sibling
+        if is_activate:
+            # Extract the main text after Activate (before first sub-field)
+            # This is typically "Interact" or "command (traits)"
+            activate_bold_new = ability_soup.find(
+                "b", string=lambda s: s and s.strip() == "Activate"
+            )
+            if activate_bold_new:
+                # Collect content after Activate bold until next <b> tag
+                # BUT: If next <b> is a named activation (starts with em-dash), include content after it
+                content_parts = []
+                nodes_to_remove_act = []
+                act_current = activate_bold_new.next_sibling
 
-            # Skip whitespace NavigableStrings to find first non-whitespace sibling
-            while (
-                act_current and isinstance(act_current, NavigableString) and not act_current.strip()
-            ):
-                act_current = act_current.next_sibling
+                # Skip whitespace NavigableStrings to find first non-whitespace sibling
+                while (
+                    act_current
+                    and isinstance(act_current, NavigableString)
+                    and not act_current.strip()
+                ):
+                    nodes_to_remove_act.append(act_current)
+                    act_current = act_current.next_sibling
 
-            # Check if immediately followed by a named activation bold (e.g., "—Dim Sight")
-            ability_name, act_current = _parse_named_activation(act_current)
-            if ability_name:
-                ability["ability_name"] = ability_name
+                # Check if immediately followed by a named activation bold (e.g., "—Dim Sight")
+                ability_name, act_current = _parse_named_activation(act_current)
+                if ability_name:
+                    ability["ability_name"] = ability_name
 
-            while act_current:
-                if isinstance(act_current, Tag) and act_current.name == "b":
-                    break
-                content_parts.append(str(act_current))
-                act_current = act_current.next_sibling
+                while act_current:
+                    if isinstance(act_current, Tag) and act_current.name == "b":
+                        break
+                    content_parts.append(str(act_current))
+                    nodes_to_remove_act.append(act_current)
+                    act_current = act_current.next_sibling
 
-            activate_content = "".join(content_parts).strip()
-            # Clean up leading/trailing semicolons
-            activate_content = re.sub(r"^[\s;]+", "", activate_content)
-            activate_content = re.sub(r"[\s;]+$", "", activate_content)
+                # Remove activation content nodes from ability_soup so sweep doesn't re-extract
+                for node in nodes_to_remove_act:
+                    if isinstance(node, Tag):
+                        node.decompose()
+                    elif isinstance(node, NavigableString):
+                        node.extract()
 
-            if activate_content:
-                trait_links_converted += _parse_activation_content(activate_content, ability)
+                activate_content = "".join(content_parts).strip()
+                # Clean up leading/trailing semicolons
+                activate_content = re.sub(r"^[\s;]+", "", activate_content)
+                activate_content = re.sub(r"[\s;]+$", "", activate_content)
+                # Clean up leading "to" or "or" from variable action cost patterns
+                # e.g., "[one-action] to [two-actions] command" becomes "to command" after span removal
+                activate_content = re.sub(
+                    r"^\s*(to|or)\s+", "", activate_content, flags=re.IGNORECASE
+                )
 
-        # Transform "Activate" abilities into activation objects
-        if ability.get("name") == "Activate":
+                if activate_content:
+                    trait_links_converted += _parse_activation_content(activate_content, ability)
+
+            # Transform "Activate" abilities into activation objects
             ability["subtype"] = "activation"
             # If there's an ability_name, move it to activation_name
             if "ability_name" in ability:
                 ability["activation_name"] = ability["ability_name"]
                 del ability["ability_name"]
 
+        # Sweep remaining ability_soup for any unextracted links
+        # This captures links in content not handled by sub-field extraction or
+        # activation parsing (e.g., poison sections, non-Activate ability content)
+        for remaining_a in ability_soup.find_all("a", attrs={"game-obj": True}):
+            _, link = extract_link(remaining_a)
+            if link:
+                if "links" not in ability:
+                    ability["links"] = []
+                ability["links"].append(link)
+
         abilities.append(ability)
 
-    # Remove all Activate bold tags from original soup
-    for activate_bold in activate_bolds:
-        if activate_bold.parent:  # Check it's still in the tree
-            activate_bold.decompose()
+    # Deduplicate links ACROSS abilities only - when a nested Activate is inside a
+    # <ul><li> that's a sibling of an earlier ability, the sibling traversal
+    # includes the <ul> in the earlier ability's content, causing links from the
+    # nested ability to appear in both. Keep links in the later (more specific) ability.
+    # Do NOT deduplicate within a single ability (same spell can appear at multiple
+    # levels in staves, e.g., fireball at 3rd and 6th level).
+    if len(abilities) > 1:
+        for i in range(len(abilities) - 1):
+            if "links" not in abilities[i]:
+                continue
+            # Collect links from all later abilities
+            later_links = set()
+            for j in range(i + 1, len(abilities)):
+                for link in abilities[j].get("links", []):
+                    later_links.add((link.get("name"), link.get("game-obj"), link.get("aonid", "")))
+            # Remove from this ability any links that also appear in later abilities
+            unique_links = [
+                link
+                for link in abilities[i]["links"]
+                if (link.get("name"), link.get("game-obj"), link.get("aonid", ""))
+                not in later_links
+            ]
+            abilities[i]["links"] = unique_links
+            if not abilities[i]["links"]:
+                del abilities[i]["links"]
+
+    # Remove all ability elements from original soup (not just Activate bold tags)
+    for elem in elements_to_remove:
+        try:
+            if hasattr(elem, "decompose") and elem.parent:  # Tag with parent still in tree
+                elem.decompose()
+            elif isinstance(elem, NavigableString):
+                elem.extract()
+        except AttributeError:
+            pass  # Element already detached from tree
 
     # Add abilities to statistics.abilities
     if abilities:
@@ -3702,6 +4124,10 @@ def _normalize_bulk(sb):
 
     value_str = sb["bulk"]
     if not value_str:
+        return
+
+    # Skip if already normalized to object
+    if isinstance(value_str, dict):
         return
 
     value_str = value_str.strip()
@@ -4054,6 +4480,11 @@ def _html_to_stat_block_section(html_string, subtype):
     # extract_links expects a string, returns (text_without_links, links_list)
     text, links = extract_links(html_string)
 
+    # Only include links with game-obj attribute - these are the ones tracked by
+    # link accounting. Links without game-obj (e.g., listing page links like
+    # Innovations.aspx) are not counted in the HTML pass and would cause overcounting.
+    links = [link for link in links if "game-obj" in link]
+
     result = {"type": "stat_block_section", "subtype": subtype, "text": text.strip()}
 
     if links:
@@ -4086,6 +4517,8 @@ def normalize_equipment_fields(sb):
     # Normalize craft_requirements - extract links, normalize whitespace, and convert to plain text
     if "craft_requirements" in sb and isinstance(sb["craft_requirements"], str):
         cr_text, cr_links = extract_links(sb["craft_requirements"])
+        # Only include links with game-obj attribute (for link accounting consistency)
+        cr_links = [link for link in cr_links if "game-obj" in link]
         # Normalize whitespace (collapse newlines from HTML formatting to single spaces)
         sb["craft_requirements"] = _normalize_whitespace(cr_text)
         if cr_links:
@@ -4109,20 +4542,38 @@ def normalize_equipment_fields(sb):
         if "ammunition" in offense and isinstance(offense["ammunition"], str):
             offense["ammunition"] = _html_to_stat_block_section(offense["ammunition"], "ammunition")
 
-    # Convert base_armor HTML strings to proper objects
-    # This is routed to defense by field_destinations
+    # Convert base_armor and base_shield HTML strings to proper objects
+    # These are routed to defense by field_destinations
     if "defense" in sb:
         defense = sb["defense"]
         if "base_armor" in defense and isinstance(defense["base_armor"], str):
             defense["base_armor"] = _html_to_stat_block_section(defense["base_armor"], "base_armor")
+        if "base_shield" in defense and isinstance(defense["base_shield"], str):
+            defense["base_shield"] = _html_to_stat_block_section(
+                defense["base_shield"], "base_shield"
+            )
 
     # Convert intelligent item stat HTML strings to proper objects with links
     # These are routed to statistics by field_destinations
     if "statistics" in sb:
         statistics = sb["statistics"]
-        for field in ("communication", "languages", "skills", "perception"):
+        for field in ("access", "communication", "languages", "skills", "perception", "usage"):
             if field in statistics and isinstance(statistics[field], str):
                 statistics[field] = _html_to_stat_block_section(statistics[field], field)
+        # Hands may contain links (e.g., "1 or 2" linked to Rules) - extract links
+        # but keep the text value for integer parsing later
+        if (
+            "hands" in statistics
+            and isinstance(statistics["hands"], str)
+            and "<a" in statistics["hands"]
+        ):
+            hands_text, hands_links = extract_links(statistics["hands"])
+            hands_links = [link for link in hands_links if "game-obj" in link]
+            statistics["hands"] = hands_text.strip()
+            if hands_links:
+                if "links" not in sb:
+                    sb["links"] = []
+                sb["links"].extend(hands_links)
 
     return trait_links_converted
 
@@ -4831,7 +5282,21 @@ def trait_db_pass(struct):
 
     def _check_trait(trait, parent):
         """Look up trait in database and replace with enriched version."""
+        from universal.creatures import universal_handle_alignment
+
         original_name = trait["name"]
+
+        # Handle alignment abbreviations (CG -> Chaotic Good, LG -> Lawful Good, etc.)
+        full_alignment = universal_handle_alignment(trait["name"])
+        if full_alignment:
+            trait["name"] = full_alignment
+
+        # Handle trait name mismatches in source HTML
+        trait_name_fixes = {
+            "concentration": "Concentrate",  # HTML link text doesn't match trait name
+        }
+        if trait["name"] in trait_name_fixes:
+            trait["name"] = trait_name_fixes[trait["name"]]
 
         # Try full name first (handles traits like "Ranged Trip", "Double Barrel", "Critical Fusion")
         data = fetch_trait_by_name(curs, trait["name"])
