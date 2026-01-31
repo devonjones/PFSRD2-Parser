@@ -1,5 +1,5 @@
-from pprint import pprint
-from markdownify import MarkdownConverter, abstract_inline_conversion
+from markdownify import MarkdownConverter
+
 from universal.utils import get_unique_tag_set, log_element
 
 
@@ -7,7 +7,7 @@ class PFSRDConverter(MarkdownConverter):
     convert_u = MarkdownConverter.convert_i
 
     def convert_span(self, el, text, convert_as_inline):
-        assert "title" in el.attrs, "Not an action: %s" % el
+        assert "title" in el.attrs, f"Not an action: {el}"
         action = el["title"]
         # [#] [##] [###] [-] [@]
         match action:
@@ -22,12 +22,10 @@ class PFSRDConverter(MarkdownConverter):
             case "Three Actions":
                 return "[###]"
             case _:
-                assert False, "Malformed action: %s" % el
+                raise AssertionError(f"Malformed action: {el}")
 
     def convert_li(self, el, text, convert_as_inline):
-        result = "\n" + super().convert_li(el, text, convert_as_inline).replace(
-            "\n", ""
-        )
+        result = "\n" + super().convert_li(el, text, convert_as_inline).replace("\n", "")
         return result
 
 
@@ -38,33 +36,38 @@ def md(html, **options):
 
 def markdown_pass(struct, name, path, fxn_valid_tags=None):
     def _validate_acceptable_tags(text, fxn_valid_tags):
-        validset = set(
-            ["i", "b", "u", "strong", "ol", "ul",
-                "li", "br", "table", "tr", "td", "hr", "sup"]
-        )
+        validset = {
+            "i",
+            "b",
+            "u",
+            "strong",
+            "ol",
+            "ul",
+            "li",
+            "br",
+            "table",
+            "tr",
+            "td",
+            "hr",
+            "sup",
+        }
         if "license" in struct:
             validset.add("p")
         if fxn_valid_tags:
             fxn_valid_tags(struct, name, path, validset)
         tags = get_unique_tag_set(text)
-        assert tags.issubset(validset), "%s : %s - %s" % (name, text, tags)
+        assert tags.issubset(validset), f"{name} : {text} - {tags}"
 
     for k, v in struct.items():
         if isinstance(v, dict):
-            markdown_pass(v, name, "%s/%s" % (path, k),
-                          fxn_valid_tags=fxn_valid_tags)
+            markdown_pass(v, name, f"{path}/{k}", fxn_valid_tags=fxn_valid_tags)
         elif isinstance(v, list):
             for item in v:
                 if isinstance(item, dict):
-                    markdown_pass(
-                        item, name, "%s/%s" % (path, k), fxn_valid_tags=fxn_valid_tags
-                    )
-                elif isinstance(item, str):
-                    if item.find("<") > -1:
-                        assert False  # For now, I'm unaware of any tags in lists of strings
-        elif isinstance(v, str):
-            if v.find("<") > -1:
-                _validate_acceptable_tags(v, fxn_valid_tags)
-                struct[k] = md(v).strip()
-                log_element("markdown.log")("%s : %s" %
-                                            ("%s/%s" % (path, k), name))
+                    markdown_pass(item, name, f"{path}/{k}", fxn_valid_tags=fxn_valid_tags)
+                elif isinstance(item, str) and item.find("<") > -1:
+                    raise AssertionError()  # For now, I'm unaware of any tags in lists of strings
+        elif isinstance(v, str) and v.find("<") > -1:
+            _validate_acceptable_tags(v, fxn_valid_tags)
+            struct[k] = md(v).strip()
+            log_element("markdown.log")("{} : {}".format(f"{path}/{k}", name))

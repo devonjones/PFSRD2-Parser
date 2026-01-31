@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup, NavigableString
+
 from universal.universal import build_object
 
 
@@ -8,7 +9,7 @@ def extract_action_type(text, title=False):
         if len(newchildren) == 0:
             return
         child = newchildren[0]
-        if not type(child) == NavigableString:
+        if type(child) != NavigableString:
             return
         if child.strip() == "to":
             newchildren.pop(0)
@@ -19,12 +20,12 @@ def extract_action_type(text, title=False):
                 elif newchildren[0]["title"] == "Two Actions":
                     action["name"] = "One or Two Actions"
                 else:
-                    assert False
+                    raise AssertionError()
             elif action["name"] == "Tro Actions":
                 if newchildren[0]["title"] == "Three Actions":
                     action["name"] = "Two to Three Actions"
                 else:
-                    assert False
+                    raise AssertionError()
             newchildren.pop(0)
         elif child.strip() == "or":
             newchildren.pop(0)
@@ -35,7 +36,7 @@ def extract_action_type(text, title=False):
                 elif newchildren[0]["title"] == "Three Actions":
                     action["name"] = "One or Three Actions"
                 else:
-                    assert False
+                    raise AssertionError()
             elif action["name"] == "Two Actions":
                 assert newchildren[0]["title"] == "Three Actions"
                 action["name"] = "Two or Three Actions"
@@ -43,7 +44,7 @@ def extract_action_type(text, title=False):
                 assert newchildren[0]["title"] == "Single Action"
                 action["name"] = "Free Action or Single Action"
             else:
-                assert False
+                raise AssertionError()
             newchildren.pop(0)
 
     children = list(BeautifulSoup(text.strip(), "html.parser").children)

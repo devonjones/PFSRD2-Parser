@@ -5,11 +5,13 @@ from pfsrd2.source import parse_source
 from universal.warnings import WarningReporting
 from universal.options import exec_main, option_parser
 
+
 def main():
     usage = "usage: %prog [options] [filenames]\nParses sources from pfsrd2 html to json and writes them to the specified directory"
     parser = option_parser(usage)
     (options, args) = parser.parse_args()
     exec_main(options, args, parse_source, "sources")
 
+
 if __name__ == "__main__":
-    sys.exit(main()) 
+    sys.exit(main())

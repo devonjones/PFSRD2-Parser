@@ -31,7 +31,7 @@ CREATURE_NOT_SPELLS = [
     "Signature Spells",
     "Green Rituals",
     "Dead Spells",
-    "Distracting Spells"
+    "Distracting Spells",
 ]
 
 CREATURE_SPANS_ALLOWED = [
@@ -323,14 +323,14 @@ CREATURE_IGNORE_DC_AURA = [
     "Tempest Incarnate",
 ]
 
-CREATURE_ATTRIBUTES = [
-    "str",
-    "dex",
-    "con",
-    "int",
-    "wis",
-    "cha"
+# Creatures with non-standard links (using URL parameters instead of game-obj attributes)
+# These links can't be extracted as structured link objects, so we allow them in markdown
+CREATURE_LINKS_ALLOWED = [
+    "Scarecophagus",
+    "Talos Gadgeteer",
 ]
+
+CREATURE_ATTRIBUTES = ["str", "dex", "con", "int", "wis", "cha"]
 
 KINGDOM_ATTRIBUTES = [
     "culture",
@@ -347,7 +347,7 @@ ORC_LICENSE = {
             "name": "Attribution",
             "type": "section",
             "text": "This product is based on the following Licensed Material:",
-            "sections": []
+            "sections": [],
         },
         {
             "name": "Attributing us",
@@ -357,22 +357,22 @@ ORC_LICENSE = {
                 {
                     "name": "Pathfinder Open Reference",
                     "type": "section",
-                    "text": "© 2023 Masterwork Tools LLC, Authors: Devon Jones, Monica Jones."
+                    "text": "© 2023 Masterwork Tools LLC, Authors: Devon Jones, Monica Jones.",
                 }
-            ]
+            ],
         },
         {
             "name": "Reserved Material",
             "type": "section",
-            "text": "Reserved Material elements in this product include, but may not be limited to: [none]"
+            "text": "Reserved Material elements in this product include, but may not be limited to: [none]",
         },
         {
             "name": "Expressly Designated Licensed Material",
             "type": "section",
-            "text": "The following elements are owned by the Licensor and would otherwise constitute Reserved Material and are hereby designated as Licensed Material: [None]."
-        }
+            "text": "The following elements are owned by the Licensor and would otherwise constitute Reserved Material and are hereby designated as Licensed Material: [None].",
+        },
     ],
     "subtype": "license",
     "license": "Open RPG Creative license",
-    "text": "This product is licensed under the ORC License to be held in the Library of Congress and available online at various locations including paizo.com/orclicense, azoralaw.com/orclicense, and others. All warranties are disclaimed as set forth therein."
+    "text": "This product is licensed under the ORC License to be held in the Library of Congress and available online at various locations including paizo.com/orclicense, azoralaw.com/orclicense, and others. All warranties are disclaimed as set forth therein.",
 }

@@ -2,6 +2,8 @@ appdirs==1.4.3
 astroid==2.3.3
 attrs==20.3.0
 beautifulsoup4==4.9.0
+black>=23.0.0
+flake8>=6.0.0
 distlib==0.3.0
 filelock==3.0.12
 isort==4.3.21
