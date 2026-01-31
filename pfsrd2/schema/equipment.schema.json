@@ -620,7 +620,76 @@
 				"base_weapon": {"$ref": "#/definitions/base_object"},
 				"speed": {"$ref": "#/definitions/speeds"},
 				"collision": {"type": "string"},
+				"attack_roll": {"$ref": "#/definitions/attack_roll"},
 				"offensive_abilities": {"$ref": "#/definitions/abilities"}
+			},
+			"required": ["type", "subtype"],
+			"additionalProperties": false
+		},
+		"attack_roll": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["attack_roll"]},
+				"critical_success": {"type": "string"},
+				"success": {"type": "string"},
+				"failure": {"type": "string"},
+				"critical_failure": {"type": "string"}
+			},
+			"required": ["type", "subtype"],
+			"additionalProperties": false
+		},
+		"affliction_stage": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["affliction_stage"]},
+				"name": {"type": "string"},
+				"text": {"type": "string"}
+			},
+			"required": ["name", "type", "subtype", "text"],
+			"additionalProperties": false
+		},
+		"affliction": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["affliction"]},
+				"name": {"type": "string"},
+				"text": {"type": "string"},
+				"saving_throw": {"$ref": "#/definitions/save_dc"},
+				"onset": {"type": "string"},
+				"maximum_duration": {"type": "string"},
+				"effect": {"type": "string"},
+				"context": {"type": "string"},
+				"stages": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/affliction_stage"},
+					"additionalItems": false
+				},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
+		"save_results": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["save_results"]},
+				"critical_success": {"type": "string"},
+				"success": {"type": "string"},
+				"failure": {"type": "string"},
+				"critical_failure": {"type": "string"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
 			},
 			"required": ["type", "subtype"],
 			"additionalProperties": false
@@ -643,6 +712,8 @@
 				},
 				"craft_requirements": {"type": "string"},
 				"base_material": {"$ref": "#/definitions/base_object"},
+				"affliction": {"$ref": "#/definitions/affliction"},
+				"save_results": {"$ref": "#/definitions/save_results"},
 				"statistics": {"$ref": "#/definitions/statistics"},
 				"defense": {"$ref": "#/definitions/defense"},
 				"offense": {"$ref": "#/definitions/offense"},

@@ -78,11 +78,8 @@ def _replace_entities(text):
     text = text.replace("\u00e2\u0080\u0094", "—")
     text = text.replace("\u00e2\u0080\u0098", "'")
     text = text.replace("\u00e2\u0080\u0099", "'")
-    text = text.replace(
-        "\u00e2\u0080\u009c",
-        """)
-    text = text.replace("\u00e2\u0080\u009d", """,
-    )
+    text = text.replace("\u00e2\u0080\u009c", "\u201c")
+    text = text.replace("\u00e2\u0080\u009d", "\u201d")
     text = text.replace("\u00e2\u0080\u00a6", "…")
     text = text.replace("%5C", "\\")
     text = text.replace("&amp;", "&")
@@ -93,11 +90,8 @@ def _replace_entities(text):
     text = text.replace("\u00e2\u20ac\u201d", "—")  # em-dash from HTML entities
     text = text.replace("\u00e2\u20ac\u201c", "–")  # en-dash from HTML entities
     text = text.replace("\u00e2\u20ac\u2122", "'")  # right single quote
-    text = text.replace(
-        "\u00e2\u20ac\u0153",
-        """)  # left double quote
-    text = text.replace("\u00e2\u20ac\u009d", """,
-    )  # right double quote
+    text = text.replace("\u00e2\u20ac\u0153", "\u201c")  # left double quote
+    text = text.replace("\u00e2\u20ac\u009d", "\u201d")  # right double quote
     return text
 
 
@@ -2539,6 +2533,8 @@ def _extract_stat_value(label_tag, preserve_html=False):
 
     # Combine collected parts and clean up
     value_text = "".join(value_parts).strip()
+    # Strip trailing semicolons - they are field separators in the HTML, not part of the value
+    value_text = value_text.rstrip(";").strip()
 
     # Split by semicolon while respecting parentheses (modifiers)
     # e.g., "swim 20 feet (alchemical; underwater only); Collision 2d8" splits to
@@ -2551,6 +2547,16 @@ def _extract_stat_value(label_tag, preserve_html=False):
         parts = split_maintain_parens(value_text, ";")
         if parts:
             value_text = parts[0].strip()
+            # If we're dropping parts, they should be empty or start with a stat
+            # label (bold tag text) that will be parsed by the next iteration.
+            # Non-empty dropped parts that aren't stat labels indicate lost text.
+            for dropped in parts[1:]:
+                dropped = dropped.strip()
+                if dropped:
+                    raise ValueError(
+                        f"Semicolon split dropped non-empty text: '{dropped}' "
+                        f"(full value was: '{value_text}')"
+                    )
 
     # Return em dash as-is (let field-specific normalizers handle it)
     # E.g., bulk with "—" should become {value: null, text: "—"}
@@ -3008,6 +3014,148 @@ def _extract_sections_from_headings(desc_soup, debug=False):
     return pre_heading_html, sections
 
 
+def _has_affliction_pattern(soup):
+    """Check if soup contains an affliction pattern (Saving Throw + Stages/Duration/Onset).
+
+    Returns True if the soup has a <b>Saving Throw</b> tag followed by at least one of
+    <b>Stage</b>, <b>Maximum Duration</b>, or <b>Onset</b>.
+    """
+    saving_throw_bold = None
+    for bold in soup.find_all("b"):
+        if get_text(bold).strip() == "Saving Throw":
+            saving_throw_bold = bold
+            break
+    if not saving_throw_bold:
+        return False
+    # Check if any subsequent bold tag is a stage, duration, or onset
+    for bold in saving_throw_bold.find_all_next("b"):
+        text = get_text(bold).strip()
+        if text.startswith("Stage") or text == "Maximum Duration" or text == "Onset":
+            return True
+    return False
+
+
+def _extract_affliction(desc_soup, item_name):
+    """Extract affliction data from description soup into a structured object.
+
+    Finds the <b>Saving Throw</b> tag and collects all subsequent content as
+    affliction data. Removes the affliction nodes from desc_soup.
+
+    Args:
+        desc_soup: BeautifulSoup object containing the description HTML
+        item_name: Name of the equipment item (used as affliction name)
+
+    Returns:
+        Tuple of (affliction_dict, affliction_links) or (None, []) if no affliction found.
+    """
+    from universal.universal import get_links
+
+    # Find the <b>Saving Throw</b> tag
+    saving_throw_bold = None
+    for bold in desc_soup.find_all("b"):
+        if get_text(bold).strip() == "Saving Throw":
+            saving_throw_bold = bold
+            break
+    if not saving_throw_bold:
+        return None, []
+
+    # Collect all nodes from Saving Throw bold to the end of desc_soup
+    # Also collect preceding <br> tags (separators between narrative text and affliction)
+    nodes_to_remove = []
+
+    # Walk backwards from Saving Throw to collect preceding <br> tags and whitespace
+    prev = saving_throw_bold.previous_sibling
+    preceding_brs = []
+    while prev:
+        if (isinstance(prev, Tag) and prev.name == "br") or (
+            isinstance(prev, NavigableString) and prev.strip() == ""
+        ):
+            preceding_brs.append(prev)
+            prev = prev.previous_sibling
+        else:
+            break
+    nodes_to_remove.extend(preceding_brs)
+
+    # Collect from Saving Throw bold through end of content
+    affliction_nodes = []
+    current = saving_throw_bold
+    while current:
+        affliction_nodes.append(current)
+        current = current.next_sibling
+    nodes_to_remove.extend(affliction_nodes)
+
+    # Build HTML string from affliction nodes (not the preceding brs)
+    affliction_html = "".join(str(n) for n in affliction_nodes)
+
+    # Parse affliction HTML to extract links
+    affliction_soup = BeautifulSoup(affliction_html, "html.parser")
+    affliction_links = get_links(affliction_soup, unwrap=True)
+
+    # Unwrap remaining <a> tags (already extracted links above) and get HTML text
+    while affliction_soup.a:
+        affliction_soup.a.unwrap()
+    affliction_html_text = str(affliction_soup)
+    parts = [p.strip() for p in affliction_html_text.split(";")]
+
+    section = {
+        "type": "stat_block_section",
+        "subtype": "affliction",
+        "name": item_name,
+    }
+
+    def _handle_stage(title, text):
+        stage = {
+            "type": "stat_block_section",
+            "subtype": "affliction_stage",
+            "name": title,
+            "text": text,
+        }
+        section.setdefault("stages", []).append(stage)
+
+    first = True
+    for p in parts:
+        p_soup = BeautifulSoup(p, "html.parser")
+        if p_soup.b:
+            title = get_text(p_soup.b.extract()).strip()
+            # Normalize whitespace: collapse \n and multiple spaces from HTML formatting
+            # Also fix spaces before punctuation left by unwrapped tags
+            newtext = re.sub(r"\s+", " ", get_text(p_soup)).strip()
+            newtext = re.sub(r" ([,;.])", r"\1", newtext)
+            if title == "Saving Throw":
+                section["saving_throw"] = universal_handle_save_dc(newtext)
+            elif title == "Onset":
+                section["onset"] = newtext
+            elif title == "Maximum Duration":
+                section["maximum_duration"] = newtext
+            elif title == "Effect":
+                section["effect"] = newtext
+            elif title.startswith("Stage"):
+                _handle_stage(title, newtext)
+            else:
+                # Unknown bold label - store as context
+                section.setdefault("text", newtext)
+        else:
+            text_content = re.sub(r"\s+", " ", get_text(p_soup)).strip()
+            if text_content:
+                if first:
+                    section["context"] = text_content
+                else:
+                    section.setdefault("text", text_content)
+        first = False
+
+    if affliction_links:
+        section["links"] = affliction_links
+
+    # Remove affliction nodes from desc_soup
+    for node in nodes_to_remove:
+        if isinstance(node, Tag):
+            node.decompose()
+        elif isinstance(node, NavigableString):
+            node.extract()
+
+    return section, affliction_links
+
+
 def _extract_description(bs, struct, debug=False):
     """Extract description text and links, adding them to the stat_block.
 
@@ -3171,6 +3319,111 @@ def _extract_description(bs, struct, debug=False):
                 current.extract()
             current = next_node
 
+    # Extract affliction (Saving Throw + Stages pattern)
+    affliction = None
+    affliction_links = []
+    if _has_affliction_pattern(desc_soup):
+        affliction, affliction_links = _extract_affliction(desc_soup, struct.get("name", ""))
+
+    # Extract save outcome labels (Success, Failure, Critical Success, Critical Failure)
+    # These are bold labels followed by outcome text, separated by <br> tags.
+    # Extract them from the soup and store as structured data on stat_block.
+    save_outcome_labels = {
+        "Critical Success": "critical_success",
+        "Critical Failure": "critical_failure",
+        "Success": "success",
+        "Failure": "failure",
+    }
+    save_outcomes = {}
+    save_outcome_links = []
+    for bold in list(desc_soup.find_all("b")):
+        bold_text = get_text(bold).strip()
+        if bold_text not in save_outcome_labels:
+            continue
+        field_name = save_outcome_labels[bold_text]
+        # Collect HTML content after the bold until the next <b> or <br> tag
+        outcome_parts = []
+        current = bold.next_sibling
+        while current:
+            if isinstance(current, Tag) and current.name in ("b", "br"):
+                break
+            outcome_parts.append(str(current))
+            current = current.next_sibling
+        # Parse the collected HTML to extract links before getting text
+        outcome_html = "".join(outcome_parts).strip()
+        if outcome_html:
+            outcome_soup = BeautifulSoup(outcome_html, "html.parser")
+            outcome_links = get_links(outcome_soup, unwrap=True)
+            save_outcome_links.extend(outcome_links)
+            outcome_text = get_text(outcome_soup).strip()
+            if outcome_text:
+                save_outcomes[field_name] = outcome_text
+        # Remove the bold and its text content from the soup
+        to_remove = []
+        current = bold.next_sibling
+        while current:
+            if isinstance(current, Tag) and current.name in ("b", "br"):
+                break
+            to_remove.append(current)
+            current = current.next_sibling
+        for elem in to_remove:
+            if isinstance(elem, Tag):
+                elem.decompose()
+            else:
+                elem.extract()
+        bold.decompose()
+
+    # Collapse runs of 3+ consecutive <br> tags down to 2 (a paragraph break).
+    # After extracting save outcome labels, the surrounding <br> separators pile up.
+    # Two <br> tags = paragraph break (normal), 3+ = artifact of extraction.
+    for br in list(desc_soup.find_all("br")):
+        if br.parent is None:
+            continue  # Already removed
+        # Count consecutive <br> tags (skipping whitespace-only text nodes)
+        br_run = [br]
+        sibling = br.next_sibling
+        while sibling:
+            if isinstance(sibling, NavigableString) and sibling.strip() == "":
+                sibling = sibling.next_sibling
+            elif isinstance(sibling, Tag) and sibling.name == "br":
+                br_run.append(sibling)
+                sibling = sibling.next_sibling
+            else:
+                break
+        # Only collapse if 3+ <br> tags in a row
+        if len(br_run) >= 3:
+            # Remove extras, keeping first 2
+            for extra_br in br_run[2:]:
+                extra_br.decompose()
+
+    # Clean \n from text nodes added by web folder preprocessing (adds \n after
+    # every tag). For text nodes with content (e.g., "\n.\n"), remove \n to
+    # prevent " ." artifacts. For whitespace-only nodes between sibling tags
+    # (e.g., "\n" between </a> and <a>), replace with space to preserve word
+    # boundaries. For whitespace-only nodes in other positions (e.g., between
+    # a child tag and parent closing tag), remove entirely.
+    for text_node in list(desc_soup.find_all(string=True)):
+        if "\n" not in text_node:
+            continue
+        text = str(text_node)
+        cleaned = text.replace("\n", "")
+        if cleaned.strip():
+            # Has real content - keep with \n removed
+            text_node.replace_with(cleaned)
+        else:
+            # Whitespace-only: check if between two sibling tags (word boundary)
+            prev_sib = text_node.previous_sibling
+            next_sib = text_node.next_sibling
+            if (
+                prev_sib is not None
+                and next_sib is not None
+                and isinstance(prev_sib, Tag)
+                and isinstance(next_sib, Tag)
+            ):
+                text_node.replace_with(" ")
+            else:
+                text_node.extract()
+
     # Extract sections from headings (h2, h3, etc.) before processing links
     # This separates main description from structured section content
     pre_heading_html, sections = _extract_sections_from_headings(desc_soup, debug=debug)
@@ -3216,6 +3469,20 @@ def _extract_description(bs, struct, debug=False):
     elif "text" in sb:
         # No description found - remove raw HTML that was set by restructure_equipment_pass
         del sb["text"]
+
+    # Store affliction if extracted
+    if affliction:
+        sb["affliction"] = affliction
+
+    # Store save outcomes if any were extracted
+    if save_outcomes:
+        sb["save_results"] = {
+            "type": "stat_block_section",
+            "subtype": "save_results",
+        }
+        sb["save_results"].update(save_outcomes)
+        if save_outcome_links:
+            sb["save_results"]["links"] = save_outcome_links
 
     # Store extracted links if any exist (excluding trait links)
     if non_trait_links:
@@ -5608,6 +5875,20 @@ def _build_offense_bucket(stat_block):
         # Top-level ammunition for weapons (not mode-specific)
         if "ammunition" in weapon:
             offense["ammunition"] = weapon["ammunition"]
+
+        # Attack roll outcomes (e.g., Big Boom Gun's modified critical failure)
+        # For weapons, these are attack outcomes, not save results
+        if "save_results" in stat_block:
+            sr = stat_block["save_results"]
+            attack_roll = {"type": "stat_block_section", "subtype": "attack_roll"}
+            for field in ("critical_success", "success", "failure", "critical_failure"):
+                if field in sr:
+                    attack_roll[field] = sr.pop(field)
+            if len(attack_roll) > 2:
+                offense["attack_roll"] = attack_roll
+            # Remove save_results if empty (only type/subtype left)
+            if len(sr) <= 2:
+                del stat_block["save_results"]
 
     # Siege weapon offensive properties
     if "siege_weapon" in stat_block:
