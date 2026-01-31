@@ -33,9 +33,9 @@ def parse_pattern(args):
     string_counts = {}
 
     for arg in args:
-        if arg.startswith("+") and ":" not in arg:
+        if arg.startswith("+") and ":" not in arg and arg[1:].isdigit():
             plus_count = int(arg[1:])
-        elif arg.startswith("-") and ":" not in arg:
+        elif arg.startswith("-") and ":" not in arg and arg[1:].isdigit():
             minus_count = int(arg[1:])
         elif ":" in arg:
             last_colon = arg.rfind(":")
