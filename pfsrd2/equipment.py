@@ -1582,8 +1582,6 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
     Returns:
         List of ability objects matching the ability schema, or None if no abilities found.
     """
-    from universal.universal import get_links
-
     # Constants for vehicle ability heuristics
     VEHICLE_ABILITY_PREVIEW_CHAR_LIMIT = 30  # Max chars to preview when detecting abilities
     VEHICLE_ABILITY_MIN_LENGTH = 15  # Min chars of description text to qualify as ability
@@ -2908,8 +2906,6 @@ def _extract_sections_from_headings(desc_soup, debug=False):
         - pre_heading_html: HTML content before first heading (main description)
         - sections_list: List of section dicts with name, type, text, sections
     """
-    from universal.universal import get_links
-
     # Find all headings that are NOT variant markers
     # Variant markers are headings that contain:
     # - PFS.aspx link (PFS icon)
@@ -3048,8 +3044,6 @@ def _extract_affliction(desc_soup, item_name):
     Returns:
         Tuple of (affliction_dict, affliction_links) or (None, []) if no affliction found.
     """
-    from universal.universal import get_links
-
     # Find the <b>Saving Throw</b> tag
     saving_throw_bold = None
     for bold in desc_soup.find_all("b"):
@@ -3170,8 +3164,6 @@ def _extract_description(bs, struct, debug=False):
     Text is added to stat_block['text'], and links (if any) to stat_block['links'].
     Only creates sections if there are actual headings (h2, h3) after the description.
     """
-    from universal.universal import get_links
-
     # Split by <hr> tags to get sections
     text = str(bs)
     sections = split_on_tag(text, "hr")
@@ -4993,9 +4985,6 @@ def _normalize_text_with_links(sb, field_name):
         sb: stat block dict containing the field
         field_name: name of the field to normalize
     """
-    from universal.universal import get_links
-    from universal.utils import clear_tags
-
     if field_name not in sb:
         return
 
