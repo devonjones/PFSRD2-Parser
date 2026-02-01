@@ -5,6 +5,8 @@ from bs4 import BeautifulSoup
 
 from pfsrd2.equipment import (
     _extract_ability_fields,
+    _extract_affliction,
+    _has_affliction_pattern,
     _parse_activation_content,
     _parse_activation_types,
     _parse_named_activation,
@@ -363,6 +365,266 @@ class TestParseActivationTypes:
         assert result[0]["type"] == "stat_block_section"
         assert result[0]["subtype"] == "activation_type"
         assert "value" in result[0]
+
+
+class TestHasAfflictionPattern:
+    """Tests for _has_affliction_pattern helper."""
+
+    def test_detects_saving_throw_with_stage(self):
+        """Should detect affliction pattern with Saving Throw + Stage."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Stage 1</b> stupefied 1 (1 hour)"
+        soup = BeautifulSoup(html, "html.parser")
+
+        assert _has_affliction_pattern(soup) is True
+
+    def test_detects_saving_throw_with_maximum_duration(self):
+        """Should detect affliction pattern with Saving Throw + Maximum Duration."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Maximum Duration</b> 8 hours"
+        soup = BeautifulSoup(html, "html.parser")
+
+        assert _has_affliction_pattern(soup) is True
+
+    def test_detects_saving_throw_with_onset(self):
+        """Should detect affliction pattern with Saving Throw + Onset."""
+        html = "<b>Saving Throw</b> DC 33 Fortitude; <b>Onset</b> 1 minute"
+        soup = BeautifulSoup(html, "html.parser")
+
+        assert _has_affliction_pattern(soup) is True
+
+    def test_returns_false_without_saving_throw(self):
+        """Should return False when no Saving Throw tag present."""
+        html = "<b>Stage 1</b> stupefied 1 (1 hour); <b>Stage 2</b> stupefied 2 (1 hour)"
+        soup = BeautifulSoup(html, "html.parser")
+
+        assert _has_affliction_pattern(soup) is False
+
+    def test_returns_false_saving_throw_without_followup(self):
+        """Should return False when Saving Throw has no stage/duration/onset."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Effect</b> something"
+        soup = BeautifulSoup(html, "html.parser")
+
+        assert _has_affliction_pattern(soup) is False
+
+    def test_returns_false_for_empty_soup(self):
+        """Should return False for empty soup."""
+        soup = BeautifulSoup("", "html.parser")
+
+        assert _has_affliction_pattern(soup) is False
+
+    def test_ignores_saving_throw_in_plain_text(self):
+        """Should not detect Saving Throw in plain text (no bold tag)."""
+        html = "Saving Throw DC 20 Fortitude; <b>Stage 1</b> effect"
+        soup = BeautifulSoup(html, "html.parser")
+
+        assert _has_affliction_pattern(soup) is False
+
+    def test_detects_with_narrative_text_before(self):
+        """Should detect affliction even with narrative text before it."""
+        html = (
+            "This drug is highly addictive.<br/>"
+            "<b>Saving Throw</b> DC 20 Fortitude; "
+            "<b>Maximum Duration</b> 8 hours; "
+            "<b>Stage 1</b> effect (1 hour)"
+        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        assert _has_affliction_pattern(soup) is True
+
+
+class TestExtractAffliction:
+    """Tests for _extract_affliction helper."""
+
+    def test_returns_none_when_no_saving_throw(self):
+        """Should return (None, []) when no Saving Throw tag."""
+        html = "<b>Effect</b> something happens"
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, links = _extract_affliction(soup, "Test Item")
+
+        assert affliction is None
+        assert links == []
+
+    def test_parses_saving_throw(self):
+        """Should parse saving throw DC and type."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Stage 1</b> effect (1 hour)"
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, _ = _extract_affliction(soup, "Test Item")
+
+        assert affliction["saving_throw"]["dc"] == 20
+        assert affliction["saving_throw"]["save_type"] == "Fort"
+
+    def test_parses_maximum_duration(self):
+        """Should parse Maximum Duration field."""
+        html = (
+            "<b>Saving Throw</b> DC 20 Fortitude; "
+            "<b>Maximum Duration</b> 8 hours; "
+            "<b>Stage 1</b> effect (1 hour)"
+        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, _ = _extract_affliction(soup, "Test Item")
+
+        assert affliction["maximum_duration"] == "8 hours"
+
+    def test_parses_onset(self):
+        """Should parse Onset field."""
+        html = (
+            "<b>Saving Throw</b> DC 33 Fortitude; "
+            "<b>Onset</b> 1 minute; "
+            "<b>Maximum Duration</b> 6 minutes; "
+            "<b>Stage 1</b> dazzled (1 minute)"
+        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, _ = _extract_affliction(soup, "Test Item")
+
+        assert affliction["onset"] == "1 minute"
+
+    def test_parses_single_stage(self):
+        """Should parse a single stage."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Stage 1</b> stupefied 1 (1 hour)"
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, _ = _extract_affliction(soup, "Test Item")
+
+        assert len(affliction["stages"]) == 1
+        assert affliction["stages"][0]["name"] == "Stage 1"
+        assert affliction["stages"][0]["text"] == "stupefied 1 (1 hour)"
+
+    def test_parses_multiple_stages(self):
+        """Should parse multiple stages."""
+        html = (
+            "<b>Saving Throw</b> DC 20 Fortitude; "
+            "<b>Maximum Duration</b> 6 hours; "
+            "<b>Stage 1</b> flat-footed (1 round); "
+            "<b>Stage 2</b> slowed 2 and flat-footed (1 round); "
+            "<b>Stage 3</b> unconscious (1 round); "
+            "<b>Stage 4</b> unconscious (1 round)"
+        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, _ = _extract_affliction(soup, "Test Item")
+
+        assert len(affliction["stages"]) == 4
+        assert affliction["stages"][0]["name"] == "Stage 1"
+        assert affliction["stages"][3]["name"] == "Stage 4"
+
+    def test_stage_objects_have_correct_structure(self):
+        """Should create stage objects with correct type/subtype."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Stage 1</b> effect (1 hour)"
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, _ = _extract_affliction(soup, "Test Item")
+
+        stage = affliction["stages"][0]
+        assert stage["type"] == "stat_block_section"
+        assert stage["subtype"] == "affliction_stage"
+
+    def test_affliction_has_correct_structure(self):
+        """Should create affliction object with correct type/subtype/name."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Stage 1</b> effect (1 hour)"
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, _ = _extract_affliction(soup, "Demon Dust")
+
+        assert affliction["type"] == "stat_block_section"
+        assert affliction["subtype"] == "affliction"
+        assert affliction["name"] == "Demon Dust"
+
+    def test_extracts_links(self):
+        """Should extract links from affliction HTML."""
+        html = (
+            "<b>Saving Throw</b> DC 20 Fortitude; "
+            '<b>Stage 1</b> <a href="Conditions.aspx?ID=37" game-obj="Conditions">stupefied 1</a> (1 hour)'
+        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, links = _extract_affliction(soup, "Test Item")
+
+        assert len(links) == 1
+        assert links[0]["name"] == "stupefied 1"
+        assert affliction["links"] == links
+
+    def test_no_links_key_when_no_links(self):
+        """Should not add links key when no links present."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Stage 1</b> stupefied 1 (1 hour)"
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, links = _extract_affliction(soup, "Test Item")
+
+        assert "links" not in affliction
+        assert links == []
+
+    def test_removes_affliction_nodes_from_soup(self):
+        """Should remove affliction nodes from desc_soup after extraction."""
+        html = (
+            "This drug is addictive.<br/>"
+            "<b>Saving Throw</b> DC 20 Fortitude; "
+            "<b>Stage 1</b> stupefied 1 (1 hour)"
+        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        _extract_affliction(soup, "Test Item")
+
+        remaining = soup.get_text().strip()
+        assert "Saving Throw" not in remaining
+        assert "Stage 1" not in remaining
+        assert "addictive" in remaining
+
+    def test_removes_preceding_br_tags(self):
+        """Should remove <br> tags between narrative and affliction."""
+        html = (
+            "Narrative text.<br/><br/>"
+            "<b>Saving Throw</b> DC 20 Fortitude; "
+            "<b>Stage 1</b> effect (1 hour)"
+        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        _extract_affliction(soup, "Test Item")
+
+        assert soup.find("br") is None
+
+    def test_normalizes_whitespace_in_stages(self):
+        """Should collapse whitespace and fix spaces before punctuation."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; " "<b>Stage 1</b> stupefied\n1 (1\nhour)"
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, _ = _extract_affliction(soup, "Test Item")
+
+        assert affliction["stages"][0]["text"] == "stupefied 1 (1 hour)"
+
+    def test_parses_effect_field(self):
+        """Should parse Effect field."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; " "<b>Effect</b> The target is dazed"
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, _ = _extract_affliction(soup, "Test Item")
+
+        assert affliction["effect"] == "The target is dazed"
+
+    def test_full_affliction_with_all_fields(self):
+        """Should correctly parse a complete affliction with all fields."""
+        html = (
+            "<b>Saving Throw</b> DC 33 Fortitude; "
+            "<b>Onset</b> 1 minute; "
+            "<b>Maximum Duration</b> 6 minutes; "
+            '<b>Stage 1</b> <a href="Conditions.aspx?ID=12" game-obj="Conditions">dazzled</a> (1 minute); '
+            '<b>Stage 2</b> <a href="Conditions.aspx?ID=15" game-obj="Conditions">drained 1</a> (1 minute); '
+            '<b>Stage 3</b> <a href="Conditions.aspx?ID=15" game-obj="Conditions">drained 2</a> (1 minute)'
+        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        affliction, links = _extract_affliction(soup, "Spectral Nightshade")
+
+        assert affliction["name"] == "Spectral Nightshade"
+        assert affliction["saving_throw"]["dc"] == 33
+        assert affliction["onset"] == "1 minute"
+        assert affliction["maximum_duration"] == "6 minutes"
+        assert len(affliction["stages"]) == 3
+        assert affliction["stages"][0]["text"] == "dazzled (1 minute)"
+        assert affliction["stages"][1]["text"] == "drained 1 (1 minute)"
+        assert len(links) == 3
 
 
 if __name__ == "__main__":
