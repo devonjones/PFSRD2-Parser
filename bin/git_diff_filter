@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""
+Filter unstaged modified files by diff content.
+
+Usage:
+  git_diff_filter +N -M [string:count ...]
+  git_diff_filter --hunk +N -M [string:count ...] [--hunk ...] [--hunk-count C]
+
+Whole-diff mode (default):
+  Matches files where the entire diff has exactly +N added lines, -M removed lines,
+  and each string appears exactly count times across all changed lines.
+
+Hunk mode (--hunk):
+  Matches files where every hunk matches at least one of the provided --hunk patterns.
+  Use --hunk-count to require exactly C hunks total.
+
+Examples:
+  git_diff_filter +1 -1 value:2
+  git_diff_filter +2 -2 activation:2 type:2
+  git_diff_filter --hunk -1 +5 usage:2 --hunk-count 5
+  git_diff_filter --hunk -1 +5 access:5 --hunk -1 +5 usage:2 --hunk-count 6
+
+Output: List of matching file paths (one per line), suitable for piping to xargs git add
+"""
+import subprocess
+import sys
+
+
+def parse_pattern(args):
+    """Parse +N -M string:count arguments into a pattern tuple."""
+    plus_count = None
+    minus_count = None
+    string_counts = {}
+
+    for arg in args:
+        if arg.startswith("+") and ":" not in arg and arg[1:].isdigit():
+            plus_count = int(arg[1:])
+        elif arg.startswith("-") and ":" not in arg and arg[1:].isdigit():
+            minus_count = int(arg[1:])
+        elif ":" in arg:
+            last_colon = arg.rfind(":")
+            string = arg[:last_colon]
+            count = int(arg[last_colon + 1 :])
+            string_counts[string] = count
+        else:
+            print(f"Unknown argument: {arg}", file=sys.stderr)
+            sys.exit(1)
+
+    return plus_count, minus_count, string_counts
+
+
+def parse_args(args):
+    """Parse command line arguments. Returns (mode, patterns, hunk_count).
+
+    mode: 'whole' or 'hunk'
+    patterns: list of (plus_count, minus_count, string_counts) tuples
+    hunk_count: required number of hunks (hunk mode only), or None
+    """
+    if "--hunk" not in args:
+        pattern = parse_pattern(args)
+        return "whole", [pattern], None
+
+    # Hunk mode: split args by --hunk, extract --hunk-count
+    hunk_count = None
+    # Pull out --hunk-count first
+    filtered = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--hunk-count":
+            if i + 1 >= len(args):
+                print("Error: --hunk-count requires a value", file=sys.stderr)
+                sys.exit(1)
+            hunk_count = int(args[i + 1])
+            i += 2
+        else:
+            filtered.append(args[i])
+            i += 1
+
+    # Split remaining args by --hunk
+    segments = []
+    current = []
+    for arg in filtered:
+        if arg == "--hunk":
+            if current:
+                segments.append(current)
+            current = []
+        else:
+            current.append(arg)
+    if current:
+        segments.append(current)
+
+    if not segments:
+        print("Error: --hunk requires pattern arguments", file=sys.stderr)
+        sys.exit(1)
+
+    patterns = [parse_pattern(seg) for seg in segments]
+    return "hunk", patterns, hunk_count
+
+
+def get_unstaged_files():
+    """Get list of unstaged modified files."""
+    result = subprocess.run(["git", "diff", "--name-only"], capture_output=True, text=True)
+    return [f for f in result.stdout.strip().split("\n") if f]
+
+
+def matches_pattern(added, removed, plus_count, minus_count, string_counts):
+    """Check if added/removed lines match a pattern."""
+    if plus_count is not None and len(added) != plus_count:
+        return False
+    if minus_count is not None and len(removed) != minus_count:
+        return False
+
+    all_changed = "\n".join(added + removed)
+    for string, expected_count in string_counts.items():
+        if all_changed.count(string) != expected_count:
+            return False
+
+    return True
+
+
+def extract_changed_lines(lines):
+    """Extract added and removed lines from diff lines (excluding headers)."""
+    added = [l[1:] for l in lines if l.startswith("+") and not l.startswith("+++")]
+    removed = [l[1:] for l in lines if l.startswith("-") and not l.startswith("---")]
+    return added, removed
+
+
+def split_into_hunks(diff_text):
+    """Split a unified diff into individual hunks. Returns list of line lists."""
+    hunks = []
+    current = []
+
+    for line in diff_text.split("\n"):
+        if line.startswith("@@"):
+            if current:
+                hunks.append(current)
+            current = []
+        elif (
+            line.startswith("diff ")
+            or line.startswith("index ")
+            or line.startswith("---")
+            or line.startswith("+++")
+        ):
+            continue
+        else:
+            current.append(line)
+
+    if current:
+        hunks.append(current)
+
+    return hunks
+
+
+def check_file_whole(filepath, pattern):
+    """Check if file's entire diff matches the pattern."""
+    result = subprocess.run(["git", "diff", "--", filepath], capture_output=True, text=True)
+    lines = result.stdout.split("\n")
+    added, removed = extract_changed_lines(lines)
+    plus_count, minus_count, string_counts = pattern
+    return matches_pattern(added, removed, plus_count, minus_count, string_counts)
+
+
+def check_file_hunks(filepath, patterns, hunk_count):
+    """Check if file's diff matches in hunk mode.
+
+    Every hunk must match at least one of the provided patterns.
+    If hunk_count is set, the total number of hunks must match exactly.
+    """
+    result = subprocess.run(["git", "diff", "--", filepath], capture_output=True, text=True)
+    hunks = split_into_hunks(result.stdout)
+
+    if not hunks:
+        return False
+
+    if hunk_count is not None and len(hunks) != hunk_count:
+        return False
+
+    for hunk_lines in hunks:
+        added = [l[1:] for l in hunk_lines if l.startswith("+")]
+        removed = [l[1:] for l in hunk_lines if l.startswith("-")]
+
+        matched = False
+        for plus_count, minus_count, string_counts in patterns:
+            if matches_pattern(added, removed, plus_count, minus_count, string_counts):
+                matched = True
+                break
+        if not matched:
+            return False
+
+    return True
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__, file=sys.stderr)
+        sys.exit(1)
+
+    mode, patterns, hunk_count = parse_args(sys.argv[1:])
+
+    # Validate that at least one pattern has criteria
+    has_criteria = False
+    for plus_count, minus_count, string_counts in patterns:
+        if plus_count is not None or minus_count is not None or string_counts:
+            has_criteria = True
+            break
+    if not has_criteria and hunk_count is None:
+        print("Error: Must specify at least one filter criterion", file=sys.stderr)
+        sys.exit(1)
+
+    files = get_unstaged_files()
+
+    for filepath in files:
+        try:
+            if mode == "whole":
+                match = check_file_whole(filepath, patterns[0])
+            else:
+                match = check_file_hunks(filepath, patterns, hunk_count)
+            if match:
+                print(filepath)
+        except Exception as e:
+            print(f"Error checking {filepath}: {e}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

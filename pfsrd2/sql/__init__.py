@@ -1,11 +1,19 @@
 import os
 import sqlite3
-from pfsrd2.sql.traits import create_traits_table, create_traits_index
-from pfsrd2.sql.traits import create_trait_link_table, create_trait_link_index
-from pfsrd2.sql.monster_abilities import create_monster_abilities_table, create_monster_abilities_index
-from pfsrd2.sql.sources import create_sources_table, create_sources_index
-from pfsrd2.sql.armor_groups import create_armor_groups_table, create_armor_groups_index
-from pfsrd2.sql.weapon_groups import create_weapon_groups_table, create_weapon_groups_index
+
+from pfsrd2.sql.armor_groups import create_armor_groups_index, create_armor_groups_table
+from pfsrd2.sql.monster_abilities import (
+    create_monster_abilities_index,
+    create_monster_abilities_table,
+)
+from pfsrd2.sql.sources import create_sources_index, create_sources_table
+from pfsrd2.sql.traits import (
+    create_trait_link_index,
+    create_trait_link_table,
+    create_traits_index,
+    create_traits_table,
+)
+from pfsrd2.sql.weapon_groups import create_weapon_groups_index, create_weapon_groups_table
 
 
 def get_db_path(db_name):
@@ -22,27 +30,24 @@ def create_db(db_path, replace=False):
 
 
 def check_db_version(curs):
-    sql = "".join([
-        "SELECT MAX(version)",
-        " FROM database_version"])
+    sql = "".join(["SELECT MAX(version)", " FROM database_version"])
     curs.execute(sql)
     row = curs.fetchone()
     return row[0]
 
 
 def set_version(curs, ver):
-    sql = "".join([
-        "INSERT INTO database_version",
-        " (version)", " VALUES (?)"])
+    sql = "".join(["INSERT INTO database_version", " (version)", " VALUES (?)"])
     curs.execute(sql, (str(ver),))
 
 
 def create_db_v_1(conn, curs):
-    sql = "".join([
-        "CREATE TABLE IF NOT EXISTS database_version(",
-        "  id INTEGER PRIMARY KEY,",
-        "  version INTEGER)",
-    ]
+    sql = "".join(
+        [
+            "CREATE TABLE IF NOT EXISTS database_version(",
+            "  id INTEGER PRIMARY KEY,",
+            "  version INTEGER)",
+        ]
     )
     curs.execute(sql)
     ver = check_db_version(curs)

@@ -1,7 +1,7 @@
 import sys
 
 
-class WarningReporting():
+class WarningReporting:
     def __init__(self):
         self.context = None
         self.book = None
@@ -10,7 +10,7 @@ class WarningReporting():
         return self
 
     def report(self, string):
-        sys.stderr.write("%s (%s): %s\n" % (self.book, self.context, string))
+        sys.stderr.write(f"{self.book} ({self.context}): {string}\n")
 
 
 WarningReporting = WarningReporting()
