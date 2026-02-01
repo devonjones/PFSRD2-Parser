@@ -81,7 +81,7 @@ Review JSON schema changes in `pfsrd2/schema/` for consistency with existing pat
 
 1. **Arrays must contain typed objects**: Arrays should be arrays of objects with `type` and `subtype` properties, not arrays of primitives (unless matching an existing pattern).
 
-2. **Object structure consistency**: If an object represents the same concept as one in another schema (e.g., `link`, `source`, `ability`), it should have the same superset of fields. Enum values can differ, but field names and types should match.
+2. **Object structure consistency**: If an object represents the same concept as one in another schema (e.g., `link`, `source`, `ability`), it is **fine to have a subset** of the fields defined elsewhere — not every schema needs every optional field. However, flag any **superset fields** (fields that don't exist in any other schema's version of the same concept), as these may indicate typos, naming divergence, or unintentional additions. Enum values can differ, but field names and types for shared fields should match.
 
 3. **Definition reuse**: Common objects should be defined in `#/definitions` and referenced with `$ref`, not duplicated inline.
 
@@ -90,7 +90,7 @@ Review JSON schema changes in `pfsrd2/schema/` for consistency with existing pat
 **Review approach:**
 1. For each schema change, identify the object type being added/modified
 2. Search other schemas for the same object type (by subtype value or structure)
-3. Compare field sets - flag missing fields that exist in other schemas
+3. Compare field sets - a subset of fields is OK, but flag any **new fields not present** in other schemas' versions of the same concept (superset fields may indicate divergence)
 4. Verify arrays use object wrappers with type/subtype, not bare primitives
 5. Check that new definitions are reused via `$ref` where appropriate
 

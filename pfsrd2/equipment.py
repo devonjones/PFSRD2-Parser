@@ -21,7 +21,12 @@ from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.traits import fetch_trait_by_link, fetch_trait_by_name
 
 # Import DC/save parsing from universal
-from universal.creatures import universal_handle_range, universal_handle_save_dc, write_creature
+from universal.creatures import (
+    universal_handle_alignment,
+    universal_handle_range,
+    universal_handle_save_dc,
+    write_creature,
+)
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass
 from universal.universal import (
@@ -78,6 +83,9 @@ def _replace_entities(text):
     text = text.replace("\u00e2\u0080\u0094", "—")
     text = text.replace("\u00e2\u0080\u0098", "'")
     text = text.replace("\u00e2\u0080\u0099", "'")
+    # Fix: Use \u201c/\u201d escape sequences instead of literal curly quotes.
+    # The original """ (three ASCII double-quotes) was parsed as a Python
+    # triple-quoted string, causing source code injection into output JSON.
     text = text.replace("\u00e2\u0080\u009c", "\u201c")
     text = text.replace("\u00e2\u0080\u009d", "\u201d")
     text = text.replace("\u00e2\u0080\u00a6", "…")
@@ -90,6 +98,9 @@ def _replace_entities(text):
     text = text.replace("\u00e2\u20ac\u201d", "—")  # em-dash from HTML entities
     text = text.replace("\u00e2\u20ac\u201c", "–")  # en-dash from HTML entities
     text = text.replace("\u00e2\u20ac\u2122", "'")  # right single quote
+    # Fix: Use \u201c/\u201d escape sequences instead of literal curly quotes.
+    # The original """ (three ASCII double-quotes) was parsed as a Python
+    # triple-quoted string, causing source code injection into output JSON.
     text = text.replace("\u00e2\u20ac\u0153", "\u201c")  # left double quote
     text = text.replace("\u00e2\u20ac\u009d", "\u201d")  # right double quote
     return text
@@ -1041,10 +1052,10 @@ def _parse_variant_section(h2_tag, config, parent_name, debug=False):
 
     # Extract stats from variant content
     stats = {}
-    group_subtype = (
-        config.get("group_subtype") if "Group" in config.get("recognized_stats", {}) else None
-    )
-    _extract_stats_to_dict(bs, stats, config["recognized_stats"], "equipment", group_subtype)
+    recognized_stats = config["recognized_stats"]
+    assert "recognized_stats" in config, "Config must contain 'recognized_stats'"
+    group_subtype = config.get("group_subtype") if "Group" in recognized_stats else None
+    _extract_stats_to_dict(bs, stats, recognized_stats, "equipment", group_subtype)
     # Move unrecognized links from stats dict to variant stat block links
     unrec_links = stats.pop("_unrecognized_links", None)
     if unrec_links:
@@ -1842,7 +1853,6 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
                 # Build trait objects from:
                 # 1. Trait links that were in parentheses (traits_to_convert)
                 # 2. Unlinked trait names in parentheses (unlinked_trait_names)
-                from universal.universal import build_objects
 
                 trait_names = [tl["name"] for tl in traits_to_convert] + unlinked_trait_names
                 traits = build_objects("stat_block_section", "trait", trait_names)
@@ -4040,13 +4050,10 @@ def _extract_abilities_from_description(bs, sb, struct=None, debug=False, equipm
 
     # Remove all ability elements from original soup (not just Activate bold tags)
     for elem in elements_to_remove:
-        try:
-            if hasattr(elem, "decompose") and elem.parent:  # Tag with parent still in tree
-                elem.decompose()
-            elif isinstance(elem, NavigableString):
-                elem.extract()
-        except AttributeError:
-            pass  # Element already detached from tree
+        if hasattr(elem, "decompose") and elem.parent is not None:  # Tag with parent still in tree
+            elem.decompose()
+        elif isinstance(elem, NavigableString) and elem.parent is not None:
+            elem.extract()
 
     # Add abilities to statistics.abilities
     if abilities:
@@ -5241,8 +5248,6 @@ def _normalize_speed(sb):
     if not value_str:
         return
 
-    from universal.utils import split_maintain_parens
-
     # Split by comma while respecting parentheses to get individual speed entries
     speed_entries = split_maintain_parens(value_str.strip(), ",")
 
@@ -5260,7 +5265,6 @@ def _normalize_speed(sb):
 
 def _parse_single_speed(entry):
     """Parse a single speed entry like 'fly 40 feet (magical)' into a speed object."""
-    from universal.universal import build_objects
 
     # Extract modifiers from parentheses at end
     modifier_text = None
@@ -5538,7 +5542,6 @@ def trait_db_pass(struct):
 
     def _check_trait(trait, parent):
         """Look up trait in database and replace with enriched version."""
-        from universal.creatures import universal_handle_alignment
 
         original_name = trait["name"]
 
@@ -5603,8 +5606,6 @@ def trait_db_pass(struct):
 
 def equipment_group_pass(struct, config):
     """Enrich equipment group objects with full data from database."""
-    struct.get("stat_block", {})
-
     group_table = config["group_table"]
     group_subtype = config["group_subtype"]
     group_sql_module = config["group_sql_module"]
