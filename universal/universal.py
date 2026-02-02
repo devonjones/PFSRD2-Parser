@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 from universal.utils import (
     clear_end_whitespace,
     clear_tags,
+    filter_entities,
     get_text,
     has_name,
     split_comma_and_semicolon,
@@ -85,32 +86,13 @@ def noop_pass(details):
 
 
 def entity_pass(details):
-    def _replace_entities(text):
-        text = text.replace("\u00c2\u00ba", "º")  # u00ba
-        text = text.replace("\u00c3\u0097", "×")
-        text = text.replace("\u00e2\u0080\u0091", "‑")
-        text = text.replace("\u00e2\u0080\u0093", "–")
-        text = text.replace("\u00e2\u0080\u0094", "—")
-        text = text.replace("\u00e2\u0080\u0098", "‘")  # u2018
-        text = text.replace("\u00e2\u0080\u0099", "’")  # u2019
-        text = text.replace("\u00e2\u0080\u009c", "“")
-        text = text.replace("\u00e2\u0080\u009d", "”")
-        text = text.replace("\u00e2\u0080\u00a6", "…")  # u2026
-        text = text.replace("%5C", "\\")
-        text = text.replace("&amp;", "&")
-        text = text.replace("\u00ca\u00bc", "’")  # u2019 (was u02BC)
-        text = text.replace("\u00c2\u00a0", " ")
-        text = text.replace("\u00a0", " ")
-        text = " ".join([part.strip() for part in text.split("\n")])
-        return text
-
     for detail in details:
         if "sections" in detail:
             entity_pass(detail["sections"])
         if "text" in detail:
-            detail["text"] = _replace_entities(detail["text"])
+            detail["text"] = filter_entities(detail["text"])
         if "name" in detail:
-            detail["name"] = _replace_entities(detail["name"])
+            detail["name"] = filter_entities(detail["name"])
     return details
 
 
