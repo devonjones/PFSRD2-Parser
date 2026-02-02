@@ -50,6 +50,7 @@ from universal.utils import (
     clear_garbage,
     clear_tags,
     get_text,
+    recursive_filter_entities,
     split_comma_and_semicolon,
     split_maintain_parens,
     split_on_tag,
@@ -68,58 +69,6 @@ def _normalize_whitespace(text):
     # Replace any sequence of whitespace characters (spaces, tabs, newlines) with a single space
     text = re.sub(r"\s+", " ", text)
     return text.strip()
-
-
-def _replace_entities(text):
-    """Fix character encoding issues (UTF-8 interpreted as Latin-1).
-
-    Same replacements as entity_pass in universal.py but as a standalone function.
-    Also handles HTML entity encoded variants (e.g., &acirc;&#128;&#148; for em-dash).
-    """
-    text = text.replace("\u00c2\u00ba", "º")
-    text = text.replace("\u00c3\u0097", "×")
-    text = text.replace("\u00e2\u0080\u0091", "‑")
-    text = text.replace("\u00e2\u0080\u0093", "–")
-    text = text.replace("\u00e2\u0080\u0094", "—")
-    text = text.replace("\u00e2\u0080\u0098", "'")
-    text = text.replace("\u00e2\u0080\u0099", "'")
-    # Fix: Use \u201c/\u201d escape sequences instead of literal curly quotes.
-    # The original """ (three ASCII double-quotes) was parsed as a Python
-    # triple-quoted string, causing source code injection into output JSON.
-    text = text.replace("\u00e2\u0080\u009c", "\u201c")
-    text = text.replace("\u00e2\u0080\u009d", "\u201d")
-    text = text.replace("\u00e2\u0080\u00a6", "…")
-    text = text.replace("%5C", "\\")
-    text = text.replace("&amp;", "&")
-    text = text.replace("\u00ca\u00bc", "'")
-    text = text.replace("\u00c2\u00a0", " ")
-    text = text.replace("\u00a0", " ")
-    # HTML entity encoded variants (BeautifulSoup decodes &acirc;&#128;&#148; to â€")
-    text = text.replace("\u00e2\u20ac\u201d", "—")  # em-dash from HTML entities
-    text = text.replace("\u00e2\u20ac\u201c", "–")  # en-dash from HTML entities
-    text = text.replace("\u00e2\u20ac\u2122", "'")  # right single quote
-    # Fix: Use \u201c/\u201d escape sequences instead of literal curly quotes.
-    # The original """ (three ASCII double-quotes) was parsed as a Python
-    # triple-quoted string, causing source code injection into output JSON.
-    text = text.replace("\u00e2\u20ac\u0153", "\u201c")  # left double quote
-    text = text.replace("\u00e2\u20ac\u009d", "\u201d")  # right double quote
-    return text
-
-
-def _recursive_entity_pass(obj):
-    """Recursively apply entity replacements to all string values in a nested structure."""
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if isinstance(value, str):
-                obj[key] = _replace_entities(value)
-            elif isinstance(value, dict | list):
-                _recursive_entity_pass(value)
-    elif isinstance(obj, list):
-        for i, item in enumerate(obj):
-            if isinstance(item, str):
-                obj[i] = _replace_entities(item)
-            elif isinstance(item, dict | list):
-                _recursive_entity_pass(item)
 
 
 def _trait_class_matcher(c):
@@ -734,7 +683,7 @@ def parse_equipment(filename, options):
     remove_empty_sections_pass(struct)
 
     # Fix character encoding issues (UTF-8 interpreted as Latin-1)
-    _recursive_entity_pass(struct)
+    recursive_filter_entities(struct)
 
     if not options.skip_schema:
         struct["schema_version"] = 1.0
