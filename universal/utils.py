@@ -52,8 +52,10 @@ _ENTITY_REPLACEMENTS = [
     ("\u00e2\u0080\u0094", "\u2014"),  # — (em-dash)
     ("\u00e2\u0080\u0098", "\u2018"),  # ' (left single quote)
     ("\u00e2\u0080\u0099", "\u2019"),  # ' (right single quote)
-    ("\u00e2\u0080\u009c", "\u201c"),  # " (left double quote)
-    ("\u00e2\u0080\u009d", "\u201d"),  # " (right double quote)
+    # Note: left/right double quotes use \u201c/\u201d escape sequences rather than
+    # literal curly quotes to avoid a triple-quote parsing bug (see PR #34).
+    ("\u00e2\u0080\u009c", "\u201c"),  # \u201c (left double quote)
+    ("\u00e2\u0080\u009d", "\u201d"),  # \u201d (right double quote)
     ("\u00e2\u0080\u00a6", "\u2026"),  # … (ellipsis)
     ("%5C", "\\"),
     ("&amp;", "&"),
@@ -69,9 +71,15 @@ _ENTITY_REPLACEMENTS = [
 ]
 
 
-def filter_entities(text):
+def _apply_replacements(text):
+    """Apply entity replacements to a string without newline normalization."""
     for old, new in _ENTITY_REPLACEMENTS:
         text = text.replace(old, new)
+    return text
+
+
+def filter_entities(text):
+    text = _apply_replacements(text)
     text = " ".join([part.strip() for part in text.split("\n")])
     return text
 
@@ -81,17 +89,13 @@ def recursive_filter_entities(obj):
     if isinstance(obj, dict):
         for key, value in obj.items():
             if isinstance(value, str):
-                for old, new in _ENTITY_REPLACEMENTS:
-                    value = value.replace(old, new)
-                obj[key] = value
+                obj[key] = _apply_replacements(value)
             elif isinstance(value, dict | list):
                 recursive_filter_entities(value)
     elif isinstance(obj, list):
         for i, item in enumerate(obj):
             if isinstance(item, str):
-                for old, new in _ENTITY_REPLACEMENTS:
-                    item = item.replace(old, new)
-                obj[i] = item
+                obj[i] = _apply_replacements(item)
             elif isinstance(item, dict | list):
                 recursive_filter_entities(item)
 
