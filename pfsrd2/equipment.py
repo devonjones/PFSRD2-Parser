@@ -1700,16 +1700,16 @@ def _parse_trait_parentheses(ability_text, trait_links, rules_links, other_links
             trait_name = trait_link["name"]
             if trait_name.lower() in parens_content.lower():
                 traits_to_convert.append(trait_link)
-                parens_content = parens_content.replace(trait_name, "")
-                parens_content = parens_content.replace(trait_name.lower(), "")
+                parens_content = re.sub(
+                    re.escape(trait_name), "", parens_content, flags=re.IGNORECASE
+                )
             else:
                 trait_links_in_body.append(trait_link)
 
         # Remove Rules links from parentheses content
         for rules_link in rules_links:
             link_text = rules_link["name"]
-            parens_content = parens_content.replace(link_text, "")
-            parens_content = parens_content.replace(link_text.lower(), "")
+            parens_content = re.sub(re.escape(link_text), "", parens_content, flags=re.IGNORECASE)
 
         # Handle non-Traits links in parentheses (e.g., links to MonsterAbilities, Domains)
         for link in all_links:
@@ -1719,8 +1719,9 @@ def _parse_trait_parentheses(ability_text, trait_links, rules_links, other_links
                 if link_name.lower() in parens_content.lower():
                     traits_to_convert.append(link)
                     non_trait_links_in_parens.append(link)
-                    parens_content = parens_content.replace(link_name, "")
-                    parens_content = parens_content.replace(link_name.lower(), "")
+                    parens_content = re.sub(
+                        re.escape(link_name), "", parens_content, flags=re.IGNORECASE
+                    )
 
         # Remove consumed non-Traits links from other_links
         for consumed_link in non_trait_links_in_parens:
