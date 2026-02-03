@@ -116,14 +116,14 @@ class TestMultipleActivationTypes:
             activation.get("activation_types"), list
         ), f"Activation should be a list, got: {type(activation.get('activation'))}"
 
-        # Should have both "command" and "Interact"
+        # Should have both "command" and "interact" (lowercased)
         activation_values = [at["value"] for at in activation["activation_types"]]
         assert (
             "command" in activation_values
         ), f"Activation should contain 'command', got: {activation_values}"
         assert (
-            "Interact" in activation_values
-        ), f"Activation should contain 'Interact', got: {activation_values}"
+            "interact" in activation_values
+        ), f"Activation should contain 'interact', got: {activation_values}"
 
     def test_item_759_multiple_activation_types(self):
         """Item 759 should have activation with command and Interact as separate objects."""
@@ -163,14 +163,14 @@ class TestMultipleActivationTypes:
             assert at["subtype"] == "activation_type", f"Subtype should be 'activation_type': {at}"
             assert "value" in at, f"Should have 'value' field: {at}"
 
-        # Should have both "command" and "Interact"
+        # Should have both "command" and "interact" (lowercased)
         activation_values = [at["value"] for at in activation["activation_types"]]
         assert (
             "command" in activation_values
         ), f"Activation should contain 'command', got: {activation_values}"
         assert (
-            "Interact" in activation_values
-        ), f"Activation should contain 'Interact', got: {activation_values}"
+            "interact" in activation_values
+        ), f"Activation should contain 'interact', got: {activation_values}"
 
 
 class TestPriceParsing:
