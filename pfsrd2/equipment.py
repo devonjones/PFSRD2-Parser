@@ -1656,14 +1656,15 @@ def _classify_links(links):
 
     Returns (trait_links, rules_links, other_links).
     """
-    trait_links = [link for link in links if link.get("game-obj") == "Traits"]
+    trait_links = []
     rules_links = []
     other_links = []
 
     for link in links:
-        if link.get("game-obj") == "Traits":
-            continue
-        elif link.get("game-obj") == "Rules":
+        game_obj = link.get("game-obj")
+        if game_obj == "Traits":
+            trait_links.append(link)
+        elif game_obj == "Rules":
             rules_links.append(link)
         else:
             other_links.append(link)
