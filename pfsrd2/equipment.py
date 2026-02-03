@@ -1521,6 +1521,341 @@ def _parse_siege_weapon_launch(text):
     return damage, target, save_dc, remaining_text
 
 
+def _is_ability_bold_tag(
+    bold_tag,
+    main_abilities,
+    stat_labels,
+    result_fields,
+    equipment_type,
+    preview_char_limit=30,
+    min_length=15,
+):
+    """Check if a bold tag represents an ability name.
+
+    Uses three detection strategies:
+    1. Known ability name (in main_abilities list)
+    2. Action icon immediately following the bold tag
+    3. Vehicle heuristic: substantial descriptive text follows the bold tag
+
+    Returns the ability name string if this is an ability, None otherwise.
+    """
+    ability_name = get_text(bold_tag).strip()
+
+    if ability_name in stat_labels:
+        return None
+
+    # Strategy 1: Known ability name
+    is_main_ability = ability_name in main_abilities
+
+    # Strategy 2: Action icon follows
+    has_action_icon = False
+    next_sib = bold_tag.next_sibling
+    while next_sib and isinstance(next_sib, NavigableString) and next_sib.strip() == "":
+        next_sib = next_sib.next_sibling
+    if (
+        isinstance(next_sib, Tag)
+        and next_sib.name == "span"
+        and "action" in next_sib.get("class", [])
+    ):
+        has_action_icon = True
+
+    # Strategy 3: Vehicle content-length heuristic
+    is_vehicle_ability = False
+    if equipment_type == "vehicle" and ability_name not in result_fields:
+        content_preview = []
+        preview_sib = bold_tag.next_sibling
+        char_count = 0
+        while preview_sib and char_count < preview_char_limit:
+            if isinstance(preview_sib, NavigableString):
+                content_preview.append(str(preview_sib))
+                char_count += len(str(preview_sib).strip())
+            elif isinstance(preview_sib, Tag):
+                if preview_sib.name in ("b", "hr", "h2"):
+                    break
+                content_preview.append(preview_sib.get_text())
+                char_count += len(preview_sib.get_text().strip())
+            preview_sib = preview_sib.next_sibling if hasattr(preview_sib, "next_sibling") else None
+
+        preview_text = "".join(content_preview).strip()
+        if len(preview_text) > min_length:
+            is_vehicle_ability = True
+
+    if is_main_ability or has_action_icon or is_vehicle_ability:
+        return ability_name
+    return None
+
+
+def _collect_ability_content(bold_tag, addon_names, processed_bolds):
+    """Walk siblings after a bold tag to collect ability content HTML parts.
+
+    Stops at <br>, <hr>, or <h2> tags. Marks addon bold tags (Requirements, Effect, etc.)
+    as processed so they don't create separate abilities.
+
+    Returns (content_parts, resume_sibling) where resume_sibling is the position
+    to continue from for result field extraction.
+    """
+    content_parts = []
+    current = bold_tag.next_sibling
+
+    while current:
+        if isinstance(current, Tag) and current.name in ("hr", "h2"):
+            break
+        if isinstance(current, Tag) and current.name == "br":
+            break
+
+        # If this is a <b> tag with an addon name, mark it as processed
+        if isinstance(current, Tag) and current.name == "b":
+            tag_text = get_text(current).strip()
+            if tag_text in addon_names:
+                processed_bolds.add(current)
+
+        if isinstance(current, NavigableString | Tag):
+            content_parts.append(str(current))
+
+        current = current.next_sibling
+
+    return content_parts, current
+
+
+def _extract_addons_from_soup(desc_soup, addon_names):
+    """Extract addon fields (Requirements, Effect, etc.) from description soup.
+
+    Walks soup children for bold addon labels, extracts their content,
+    strips trailing semicolons, and removes the addon nodes from the soup.
+
+    Returns dict mapping addon field names to their content lists.
+    """
+    addons = {}
+    current_addon = None
+    nodes_to_remove = []
+
+    for child in list(desc_soup.children):
+        if isinstance(child, Tag) and child.name == "b":
+            addon_name = get_text(child).strip()
+            if addon_name in addon_names:
+                current_addon = addon_name
+                if current_addon == "Requirements":
+                    current_addon = "Requirement"
+                nodes_to_remove.append(child)
+        elif current_addon:
+            addon_text = str(child)
+            if addon_text.strip().endswith(";"):
+                addon_text = addon_text.rstrip()[:-1]
+            addons.setdefault(current_addon.lower().replace(" ", "_"), []).append(addon_text)
+            nodes_to_remove.append(child)
+
+    for node in nodes_to_remove:
+        if hasattr(node, "extract"):
+            node.extract()
+
+    return addons
+
+
+def _classify_links(links):
+    """Sort links into trait, rules, and other buckets.
+
+    Returns (trait_links, rules_links, other_links).
+    """
+    trait_links = [link for link in links if link.get("game-obj") == "Traits"]
+    rules_links = []
+    other_links = []
+
+    for link in links:
+        if link.get("game-obj") == "Traits":
+            continue
+        elif link.get("game-obj") == "Rules":
+            rules_links.append(link)
+        else:
+            other_links.append(link)
+
+    return trait_links, rules_links, other_links
+
+
+def _parse_trait_parentheses(ability_text, trait_links, rules_links, other_links, all_links):
+    """Parse trait names from opening parentheses in ability text.
+
+    If ability_text starts with '(', extracts linked and unlinked trait names
+    from the parenthesized section. Trait links in body text are moved to other_links.
+
+    Returns (traits, cleaned_text, converted_count) where:
+    - traits: list of trait objects built from extracted names
+    - cleaned_text: ability text with parenthesized traits removed
+    - converted_count: number of links converted to trait objects
+    """
+    traits_to_convert = []
+    trait_links_in_body = []
+    unlinked_trait_names = []
+    non_trait_links_in_parens = []
+
+    if ability_text.startswith("("):
+        close_paren = ability_text.find(")")
+        assert close_paren > 0, f"Unclosed parenthesis in ability text: {ability_text[:100]}"
+
+        parens_content = ability_text[1:close_paren].strip()
+        remaining = ability_text[close_paren + 1 :].strip()
+
+        # Check which trait links are actually in the parentheses
+        for trait_link in trait_links:
+            trait_name = trait_link["name"]
+            if trait_name.lower() in parens_content.lower():
+                traits_to_convert.append(trait_link)
+                parens_content = parens_content.replace(trait_name, "")
+                parens_content = parens_content.replace(trait_name.lower(), "")
+            else:
+                trait_links_in_body.append(trait_link)
+
+        # Remove Rules links from parentheses content
+        for rules_link in rules_links:
+            link_text = rules_link["name"]
+            parens_content = parens_content.replace(link_text, "")
+            parens_content = parens_content.replace(link_text.lower(), "")
+
+        # Handle non-Traits links in parentheses (e.g., links to MonsterAbilities, Domains)
+        for link in all_links:
+            game_obj = link.get("game-obj", "")
+            if game_obj and game_obj not in ("Traits", "Rules"):
+                link_name = link["name"]
+                if link_name.lower() in parens_content.lower():
+                    traits_to_convert.append(link)
+                    non_trait_links_in_parens.append(link)
+                    parens_content = parens_content.replace(link_name, "")
+                    parens_content = parens_content.replace(link_name.lower(), "")
+
+        # Remove consumed non-Traits links from other_links
+        for consumed_link in non_trait_links_in_parens:
+            if consumed_link in other_links:
+                other_links.remove(consumed_link)
+
+        # Handle remaining text as unlinked trait names
+        parens_content = parens_content.replace(",", "").strip()
+        if parens_content:
+            potential_traits = parens_content.split()
+            for pt in potential_traits:
+                pt = pt.strip()
+                if pt and not pt.isdigit():
+                    unlinked_trait_names.append(pt)
+
+        ability_text = remaining
+        other_links.extend(rules_links)
+    else:
+        # No opening parentheses - all trait links are in body text
+        trait_links_in_body = trait_links
+        other_links.extend(rules_links)
+
+    # Add trait links from body text to other_links
+    other_links.extend(trait_links_in_body)
+
+    # Build trait objects
+    trait_names = [tl["name"] for tl in traits_to_convert] + unlinked_trait_names
+    traits = build_objects("stat_block_section", "trait", trait_names)
+
+    return traits, ability_text, len(traits_to_convert)
+
+
+def _parse_ability_description(content_parts, ability, addon_names):
+    """Parse ability description from collected HTML content parts.
+
+    Orchestrates action type extraction, link classification, addon extraction,
+    trait parsing, and sets fields on the ability dict.
+
+    Returns the number of trait links converted to trait objects.
+    """
+    combined_html = "".join(content_parts).strip()
+    action_soup = BeautifulSoup(combined_html, "html.parser")
+
+    description, action_type = extract_action_type(str(action_soup))
+
+    if description:
+        desc_soup = BeautifulSoup(description, "html.parser")
+        links = get_links(desc_soup, unwrap=True)
+
+        addons = _extract_addons_from_soup(desc_soup, addon_names)
+        trait_links, rules_links, other_links = _classify_links(links)
+        ability_text = _normalize_whitespace(str(desc_soup))
+
+        traits, ability_text, converted_count = _parse_trait_parentheses(
+            ability_text, trait_links, rules_links, other_links, links
+        )
+
+        if traits:
+            ability["traits"] = traits
+
+        # Set addon fields
+        for k, v in addons.items():
+            if k == "range":
+                assert len(v) == 1, f"Malformed range: {v}"
+                ability["range"] = universal_handle_range(v[0])
+            else:
+                ability[k] = clear_garbage(v)
+
+        ability["text"] = ability_text
+
+        if other_links:
+            ability["links"] = other_links
+    else:
+        converted_count = 0
+
+    if action_type:
+        ability["action_type"] = action_type
+
+    return converted_count
+
+
+def _extract_result_fields(current, ability, result_fields, processed_bolds):
+    """Extract result fields (Success, Failure, etc.) after the main ability text.
+
+    Walks from the resume position (after <br>) looking for bold result field labels
+    and their associated content. Sets fields on the ability dict and merges links.
+    """
+    while current:
+        if isinstance(current, Tag) and current.name == "br":
+            current = current.next_sibling
+            continue
+        if isinstance(current, NavigableString) and current.strip() == "":
+            current = current.next_sibling
+            continue
+
+        if isinstance(current, Tag) and current.name == "b":
+            field_name = get_text(current).strip()
+            if field_name in result_fields:
+                processed_bolds.add(current)
+
+                field_parts = []
+                field_current = current.next_sibling
+
+                while field_current:
+                    if isinstance(field_current, Tag) and field_current.name in (
+                        "b",
+                        "hr",
+                        "h2",
+                        "br",
+                    ):
+                        break
+                    if isinstance(field_current, NavigableString | Tag):
+                        field_parts.append(str(field_current))
+                    field_current = field_current.next_sibling
+
+                if field_parts:
+                    field_html = "".join(field_parts).strip()
+                    field_soup = BeautifulSoup(field_html, "html.parser")
+                    field_links = get_links(field_soup, unwrap=True)
+
+                    schema_field_name = field_name.lower().replace(" ", "_")
+                    ability[schema_field_name] = _normalize_whitespace(str(field_soup))
+
+                    if field_links:
+                        if "links" not in ability:
+                            ability["links"] = []
+                        ability["links"].extend(field_links)
+
+                current = field_current
+                continue
+            else:
+                break
+
+        break
+
+
 def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None):
     """Extract abilities from equipment HTML.
 
@@ -1542,26 +1877,14 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
     Returns:
         List of ability objects matching the ability schema, or None if no abilities found.
     """
-    # Constants for vehicle ability heuristics
-    VEHICLE_ABILITY_PREVIEW_CHAR_LIMIT = 30  # Max chars to preview when detecting abilities
-    VEHICLE_ABILITY_MIN_LENGTH = 15  # Min chars of description text to qualify as ability
-
-    # Main abilities that are top-level abilities (siege weapons)
-    # For siege weapons, these are the known action names
     main_abilities = ["Aim", "Load", "Launch", "Ram", "Effect", "Requirements"]
-    # Result fields that are nested within abilities
     result_fields = ["Success", "Failure", "Critical Success", "Critical Failure"]
-    # Addon names - use shared constant from pfsrd2.constants
     addon_names = constants.CREATURE_ABILITY_ADDON_NAMES
 
-    # Track which bold tags we've already processed (to skip result fields)
     processed_bolds = set()
     abilities = []
-
-    # Track how many trait links were converted to traits (for link accounting)
     trait_links_converted_count = 0
 
-    # For vehicles, get the list of recognized stat labels to exclude
     stat_labels = (
         set(recognized_stats.keys()) if recognized_stats and equipment_type == "vehicle" else set()
     )
@@ -1570,268 +1893,25 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
         if bold_tag in processed_bolds:
             continue
 
-        ability_name = get_text(bold_tag).strip()
-
-        # Check if this is a known stat label (skip it, already extracted)
-        if ability_name in stat_labels:
+        ability_name = _is_ability_bold_tag(
+            bold_tag, main_abilities, stat_labels, result_fields, equipment_type
+        )
+        if ability_name is None:
             continue
 
-        # Only extract main abilities (or bold tags with action icons)
-        is_main_ability = ability_name in main_abilities
-        has_action_icon = False
-        next_sib = bold_tag.next_sibling
-        while next_sib and isinstance(next_sib, NavigableString) and next_sib.strip() == "":
-            next_sib = next_sib.next_sibling
-        if (
-            isinstance(next_sib, Tag)
-            and next_sib.name == "span"
-            and "action" in next_sib.get("class", [])
-        ):
-            has_action_icon = True
-
-        # For vehicles, also extract bold tags that look like abilities:
-        # - Not a result field (Success, Failure, etc.)
-        # - Has substantial text after it (indicating description, not just a value)
-        is_vehicle_ability = False
-        if equipment_type == "vehicle" and ability_name not in result_fields:
-            # Check if there's substantial content after this bold tag
-            # Vehicle abilities typically have 20+ characters of descriptive text
-            content_preview = []
-            preview_sib = bold_tag.next_sibling
-            char_count = 0
-            while preview_sib and char_count < VEHICLE_ABILITY_PREVIEW_CHAR_LIMIT:
-                if isinstance(preview_sib, NavigableString):
-                    content_preview.append(str(preview_sib))
-                    char_count += len(str(preview_sib).strip())
-                elif isinstance(preview_sib, Tag):
-                    if preview_sib.name in ("b", "hr", "h2"):
-                        break
-                    content_preview.append(preview_sib.get_text())
-                    char_count += len(preview_sib.get_text().strip())
-                preview_sib = (
-                    preview_sib.next_sibling if hasattr(preview_sib, "next_sibling") else None
-                )
-
-            # If we found substantial text, treat as ability
-            preview_text = "".join(content_preview).strip()
-            if len(preview_text) > VEHICLE_ABILITY_MIN_LENGTH:
-                is_vehicle_ability = True
-
-        if not (is_main_ability or has_action_icon or is_vehicle_ability):
-            continue
-
-        # Found a main ability
         ability = {
             "type": "stat_block_section",
             "subtype": "ability",
             "name": ability_name,
-            "ability_type": "offensive",  # Equipment abilities are offensive actions
+            "ability_type": "offensive",
         }
 
-        # Extract main ability text (up to first <br>)
-        # Note: Don't stop at <b> tags - those are addons like Requirements, Effect, etc.
-        # But do mark addon <b> tags as processed so they don't create separate abilities
-        content_parts = []
-        current = bold_tag.next_sibling
-
-        while current:
-            if isinstance(current, Tag) and current.name in ("hr", "h2"):
-                break
-            if isinstance(current, Tag) and current.name == "br":
-                break
-
-            # If this is a <b> tag with an addon name, mark it as processed
-            if isinstance(current, Tag) and current.name == "b":
-                tag_text = get_text(current).strip()
-                if tag_text in addon_names:
-                    processed_bolds.add(current)
-
-            if isinstance(current, NavigableString | Tag):
-                content_parts.append(str(current))
-
-            current = current.next_sibling
+        content_parts, current = _collect_ability_content(bold_tag, addon_names, processed_bolds)
 
         if content_parts:
-            combined_html = "".join(content_parts).strip()
-            action_soup = BeautifulSoup(combined_html, "html.parser")
-
-            # Use extract_action_type to parse action cost icon
-            description, action_type = extract_action_type(str(action_soup))
-
-            # Extract links from description and unwrap <a> tags
-            if description:
-                desc_soup = BeautifulSoup(description, "html.parser")
-
-                # First, extract all links before processing addons
-                links = get_links(desc_soup, unwrap=True)
-
-                # Extract addons (Requirements, Effect, etc.) after unwrapping links
-                # Addons are marked by <b> tags within the ability text
-                # Similar to creature ability addon handling (uses addon_names from function scope)
-                addons = {}
-                current_addon = None
-                nodes_to_remove = []  # Track addon nodes to remove after extraction
-
-                # Walk through all children to find and extract addons
-                for child in list(desc_soup.children):
-                    if isinstance(child, Tag) and child.name == "b":
-                        addon_name = get_text(child).strip()
-                        if addon_name in addon_names:
-                            current_addon = addon_name
-                            if current_addon == "Requirements":
-                                current_addon = "Requirement"
-                            nodes_to_remove.append(child)
-                            # Mark this <b> tag for removal
-                    elif current_addon:
-                        # This is addon content - extract it
-                        addon_text = str(child)
-                        if addon_text.strip().endswith(";"):
-                            addon_text = addon_text.rstrip()[:-1]
-                        addons.setdefault(current_addon.lower().replace(" ", "_"), []).append(
-                            addon_text
-                        )
-                        nodes_to_remove.append(child)
-                        # Continue collecting until we hit another <b> or end
-
-                # Remove addon nodes from the soup
-                for node in nodes_to_remove:
-                    if hasattr(node, "extract"):
-                        node.extract()
-
-                # Separate trait links from other links
-                # Trait links have game-obj="Traits"
-                # Rules links in parentheses (like "range 250 feet") should also be kept separate
-                trait_links = [link for link in links if link.get("game-obj") == "Traits"]
-                rules_links_in_parens = []
-                other_links = []
-
-                for link in links:
-                    if link.get("game-obj") == "Traits":
-                        continue  # Already in trait_links
-                    elif link.get("game-obj") == "Rules":
-                        # Rules links might be in parentheses (e.g., "range 250 feet")
-                        rules_links_in_parens.append(link)
-                    else:
-                        other_links.append(link)
-
-                ability_text = _normalize_whitespace(str(desc_soup))
-
-                # Only convert trait links to traits if they're in opening parentheses
-                # Trait links in body text should remain as regular links
-                traits_to_convert = []  # Trait links that are actually in parentheses
-                trait_links_in_body = []  # Trait links that are NOT in parentheses
-                unlinked_trait_names = []  # Unlinked trait names in parentheses
-                non_trait_links_in_parens = []  # Non-Traits links consumed as traits
-
-                # Check if ability text starts with parentheses (trait list)
-                # Traits can be: Traits links, non-Traits links (MonsterAbilities, Domains), or unlinked text
-                if ability_text.startswith("("):
-                    close_paren = ability_text.find(")")
-                    assert (
-                        close_paren > 0
-                    ), f"Unclosed parenthesis in ability text: {ability_text[:100]}"
-
-                    # Extract the parentheses content
-                    parens_content = ability_text[1:close_paren].strip()
-                    remaining = ability_text[close_paren + 1 :].strip()
-
-                    # Check which trait links are actually in the parentheses
-                    for trait_link in trait_links:
-                        trait_name = trait_link["name"]
-                        # Check if this trait name appears in the parentheses (case-insensitive)
-                        if trait_name.lower() in parens_content.lower():
-                            traits_to_convert.append(trait_link)
-                            # Remove the trait name from parentheses content
-                            parens_content = parens_content.replace(trait_name, "")
-                            parens_content = parens_content.replace(trait_name.lower(), "")
-                        else:
-                            # This trait link is NOT in the parentheses, it's in body text
-                            trait_links_in_body.append(trait_link)
-
-                    # Remove Rules links from parentheses content
-                    for rules_link in rules_links_in_parens:
-                        link_text = rules_link["name"]
-                        parens_content = parens_content.replace(link_text, "")
-                        parens_content = parens_content.replace(link_text.lower(), "")
-
-                    # Handle non-Traits links in parentheses (e.g., links to MonsterAbilities, Domains)
-                    # These are still trait names, just linked to explanatory pages instead of Traits.aspx
-                    for link in links:
-                        game_obj = link.get("game-obj", "")
-                        if game_obj and game_obj not in ("Traits", "Rules"):
-                            link_name = link["name"]
-                            if link_name.lower() in parens_content.lower():
-                                # This is a trait linked to a non-Traits page (e.g., aura -> MonsterAbilities)
-                                traits_to_convert.append(link)
-                                non_trait_links_in_parens.append(link)
-                                parens_content = parens_content.replace(link_name, "")
-                                parens_content = parens_content.replace(link_name.lower(), "")
-
-                    # Remove the non-Traits links from other_links (they were consumed as traits)
-                    for consumed_link in non_trait_links_in_parens:
-                        if consumed_link in other_links:
-                            other_links.remove(consumed_link)
-
-                    # Clean up commas and whitespace
-                    parens_content = parens_content.replace(",", "").strip()
-
-                    # Handle any remaining text in parentheses as unlinked trait names
-                    # This handles cases where trait names aren't linked at all
-                    if parens_content:
-                        # Split by whitespace to get individual words that might be traits
-                        potential_traits = parens_content.split()
-                        for pt in potential_traits:
-                            pt = pt.strip()
-                            if pt and not pt.isdigit():  # Skip numbers
-                                unlinked_trait_names.append(pt)
-
-                    # Remove the now-empty parentheses
-                    ability_text = remaining
-
-                    # Add Rules links back to other_links (they're not in parentheses anymore)
-                    other_links.extend(rules_links_in_parens)
-                else:
-                    # No opening parentheses - all trait links are in body text
-                    trait_links_in_body = trait_links
-                    # Rules links are also in body text (not in opening parens)
-                    other_links.extend(rules_links_in_parens)
-
-                # Add trait links from body text to other_links (they should be regular links)
-                other_links.extend(trait_links_in_body)
-
-                # Build trait objects from:
-                # 1. Trait links that were in parentheses (traits_to_convert)
-                # 2. Unlinked trait names in parentheses (unlinked_trait_names)
-
-                trait_names = [tl["name"] for tl in traits_to_convert] + unlinked_trait_names
-                traits = build_objects("stat_block_section", "trait", trait_names)
-
-                # Track how many links were converted to traits (for link accounting)
-                # This includes both Traits links and non-Traits links in parentheses
-                trait_links_converted_count += len(traits_to_convert)
-                # Also count non-Traits links that were consumed as traits (they're in traits_to_convert)
-                # but we need to NOT double-count since they're already in traits_to_convert
-                # Note: non_trait_links_in_parens items were added to traits_to_convert, so no need to add again
-
-                if traits:
-                    ability["traits"] = traits
-
-                # Set the extracted addons as separate fields
-                for k, v in addons.items():
-                    if k == "range":
-                        assert len(v) == 1, f"Malformed range: {v}"
-                        ability["range"] = universal_handle_range(v[0])
-                    else:
-                        ability[k] = clear_garbage(v)
-
-                # Set main text
-                ability["text"] = ability_text
-
-                if other_links:
-                    ability["links"] = other_links
-
-            if action_type:
-                ability["action_type"] = action_type
+            trait_links_converted_count += _parse_ability_description(
+                content_parts, ability, addon_names
+            )
 
         # For siege weapon Launch actions, parse structured damage, target, and save
         if equipment_type == "siege_weapon" and ability_name == "Launch" and "text" in ability:
@@ -1845,78 +1925,18 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
                     ability["target"] = target
                 if save_dc:
                     ability["saving_throw"] = save_dc
-                # Replace text with just the remaining text (after the semicolon/period)
                 if remaining_text:
                     ability["text"] = remaining_text
                 else:
-                    # No remaining text - remove the text field
                     del ability["text"]
             except AssertionError as e:
-                # Re-raise assertion errors with context about which siege weapon
                 raise AssertionError(f"Launch action parsing failed: {e}") from e
 
-        # Now look for result fields (Success, Failure, etc.) after the <br>
-        # Continue from where we stopped
-        while current:
-            # Skip <br> tags and whitespace
-            if isinstance(current, Tag) and current.name == "br":
-                current = current.next_sibling
-                continue
-            if isinstance(current, NavigableString) and current.strip() == "":
-                current = current.next_sibling
-                continue
+        _extract_result_fields(current, ability, result_fields, processed_bolds)
 
-            # Check if this is a result field
-            if isinstance(current, Tag) and current.name == "b":
-                field_name = get_text(current).strip()
-                if field_name in result_fields:
-                    processed_bolds.add(current)
-
-                    # Extract text for this result field (up to next <br>)
-                    field_parts = []
-                    field_current = current.next_sibling
-
-                    while field_current:
-                        if isinstance(field_current, Tag) and field_current.name in (
-                            "b",
-                            "hr",
-                            "h2",
-                            "br",
-                        ):
-                            break
-                        if isinstance(field_current, NavigableString | Tag):
-                            field_parts.append(str(field_current))
-                        field_current = field_current.next_sibling
-
-                    if field_parts:
-                        field_html = "".join(field_parts).strip()
-                        field_soup = BeautifulSoup(field_html, "html.parser")
-                        field_links = get_links(field_soup, unwrap=True)
-
-                        # Map field name to schema field name (lowercase with underscores)
-                        schema_field_name = field_name.lower().replace(" ", "_")
-                        ability[schema_field_name] = _normalize_whitespace(str(field_soup))
-
-                        # Add links if any (merge with existing links)
-                        if field_links:
-                            if "links" not in ability:
-                                ability["links"] = []
-                            ability["links"].extend(field_links)
-
-                    current = field_current
-                    continue
-                else:
-                    # Hit a different bold tag (next main ability), stop
-                    break
-
-            # Hit something else, stop
-            break
-
-        # Only add if we have actual content
         if "text" in ability or "action_type" in ability:
             abilities.append(ability)
 
-    # Return abilities and the count of trait links that were converted
     return (abilities if abilities else None), trait_links_converted_count
 
 
