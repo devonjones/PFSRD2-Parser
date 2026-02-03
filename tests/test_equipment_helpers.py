@@ -242,16 +242,16 @@ class TestParseActivationContent:
 
         assert ability["activation_types"][0]["value"] == "interact"  # lowercased
 
-    def test_non_trait_links_require_proper_attributes(self):
-        """Non-trait links require proper game-obj attributes to be extracted."""
-        # Note: get_links extracts links based on specific URL patterns
-        # Plain href attributes without proper game-obj won't be extracted
-        html = "command"
+    def test_non_trait_links_added_to_links(self):
+        """Should add non-trait links from within parentheses to the ability's links array."""
+        html = 'command (<a href="Spells.aspx?ID=123" game-obj="Spells">fireball</a>)'
         ability = {}
 
         _parse_activation_content(html, ability)
 
-        # Without proper links, only activation_types should be set
+        assert "links" in ability
+        assert len(ability["links"]) == 1
+        assert ability["links"][0]["name"] == "fireball"
         assert "activation_types" in ability
         assert ability["activation_types"][0]["value"] == "command"
 
