@@ -41,7 +41,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install beautifulsoup4 lxml jsonschema pytest
+          pip install beautifulsoup4 lxml jsonschema html2markdown markdownify python-dateutil pytest
 
       - name: Run tests
         run: python -m pytest tests/ -v
