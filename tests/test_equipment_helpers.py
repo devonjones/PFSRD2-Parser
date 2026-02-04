@@ -13,9 +13,11 @@ from pfsrd2.equipment import (
     _extract_affliction,
     _find_ability_bolds,
     _has_affliction_pattern,
+    _normalize_activate_to_ability,
     _parse_activation_content,
     _parse_activation_types,
     _parse_named_activation,
+    _process_activate_content,
 )
 
 
@@ -739,6 +741,35 @@ class TestExtractActivationTraitsFromParens:
 
         assert len(original) == 1  # Not modified
 
+    def test_semicolon_separated_traits(self):
+        """Should handle semicolon-separated traits via split_comma_and_semicolon."""
+        trait_links = [
+            {"name": "manipulate", "game-obj": "Traits"},
+            {"name": "divine", "game-obj": "Traits"},
+        ]
+        traits, text_before, other_links, count = _extract_activation_traits_from_parens(
+            "command (manipulate; divine)", trait_links
+        )
+
+        assert len(traits) == 2
+        assert text_before == "command"
+        assert count == 2
+
+    def test_mixed_comma_semicolon_traits(self):
+        """Should handle mixed comma and semicolon separators."""
+        trait_links = [
+            {"name": "manipulate", "game-obj": "Traits"},
+            {"name": "divine", "game-obj": "Traits"},
+            {"name": "fire", "game-obj": "Traits"},
+        ]
+        traits, text_before, other_links, count = _extract_activation_traits_from_parens(
+            "command (manipulate, divine; fire)", trait_links
+        )
+
+        assert len(traits) == 3
+        assert text_before == "command"
+        assert count == 3
+
 
 class TestFindAbilityBolds:
     """Tests for _find_ability_bolds helper."""
@@ -1044,6 +1075,328 @@ class TestCleanActivationCruftFromText:
         _clean_activation_cruft_from_text(sb)
 
         assert sb["text"] == "This is a normal item description."
+
+
+class TestProcessActivateContent:
+    """Tests for _process_activate_content helper."""
+
+    def test_extracts_activation_type(self):
+        """Should extract activation type from Activate content."""
+        html = '<b>Activate</b> <a game-obj="Traits" href="">command</a>'
+        soup = BeautifulSoup(html, "html.parser")
+        ability = {}
+
+        _process_activate_content(soup, ability)
+
+        assert ability["subtype"] == "activation"
+        assert "activation_types" in ability
+
+    def test_sets_subtype_activation(self):
+        """Should set subtype to 'activation'."""
+        html = "<b>Activate</b> Interact"
+        soup = BeautifulSoup(html, "html.parser")
+        ability = {}
+
+        _process_activate_content(soup, ability)
+
+        assert ability["subtype"] == "activation"
+
+    def test_no_activate_bold_returns_zero(self):
+        """Should return 0 if no Activate bold found."""
+        html = "<b>Other</b> something"
+        soup = BeautifulSoup(html, "html.parser")
+        ability = {}
+
+        result = _process_activate_content(soup, ability)
+
+        assert result == 0
+        assert "subtype" not in ability
+
+    def test_extracts_named_activation(self):
+        """Should extract named activation (em-dash prefixed bold)."""
+        html = "<b>Activate</b> <b>\u2014Dim Sight</b> command"
+        soup = BeautifulSoup(html, "html.parser")
+        ability = {}
+
+        _process_activate_content(soup, ability)
+
+        assert ability.get("activation_name") == "Dim Sight"
+        assert ability["subtype"] == "activation"
+
+    def test_strips_leading_semicolons(self):
+        """Should strip leading semicolons from activation content."""
+        html = "<b>Activate</b> ; command"
+        soup = BeautifulSoup(html, "html.parser")
+        ability = {}
+
+        _process_activate_content(soup, ability)
+
+        assert ability["subtype"] == "activation"
+
+    def test_returns_trait_links_converted_count(self):
+        """Should return count of trait links converted."""
+        html = '<b>Activate</b> command (<a game-obj="Traits" href="">manipulate</a>)'
+        soup = BeautifulSoup(html, "html.parser")
+        ability = {}
+
+        result = _process_activate_content(soup, ability)
+
+        assert result >= 1
+
+
+class TestParseActivationContentTimeBugFix:
+    """Regression tests for the 'time as activation_type' bug fix.
+
+    Previously, text like '1 minute' without parentheses was treated as
+    activation_type instead of activation_time. The fix applies the time
+    detection regex unconditionally, not just inside the parentheses branch.
+    This affected items like Ring of Stoneshifting.
+    """
+
+    def test_bare_time_value_becomes_activation_time(self):
+        """'1 minute' should become activation_time, not activation_type."""
+        ability = {}
+        _parse_activation_content("1 minute", ability)
+
+        assert ability.get("activation_time") == "1 minute"
+        assert "activation_types" not in ability
+
+    def test_bare_time_with_hours(self):
+        """'10 hours' should become activation_time."""
+        ability = {}
+        _parse_activation_content("10 hours", ability)
+
+        assert ability.get("activation_time") == "10 hours"
+        assert "activation_types" not in ability
+
+    def test_bare_time_with_rounds(self):
+        """'3 rounds' should become activation_time."""
+        ability = {}
+        _parse_activation_content("3 rounds", ability)
+
+        assert ability.get("activation_time") == "3 rounds"
+        assert "activation_types" not in ability
+
+    def test_command_is_not_time(self):
+        """'command' should remain an activation_type, not time."""
+        ability = {}
+        _parse_activation_content("command", ability)
+
+        assert "activation_types" in ability
+        assert "activation_time" not in ability
+
+    def test_time_after_semicolon_still_works(self):
+        """'command; 1 minute' should have both activation_type and time."""
+        ability = {}
+        _parse_activation_content("command; 1 minute", ability)
+
+        assert "activation_types" in ability
+        assert ability.get("activation_time") == "1 minute"
+
+
+class TestNormalizeActivateToAbility:
+    """Tests for _normalize_activate_to_ability."""
+
+    def test_basic_activate_with_action(self):
+        """Should convert basic activate HTML to ability with action type."""
+        statistics = {
+            "activate": '<span class="action" title="Single Action">[one-action]</span> Interact'
+        }
+        sb = {}
+
+        _normalize_activate_to_ability(statistics, sb)
+
+        assert "activate" not in statistics
+        assert "abilities" in statistics
+        ability = statistics["abilities"][0]
+        assert ability["subtype"] == "activation"
+        assert ability["action_type"]["name"] == "One Action"
+        assert ability["activation_types"][0]["value"] == "interact"
+
+    def test_no_activate_field_returns_zero(self):
+        """Should return 0 when no activate field present."""
+        statistics = {}
+        sb = {}
+
+        result = _normalize_activate_to_ability(statistics, sb)
+
+        assert result == 0
+        assert "abilities" not in statistics
+
+    def test_activate_with_traits(self):
+        """Should extract traits from parenthesized content."""
+        statistics = {
+            "activate": (
+                '<span class="action" title="Single Action">[one-action]</span> '
+                'command (<a game-obj="Traits" href="">manipulate</a>, '
+                '<a game-obj="Traits" href="">divine</a>)'
+            )
+        }
+        sb = {}
+
+        result = _normalize_activate_to_ability(statistics, sb)
+
+        ability = statistics["abilities"][0]
+        assert "traits" in ability
+        assert len(ability["traits"]) == 2
+        assert result == 2  # Two trait links converted
+
+    def test_activate_with_unlinked_traits(self):
+        """Should include unlinked traits (legacy activate uses include_unlinked_traits=True)."""
+        statistics = {
+            "activate": (
+                '<span class="action" title="Single Action">[one-action]</span> '
+                "command (magical)"
+            )
+        }
+        sb = {}
+
+        _normalize_activate_to_ability(statistics, sb)
+
+        ability = statistics["abilities"][0]
+        assert "traits" in ability
+        assert len(ability["traits"]) == 1
+        assert ability["traits"][0]["name"] == "magical"
+
+    def test_empty_activate_returns_zero(self):
+        """Should return 0 for empty activate field."""
+        statistics = {"activate": ""}
+        sb = {}
+
+        result = _normalize_activate_to_ability(statistics, sb)
+
+        assert result == 0
+
+
+class TestExtractActionTypeFromSpansEdgeCases:
+    """Additional edge case tests for _extract_action_type_from_spans."""
+
+    def test_two_or_three_actions(self):
+        """Should map Two Actions + Three Actions to 'Two or Three Actions'."""
+        html = '<span class="action" title="Two Actions"></span><span class="action" title="Three Actions"></span>'
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _extract_action_type_from_spans(soup)
+
+        assert result["name"] == "Two or Three Actions"
+
+    def test_one_to_three_actions(self):
+        """Should map One + Two + Three Actions to 'One to Three Actions'."""
+        html = (
+            '<span class="action" title="Single Action"></span>'
+            '<span class="action" title="Two Actions"></span>'
+            '<span class="action" title="Three Actions"></span>'
+        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _extract_action_type_from_spans(soup)
+
+        assert result["name"] == "One to Three Actions"
+
+    def test_free_action_or_single_action(self):
+        """Should map Free Action + Single Action to 'Free Action or Single Action'."""
+        html = '<span class="action" title="Free Action"></span><span class="action" title="Single Action"></span>'
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _extract_action_type_from_spans(soup)
+
+        assert result["name"] == "Free Action or Single Action"
+
+    def test_reaction_or_one_action(self):
+        """Should map Reaction + Single Action to 'Reaction or One Action'."""
+        html = '<span class="action" title="Reaction"></span><span class="action" title="Single Action"></span>'
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _extract_action_type_from_spans(soup)
+
+        assert result["name"] == "Reaction or One Action"
+
+    def test_one_or_three_actions(self):
+        """Should map One Action + Three Actions to 'One or Three Actions'."""
+        html = '<span class="action" title="Single Action"></span><span class="action" title="Three Actions"></span>'
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _extract_action_type_from_spans(soup)
+
+        assert result["name"] == "One or Three Actions"
+
+    def test_unmapped_combination_uses_or_join(self):
+        """Should fall back to 'or' join for unmapped combinations."""
+        html = '<span class="action" title="Free Action"></span><span class="action" title="Three Actions"></span>'
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _extract_action_type_from_spans(soup)
+
+        assert result["name"] == "Free Action or Three Actions"
+
+
+class TestFindAbilityBoldsEdgeCases:
+    """Additional edge case tests for _find_ability_bolds."""
+
+    def test_skips_en_dash_prefixed_bold(self):
+        """Should skip bolds prefixed with en-dash (\\u2013)."""
+        html = "<b>Activate</b> command <b>\u2013Special Power</b> text"
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _find_ability_bolds(soup)
+
+        assert len(result) == 1
+        assert result[0].get_text().strip() == "Activate"
+
+    def test_skips_hyphen_prefixed_bold(self):
+        """Should skip bolds prefixed with regular hyphen."""
+        html = "<b>Activate</b> command <b>-Quick Strike</b> text"
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _find_ability_bolds(soup)
+
+        assert len(result) == 1
+        assert result[0].get_text().strip() == "Activate"
+
+    def test_skips_all_sub_field_names(self):
+        """Should skip all 9 sub-field bolds."""
+        sub_fields = [
+            "Frequency",
+            "Trigger",
+            "Effect",
+            "Requirements",
+            "Critical Success",
+            "Success",
+            "Failure",
+            "Critical Failure",
+            "Destruction",
+        ]
+        html = "<b>Activate</b> command"
+        for sf in sub_fields:
+            html += f" <b>{sf}</b> text"
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _find_ability_bolds(soup)
+
+        assert len(result) == 1
+        assert result[0].get_text().strip() == "Activate"
+
+
+class TestExtractActivationTraitsDigitFiltering:
+    """Test that digit-only strings are filtered from unlinked traits."""
+
+    def test_digit_only_text_excluded_from_unlinked_traits(self):
+        """Digit-only text in parens should not become a trait."""
+        traits, text_before, other_links, count = _extract_activation_traits_from_parens(
+            "command (2, magical)", [], include_unlinked_traits=True
+        )
+
+        trait_names = [t["name"] for t in traits]
+        assert "magical" in trait_names
+        assert "2" not in trait_names
+
+    def test_digit_only_text_ignored_by_default(self):
+        """Without include_unlinked_traits, digit text is irrelevant (no traits at all)."""
+        traits, text_before, other_links, count = _extract_activation_traits_from_parens(
+            "command (2, magical)", []
+        )
+
+        assert traits == []
 
 
 if __name__ == "__main__":

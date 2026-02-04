@@ -3655,7 +3655,9 @@ def _extract_activation_traits_from_parens(text, trait_links, include_unlinked_t
     text_before = text[:paren_start].strip()
 
     # Build a map of lowercased trait names to original names to preserve casing
-    paren_trait_map = {name.strip().lower(): name.strip() for name in parens_content.split(",")}
+    paren_trait_map = {
+        name.strip().lower(): name.strip() for name in split_comma_and_semicolon(parens_content)
+    }
     traits_to_convert = []
     other_links = []
 
@@ -3984,6 +3986,70 @@ def _clean_activation_cruft_from_text(sb):
         del sb["text"]
 
 
+def _process_activate_content(ability_soup, ability):
+    """Process an Activate ability's content: extract named activation, activation types, and traits.
+
+    Finds the Activate bold in the ability soup, walks siblings to collect the activation
+    content (before the first sub-field bold), then parses it via _parse_activation_content.
+    Cleans up the processed nodes from the soup as a side effect.
+
+    Args:
+        ability_soup: BeautifulSoup object of the ability content
+        ability: dict to populate with activation fields
+
+    Returns:
+        int: Count of trait links converted (for link accounting)
+    """
+    trait_links_converted = 0
+
+    activate_bold = ability_soup.find("b", string=lambda s: s and s.strip() == "Activate")
+    if not activate_bold:
+        return 0
+
+    content_parts = []
+    nodes_to_remove = []
+    current = activate_bold.next_sibling
+
+    # Skip leading whitespace nodes
+    while current and isinstance(current, NavigableString) and not current.strip():
+        nodes_to_remove.append(current)
+        current = current.next_sibling
+
+    ability_name, current = _parse_named_activation(current)
+    if ability_name:
+        ability["ability_name"] = ability_name
+
+    # Collect content until next sub-field bold
+    while current:
+        if isinstance(current, Tag) and current.name == "b":
+            break
+        content_parts.append(str(current))
+        nodes_to_remove.append(current)
+        current = current.next_sibling
+
+    # Remove processed nodes from soup
+    for node in nodes_to_remove:
+        if isinstance(node, Tag):
+            node.decompose()
+        elif isinstance(node, NavigableString):
+            node.extract()
+
+    activate_content = "".join(content_parts).strip()
+    activate_content = re.sub(r"^[\s;]+", "", activate_content)
+    activate_content = re.sub(r"[\s;]+$", "", activate_content)
+    activate_content = re.sub(r"^\s*(to|or)\s+", "", activate_content, flags=re.IGNORECASE)
+
+    if activate_content:
+        trait_links_converted = _parse_activation_content(activate_content, ability)
+
+    ability["subtype"] = "activation"
+    if "ability_name" in ability:
+        ability["activation_name"] = ability["ability_name"]
+        del ability["ability_name"]
+
+    return trait_links_converted
+
+
 def _extract_abilities_from_description(bs, sb, struct=None, debug=False, equipment_type=None):
     """Extract offensive abilities (Activate, etc.) from content after description.
 
@@ -4041,54 +4107,7 @@ def _extract_abilities_from_description(bs, sb, struct=None, debug=False, equipm
         _extract_ability_fields(ability_soup, ability)
 
         if is_activate:
-            # Extract the main text after Activate (before first sub-field)
-            activate_bold_new = ability_soup.find(
-                "b", string=lambda s: s and s.strip() == "Activate"
-            )
-            if activate_bold_new:
-                content_parts = []
-                nodes_to_remove_act = []
-                act_current = activate_bold_new.next_sibling
-
-                while (
-                    act_current
-                    and isinstance(act_current, NavigableString)
-                    and not act_current.strip()
-                ):
-                    nodes_to_remove_act.append(act_current)
-                    act_current = act_current.next_sibling
-
-                ability_name, act_current = _parse_named_activation(act_current)
-                if ability_name:
-                    ability["ability_name"] = ability_name
-
-                while act_current:
-                    if isinstance(act_current, Tag) and act_current.name == "b":
-                        break
-                    content_parts.append(str(act_current))
-                    nodes_to_remove_act.append(act_current)
-                    act_current = act_current.next_sibling
-
-                for node in nodes_to_remove_act:
-                    if isinstance(node, Tag):
-                        node.decompose()
-                    elif isinstance(node, NavigableString):
-                        node.extract()
-
-                activate_content = "".join(content_parts).strip()
-                activate_content = re.sub(r"^[\s;]+", "", activate_content)
-                activate_content = re.sub(r"[\s;]+$", "", activate_content)
-                activate_content = re.sub(
-                    r"^\s*(to|or)\s+", "", activate_content, flags=re.IGNORECASE
-                )
-
-                if activate_content:
-                    trait_links_converted += _parse_activation_content(activate_content, ability)
-
-            ability["subtype"] = "activation"
-            if "ability_name" in ability:
-                ability["activation_name"] = ability["ability_name"]
-                del ability["ability_name"]
+            trait_links_converted += _process_activate_content(ability_soup, ability)
 
         # Sweep remaining links not handled by sub-field or activation parsing
         for remaining_a in ability_soup.find_all("a", attrs={"game-obj": True}):
