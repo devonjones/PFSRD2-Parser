@@ -202,17 +202,17 @@ class TestParseActivationContent:
     """Tests for _parse_activation_content helper."""
 
     def test_extracts_simple_activation_type(self):
-        """Should extract simple activation type without parentheses."""
+        """Should extract simple activation type without parentheses (lowercased)."""
         ability = {}
 
         _parse_activation_content("Interact", ability)
 
         assert "activation_types" in ability
         assert len(ability["activation_types"]) == 1
-        assert ability["activation_types"][0]["value"] == "Interact"
+        assert ability["activation_types"][0]["value"] == "interact"  # lowercased
 
     def test_extracts_multiple_activation_types(self):
-        """Should extract comma-separated activation types."""
+        """Should extract comma-separated activation types (lowercased)."""
         ability = {}
 
         _parse_activation_content("command, Interact", ability)
@@ -220,10 +220,10 @@ class TestParseActivationContent:
         assert len(ability["activation_types"]) == 2
         values = [at["value"] for at in ability["activation_types"]]
         assert "command" in values
-        assert "Interact" in values
+        assert "interact" in values  # lowercased
 
     def test_extracts_traits_from_parentheses(self):
-        """Should extract traits from parentheses."""
+        """Should extract traits from parentheses when linked."""
         html = 'command (<a href="Traits.aspx?ID=1" game-obj="Traits">manipulate</a>)'
         ability = {}
 
@@ -234,17 +234,17 @@ class TestParseActivationContent:
         assert ability["traits"][0]["name"] == "manipulate"
 
     def test_activation_before_parentheses(self):
-        """Should use text before parentheses as activation type."""
+        """Should use text before parentheses as activation type (lowercased)."""
         html = 'Interact (<a href="Traits.aspx?ID=1" game-obj="Traits">manipulate</a>)'
         ability = {}
 
         _parse_activation_content(html, ability)
 
-        assert ability["activation_types"][0]["value"] == "Interact"
+        assert ability["activation_types"][0]["value"] == "interact"  # lowercased
 
     def test_non_trait_links_added_to_links(self):
-        """Should add non-trait links to ability links array."""
-        html = 'command; see <a href="Spells.aspx?ID=123" game-obj="Spells">fireball</a>'
+        """Should add non-trait links from within parentheses to the ability's links array."""
+        html = 'command (<a href="Spells.aspx?ID=123" game-obj="Spells">fireball</a>)'
         ability = {}
 
         _parse_activation_content(html, ability)
@@ -252,6 +252,8 @@ class TestParseActivationContent:
         assert "links" in ability
         assert len(ability["links"]) == 1
         assert ability["links"][0]["name"] == "fireball"
+        assert "activation_types" in ability
+        assert ability["activation_types"][0]["value"] == "command"
 
     def test_returns_trait_links_converted_count(self):
         """Should return count of trait links converted."""
@@ -262,15 +264,16 @@ class TestParseActivationContent:
 
         assert count == 1
 
-    def test_handles_unlinked_traits_in_parentheses(self):
-        """Should handle unlinked trait names in parentheses."""
+    def test_unlinked_text_in_parentheses_not_treated_as_traits(self):
+        """Plain text in parentheses is NOT a trait - only Traits.aspx links become traits."""
+        # Per code comment: "Plain text in parentheses (like "Treat Disease") is NOT a trait"
         html = "command (magical)"
         ability = {}
 
         _parse_activation_content(html, ability)
 
-        assert "traits" in ability
-        assert ability["traits"][0]["name"] == "magical"
+        # Unlinked text should NOT become traits
+        assert "traits" not in ability
 
     def test_filters_known_activations_from_traits(self):
         """Should not treat known activation methods as traits."""
@@ -279,7 +282,7 @@ class TestParseActivationContent:
 
         _parse_activation_content(html, ability)
 
-        # Interact should not be treated as a trait
+        # Interact should not be treated as a trait (it's not a linked trait anyway)
         assert "traits" not in ability or len(ability.get("traits", [])) == 0
 
     def test_activation_type_objects_have_correct_structure(self):
@@ -317,38 +320,38 @@ class TestParseActivationTypes:
         assert result[0]["value"] == "command"
 
     def test_comma_separated_values(self):
-        """Should parse comma-separated activation types."""
+        """Should parse comma-separated activation types and lowercase them."""
         result = _parse_activation_types("command, Interact")
 
         assert len(result) == 2
         values = [at["value"] for at in result]
         assert "command" in values
-        assert "Interact" in values
+        assert "interact" in values  # lowercased
 
     def test_semicolon_separated_values(self):
-        """Should parse semicolon-separated activation types."""
+        """Should parse semicolon-separated activation types and lowercase them."""
         result = _parse_activation_types("command; Interact")
 
         assert len(result) == 2
         values = [at["value"] for at in result]
         assert "command" in values
-        assert "Interact" in values
+        assert "interact" in values  # lowercased
 
     def test_preserves_parentheses(self):
-        """Should preserve text within parentheses when splitting."""
+        """Should preserve text within parentheses when splitting, but lowercase."""
         result = _parse_activation_types("Cast a Spell (arcane, divine)")
 
         # Should be single value because parentheses protect the comma
         assert len(result) == 1
-        assert result[0]["value"] == "Cast a Spell (arcane, divine)"
+        assert result[0]["value"] == "cast a spell (arcane, divine)"  # lowercased
 
     def test_strips_whitespace(self):
-        """Should strip whitespace from values."""
+        """Should strip whitespace from values and lowercase them."""
         result = _parse_activation_types("  command  ,  Interact  ")
 
         assert len(result) == 2
         assert result[0]["value"] == "command"
-        assert result[1]["value"] == "Interact"
+        assert result[1]["value"] == "interact"  # lowercased
 
     def test_filters_empty_values(self):
         """Should filter out empty values."""
