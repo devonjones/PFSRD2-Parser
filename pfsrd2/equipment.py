@@ -3654,16 +3654,16 @@ def _extract_activation_traits_from_parens(text, trait_links, include_unlinked_t
     parens_content = text[paren_start + 1 : paren_end].strip()
     text_before = text[:paren_start].strip()
 
-    # Build a set of trait names from parentheses for robust matching
-    paren_trait_names_set = {name.strip().lower() for name in parens_content.split(",")}
+    # Build a map of lowercased trait names to original names to preserve casing
+    paren_trait_map = {name.strip().lower(): name.strip() for name in parens_content.split(",")}
     traits_to_convert = []
     other_links = []
 
     for trait_link in trait_links:
         trait_name_lower = trait_link["name"].lower()
-        if trait_name_lower in paren_trait_names_set:
+        if trait_name_lower in paren_trait_map:
             traits_to_convert.append(trait_link)
-            paren_trait_names_set.remove(trait_name_lower)
+            del paren_trait_map[trait_name_lower]
         else:
             other_links.append(trait_link)
 
@@ -3671,9 +3671,10 @@ def _extract_activation_traits_from_parens(text, trait_links, include_unlinked_t
 
     if include_unlinked_traits:
         # Add any remaining unlinked traits from the parentheses, sorted for determinism
-        for unlinked_trait in sorted(paren_trait_names_set):
-            if unlinked_trait and not unlinked_trait.isdigit():
-                trait_names.append(unlinked_trait)
+        for unlinked_trait_lower in sorted(paren_trait_map.keys()):
+            unlinked_trait_original = paren_trait_map[unlinked_trait_lower]
+            if unlinked_trait_original and not unlinked_trait_original.isdigit():
+                trait_names.append(unlinked_trait_original)
 
     traits = build_objects("stat_block_section", "trait", trait_names) if trait_names else []
     return traits, text_before, other_links, len(traits_to_convert)
