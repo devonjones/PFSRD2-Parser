@@ -319,6 +319,15 @@ def _count_links_in_json(obj, debug=False, _links_found=None, _is_top_level=Fals
     return count
 
 
+# Default field destinations shared across armor, shield, and equipment types.
+# The routing code only processes fields actually present in extracted stats,
+# so unused entries are harmless (e.g. 'access' for shields).
+DEFAULT_FIELD_DESTINATIONS = {
+    "price": None,  # top-level stat_block
+    "bulk": None,  # top-level stat_block
+    "access": "statistics",
+}
+
 EQUIPMENT_TYPES = {
     "armor": {
         "recognized_stats": {
@@ -335,9 +344,7 @@ EQUIPMENT_TYPES = {
             "Group": "armor_group",
         },
         "field_destinations": {
-            "price": None,  # top-level stat_block
-            "bulk": None,  # top-level stat_block
-            "access": "statistics",
+            **DEFAULT_FIELD_DESTINATIONS,
             "category": "statistics",
             "strength": "statistics",  # becomes strength_requirement
             "ac_bonus": "defense",
@@ -404,8 +411,7 @@ EQUIPMENT_TYPES = {
             "HP (BT)": "hp_bt",
         },
         "field_destinations": {
-            "price": None,  # top-level stat_block
-            "bulk": None,  # top-level stat_block
+            **DEFAULT_FIELD_DESTINATIONS,
             "ac_bonus": "defense",
             "speed_penalty": "defense",
             "hardness": "defense",
@@ -545,12 +551,10 @@ EQUIPMENT_TYPES = {
         },
         # Field destinations: None = stat_block top level, or 'statistics'/'offense'/'defense'
         "field_destinations": {
-            "price": None,
-            "bulk": None,
+            **DEFAULT_FIELD_DESTINATIONS,
             "hands": "statistics",
             "usage": "statistics",
             "activate": "statistics",  # Special handling converts to ability
-            "access": "statistics",
             "craft_requirements": None,
             "ammunition": "offense",
             "base_weapon": "offense",
