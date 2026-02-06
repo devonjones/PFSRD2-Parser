@@ -3680,9 +3680,7 @@ def _extract_ability_fields(ability_soup, ability):
             ability[field_key] = value_text
 
             if value_links:
-                if "links" not in ability:
-                    ability["links"] = []
-                ability["links"].extend(value_links)
+                ability.setdefault("links", []).extend(value_links)
 
         _remove_soup_nodes(nodes_to_remove)
         field_bold.decompose()
@@ -3821,10 +3819,7 @@ def _extract_traits_from_time_part(time_part, ability):
             trait_names = [tl["name"] for tl in time_trait_links]
             if trait_names:
                 traits = build_objects("stat_block_section", "trait", trait_names)
-                if "traits" not in ability:
-                    ability["traits"] = traits
-                else:
-                    ability["traits"].extend(traits)
+                ability.setdefault("traits", []).extend(traits)
                 trait_links_converted = len(time_trait_links)
             # Remove the parenthesized section from the time text
             return time_text[:paren_start].strip(), trait_links_converted
