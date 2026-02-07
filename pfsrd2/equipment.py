@@ -319,6 +319,15 @@ def _count_links_in_json(obj, debug=False, _links_found=None, _is_top_level=Fals
     return count
 
 
+# Default field destinations shared across armor, shield, and equipment types.
+# The routing code only processes fields actually present in extracted stats,
+# so unused entries are harmless (e.g. 'access' for shields).
+DEFAULT_FIELD_DESTINATIONS = {
+    "price": None,  # top-level stat_block
+    "bulk": None,  # top-level stat_block
+    "access": "statistics",
+}
+
 EQUIPMENT_TYPES = {
     "armor": {
         "recognized_stats": {
@@ -335,9 +344,7 @@ EQUIPMENT_TYPES = {
             "Group": "armor_group",
         },
         "field_destinations": {
-            "price": None,  # top-level stat_block
-            "bulk": None,  # top-level stat_block
-            "access": "statistics",
+            **DEFAULT_FIELD_DESTINATIONS,
             "category": "statistics",
             "strength": "statistics",  # becomes strength_requirement
             "ac_bonus": "defense",
@@ -404,8 +411,7 @@ EQUIPMENT_TYPES = {
             "HP (BT)": "hp_bt",
         },
         "field_destinations": {
-            "price": None,  # top-level stat_block
-            "bulk": None,  # top-level stat_block
+            **DEFAULT_FIELD_DESTINATIONS,
             "ac_bonus": "defense",
             "speed_penalty": "defense",
             "hardness": "defense",
@@ -545,12 +551,10 @@ EQUIPMENT_TYPES = {
         },
         # Field destinations: None = stat_block top level, or 'statistics'/'offense'/'defense'
         "field_destinations": {
-            "price": None,
-            "bulk": None,
+            **DEFAULT_FIELD_DESTINATIONS,
             "hands": "statistics",
             "usage": "statistics",
             "activate": "statistics",  # Special handling converts to ability
-            "access": "statistics",
             "craft_requirements": None,
             "ammunition": "offense",
             "base_weapon": "offense",
@@ -949,6 +953,44 @@ def section_pass(struct, config, debug=False):
         return _generic_section_pass(struct, config, debug=debug)
 
 
+def _parse_variant_name_and_level(h2_tag):
+    """Extract variant name and level from h2 tag.
+
+    Handles formats like "Artisan's Tools<span>Item 0</span>" or
+    "Artisan's Tools (Sterling)<span>Item 3</span>".
+
+    Args:
+        h2_tag: The h2 BeautifulSoup element
+
+    Returns:
+        Tuple of (name, level) where level is an int
+    """
+    h2_text = get_text(h2_tag).strip()
+    level_match = re.search(r"Item\s+(\d+)", h2_text)
+    level = int(level_match.group(1)) if level_match else 0
+    name = re.sub(r"\s*Item\s+\d+\+?\s*$", "", h2_text).strip()
+    return name, level
+
+
+def _collect_content_until_h2(start_tag):
+    """Collect sibling content from a tag until the next h2 or end.
+
+    Args:
+        start_tag: Tag to start collecting from (exclusive)
+
+    Returns:
+        BeautifulSoup object containing the collected content
+    """
+    content_parts = []
+    current = start_tag.next_sibling
+    while current:
+        if hasattr(current, "name") and current.name == "h2":
+            break
+        content_parts.append(str(current))
+        current = current.next_sibling
+    return BeautifulSoup("".join(content_parts), "html.parser")
+
+
 def _parse_variant_section(h2_tag, config, parent_name, debug=False):
     """Parse a variant section (h2 and its content) into a variant stat block.
 
@@ -961,26 +1003,8 @@ def _parse_variant_section(h2_tag, config, parent_name, debug=False):
     Returns:
         Tuple of (variant stat block dict, link count removed from variant)
     """
-    # Extract variant name and level from h2
-    # Format: "Artisan's Tools<span>Item 0</span>" or "Artisan's Tools (Sterling)<span>Item 3</span>"
-    h2_text = get_text(h2_tag).strip()
-    level_match = re.search(r"Item\s+(\d+)", h2_text)
-    level = int(level_match.group(1)) if level_match else 0
-
-    # Name is everything before "Item N"
-    name = re.sub(r"\s*Item\s+\d+\+?\s*$", "", h2_text).strip()
-
-    # Collect content from h2 until next h2 or end
-    content_parts = []
-    current = h2_tag.next_sibling
-    while current:
-        if hasattr(current, "name") and current.name == "h2":
-            break  # Stop at next variant
-        content_parts.append(str(current))
-        current = current.next_sibling
-
-    variant_html = "".join(content_parts)
-    bs = BeautifulSoup(variant_html, "html.parser")
+    name, level = _parse_variant_name_and_level(h2_tag)
+    bs = _collect_content_until_h2(h2_tag)
 
     # Create variant struct to hold source (like parent struct)
     variant_struct = {"sources": []}
@@ -2870,6 +2894,80 @@ def _extract_base_material(bs, sb, debug=False):
     return 0
 
 
+def _is_variant_marker_heading(tag):
+    """Check if a heading tag is a variant marker (not a content section).
+
+    Variant markers contain:
+    - PFS.aspx link (PFS icon)
+    - "Item X" level indicator
+
+    Args:
+        tag: BeautifulSoup heading tag (h1-h6)
+
+    Returns:
+        True if this is a variant marker, False if it's a content section heading
+    """
+    # Check for PFS link - indicator of variant marker
+    pfs_link = tag.find("a", href=lambda h: h and "PFS.aspx" in h)
+    if pfs_link:
+        return True
+    # Check for "Item X" level indicator
+    return bool(re.search(r"Item\s+\d+", tag.get_text()))
+
+
+def _get_heading_level(tag):
+    """Get numeric level from heading tag (h2 -> 2, h3 -> 3, etc.)."""
+    return int(tag.name[1])
+
+
+def _get_content_until_next_heading(start_heading, all_headings):
+    """Get content after a heading until the next heading or end.
+
+    Args:
+        start_heading: The heading tag to start from
+        all_headings: List of all heading tags to stop at
+
+    Returns:
+        HTML string of content between this heading and the next
+    """
+    content_parts = []
+    current = start_heading.next_sibling
+    while current:
+        if current in all_headings:
+            break
+        content_parts.append(str(current))
+        current = current.next_sibling
+    return "".join(content_parts)
+
+
+def _build_section_from_heading(heading, all_headings):
+    """Build a section dict from a heading and its following content.
+
+    Args:
+        heading: The heading tag
+        all_headings: List of all heading tags (to know where content ends)
+
+    Returns:
+        Tuple of (level, section_dict) where level is the heading number
+    """
+    level = _get_heading_level(heading)
+    name = heading.get_text().strip()
+    content = _get_content_until_next_heading(heading, all_headings)
+
+    content_soup = BeautifulSoup(content, "html.parser")
+    content_links = get_links(content_soup, unwrap=True)
+
+    section = {
+        "name": name,
+        "type": "section",
+        "text": _normalize_whitespace(str(content_soup)),
+    }
+    if content_links:
+        section["links"] = content_links
+
+    return level, section
+
+
 def _extract_sections_from_headings(desc_soup, debug=False):
     """Extract sections from headings (h1-h6) in description content.
 
@@ -2888,80 +2986,31 @@ def _extract_sections_from_headings(desc_soup, debug=False):
         - sections_list: List of section dicts with name, type, text, sections
     """
     # Find all headings that are NOT variant markers
-    # Variant markers are headings that contain:
-    # - PFS.aspx link (PFS icon)
-    # - "Item X" level indicator (span with "Item \d+")
-    # Regular section headings may have class="title" but lack these indicators
-    headings = []
-    for tag in desc_soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
-        # Check for PFS link - indicator of variant marker
-        pfs_link = tag.find("a", href=lambda h: h and "PFS.aspx" in h)
-        if pfs_link:
-            continue  # Skip variant markers
-
-        # Check for "Item X" level indicator
-        tag_text = tag.get_text()
-        if re.search(r"Item\s+\d+", tag_text):
-            continue  # Skip variant markers
-
-        headings.append(tag)
+    headings = [
+        tag
+        for tag in desc_soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
+        if not _is_variant_marker_heading(tag)
+    ]
 
     if not headings:
-        # No section headings found - return all content as main text
         return str(desc_soup), []
 
     # Get content before first heading (this is the main description)
     pre_heading_parts = []
     for elem in desc_soup.children:
-        if elem in headings:
-            break
-        if elem == headings[0]:
+        if elem in headings or elem == headings[0]:
             break
         pre_heading_parts.append(str(elem))
     pre_heading_html = "".join(pre_heading_parts)
-
-    # Build section tree
-    # Each section has: name, type, text (content), sections (children)
-    def get_heading_level(tag):
-        return int(tag.name[1])  # h2 -> 2, h3 -> 3, etc.
-
-    def get_content_until_next_heading(start_heading, all_headings, heading_idx):
-        """Get content after a heading until the next heading or end."""
-        content_parts = []
-        current = start_heading.next_sibling
-
-        while current:
-            if current in all_headings:
-                break
-            content_parts.append(str(current))
-            current = current.next_sibling
-
-        return "".join(content_parts)
 
     # Process headings into nested structure
     sections = []
     section_stack = []  # Stack of (level, section_dict) for tracking hierarchy
 
-    for i, heading in enumerate(headings):
-        level = get_heading_level(heading)
-        name = heading.get_text().strip()
-        content = get_content_until_next_heading(heading, headings, i)
+    for heading in headings:
+        level, section = _build_section_from_heading(heading, headings)
 
-        # Extract links from content and unwrap <a> tags
-        content_soup = BeautifulSoup(content, "html.parser")
-        content_links = get_links(content_soup, unwrap=True)
-
-        section = {
-            "name": name,
-            "type": "section",
-            "text": _normalize_whitespace(str(content_soup)),
-        }
-        if content_links:
-            section["links"] = content_links
-
-        # Determine where this section belongs based on heading level
         if not section_stack:
-            # First section - add to root
             sections.append(section)
             section_stack.append((level, section))
         else:
@@ -2970,13 +3019,9 @@ def _extract_sections_from_headings(desc_soup, debug=False):
                 section_stack.pop()
 
             if section_stack:
-                # Add as child of the section at top of stack
                 parent = section_stack[-1][1]
-                if "sections" not in parent:
-                    parent["sections"] = []
-                parent["sections"].append(section)
+                parent.setdefault("sections", []).append(section)
             else:
-                # No parent - add to root
                 sections.append(section)
 
             section_stack.append((level, section))
@@ -3012,6 +3057,77 @@ def _has_affliction_pattern(soup):
     return False
 
 
+def _collect_preceding_whitespace(node):
+    """Collect preceding <br> tags and whitespace nodes.
+
+    Args:
+        node: Starting node to walk backwards from
+
+    Returns:
+        List of br/whitespace nodes preceding the given node
+    """
+    preceding = []
+    prev = node.previous_sibling
+    while prev:
+        if (isinstance(prev, Tag) and prev.name == "br") or (
+            isinstance(prev, NavigableString) and prev.strip() == ""
+        ):
+            preceding.append(prev)
+            prev = prev.previous_sibling
+        else:
+            break
+    return preceding
+
+
+def _collect_node_and_following(node):
+    """Collect a node and all its following siblings.
+
+    Args:
+        node: Starting node
+
+    Returns:
+        List of nodes from node through end of siblings
+    """
+    nodes = []
+    current = node
+    while current:
+        nodes.append(current)
+        current = current.next_sibling
+    return nodes
+
+
+def _create_affliction_stage(title, text):
+    """Create an affliction stage dict.
+
+    Args:
+        title: Stage name (e.g., "Stage 1")
+        text: Stage effect text
+
+    Returns:
+        Stage dict with type, subtype, name, text
+    """
+    return {
+        "type": "stat_block_section",
+        "subtype": "affliction_stage",
+        "name": title,
+        "text": text,
+    }
+
+
+def _normalize_affliction_text(text):
+    """Normalize whitespace in affliction text and fix spacing before punctuation.
+
+    Args:
+        text: Raw text from affliction HTML
+
+    Returns:
+        Cleaned text with normalized whitespace
+    """
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r" ([,;.])", r"\1", text)
+    return text
+
+
 def _extract_affliction(desc_soup, item_name):
     """Extract affliction data from description soup into a structured object.
 
@@ -3034,29 +3150,9 @@ def _extract_affliction(desc_soup, item_name):
     if not saving_throw_bold:
         return None, []
 
-    # Collect all nodes from Saving Throw bold to the end of desc_soup
-    # Also collect preceding <br> tags (separators between narrative text and affliction)
-    nodes_to_remove = []
-
-    # Walk backwards from Saving Throw to collect preceding <br> tags and whitespace
-    prev = saving_throw_bold.previous_sibling
-    preceding_brs = []
-    while prev:
-        if (isinstance(prev, Tag) and prev.name == "br") or (
-            isinstance(prev, NavigableString) and prev.strip() == ""
-        ):
-            preceding_brs.append(prev)
-            prev = prev.previous_sibling
-        else:
-            break
-    nodes_to_remove.extend(preceding_brs)
-
-    # Collect from Saving Throw bold through end of content
-    affliction_nodes = []
-    current = saving_throw_bold
-    while current:
-        affliction_nodes.append(current)
-        current = current.next_sibling
+    # Collect nodes to remove: preceding whitespace + affliction content
+    nodes_to_remove = _collect_preceding_whitespace(saving_throw_bold)
+    affliction_nodes = _collect_node_and_following(saving_throw_bold)
     nodes_to_remove.extend(affliction_nodes)
 
     # Build HTML string from affliction nodes (not the preceding brs)
@@ -3066,11 +3162,10 @@ def _extract_affliction(desc_soup, item_name):
     affliction_soup = BeautifulSoup(affliction_html, "html.parser")
     affliction_links = get_links(affliction_soup, unwrap=True)
 
-    # Unwrap remaining <a> tags (already extracted links above) and get HTML text
+    # Unwrap remaining <a> tags and split by semicolon
     while affliction_soup.a:
         affliction_soup.a.unwrap()
-    affliction_html_text = str(affliction_soup)
-    parts = [p.strip() for p in affliction_html_text.split(";")]
+    parts = [p.strip() for p in str(affliction_soup).split(";")]
 
     section = {
         "type": "stat_block_section",
@@ -3078,24 +3173,12 @@ def _extract_affliction(desc_soup, item_name):
         "name": item_name,
     }
 
-    def _handle_stage(title, text):
-        stage = {
-            "type": "stat_block_section",
-            "subtype": "affliction_stage",
-            "name": title,
-            "text": text,
-        }
-        section.setdefault("stages", []).append(stage)
-
     first = True
     for p in parts:
         p_soup = BeautifulSoup(p, "html.parser")
         if p_soup.b:
             title = get_text(p_soup.b.extract()).strip()
-            # Normalize whitespace: collapse \n and multiple spaces from HTML formatting
-            # Also fix spaces before punctuation left by unwrapped tags
-            newtext = re.sub(r"\s+", " ", get_text(p_soup)).strip()
-            newtext = re.sub(r" ([,;.])", r"\1", newtext)
+            newtext = _normalize_affliction_text(get_text(p_soup))
             if title == "Saving Throw":
                 section["saving_throw"] = universal_handle_save_dc(newtext)
             elif title == "Onset":
@@ -3105,12 +3188,11 @@ def _extract_affliction(desc_soup, item_name):
             elif title == "Effect":
                 section["effect"] = newtext
             elif title.startswith("Stage"):
-                _handle_stage(title, newtext)
+                section.setdefault("stages", []).append(_create_affliction_stage(title, newtext))
             else:
-                # Unknown bold label - store as context
                 section.setdefault("text", newtext)
         else:
-            text_content = re.sub(r"\s+", " ", get_text(p_soup)).strip()
+            text_content = _normalize_affliction_text(get_text(p_soup))
             if text_content:
                 if first:
                     section["context"] = text_content
@@ -3121,13 +3203,7 @@ def _extract_affliction(desc_soup, item_name):
     if affliction_links:
         section["links"] = affliction_links
 
-    # Remove affliction nodes from desc_soup
-    for node in nodes_to_remove:
-        if isinstance(node, Tag):
-            node.decompose()
-        elif isinstance(node, NavigableString):
-            node.extract()
-
+    _remove_soup_nodes(nodes_to_remove)
     return section, affliction_links
 
 
@@ -3504,6 +3580,71 @@ def _parse_activation_types(activation_string):
     return result
 
 
+def _collect_siblings_until_bold(start_node):
+    """Collect sibling nodes starting from start_node until a <b> tag or end.
+
+    Args:
+        start_node: The first sibling to examine
+
+    Returns:
+        Tuple of (value_parts, nodes_to_remove) where value_parts is list of
+        stringified nodes and nodes_to_remove is list of node references.
+    """
+    value_parts = []
+    nodes_to_remove = []
+    current = start_node
+    while current:
+        if isinstance(current, Tag) and current.name == "b":
+            break
+        value_parts.append(str(current))
+        nodes_to_remove.append(current)
+        current = current.next_sibling
+    return value_parts, nodes_to_remove
+
+
+def _clean_field_value_html(value_html):
+    """Clean field value HTML by removing leading/trailing semicolons and br tags.
+
+    Args:
+        value_html: Raw HTML string from field value
+
+    Returns:
+        Cleaned HTML string
+    """
+    value_html = value_html.strip()
+    value_html = re.sub(r"^[\s;]+", "", value_html)
+    value_html = re.sub(r"<br\s*/?>[\s]*$", "", value_html)
+    value_html = re.sub(r"[\s;]+$", "", value_html)
+    return value_html
+
+
+def _remove_soup_nodes(nodes):
+    """Remove a list of nodes from their parent soup.
+
+    Args:
+        nodes: List of Tag or NavigableString nodes to remove
+    """
+    for node in nodes:
+        if isinstance(node, Tag):
+            node.decompose()
+        elif isinstance(node, NavigableString):
+            node.extract()
+
+
+# Field names recognized as ability sub-fields
+ABILITY_FIELD_NAMES = [
+    "Frequency",
+    "Trigger",
+    "Effect",
+    "Requirements",
+    "Critical Success",
+    "Success",
+    "Failure",
+    "Critical Failure",
+    "Destruction",
+]
+
+
 def _extract_ability_fields(ability_soup, ability):
     """Extract sub-fields (Frequency, Trigger, Effect, Requirements) from ability soup.
 
@@ -3515,39 +3656,13 @@ def _extract_ability_fields(ability_soup, ability):
         ability_soup: BeautifulSoup object containing the ability HTML
         ability: dict to populate with extracted fields
     """
-    field_names = [
-        "Frequency",
-        "Trigger",
-        "Effect",
-        "Requirements",
-        "Critical Success",
-        "Success",
-        "Failure",
-        "Critical Failure",
-        "Destruction",
-    ]
-    for field in field_names:
+    for field in ABILITY_FIELD_NAMES:
         field_bold = ability_soup.find("b", string=lambda s, f=field: s and s.strip() == f)
         if not field_bold:
             continue
 
-        # Get value after the bold tag until next bold or end
-        value_parts = []
-        nodes_to_remove = []
-        field_current = field_bold.next_sibling
-        while field_current:
-            if isinstance(field_current, Tag) and field_current.name == "b":
-                break
-            value_parts.append(str(field_current))
-            nodes_to_remove.append(field_current)
-            field_current = field_current.next_sibling
-
-        value_html = "".join(value_parts).strip()
-        # Clean up: remove leading semicolons and whitespace
-        value_html = re.sub(r"^[\s;]+", "", value_html)
-        # Remove trailing <br> tags and semicolons
-        value_html = re.sub(r"<br\s*/?>[\s]*$", "", value_html)
-        value_html = re.sub(r"[\s;]+$", "", value_html)
+        value_parts, nodes_to_remove = _collect_siblings_until_bold(field_bold.next_sibling)
+        value_html = _clean_field_value_html("".join(value_parts))
 
         if value_html:
             # Extract links from value
@@ -3556,7 +3671,6 @@ def _extract_ability_fields(ability_soup, ability):
             value_links = [link for link in value_links if "game-obj" in link]
             # Convert <br> tags to newlines, then normalize whitespace
             value_text = re.sub(r"<br\s*/?>", "\n", value_text)
-            # Normalize whitespace (collapse multiple spaces/newlines)
             value_text = _normalize_whitespace(value_text)
 
             field_key = field.lower().replace(" ", "_")
@@ -3565,18 +3679,10 @@ def _extract_ability_fields(ability_soup, ability):
 
             ability[field_key] = value_text
 
-            # Add links to ability's links array
             if value_links:
-                if "links" not in ability:
-                    ability["links"] = []
-                ability["links"].extend(value_links)
+                ability.setdefault("links", []).extend(value_links)
 
-        # Remove the field bold and its value nodes from soup
-        for node in nodes_to_remove:
-            if isinstance(node, Tag):
-                node.decompose()
-            elif isinstance(node, NavigableString):
-                node.extract()
+        _remove_soup_nodes(nodes_to_remove)
         field_bold.decompose()
 
 
@@ -3682,6 +3788,50 @@ def _extract_activation_traits_from_parens(text, trait_links, include_unlinked_t
     return traits, text_before, other_links, len(traits_to_convert)
 
 
+def _extract_traits_from_time_part(time_part, ability):
+    """Extract traits from a time part that may contain parenthesized trait links.
+
+    Handles patterns like "10 minutes (fortune, mental)" where traits are
+    linked inside parentheses after the time value.
+
+    Args:
+        time_part: HTML string of the time portion (e.g., "10 minutes (fortune, mental)")
+        ability: dict to add extracted traits to
+
+    Returns:
+        Tuple of (activation_time, trait_links_converted) where activation_time is the
+        cleaned time string and trait_links_converted is count of trait links processed.
+    """
+    time_soup = BeautifulSoup(time_part, "html.parser")
+    time_trait_links = []
+    for a_tag in time_soup.find_all("a", attrs={"game-obj": "Traits"}):
+        _, link = extract_link(a_tag)
+        time_trait_links.append(link)
+        a_tag.unwrap()
+
+    time_text = _normalize_whitespace(str(time_soup))
+    trait_links_converted = 0
+
+    if time_trait_links and "(" in time_text:
+        paren_start = time_text.find("(")
+        paren_end = time_text.find(")")
+        if paren_end > paren_start:
+            trait_names = [tl["name"] for tl in time_trait_links]
+            if trait_names:
+                traits = build_objects("stat_block_section", "trait", trait_names)
+                ability.setdefault("traits", []).extend(traits)
+                trait_links_converted = len(time_trait_links)
+            # Remove the parenthesized section from the time text
+            return time_text[:paren_start].strip(), trait_links_converted
+
+    return time_text, trait_links_converted
+
+
+# Regex pattern for detecting time values in activation content
+_TIME_PATTERN = re.compile(r"\d+\s*(minute|hour|round|day|action)", re.IGNORECASE)
+_TIME_ONLY_PATTERN = re.compile(r"^\d+\s*(minute|hour|round|day|action)s?$", re.IGNORECASE)
+
+
 def _parse_activation_content(activate_content, ability):
     """Parse activation content to extract traits, activation types, time, and links.
 
@@ -3699,46 +3849,17 @@ def _parse_activation_content(activate_content, ability):
         int: Count of trait links converted (for link accounting)
     """
     trait_links_converted = 0
+    activation_time = None
 
     # Check for activation_time (semicolon-separated, e.g., "command, envision; 1 minute")
-    # Split on semicolon first to separate activation types from time
-    activation_time = None
     if ";" in activate_content:
         parts = activate_content.split(";", 1)
         activate_content = parts[0].strip()
         if len(parts) > 1:
             time_part = parts[1].strip()
-            # Check if it looks like a time value (contains number + time unit)
-            if re.search(r"\d+\s*(minute|hour|round|day|action)", time_part, re.IGNORECASE):
-                # time_part may contain parenthesized trait links, e.g.,
-                # "10 minutes (fortune, mental)" with <a game-obj="Traits"> tags.
-                # Extract those traits before storing activation_time.
-                time_soup = BeautifulSoup(time_part, "html.parser")
-                time_trait_links = []
-                for a_tag in time_soup.find_all("a", attrs={"game-obj": "Traits"}):
-                    _, link = extract_link(a_tag)
-                    time_trait_links.append(link)
-                    a_tag.unwrap()
-                time_text = _normalize_whitespace(str(time_soup))
-                # Extract trait names from parentheses and build trait objects
-                if time_trait_links and "(" in time_text:
-                    paren_start = time_text.find("(")
-                    paren_end = time_text.find(")")
-                    if paren_end > paren_start:
-                        trait_names = [tl["name"] for tl in time_trait_links]
-                        if trait_names:
-                            traits = build_objects("stat_block_section", "trait", trait_names)
-                            if "traits" not in ability:
-                                ability["traits"] = traits
-                            else:
-                                ability["traits"].extend(traits)
-                            trait_links_converted += len(time_trait_links)
-                        # Remove the parenthesized section from the time text
-                        activation_time = time_text[:paren_start].strip()
-                    else:
-                        activation_time = time_text
-                else:
-                    activation_time = time_text
+            if _TIME_PATTERN.search(time_part):
+                activation_time, converted = _extract_traits_from_time_part(time_part, ability)
+                trait_links_converted += converted
 
     # Parse the activate content soup to extract links and traits
     content_soup = BeautifulSoup(activate_content, "html.parser")
@@ -3765,9 +3886,7 @@ def _parse_activation_content(activate_content, ability):
 
     # The text before parentheses is the activation (e.g., "command", "Interact")
     # BUT: If it looks like a time value (e.g., "1 minute"), it's activation_time, not activation
-    if activation and re.search(
-        r"^\d+\s*(minute|hour|round|day|action)s?$", activation, re.IGNORECASE
-    ):
+    if activation and _TIME_ONLY_PATTERN.match(activation):
         activation_time = activation
         activation = ""
 
@@ -3986,6 +4105,39 @@ def _clean_activation_cruft_from_text(sb):
         del sb["text"]
 
 
+def _skip_leading_whitespace(start_node):
+    """Skip leading whitespace NavigableString nodes.
+
+    Args:
+        start_node: Starting node to examine
+
+    Returns:
+        Tuple of (first_non_whitespace_node, whitespace_nodes_to_remove)
+    """
+    nodes_to_remove = []
+    current = start_node
+    while current and isinstance(current, NavigableString) and not current.strip():
+        nodes_to_remove.append(current)
+        current = current.next_sibling
+    return current, nodes_to_remove
+
+
+def _clean_activate_content(content):
+    """Clean activation content by removing leading/trailing semicolons and 'to'/'or' prefixes.
+
+    Args:
+        content: Raw activation content string
+
+    Returns:
+        Cleaned content string
+    """
+    content = content.strip()
+    content = re.sub(r"^[\s;]+", "", content)
+    content = re.sub(r"[\s;]+$", "", content)
+    content = re.sub(r"^\s*(to|or)\s+", "", content, flags=re.IGNORECASE)
+    return content
+
+
 def _process_activate_content(ability_soup, ability):
     """Process an Activate ability's content: extract named activation, activation types, and traits.
 
@@ -4000,52 +4152,30 @@ def _process_activate_content(ability_soup, ability):
     Returns:
         int: Count of trait links converted (for link accounting)
     """
-    trait_links_converted = 0
-
     activate_bold = ability_soup.find("b", string=lambda s: s and s.strip() == "Activate")
     if not activate_bold:
         return 0
 
-    content_parts = []
-    nodes_to_remove = []
-    current = activate_bold.next_sibling
-
-    # Skip leading whitespace nodes
-    while current and isinstance(current, NavigableString) and not current.strip():
-        nodes_to_remove.append(current)
-        current = current.next_sibling
+    current, nodes_to_remove = _skip_leading_whitespace(activate_bold.next_sibling)
 
     ability_name, current = _parse_named_activation(current)
     if ability_name:
         ability["ability_name"] = ability_name
 
     # Collect content until next sub-field bold
-    while current:
-        if isinstance(current, Tag) and current.name == "b":
-            break
-        content_parts.append(str(current))
-        nodes_to_remove.append(current)
-        current = current.next_sibling
+    content_parts, content_nodes = _collect_siblings_until_bold(current)
+    nodes_to_remove.extend(content_nodes)
 
-    # Remove processed nodes from soup
-    for node in nodes_to_remove:
-        if isinstance(node, Tag):
-            node.decompose()
-        elif isinstance(node, NavigableString):
-            node.extract()
+    _remove_soup_nodes(nodes_to_remove)
 
-    activate_content = "".join(content_parts).strip()
-    activate_content = re.sub(r"^[\s;]+", "", activate_content)
-    activate_content = re.sub(r"[\s;]+$", "", activate_content)
-    activate_content = re.sub(r"^\s*(to|or)\s+", "", activate_content, flags=re.IGNORECASE)
-
+    activate_content = _clean_activate_content("".join(content_parts))
+    trait_links_converted = 0
     if activate_content:
         trait_links_converted = _parse_activation_content(activate_content, ability)
 
     ability["subtype"] = "activation"
     if "ability_name" in ability:
-        ability["activation_name"] = ability["ability_name"]
-        del ability["ability_name"]
+        ability["activation_name"] = ability.pop("ability_name")
 
     return trait_links_converted
 

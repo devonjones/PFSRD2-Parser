@@ -4,6 +4,8 @@ import pytest
 from bs4 import BeautifulSoup
 
 from pfsrd2.equipment import (
+    DEFAULT_FIELD_DESTINATIONS,
+    EQUIPMENT_TYPES,
     _clean_activation_cruft_from_text,
     _collect_equipment_ability_content,
     _deduplicate_links_across_abilities,
@@ -1397,6 +1399,83 @@ class TestExtractActivationTraitsDigitFiltering:
         )
 
         assert traits == []
+
+
+class TestDefaultFieldDestinations:
+    """Tests for DEFAULT_FIELD_DESTINATIONS consolidation."""
+
+    TYPES_USING_DEFAULTS = ["armor", "shield", "equipment"]
+
+    def test_base_fields_present_in_all_types(self):
+        """Every base field from DEFAULT_FIELD_DESTINATIONS should appear in all 3 types."""
+        for eq_type in self.TYPES_USING_DEFAULTS:
+            fd = EQUIPMENT_TYPES[eq_type]["field_destinations"]
+            for field, dest in DEFAULT_FIELD_DESTINATIONS.items():
+                assert field in fd, f"'{field}' missing from {eq_type} field_destinations"
+                assert (
+                    fd[field] == dest
+                ), f"'{field}' in {eq_type} is {fd[field]!r}, expected {dest!r}"
+
+    def test_armor_has_defense_fields(self):
+        """Armor should have its defense-routed fields."""
+        fd = EQUIPMENT_TYPES["armor"]["field_destinations"]
+        for field in ("ac_bonus", "dex_cap", "check_penalty", "speed_penalty", "armor_group"):
+            assert fd[field] == "defense", f"armor '{field}' should route to defense"
+
+    def test_armor_has_statistics_fields(self):
+        """Armor should have category and strength in statistics."""
+        fd = EQUIPMENT_TYPES["armor"]["field_destinations"]
+        assert fd["category"] == "statistics"
+        assert fd["strength"] == "statistics"
+
+    def test_shield_has_defense_fields(self):
+        """Shield should have its defense-routed fields."""
+        fd = EQUIPMENT_TYPES["shield"]["field_destinations"]
+        for field in ("ac_bonus", "speed_penalty", "hardness", "hp_bt"):
+            assert fd[field] == "defense", f"shield '{field}' should route to defense"
+
+    def test_shield_lacks_armor_specific_fields(self):
+        """Shield should not have armor-specific fields like category or strength."""
+        fd = EQUIPMENT_TYPES["shield"]["field_destinations"]
+        assert "category" not in fd
+        assert "strength" not in fd
+
+    def test_equipment_has_statistics_fields(self):
+        """Equipment should have its statistics-routed fields."""
+        fd = EQUIPMENT_TYPES["equipment"]["field_destinations"]
+        for field in (
+            "hands",
+            "usage",
+            "activate",
+            "perception",
+            "communication",
+            "languages",
+            "skills",
+            "int",
+            "wis",
+            "cha",
+            "will",
+        ):
+            assert fd[field] == "statistics", f"equipment '{field}' should route to statistics"
+
+    def test_equipment_has_offense_fields(self):
+        """Equipment should have ammunition and base_weapon in offense."""
+        fd = EQUIPMENT_TYPES["equipment"]["field_destinations"]
+        assert fd["ammunition"] == "offense"
+        assert fd["base_weapon"] == "offense"
+
+    def test_equipment_has_defense_fields(self):
+        """Equipment should have base_armor and base_shield in defense."""
+        fd = EQUIPMENT_TYPES["equipment"]["field_destinations"]
+        assert fd["base_armor"] == "defense"
+        assert fd["base_shield"] == "defense"
+
+    def test_legacy_types_not_affected(self):
+        """Weapon, siege_weapon, vehicle should not have field_destinations."""
+        for eq_type in ("weapon", "siege_weapon", "vehicle"):
+            assert (
+                "field_destinations" not in EQUIPMENT_TYPES[eq_type]
+            ), f"{eq_type} should use shared_fields/nested_fields, not field_destinations"
 
 
 if __name__ == "__main__":
