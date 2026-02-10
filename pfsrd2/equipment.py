@@ -581,8 +581,12 @@ EQUIPMENT_TYPES = {
 # Equipment items that are allowed to have span tags (for broken HTML with action icons)
 # Only add items here after manually verifying the HTML is genuinely broken
 EQUIPMENT_SPANS_ALLOWED = [
-    # Add equipment names here as needed, e.g.:
-    # "Vonthos's Golden Bridge",
+    "Wand of Continuation",
+    "Wand of Widening",
+    "Wand of Reaching",
+    "Undead Compendium",
+    "Ferrofluid Urchin",
+    "Horned Hand Rests",
 ]
 
 
@@ -782,12 +786,34 @@ def parse_equipment_html(filename, equipment_type=None):
 
     combined_content = "".join(content_parts)
 
+    # Extract image if present (same pattern as creatures: <a href="Images\..."><img ...></a>)
+    image = None
+    content_soup = BeautifulSoup(combined_content, "html.parser")
+    for a_tag in content_soup.find_all("a"):
+        if a_tag.find("img"):
+            href = a_tag.get("href", "")
+            if "Images" not in href:
+                continue
+            if href:
+                image_filename = href.split("\\").pop().split("%5C").pop()
+                image = {
+                    "type": "image",
+                    "name": name,
+                    "image": image_filename,
+                }
+            a_tag.decompose()
+            break
+    if image:
+        combined_content = str(content_soup)
+
     result = {
         "name": name,
         "text": combined_content,
         "level": level,  # Always include level (0 if not specified)
         "pfs": pfs,  # Always include PFS (Standard if not specified)
     }
+    if image:
+        result["image"] = image
 
     return result
 
@@ -911,6 +937,8 @@ def restructure_equipment_pass(details, equipment_type):
         "sections": [],
         "level": level,  # Always include level
     }
+    if "image" in details:
+        sb["image"] = details["image"]
 
     # Build top-level structure
     top = {
@@ -3041,20 +3069,26 @@ def _has_affliction_pattern(soup):
 
     Returns True if the soup has a <b>Saving Throw</b> tag followed by at least one of
     <b>Stage</b>, <b>Maximum Duration</b>, or <b>Onset</b>.
+    Also returns True for Stage-only patterns (no Saving Throw) like beneficial
+    consumables with progression stages (e.g., Heartblood Ring, Phoenix Cinder).
     """
     saving_throw_bold = None
+    has_stage = False
     for bold in soup.find_all("b"):
-        if get_text(bold).strip() == "Saving Throw":
-            saving_throw_bold = bold
-            break
-    if not saving_throw_bold:
-        return False
-    # Check if any subsequent bold tag is a stage, duration, or onset
-    for bold in saving_throw_bold.find_all_next("b"):
         text = get_text(bold).strip()
-        if text.startswith("Stage") or text == "Maximum Duration" or text == "Onset":
-            return True
-    return False
+        if text == "Saving Throw":
+            saving_throw_bold = bold
+        if text.startswith("Stage"):
+            has_stage = True
+    if saving_throw_bold:
+        # Classic affliction: Saving Throw + Stages
+        for bold in saving_throw_bold.find_all_next("b"):
+            text = get_text(bold).strip()
+            if text.startswith("Stage") or text == "Maximum Duration" or text == "Onset":
+                return True
+        return False
+    # Stage-only pattern (no Saving Throw)
+    return has_stage
 
 
 def _collect_preceding_whitespace(node):
@@ -3141,18 +3175,21 @@ def _extract_affliction(desc_soup, item_name):
     Returns:
         Tuple of (affliction_dict, affliction_links) or (None, []) if no affliction found.
     """
-    # Find the <b>Saving Throw</b> tag
-    saving_throw_bold = None
+    # Find the start tag: <b>Saving Throw</b> or first <b>Stage ...</b>
+    start_bold = None
     for bold in desc_soup.find_all("b"):
-        if get_text(bold).strip() == "Saving Throw":
-            saving_throw_bold = bold
+        text = get_text(bold).strip()
+        if text == "Saving Throw":
+            start_bold = bold
             break
-    if not saving_throw_bold:
+        if text.startswith("Stage") and start_bold is None:
+            start_bold = bold
+    if not start_bold:
         return None, []
 
     # Collect nodes to remove: preceding whitespace + affliction content
-    nodes_to_remove = _collect_preceding_whitespace(saving_throw_bold)
-    affliction_nodes = _collect_node_and_following(saving_throw_bold)
+    nodes_to_remove = _collect_preceding_whitespace(start_bold)
+    affliction_nodes = _collect_node_and_following(start_bold)
     nodes_to_remove.extend(affliction_nodes)
 
     # Build HTML string from affliction nodes (not the preceding brs)
@@ -3160,12 +3197,38 @@ def _extract_affliction(desc_soup, item_name):
 
     # Parse affliction HTML to extract links
     affliction_soup = BeautifulSoup(affliction_html, "html.parser")
+
+    # Remove nested Activate content before extracting links - those links belong
+    # to the ability extraction, not the affliction (e.g., Phoenix Cinder has an
+    # Activate ability nested inside Stage 1)
+    for activate_bold in affliction_soup.find_all(
+        "b", string=lambda s: s and s.strip() == "Activate"
+    ):
+        # Remove from Activate bold to next Stage/Purging bold or end
+        current = activate_bold
+        while current:
+            next_node = current.next_sibling
+            # Stop at next Stage or Purging bold
+            if isinstance(current, Tag) and current.name == "b" and current is not activate_bold:
+                txt = get_text(current).strip()
+                if txt.startswith("Stage") or txt == "Purging":
+                    break
+            if isinstance(current, Tag):
+                current.decompose()
+            elif isinstance(current, NavigableString):
+                current.extract()
+            current = next_node
+
     affliction_links = get_links(affliction_soup, unwrap=True)
 
-    # Unwrap remaining <a> tags and split by semicolon
+    # Unwrap remaining <a> tags, normalize HR separators, and split by semicolon
     while affliction_soup.a:
         affliction_soup.a.unwrap()
-    parts = [p.strip() for p in str(affliction_soup).split(";")]
+    affliction_text = str(affliction_soup)
+    # Normalize <hr> separators to semicolons (stage-based items like Heartblood Ring
+    # use HR-separated stages instead of semicolon-separated)
+    affliction_text = re.sub(r"<hr\s*/?>", ";", affliction_text)
+    parts = [p.strip() for p in affliction_text.split(";")]
 
     section = {
         "type": "stat_block_section",
@@ -3267,12 +3330,22 @@ def _extract_description(bs, struct, debug=False):
                 # Section[1] is description
                 desc_section = section1
         else:
-            # Get the last non-empty section (siege weapons, etc.)
-            desc_section = None
-            for section in reversed(sections):
-                if section.strip():
-                    desc_section = section
-                    break
+            # Check if content spans multiple HR sections (e.g., stage-based items
+            # like Heartblood Ring where Stage 1, Stage 2, etc. are HR-separated)
+            has_stage_in_sections = any(
+                "<b>Stage" in sec or "<b>\nStage" in sec for sec in sections
+            )
+            if has_stage_in_sections:
+                # Combine content sections (stages span multiple HR sections)
+                # Skip section 0 (stats area) which may still have Activate bold
+                desc_section = "<hr/>".join(sec for sec in sections[1:] if sec.strip())
+            else:
+                # Get the last non-empty section (siege weapons, etc.)
+                desc_section = None
+                for section in reversed(sections):
+                    if section.strip():
+                        desc_section = section
+                        break
 
             if not desc_section:
                 # Fallback if all sections are empty
@@ -3291,6 +3364,18 @@ def _extract_description(bs, struct, debug=False):
                 content_before_h2.append(str(elem))
             last_section = "".join(content_before_h2)
             desc_soup = BeautifulSoup(last_section, "html.parser")
+
+    # Extract Stage-only afflictions (no Saving Throw) BEFORE action detection,
+    # because stage-based items may have nested Activate bolds within stages that
+    # would otherwise trigger the action removal and wipe out stage content.
+    # Normal afflictions (with Saving Throw) are extracted AFTER action detection,
+    # because they're typically inside an Activate block and the action detection
+    # removes the Activate content first.
+    affliction = None
+    affliction_links = []
+    has_saving_throw = desc_soup.find("b", string=lambda s: s and s.strip() == "Saving Throw")
+    if not has_saving_throw and _has_affliction_pattern(desc_soup):
+        affliction, affliction_links = _extract_affliction(desc_soup, struct.get("name", ""))
 
     # Find the first action - either a bold tag with action name, or an action icon span
     # We need to find the EARLIEST action in document order, not just the first one we encounter
@@ -3368,10 +3453,8 @@ def _extract_description(bs, struct, debug=False):
                 current.extract()
             current = next_node
 
-    # Extract affliction (Saving Throw + Stages pattern)
-    affliction = None
-    affliction_links = []
-    if _has_affliction_pattern(desc_soup):
+    # Extract normal afflictions (with Saving Throw) AFTER action detection
+    if not affliction and _has_affliction_pattern(desc_soup):
         affliction, affliction_links = _extract_affliction(desc_soup, struct.get("name", ""))
 
     # Extract save outcome labels (Success, Failure, Critical Success, Critical Failure)
@@ -3637,6 +3720,7 @@ ABILITY_FIELD_NAMES = [
     "Trigger",
     "Effect",
     "Requirements",
+    "Prerequisite",
     "Critical Success",
     "Success",
     "Failure",
@@ -3823,6 +3907,19 @@ def _extract_traits_from_time_part(time_part, ability):
                 trait_links_converted = len(time_trait_links)
             # Remove the parenthesized section from the time text
             return time_text[:paren_start].strip(), trait_links_converted
+    elif time_trait_links:
+        # Non-parenthesized traits in time part (e.g., "auditory, linguistics; 10 minutes")
+        # Convert them to traits and extract just the time portion
+        trait_names = [tl["name"] for tl in time_trait_links]
+        if trait_names:
+            traits = build_objects("stat_block_section", "trait", trait_names)
+            ability.setdefault("traits", []).extend(traits)
+            trait_links_converted = len(time_trait_links)
+        # Find the time portion from semicolon-separated segments
+        for part in time_text.split(";"):
+            if _TIME_PATTERN.search(part):
+                return part.strip(), trait_links_converted
+        return time_text, trait_links_converted
 
     return time_text, trait_links_converted
 
@@ -3992,9 +4089,11 @@ def _collect_equipment_ability_content(ability_bold, next_ability, remaining_bol
 def _extract_action_type_from_spans(ability_soup):
     """Extract action type from action icon spans in ability HTML.
 
-    Processes <span class="action"> tags, normalizes titles, deduplicates,
-    and handles variable action costs (e.g., "One or Two Actions").
-    Decomposes the spans from the soup as a side effect.
+    Only extracts action spans from the FRONT of the ability (before the first
+    semicolon separator). Action icons deeper in the text (inside Frequency,
+    Effect, etc.) are part of the description, not the action type.
+
+    Decomposes the front-matter spans from the soup as a side effect.
 
     Args:
         ability_soup: BeautifulSoup object of the ability content
@@ -4002,9 +4101,26 @@ def _extract_action_type_from_spans(ability_soup):
     Returns:
         dict or None: Action type object, or None if no action spans found
     """
+    # Find the position of the first semicolon in the text - action spans
+    # must appear before it to be considered front-matter action types
+    full_text = ability_soup.get_text()
+    semicolon_pos = full_text.find(";")
+
     action_spans = ability_soup.find_all("span", class_="action")
     action_titles = []
     for action_span in action_spans:
+        # Check if this span appears before the first semicolon
+        preceding_text = ""
+        for prev in action_span.previous_siblings:
+            text = prev.get_text() if hasattr(prev, "get_text") else str(prev)
+            preceding_text = text + preceding_text
+        span_text_pos = len(preceding_text)
+
+        if semicolon_pos >= 0 and span_text_pos >= semicolon_pos:
+            # This action span is after the first semicolon - it's in the
+            # description text, not front matter. Leave it in place.
+            continue
+
         action_title = action_span.get("title", "")
         if action_title:
             if action_title == "Single Action":
@@ -4060,9 +4176,13 @@ def _deduplicate_links_across_abilities(abilities):
 
     Args:
         abilities: List of ability dicts to deduplicate. Modified in place.
+
+    Returns:
+        int: Count of links removed (for link accounting).
     """
+    removed_count = 0
     if len(abilities) <= 1:
-        return
+        return 0
     for i in range(len(abilities) - 1):
         if "links" not in abilities[i]:
             continue
@@ -4070,14 +4190,17 @@ def _deduplicate_links_across_abilities(abilities):
         for j in range(i + 1, len(abilities)):
             for link in abilities[j].get("links", []):
                 later_links.add((link.get("name"), link.get("game-obj"), link.get("aonid", "")))
+        original_count = len(abilities[i]["links"])
         unique_links = [
             link
             for link in abilities[i]["links"]
             if (link.get("name"), link.get("game-obj"), link.get("aonid", "")) not in later_links
         ]
+        removed_count += original_count - len(unique_links)
         abilities[i]["links"] = unique_links
         if not abilities[i]["links"]:
             del abilities[i]["links"]
+    return removed_count
 
 
 def _clean_activation_cruft_from_text(sb):
@@ -4249,7 +4372,8 @@ def _extract_abilities_from_description(bs, sb, struct=None, debug=False, equipm
 
         abilities.append(ability)
 
-    _deduplicate_links_across_abilities(abilities)
+    dedup_removed = _deduplicate_links_across_abilities(abilities)
+    trait_links_converted += dedup_removed
 
     # Remove all ability elements from original soup
     for elem in elements_to_remove:
