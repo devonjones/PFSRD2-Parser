@@ -1248,8 +1248,6 @@ def _generic_section_pass(struct, config, debug=False):
         links_removed + (trait_links_converted or 0) + base_material_links + variant_trait_links
     )
     if debug:
-        import sys
-
         sys.stderr.write(
             f"DEBUG _generic_section_pass: links_removed={links_removed}, trait_links_converted={trait_links_converted}, base_material_links={base_material_links}, variant_trait_links={variant_trait_links}, total={total_removed}\n"
         )
@@ -3648,19 +3646,15 @@ def _extract_description(bs, struct, debug=False):
     # Merge with any existing links (e.g., from unrecognized stat fields like Aspects)
     # avoiding duplicates by checking (name, game-obj/href)
     if non_trait_links:
-        existing = sb.get("links", [])
-        if existing:
-            existing_keys = set()
-            for l in existing:
-                key = (l.get("name"), l.get("game-obj", l.get("href", "")))
+        existing_links = sb.setdefault("links", [])
+        existing_keys = {
+            (l.get("name"), l.get("game-obj", l.get("href", ""))) for l in existing_links
+        }
+        for l in non_trait_links:
+            key = (l.get("name"), l.get("game-obj", l.get("href", "")))
+            if key not in existing_keys:
+                existing_links.append(l)
                 existing_keys.add(key)
-            for l in non_trait_links:
-                key = (l.get("name"), l.get("game-obj", l.get("href", "")))
-                if key not in existing_keys:
-                    existing.append(l)
-            sb["links"] = existing
-        else:
-            sb["links"] = non_trait_links
 
     # Add sections if any were extracted from headings
     if sections:

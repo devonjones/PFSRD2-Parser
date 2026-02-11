@@ -1055,6 +1055,12 @@ The iterative approach means we chip away at this over time, progressively expos
 10. **Pass-based architecture** - Main parse function is a clean list of passes
 11. **Order matters** - Normalization after extraction, edition before cleanup, validation last
 
+### PR Review Feedback
+12. **Evaluate each suggestion on its merits** - Don't blanket-dismiss reviewer feedback as "out of scope." Every PR should leave the codebase better off.
+13. **Tests are never out of scope** - Unit tests for changed code are part of the PR, not a follow-up ticket.
+14. **Quick wins over tickets** - If a reviewer suggestion can be addressed with a small, focused change (redundant imports, extracting a helper, fixing a bug), do it now. Only create follow-up tickets for changes that would genuinely expand the PR's scope into a different concern.
+15. **Be skeptical, not dismissive** - Evaluate whether a suggestion actually improves the code. Skip suggestions that are pedantic, platform-inappropriate, or add unnecessary complexity. But when a suggestion is valid, act on it.
+
 ### Operations
 12. **Run from bin/** - Always execute scripts from the bin directory
 13. **Source dir.conf** - Configuration must be loaded first
