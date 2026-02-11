@@ -350,6 +350,10 @@ def _extract_trait(description):
             parts = [p.strip() for p in text.replace("(", "").split(",")]
             for part in parts:
                 bs = BeautifulSoup(part, "html.parser")
+                # Remove empty <a> tags (HTML5 artifacts)
+                for a in bs.find_all("a"):
+                    if not a.string and not a.contents:
+                        a.decompose()
                 children = list(bs.children)
                 assert len(children) == 1, part
                 child = children[0]

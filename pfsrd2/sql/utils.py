@@ -67,5 +67,5 @@ def create_legacy_remastered_relations(curs, link_cache, fetch_item_by_id, item_
             relations.add((target_id_val, item_id_val))
         else:
             print(f"No relation found for {link} {edition} {target_edition}")
-            raise
+            continue
     return relations

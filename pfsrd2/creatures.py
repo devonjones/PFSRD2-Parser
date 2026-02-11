@@ -79,6 +79,25 @@ from universal.utils import (
 # TODO: Fix Counteflora (518) The toxin's traits are not parsed correctly
 
 
+def _content_filter(soup):
+    """Remove navigation elements before <hr> and unwrap the content span."""
+    main = soup.find(id="main")
+    if not main:
+        return
+    hr = main.find("hr", recursive=False)
+    if hr:
+        for sibling in list(hr.previous_siblings):
+            sibling.extract()
+        hr.extract()
+    # Remove remaining top-level <hr> tags (content dividers) without removing siblings
+    for hr in main.find_all("hr", recursive=False):
+        hr.extract()
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+            break
+
+
 def parse_creature(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
@@ -87,9 +106,11 @@ def parse_creature(filename, options):
         filename,
         subtitle_text=True,
         max_title=4,
-        cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput",
+        cssclass="main",
+        pre_filters=[_content_filter],
     )
     details = entity_pass(details)
+    details = [d for d in details if not (isinstance(d, str) and not d.strip())]
     alternate_link = handle_alternate_link(details)
     edition = edition_pass(details)
     struct = restructure_creature_pass(details, options.subtype, edition)
@@ -330,7 +351,8 @@ def trait_db_pass(struct):
         else:
             kwargs["remastered_trait_id"] = db_trait["trait_id"]
         data = fetch_trait_by_link(curs, **kwargs)
-        assert data, f"{data} | {trait}"
+        if not data:
+            return trait
         return json.loads(data["trait"])
 
     def _check_trait(trait, parent):
@@ -1488,6 +1510,13 @@ def handle_aura(sb, ability):
             # TODO: Find a more graceful way to deal with 1816
             if sb["name"] in constants.CREATURE_IGNORE_DC_AURA:
                 return
+            # Try to extract DC from body text (may have HTML links like <a>basic</a> before save type)
+            text_stripped = re.sub(r"<[^>]+>", "", ability["text"])
+            m = re.search(r"DC (\d+)\s+(?:\w+\s+)?(Fortitude|Fort|Reflex|Will|flat)", text_stripped)
+            if m:
+                save_text = f"DC {m.group(1)} {m.group(2)}"
+                ability["saving_throw"] = universal_handle_save_dc(save_text)
+                return
             raise AssertionError(f"DC in text, but no save in aura: {ability}")
 
     found = False
@@ -2180,7 +2209,18 @@ def process_offensive_action(section):
             name_text = parent_section["name"]
             if "<" in name_text:
                 validset = {"a", "b"}
+                bs = BeautifulSoup(name_text, "html.parser")
+                # Strip action icon spans from name
+                for span in bs.find_all("span", class_="action"):
+                    span.decompose()
+                name_text = str(bs)
+                parent_section["name"] = name_text
                 tags = get_unique_tag_set(name_text)
+                if not tags:
+                    name_text = get_text(bs).strip()
+                    new_section["name"] = name_text
+                    parent_section["name"] = name_text
+                    return
                 assert tags.issubset(validset), parent_section
                 bs = BeautifulSoup(name_text, "html.parser")
                 if bs.a:
