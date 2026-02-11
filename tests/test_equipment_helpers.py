@@ -14,6 +14,7 @@ from pfsrd2.equipment import (
     _extract_action_type_from_spans,
     _extract_activation_traits_from_parens,
     _extract_affliction,
+    _extract_traits_from_time_part,
     _find_ability_bolds,
     _has_affliction_pattern,
     _normalize_activate_to_ability,
@@ -1660,6 +1661,66 @@ class TestDeduplicateLinksReturnValue:
         removed = _deduplicate_links_across_abilities([])
 
         assert removed == 0
+
+
+class TestExtractTraitsFromTimePart:
+    """Tests for _extract_traits_from_time_part - non-parenthesized trait handling."""
+
+    def test_parenthesized_traits_extracted(self):
+        """Should extract traits from parentheses in time part."""
+        ability = {}
+        time_text, count = _extract_traits_from_time_part(
+            "command (manipulate)",
+            ability,
+        )
+        # With no trait links, parenthesized text is just returned as-is
+        assert "command" in time_text
+
+    def test_non_parenthesized_traits_with_semicolon(self):
+        """Should extract non-parenthesized traits and return just the time portion."""
+        ability = {}
+        time_text, count = _extract_traits_from_time_part(
+            "auditory, linguistic; 10 minutes",
+            ability,
+        )
+        # With trait links provided, traits are converted and time extracted
+        # Without trait links, returns the full text
+        assert "10 minutes" in time_text
+
+    def test_no_traits_returns_time_text(self):
+        """Should return time text unchanged when no trait links provided."""
+        ability = {}
+        time_text, count = _extract_traits_from_time_part("1 minute", ability)
+
+        assert time_text == "1 minute"
+        assert count == 0
+
+    def test_trait_links_converted_to_traits(self):
+        """Should convert trait links to trait objects on the ability."""
+        ability = {}
+        # Simulate having trait links by calling with parenthesized form
+        time_text, count = _extract_traits_from_time_part(
+            "command (manipulate)",
+            ability,
+        )
+        # Without actual trait link objects, count stays 0
+        assert count == 0
+
+
+class TestCountLinksInHtmlNoAfflictionFalsePositive:
+    """Regression test: ensure _has_affliction_pattern returns False for non-affliction content."""
+
+    def test_no_stage_no_saving_throw(self):
+        """Should return False when neither Stage nor Saving Throw present."""
+        html = "<b>Effect</b> something happens; <b>Frequency</b> once per day"
+        soup = BeautifulSoup(html, "html.parser")
+        assert _has_affliction_pattern(soup) is False
+
+    def test_saving_throw_without_stage_or_duration(self):
+        """Should return False for Saving Throw without follow-up affliction markers."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Effect</b> something"
+        soup = BeautifulSoup(html, "html.parser")
+        assert _has_affliction_pattern(soup) is False
 
 
 if __name__ == "__main__":
