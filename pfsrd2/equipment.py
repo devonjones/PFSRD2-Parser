@@ -86,15 +86,13 @@ def _trait_class_matcher(c):
 
 
 def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, debug=False):
-    """Count all <a> tags with game-obj attribute in HTML.
-
-    This counts links that need to be extracted into structured link objects.
-    Only counts internal game links (with game-obj attribute).
+    """Count all <a> tags in HTML that need to be extracted into structured link objects.
 
     Excludes:
     - Self-references (links whose text AND game-obj match exclude_name/exclude_game_obj)
     - Trait name links (links inside <span class="trait*"> tags, replaced by database)
     - Equipment group links (WeaponGroups/ArmorGroups in stat lines, replaced by database)
+    - PFS icon links (href contains "PFS.aspx")
 
     Args:
         html_text: HTML text to count links in
@@ -103,15 +101,16 @@ def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, de
         debug: If True, print debug info about found links
     """
     soup = BeautifulSoup(html_text, "html.parser")
-    # Find all <a> tags that have game-obj attribute (internal game links)
-    all_links = soup.find_all("a", attrs={"game-obj": True})
+    all_links = soup.find_all("a")
 
     if debug:
         import sys
 
-        sys.stderr.write(f"DEBUG: Found {len(all_links)} total <a game-obj> tags\n")
+        sys.stderr.write(f"DEBUG: Found {len(all_links)} total <a> tags\n")
         for link in all_links:
-            sys.stderr.write(f"  - {link.get_text().strip()} ({link.get('game-obj')})\n")
+            sys.stderr.write(
+                f"  - {link.get_text().strip()} ({link.get('game-obj')}) href={link.get('href', '')}\n"
+            )
 
     links = all_links
 
@@ -219,6 +218,16 @@ def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, de
                     return bool("Legacy version" in div_text or "Remastered version" in div_text)
             parent = parent.parent
         return False
+
+    # Exclude PFS icon links (not content links)
+    def is_pfs_link(link):
+        href = link.get("href", "")
+        return "PFS.aspx" in href
+
+    before = len(links)
+    links = [l for l in links if not is_pfs_link(l)]
+    if debug and len(links) < before:
+        sys.stderr.write(f"DEBUG: Excluded {before - len(links)} PFS icon links\n")
 
     before = len(links)
     links = [l for l in links if not is_version_link(l)]
@@ -787,23 +796,25 @@ def parse_equipment_html(filename, equipment_type=None):
     combined_content = "".join(content_parts)
 
     # Extract image if present (same pattern as creatures: <a href="Images\..."><img ...></a>)
+    # Some image links have <img> children, others are bare <a href="Images\..."></a>
+    # Decompose ALL image links; use the first one as the item's image
     image = None
     content_soup = BeautifulSoup(combined_content, "html.parser")
+    found_image_links = False
     for a_tag in content_soup.find_all("a"):
-        if a_tag.find("img"):
-            href = a_tag.get("href", "")
-            if "Images" not in href:
-                continue
-            if href:
-                image_filename = href.split("\\").pop().split("%5C").pop()
-                image = {
-                    "type": "image",
-                    "name": name,
-                    "image": image_filename,
-                }
-            a_tag.decompose()
-            break
-    if image:
+        href = a_tag.get("href", "")
+        if "Images" not in href:
+            continue
+        if not image and href:
+            image_filename = href.split("\\").pop().split("%5C").pop()
+            image = {
+                "type": "image",
+                "name": name,
+                "image": image_filename,
+            }
+        a_tag.decompose()
+        found_image_links = True
+    if found_image_links:
         combined_content = str(content_soup)
 
     result = {
@@ -1237,6 +1248,8 @@ def _generic_section_pass(struct, config, debug=False):
         links_removed + (trait_links_converted or 0) + base_material_links + variant_trait_links
     )
     if debug:
+        import sys
+
         sys.stderr.write(
             f"DEBUG _generic_section_pass: links_removed={links_removed}, trait_links_converted={trait_links_converted}, base_material_links={base_material_links}, variant_trait_links={variant_trait_links}, total={total_removed}\n"
         )
@@ -2413,13 +2426,24 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
         # For other types, fail fast on unknown labels
         if label not in recognized_stats:
             if equipment_type == "equipment":
-                # Only extract links from unrecognized bolds BEFORE the <hr>
-                # (bolds after <hr> are in the ability/description section, handled by
-                # _extract_abilities_from_description sweep - extracting here would double-count)
-                # When no <hr> exists, skip entirely - description extraction handles all links
-                if hr and not bold_tag.find_previous("hr"):
-                    # This bold is in the stat area (before hr, hr exists)
-                    # Extract links to prevent link loss (e.g., "Devil" field on contracts)
+                # Extract links from unrecognized stat fields to prevent link loss.
+                # Only extract from bolds BEFORE <hr> (stat area).
+                # Bolds after <hr> are in the ability/description section, handled by
+                # _extract_abilities_from_description sweep.
+                # When no <hr> exists, skip entirely - description extraction handles all links.
+                # Skip named activation bolds (em/en-dash prefix like "—Cheat Fate")
+                # - these are part of the Activate flow, not stat fields.
+                is_named_activation = label and (
+                    label[0] in ("\u2014", "\u2013", "-")
+                    or (len(label) >= 3 and ord(label[0]) == 226)
+                )
+                is_ability_field = label in ABILITY_FIELD_NAMES or label == "Activate"
+                if (
+                    hr
+                    and not bold_tag.find_previous("hr")
+                    and not is_named_activation
+                    and not is_ability_field
+                ):
                     unrec_parts = []
                     unrec_current = bold_tag.next_sibling
                     while unrec_current:
@@ -2430,7 +2454,6 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
                     unrec_html = "".join(unrec_parts)
                     if "<a" in unrec_html:
                         _, unrec_links = extract_links(unrec_html)
-                        unrec_links = [l for l in unrec_links if "game-obj" in l]
                         if unrec_links:
                             if "_unrecognized_links" not in stats_dict:
                                 stats_dict["_unrecognized_links"] = []
@@ -2722,6 +2745,11 @@ def _should_exclude_link(link):
 
     from universal.utils import get_text
 
+    # Exclude PFS icon links
+    href = link.get("href", "")
+    if "PFS.aspx" in href:
+        return True
+
     # Exclude trait links ONLY if inside <span class="trait*"> tags (stat block traits)
     # Regular trait links in text should remain as link objects
     parent = link.parent
@@ -2794,7 +2822,7 @@ def _remove_h2_section(bs, match_func, debug=False, exclude_name=None):
     # Count links in the section before removing
     section_html = "".join(str(e) for e in section_elements)
     section_soup = BeautifulSoup(section_html, "html.parser")
-    all_links = section_soup.find_all("a", attrs={"game-obj": True})
+    all_links = section_soup.find_all("a")
 
     # Filter out excluded links (using same logic as _count_links_in_html)
     from universal.utils import get_text
@@ -3617,8 +3645,22 @@ def _extract_description(bs, struct, debug=False):
             sb["save_results"]["links"] = save_outcome_links
 
     # Store extracted links if any exist (excluding trait links)
+    # Merge with any existing links (e.g., from unrecognized stat fields like Aspects)
+    # avoiding duplicates by checking (name, game-obj/href)
     if non_trait_links:
-        sb["links"] = non_trait_links
+        existing = sb.get("links", [])
+        if existing:
+            existing_keys = set()
+            for l in existing:
+                key = (l.get("name"), l.get("game-obj", l.get("href", "")))
+                existing_keys.add(key)
+            for l in non_trait_links:
+                key = (l.get("name"), l.get("game-obj", l.get("href", "")))
+                if key not in existing_keys:
+                    existing.append(l)
+            sb["links"] = existing
+        else:
+            sb["links"] = non_trait_links
 
     # Add sections if any were extracted from headings
     if sections:
@@ -3751,8 +3793,6 @@ def _extract_ability_fields(ability_soup, ability):
         if value_html:
             # Extract links from value
             value_text, value_links = extract_links(value_html)
-            # Only include links with game-obj attribute (for link accounting consistency)
-            value_links = [link for link in value_links if "game-obj" in link]
             # Convert <br> tags to newlines, then normalize whitespace
             value_text = re.sub(r"<br\s*/?>", "\n", value_text)
             value_text = _normalize_whitespace(value_text)
@@ -4363,7 +4403,9 @@ def _extract_abilities_from_description(bs, sb, struct=None, debug=False, equipm
             trait_links_converted += _process_activate_content(ability_soup, ability)
 
         # Sweep remaining links not handled by sub-field or activation parsing
-        for remaining_a in ability_soup.find_all("a", attrs={"game-obj": True}):
+        for remaining_a in ability_soup.find_all("a"):
+            if "PFS.aspx" in remaining_a.get("href", ""):
+                continue
             _, link = extract_link(remaining_a)
             if link:
                 if "links" not in ability:
@@ -5052,10 +5094,7 @@ def _html_to_stat_block_section(html_string, subtype):
     # extract_links expects a string, returns (text_without_links, links_list)
     text, links = extract_links(html_string)
 
-    # Only include links with game-obj attribute - these are the ones tracked by
-    # link accounting. Links without game-obj (e.g., listing page links like
-    # Innovations.aspx) are not counted in the HTML pass and would cause overcounting.
-    links = [link for link in links if "game-obj" in link]
+    # All links (including non-game-obj) are now tracked by link accounting
 
     result = {"type": "stat_block_section", "subtype": subtype, "text": text.strip()}
 
@@ -5089,8 +5128,6 @@ def normalize_equipment_fields(sb):
     # Normalize craft_requirements - extract links, normalize whitespace, and convert to plain text
     if "craft_requirements" in sb and isinstance(sb["craft_requirements"], str):
         cr_text, cr_links = extract_links(sb["craft_requirements"])
-        # Only include links with game-obj attribute (for link accounting consistency)
-        cr_links = [link for link in cr_links if "game-obj" in link]
         # Normalize whitespace (collapse newlines from HTML formatting to single spaces)
         sb["craft_requirements"] = _normalize_whitespace(cr_text)
         if cr_links:
@@ -5140,7 +5177,6 @@ def normalize_equipment_fields(sb):
             and "<a" in statistics["hands"]
         ):
             hands_text, hands_links = extract_links(statistics["hands"])
-            hands_links = [link for link in hands_links if "game-obj" in link]
             statistics["hands"] = hands_text.strip()
             if hands_links:
                 if "links" not in sb:
@@ -5408,12 +5444,8 @@ def _parse_immunities(html_text, subtype="immunity"):
 
     # Extract all links from the original HTML with their text
     # We'll match these to the parsed immunity objects
-    # Only extract links with game-obj attribute (for link accounting)
     links_in_html = []
     for link_tag in bs.find_all("a"):
-        # Skip links without game-obj attribute - they're not counted in link accounting
-        if not link_tag.has_attr("game-obj"):
-            continue
         link_text = _normalize_whitespace(get_text(link_tag))
         _, link_obj = extract_link(link_tag)
         links_in_html.append((link_text, link_obj))
