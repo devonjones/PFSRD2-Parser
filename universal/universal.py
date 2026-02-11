@@ -188,6 +188,9 @@ def subtitle_pass(details, max_title):
                 h.details = sub
                 retdetails.append(h)
             elif has_name(detail, "span") and not is_trait(detail) and not is_action(detail):
+                # Skip empty spans (common in HTML5 update)
+                if not get_text(detail).strip():
+                    continue
                 try:
                     retdetails.append(span_to_heading(detail, 3))
                 except IndexError as e:
@@ -206,6 +209,8 @@ def subtitle_text_pass(details, max_title):
     for detail in details:
         try:
             if issubclass(detail.__class__, str):
+                if not detail.strip():
+                    continue
                 bs = BeautifulSoup(detail, "html.parser")
                 objs = list(bs.children)
                 fo = ""
