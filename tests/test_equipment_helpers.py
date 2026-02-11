@@ -1669,23 +1669,28 @@ class TestExtractTraitsFromTimePart:
     def test_parenthesized_traits_extracted(self):
         """Should extract traits from parentheses in time part."""
         ability = {}
-        time_text, count = _extract_traits_from_time_part(
-            "command (manipulate)",
-            ability,
-        )
-        # With no trait links, parenthesized text is just returned as-is
-        assert "command" in time_text
+        html = '10 minutes (<a href="Traits.aspx?ID=1" game-obj="Traits">fortune</a>)'
+        time_text, count = _extract_traits_from_time_part(html, ability)
+
+        assert time_text == "10 minutes"
+        assert "traits" in ability
+        assert len(ability["traits"]) == 1
+        assert ability["traits"][0]["name"] == "fortune"
+        assert count == 1
 
     def test_non_parenthesized_traits_with_semicolon(self):
         """Should extract non-parenthesized traits and return just the time portion."""
         ability = {}
-        time_text, count = _extract_traits_from_time_part(
-            "auditory, linguistic; 10 minutes",
-            ability,
+        html = (
+            '<a href="Traits.aspx?ID=1" game-obj="Traits">auditory</a>, '
+            '<a href="Traits.aspx?ID=2" game-obj="Traits">linguistic</a>; 10 minutes'
         )
-        # With trait links provided, traits are converted and time extracted
-        # Without trait links, returns the full text
-        assert "10 minutes" in time_text
+        time_text, count = _extract_traits_from_time_part(html, ability)
+
+        assert "traits" in ability
+        assert len(ability["traits"]) == 2
+        assert time_text == "10 minutes"
+        assert count == 2
 
     def test_no_traits_returns_time_text(self):
         """Should return time text unchanged when no trait links provided."""
@@ -1695,16 +1700,18 @@ class TestExtractTraitsFromTimePart:
         assert time_text == "1 minute"
         assert count == 0
 
-    def test_trait_links_converted_to_traits(self):
-        """Should convert trait links to trait objects on the ability."""
+    def test_multiple_parenthesized_traits(self):
+        """Should extract multiple parenthesized traits."""
         ability = {}
-        # Simulate having trait links by calling with parenthesized form
-        time_text, count = _extract_traits_from_time_part(
-            "command (manipulate)",
-            ability,
+        html = (
+            '10 minutes (<a href="Traits.aspx?ID=1" game-obj="Traits">fortune</a>, '
+            '<a href="Traits.aspx?ID=2" game-obj="Traits">mental</a>)'
         )
-        # Without actual trait link objects, count stays 0
-        assert count == 0
+        time_text, count = _extract_traits_from_time_part(html, ability)
+
+        assert time_text == "10 minutes"
+        assert len(ability["traits"]) == 2
+        assert count == 2
 
 
 class TestCountLinksInHtmlNoAfflictionFalsePositive:

@@ -4223,12 +4223,12 @@ def _deduplicate_links_across_abilities(abilities):
         later_links = set()
         for j in range(i + 1, len(abilities)):
             for link in abilities[j].get("links", []):
-                later_links.add((link.get("name"), link.get("game-obj"), link.get("aonid", "")))
+                later_links.add((link.get("name"), link.get("game-obj", link.get("href", ""))))
         original_count = len(abilities[i]["links"])
         unique_links = [
             link
             for link in abilities[i]["links"]
-            if (link.get("name"), link.get("game-obj"), link.get("aonid", "")) not in later_links
+            if (link.get("name"), link.get("game-obj", link.get("href", ""))) not in later_links
         ]
         removed_count += original_count - len(unique_links)
         abilities[i]["links"] = unique_links
