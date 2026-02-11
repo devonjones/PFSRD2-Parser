@@ -8,11 +8,13 @@ from pfsrd2.equipment import (
     EQUIPMENT_TYPES,
     _clean_activation_cruft_from_text,
     _collect_equipment_ability_content,
+    _count_links_in_html,
     _deduplicate_links_across_abilities,
     _extract_ability_fields,
     _extract_action_type_from_spans,
     _extract_activation_traits_from_parens,
     _extract_affliction,
+    _extract_traits_from_time_part,
     _find_ability_bolds,
     _has_affliction_pattern,
     _normalize_activate_to_ability,
@@ -20,6 +22,7 @@ from pfsrd2.equipment import (
     _parse_activation_types,
     _parse_named_activation,
     _process_activate_content,
+    _should_exclude_link,
 )
 
 
@@ -404,12 +407,12 @@ class TestHasAfflictionPattern:
 
         assert _has_affliction_pattern(soup) is True
 
-    def test_returns_false_without_saving_throw(self):
-        """Should return False when no Saving Throw tag present."""
+    def test_detects_stage_only_without_saving_throw(self):
+        """Should detect stage-only pattern (no Saving Throw) as affliction."""
         html = "<b>Stage 1</b> stupefied 1 (1 hour); <b>Stage 2</b> stupefied 2 (1 hour)"
         soup = BeautifulSoup(html, "html.parser")
 
-        assert _has_affliction_pattern(soup) is False
+        assert _has_affliction_pattern(soup) is True
 
     def test_returns_false_saving_throw_without_followup(self):
         """Should return False when Saving Throw has no stage/duration/onset."""
@@ -424,12 +427,13 @@ class TestHasAfflictionPattern:
 
         assert _has_affliction_pattern(soup) is False
 
-    def test_ignores_saving_throw_in_plain_text(self):
-        """Should not detect Saving Throw in plain text (no bold tag)."""
+    def test_detects_stage_with_saving_throw_in_plain_text(self):
+        """Stage-only detection should still trigger even if Saving Throw is plain text."""
         html = "Saving Throw DC 20 Fortitude; <b>Stage 1</b> effect"
         soup = BeautifulSoup(html, "html.parser")
 
-        assert _has_affliction_pattern(soup) is False
+        # Stage bold is present, so stage-only pattern is detected
+        assert _has_affliction_pattern(soup) is True
 
     def test_detects_with_narrative_text_before(self):
         """Should detect affliction even with narrative text before it."""
@@ -1476,6 +1480,254 @@ class TestDefaultFieldDestinations:
             assert (
                 "field_destinations" not in EQUIPMENT_TYPES[eq_type]
             ), f"{eq_type} should use shared_fields/nested_fields, not field_destinations"
+
+
+class TestCountLinksInHtml:
+    """Tests for _count_links_in_html - counts all <a> tags with exclusions."""
+
+    def test_counts_game_obj_links(self):
+        """Should count links with game-obj attribute."""
+        html = '<a href="Spells.aspx?ID=1" game-obj="Spells">fireball</a>'
+        assert _count_links_in_html(html) == 1
+
+    def test_counts_non_game_obj_links(self):
+        """Should count links WITHOUT game-obj attribute (new behavior)."""
+        html = '<a href="Rules.aspx?ID=123">some rule</a>'
+        assert _count_links_in_html(html) == 1
+
+    def test_excludes_pfs_links(self):
+        """Should exclude PFS icon links from count."""
+        html = (
+            '<a href="PFS.aspx?ID=1">PFS Standard</a>'
+            '<a href="Spells.aspx?ID=1" game-obj="Spells">fireball</a>'
+        )
+        assert _count_links_in_html(html) == 1
+
+    def test_excludes_self_references(self):
+        """Should exclude self-reference links matching name and game-obj."""
+        html = '<a href="Equipment.aspx?ID=1" game-obj="Equipment">My Item</a>'
+        assert _count_links_in_html(html, exclude_name="My Item", exclude_game_obj="Equipment") == 0
+
+    def test_excludes_trait_links_in_trait_spans(self):
+        """Should exclude trait links inside <span class='trait*'> tags."""
+        html = '<span class="trait"><a href="Traits.aspx?ID=1" game-obj="Traits">magical</a></span>'
+        assert _count_links_in_html(html) == 0
+
+    def test_keeps_trait_links_outside_trait_spans(self):
+        """Should keep trait links that are NOT inside <span class='trait*'> tags."""
+        html = '<a href="Traits.aspx?ID=1" game-obj="Traits">magical</a>'
+        assert _count_links_in_html(html) == 1
+
+    def test_excludes_version_links(self):
+        """Should exclude 'more recent version' navigation links."""
+        html = '<a href="Equipment.aspx?ID=2">There is a more recent version of this item.</a>'
+        assert _count_links_in_html(html) == 0
+
+    def test_excludes_group_links(self):
+        """Should exclude weapon/armor group links in stat line context."""
+        html = '<b>Group</b> <u><a href="Groups.aspx?ID=1" game-obj="WeaponGroups">Sword</a></u>'
+        assert _count_links_in_html(html) == 0
+
+    def test_mixed_links_counted_correctly(self):
+        """Should count a mix of game-obj and non-game-obj links, excluding PFS."""
+        html = (
+            '<a href="Spells.aspx?ID=1" game-obj="Spells">fireball</a>'
+            '<a href="Rules.aspx?ID=5">rule page</a>'
+            '<a href="PFS.aspx?ID=1">PFS</a>'
+        )
+        assert _count_links_in_html(html) == 2
+
+
+class TestShouldExcludeLink:
+    """Tests for _should_exclude_link helper."""
+
+    def test_excludes_pfs_link(self):
+        """Should exclude PFS icon links."""
+        html = '<a href="PFS.aspx?ID=1">PFS Standard</a>'
+        link = BeautifulSoup(html, "html.parser").find("a")
+        assert _should_exclude_link(link) is True
+
+    def test_does_not_exclude_regular_link(self):
+        """Should not exclude regular game links."""
+        html = '<a href="Spells.aspx?ID=1" game-obj="Spells">fireball</a>'
+        link = BeautifulSoup(html, "html.parser").find("a")
+        assert _should_exclude_link(link) is False
+
+    def test_excludes_trait_link_in_trait_span(self):
+        """Should exclude trait links inside trait spans."""
+        html = '<span class="trait"><a href="Traits.aspx?ID=1" game-obj="Traits">magical</a></span>'
+        link = BeautifulSoup(html, "html.parser").find("a")
+        assert _should_exclude_link(link) is True
+
+    def test_does_not_exclude_trait_link_outside_span(self):
+        """Should not exclude trait links outside of trait spans."""
+        html = '<a href="Traits.aspx?ID=1" game-obj="Traits">magical</a>'
+        link = BeautifulSoup(html, "html.parser").find("a")
+        assert _should_exclude_link(link) is False
+
+    def test_does_not_exclude_non_game_obj_link(self):
+        """Should not exclude links without game-obj (they're now tracked)."""
+        html = '<a href="Rules.aspx?ID=123">some rule</a>'
+        link = BeautifulSoup(html, "html.parser").find("a")
+        assert _should_exclude_link(link) is False
+
+
+class TestHasAfflictionPatternStageOnly:
+    """Tests for stage-only affliction detection (no Saving Throw)."""
+
+    def test_detects_stage_only_pattern(self):
+        """Should detect Stage-only patterns without Saving Throw."""
+        html = "<b>Stage 1</b> effect (1 hour); <b>Stage 2</b> effect (1 hour)"
+        soup = BeautifulSoup(html, "html.parser")
+        assert _has_affliction_pattern(soup) is True
+
+    def test_single_stage_without_saving_throw(self):
+        """Should detect single Stage without Saving Throw."""
+        html = "<b>Stage 1</b> stupefied 1 (1 round)"
+        soup = BeautifulSoup(html, "html.parser")
+        assert _has_affliction_pattern(soup) is True
+
+    def test_stage_only_with_multiple_stages(self):
+        """Should detect multiple stages without Saving Throw."""
+        html = (
+            "<b>Stage 1</b> 1d6 poison damage (1 round); "
+            "<b>Stage 2</b> 2d6 poison damage (1 round); "
+            "<b>Stage 3</b> 3d6 poison damage (1 round)"
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        assert _has_affliction_pattern(soup) is True
+
+
+class TestExtractActionTypeFromSpansSemicolon:
+    """Tests for action span semicolon filtering."""
+
+    def test_ignores_span_after_semicolon(self):
+        """Action spans after first semicolon should be ignored (they're in description text)."""
+        html = 'some text; <span class="action" title="One Action">[one-action]</span> more text'
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _extract_action_type_from_spans(soup)
+
+        assert result is None
+
+    def test_extracts_span_before_semicolon(self):
+        """Action spans before first semicolon should be extracted normally."""
+        html = '<span class="action" title="One Action">[one-action]</span> command; effect text'
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _extract_action_type_from_spans(soup)
+
+        assert result is not None
+        assert result["name"] == "One Action"
+
+    def test_extracts_span_when_no_semicolon(self):
+        """Action spans should be extracted when there's no semicolon at all."""
+        html = '<span class="action" title="Reaction">[reaction]</span> text'
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _extract_action_type_from_spans(soup)
+
+        assert result is not None
+        assert result["name"] == "Reaction"
+
+
+class TestDeduplicateLinksReturnValue:
+    """Tests for _deduplicate_links_across_abilities return value."""
+
+    def test_returns_removed_count(self):
+        """Should return the count of removed duplicate links."""
+        abilities = [
+            {"links": [{"name": "Fireball", "game-obj": "Spells", "aonid": "1"}]},
+            {"links": [{"name": "Fireball", "game-obj": "Spells", "aonid": "1"}]},
+        ]
+
+        removed = _deduplicate_links_across_abilities(abilities)
+
+        assert removed == 1
+
+    def test_returns_zero_when_no_duplicates(self):
+        """Should return 0 when no duplicates found."""
+        abilities = [
+            {"links": [{"name": "Fireball", "game-obj": "Spells", "aonid": "1"}]},
+            {"links": [{"name": "Lightning", "game-obj": "Spells", "aonid": "2"}]},
+        ]
+
+        removed = _deduplicate_links_across_abilities(abilities)
+
+        assert removed == 0
+
+    def test_returns_zero_for_empty_list(self):
+        """Should return 0 for empty abilities list."""
+        removed = _deduplicate_links_across_abilities([])
+
+        assert removed == 0
+
+
+class TestExtractTraitsFromTimePart:
+    """Tests for _extract_traits_from_time_part - non-parenthesized trait handling."""
+
+    def test_parenthesized_traits_extracted(self):
+        """Should extract traits from parentheses in time part."""
+        ability = {}
+        html = '10 minutes (<a href="Traits.aspx?ID=1" game-obj="Traits">fortune</a>)'
+        time_text, count = _extract_traits_from_time_part(html, ability)
+
+        assert time_text == "10 minutes"
+        assert "traits" in ability
+        assert len(ability["traits"]) == 1
+        assert ability["traits"][0]["name"] == "fortune"
+        assert count == 1
+
+    def test_non_parenthesized_traits_with_semicolon(self):
+        """Should extract non-parenthesized traits and return just the time portion."""
+        ability = {}
+        html = (
+            '<a href="Traits.aspx?ID=1" game-obj="Traits">auditory</a>, '
+            '<a href="Traits.aspx?ID=2" game-obj="Traits">linguistic</a>; 10 minutes'
+        )
+        time_text, count = _extract_traits_from_time_part(html, ability)
+
+        assert "traits" in ability
+        assert len(ability["traits"]) == 2
+        assert time_text == "10 minutes"
+        assert count == 2
+
+    def test_no_traits_returns_time_text(self):
+        """Should return time text unchanged when no trait links provided."""
+        ability = {}
+        time_text, count = _extract_traits_from_time_part("1 minute", ability)
+
+        assert time_text == "1 minute"
+        assert count == 0
+
+    def test_multiple_parenthesized_traits(self):
+        """Should extract multiple parenthesized traits."""
+        ability = {}
+        html = (
+            '10 minutes (<a href="Traits.aspx?ID=1" game-obj="Traits">fortune</a>, '
+            '<a href="Traits.aspx?ID=2" game-obj="Traits">mental</a>)'
+        )
+        time_text, count = _extract_traits_from_time_part(html, ability)
+
+        assert time_text == "10 minutes"
+        assert len(ability["traits"]) == 2
+        assert count == 2
+
+
+class TestCountLinksInHtmlNoAfflictionFalsePositive:
+    """Regression test: ensure _has_affliction_pattern returns False for non-affliction content."""
+
+    def test_no_stage_no_saving_throw(self):
+        """Should return False when neither Stage nor Saving Throw present."""
+        html = "<b>Effect</b> something happens; <b>Frequency</b> once per day"
+        soup = BeautifulSoup(html, "html.parser")
+        assert _has_affliction_pattern(soup) is False
+
+    def test_saving_throw_without_stage_or_duration(self):
+        """Should return False for Saving Throw without follow-up affliction markers."""
+        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Effect</b> something"
+        soup = BeautifulSoup(html, "html.parser")
+        assert _has_affliction_pattern(soup) is False
 
 
 if __name__ == "__main__":

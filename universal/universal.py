@@ -566,9 +566,9 @@ def get_links(bs, unwrap=False):
     all_a = bs.find_all("a")
     links = []
     for a in all_a:
-        # Only extract links with game-obj attribute (structured references to game objects)
-        # Skip arbitrary navigation links without game-obj
-        if not a.has_attr("game-obj"):
+        # Skip PFS icon/note links (decorative navigation, not game content)
+        href = a.get("href", "")
+        if "PFS.aspx" in href:
             if unwrap:
                 a.unwrap()
             continue

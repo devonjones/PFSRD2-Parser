@@ -163,6 +163,7 @@
 				"effect": {"type": "string"},
 				"frequency": {"type": "string"},
 				"requirement": {"type": "string"},
+				"prerequisite": {"type": "string"},
 				"critical_success": {"type": "string"},
 				"success": {"type": "string"},
 				"failure": {"type": "string"},
@@ -719,6 +720,7 @@
 				"offense": {"$ref": "#/definitions/offense"},
 				"sources": {"$ref": "#/definitions/sources"},
 				"sections": {"$ref": "#/definitions/sections"},
+				"image": {"$ref": "#/definitions/image"},
 				"variants": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/equipment_stat_block"},

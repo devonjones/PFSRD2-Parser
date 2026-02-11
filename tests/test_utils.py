@@ -1,3 +1,6 @@
+from bs4 import BeautifulSoup
+
+from universal.universal import get_links
 from universal.utils import filter_entities, recursive_filter_entities
 
 
@@ -94,3 +97,65 @@ class TestRecursiveFilterEntities:
         data = {"count": 42, "flag": True, "empty": None}
         recursive_filter_entities(data)
         assert data == {"count": 42, "flag": True, "empty": None}
+
+
+class TestGetLinks:
+    """Tests for get_links in universal.py."""
+
+    def test_extracts_game_obj_links(self):
+        """Should extract links with game-obj attribute."""
+        html = '<a href="Spells.aspx?ID=1" game-obj="Spells">fireball</a>'
+        soup = BeautifulSoup(html, "html.parser")
+
+        links = get_links(soup)
+
+        assert len(links) == 1
+        assert links[0]["name"] == "fireball"
+
+    def test_extracts_non_game_obj_links(self):
+        """Should extract links WITHOUT game-obj attribute (new behavior)."""
+        html = '<a href="Rules.aspx?ID=123">some rule</a>'
+        soup = BeautifulSoup(html, "html.parser")
+
+        links = get_links(soup)
+
+        assert len(links) == 1
+        assert links[0]["name"] == "some rule"
+
+    def test_excludes_pfs_links(self):
+        """Should exclude PFS icon links."""
+        html = (
+            '<a href="PFS.aspx?ID=1">PFS Standard</a>'
+            '<a href="Spells.aspx?ID=1" game-obj="Spells">fireball</a>'
+        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        links = get_links(soup)
+
+        assert len(links) == 1
+        assert links[0]["name"] == "fireball"
+
+    def test_unwrap_removes_pfs_tags(self):
+        """Should unwrap PFS links when unwrap=True."""
+        html = '<a href="PFS.aspx?ID=1">PFS</a> text'
+        soup = BeautifulSoup(html, "html.parser")
+
+        get_links(soup, unwrap=True)
+
+        assert soup.find("a") is None  # PFS link tag was unwrapped
+
+    def test_mixed_links(self):
+        """Should handle a mix of game-obj, non-game-obj, and PFS links."""
+        html = (
+            '<a href="Spells.aspx?ID=1" game-obj="Spells">fireball</a>'
+            '<a href="Rules.aspx?ID=5">rule</a>'
+            '<a href="PFS.aspx?ID=1">PFS</a>'
+        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        links = get_links(soup)
+
+        assert len(links) == 2
+        names = [l["name"] for l in links]
+        assert "fireball" in names
+        assert "rule" in names
