@@ -22,6 +22,23 @@ from universal.universal import (
 from universal.utils import get_text
 
 
+def _content_filter(soup):
+    """Remove navigation elements before content and unwrap the content span."""
+    main = soup.find(id="main")
+    if not main:
+        return
+    # Strip everything before and including each <hr>
+    for hr in main.find_all("hr"):
+        for sibling in list(hr.previous_siblings):
+            sibling.extract()
+        hr.extract()
+    # Unwrap the content span containing the title
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+            break
+
+
 def parse_item_group(filename, options):
     """Main parsing function - entry point for the armor/weapon group parser"""
     basename = os.path.basename(filename)
@@ -36,9 +53,11 @@ def parse_item_group(filename, options):
         filename,
         subtitle_text=True,
         max_title=4,
-        cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput",
+        cssclass="main",
+        pre_filters=[_content_filter],
     )
     details = entity_pass(details)
+    details = [d for d in details if not (isinstance(d, str) and not d.strip())]
 
     # Restructure and process
     struct = restructure_armor_group_pass(details, subtype)

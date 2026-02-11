@@ -418,13 +418,19 @@ def _extract_trait(description):
                     template = _handle_trait_template(str(child))
                     if template:
                         traits.append(template)
-                    else:
+                    elif child.name == "a":
                         name, trait_link = extract_link(child)
                         traits.append(
                             build_object(
                                 "stat_block_section", "trait", name.strip(), {"link": trait_link}
                             )
                         )
+                    elif str(child).strip().lower() == "magical tradition":
+                        traits.append(
+                            build_object("stat_block_section", "trait", "[Magical Tradition]")
+                        )
+                    else:
+                        raise Exception(f"Unexpected non-link trait: {child}")
                 except Exception as e:
                     print(parts)
                     raise e

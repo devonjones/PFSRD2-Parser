@@ -50,9 +50,9 @@ def markdown_pass(struct, name, path, fxn_valid_tags=None):
             "td",
             "hr",
             "sup",
+            "p",
+            "div",
         }
-        if "license" in struct:
-            validset.add("p")
         if fxn_valid_tags:
             fxn_valid_tags(struct, name, path, validset)
         tags = get_unique_tag_set(text)

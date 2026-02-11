@@ -26,6 +26,22 @@ from universal.universal import (
 from universal.utils import get_text, is_tag_named
 
 
+def _content_filter(soup):
+    """Remove navigation elements before <hr> and unwrap the content span."""
+    main = soup.find(id="main")
+    if not main:
+        return
+    hr = main.find("hr")
+    if hr:
+        for sibling in list(hr.previous_siblings):
+            sibling.extract()
+        hr.extract()
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+            break
+
+
 def parse_monster_ability(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
@@ -34,9 +50,11 @@ def parse_monster_ability(filename, options):
         filename,
         subtitle_text=True,
         max_title=4,
-        cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput",
+        cssclass="main",
+        pre_filters=[_content_filter],
     )
     details = entity_pass(details)
+    details = [d for d in details if not (isinstance(d, str) and not d.strip())]
     struct = restructure_monster_ability_pass(details)
     aon_pass(struct, basename)
     section_pass(struct)

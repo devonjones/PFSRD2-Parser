@@ -34,10 +34,11 @@ def parse_condition(filename, options):
     details = parse_universal(
         filename,
         max_title=4,
-        cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput",
-        pre_filters=[sidebar_filter],
+        cssclass="main",
+        pre_filters=[_content_filter, sidebar_filter],
     )
     details = entity_pass(details)
+    details = [d for d in details if not (isinstance(d, str) and not d.strip())]
     struct = restructure_condition_pass(details)
     condition_struct_pass(struct)
     source_pass(struct, find_condition)
@@ -63,6 +64,21 @@ def parse_condition(filename, options):
             write_condition(jsondir, struct, name)
     elif options.stdout:
         print(json.dumps(struct, indent=2))
+
+
+def _content_filter(soup):
+    """Remove navigation elements before <hr> and unwrap the content span."""
+    main = soup.find(id="main")
+    if not main:
+        return
+    for hr in main.find_all("hr"):
+        for sibling in list(hr.previous_siblings):
+            sibling.extract()
+        hr.extract()
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+            break
 
 
 def sidebar_filter(soup):
@@ -237,9 +253,22 @@ def create_condition_filename(jsondir, struct):
 
 def markdown_pass(struct, name, path):
     def _validate_acceptable_tags(text):
-        validset = {"i", "b", "u", "strong", "ol", "ul", "li", "br", "table", "tr", "td", "hr"}
-        if "license" in struct:
-            validset.add("p")
+        validset = {
+            "i",
+            "b",
+            "u",
+            "strong",
+            "ol",
+            "ul",
+            "li",
+            "br",
+            "table",
+            "tr",
+            "td",
+            "hr",
+            "p",
+            "div",
+        }
         tags = get_unique_tag_set(text)
         assert tags.issubset(validset), f"{name} : {text} - {tags}"
 
