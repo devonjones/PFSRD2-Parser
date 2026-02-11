@@ -28,14 +28,24 @@ from universal.universal import (
 from universal.utils import bs_pop_spaces, get_text, get_unique_tag_set, log_element
 
 
+def _content_filter(soup):
+    """Unwrap the content span so h1/h2/etc become direct children of main."""
+    main = soup.find(id="main")
+    if not main:
+        return
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+            break
+
+
 def parse_trait(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
         sys.stderr.write(f"{basename}\n")
-    details = parse_universal(
-        filename, max_title=4, cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput"
-    )
+    details = parse_universal(filename, max_title=4, cssclass="main", pre_filters=[_content_filter])
     details = entity_pass(details)
+    details = [d for d in details if not (isinstance(d, str) and not d.strip())]
     alternate_link = handle_alternate_link(details)
     details = nethys_search_pass(details)
     struct = restructure_trait_pass(details)
@@ -304,9 +314,22 @@ def create_trait_filename(jsondir, struct):
 
 def markdown_pass(struct, name, path):
     def _validate_acceptable_tags(text):
-        validset = {"i", "b", "u", "strong", "ol", "ul", "li", "br", "table", "tr", "td", "hr"}
-        if "license" in struct:
-            validset.add("p")
+        validset = {
+            "i",
+            "b",
+            "u",
+            "strong",
+            "ol",
+            "ul",
+            "li",
+            "br",
+            "table",
+            "tr",
+            "td",
+            "hr",
+            "div",
+            "p",
+        }
         tags = get_unique_tag_set(text)
         assert tags.issubset(validset), f"{name} : {text} - {tags}"
 
