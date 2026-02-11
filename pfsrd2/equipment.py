@@ -797,14 +797,14 @@ def parse_equipment_html(filename, equipment_type=None):
 
     # Extract image if present (same pattern as creatures: <a href="Images\..."><img ...></a>)
     # Some image links have <img> children, others are bare <a href="Images\..."></a>
+    # Decompose ALL image links; use the first one as the item's image
     image = None
     content_soup = BeautifulSoup(combined_content, "html.parser")
-    image_link_count = 0
+    found_image_links = False
     for a_tag in content_soup.find_all("a"):
         href = a_tag.get("href", "")
         if "Images" not in href:
             continue
-        image_link_count += 1
         if not image and href:
             image_filename = href.split("\\").pop().split("%5C").pop()
             image = {
@@ -813,10 +813,8 @@ def parse_equipment_html(filename, equipment_type=None):
                 "image": image_filename,
             }
         a_tag.decompose()
-    assert (
-        image_link_count <= 1
-    ), f"Expected at most 1 image link for {name}, found {image_link_count}"
-    if image_link_count > 0:
+        found_image_links = True
+    if found_image_links:
         combined_content = str(content_soup)
 
     result = {
