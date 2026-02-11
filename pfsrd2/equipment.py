@@ -722,6 +722,30 @@ def parse_armor(filename, options):
     return parse_equipment(filename, options)
 
 
+def _content_filter(soup):
+    """Remove navigation elements before <hr> and unwrap the content span."""
+    main = soup.find(id="main")
+    if not main:
+        return
+    # Strip navigation: everything before the first <hr> (inclusive)
+    hr = main.find("hr", recursive=False)
+    if hr:
+        for sibling in list(hr.previous_siblings):
+            sibling.extract()
+        hr.extract()
+    # Note: do NOT remove remaining <hr> tags — equipment parser needs
+    # the stats/description <hr> divider
+    # Unwrap the content span that contains h1
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+            break
+    # Remove empty <a> tags (HTML5 artifacts)
+    for a in main.find_all("a"):
+        if not a.string and not a.contents:
+            a.decompose()
+
+
 def parse_equipment_html(filename, equipment_type=None):
     """
     Parse equipment HTML which has a flat structure (no hierarchical headings).
@@ -739,9 +763,14 @@ def parse_equipment_html(filename, equipment_type=None):
     # Enrich href attributes with game-obj and aonid (same as parse_universal does)
     href_filter(soup)
 
-    # The content is inside the DetailedOutput span
+    # Apply HTML5 content filter
+    _content_filter(soup)
+
+    # The content is inside the DetailedOutput span (old) or main div (HTML5)
     detailed_output = soup.find(id="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
-    assert detailed_output, "Could not find DetailedOutput span"
+    if not detailed_output:
+        detailed_output = soup.find(id="main")
+    assert detailed_output, "Could not find DetailedOutput span or main div"
 
     # Find h1.title - this contains the PFS icon and the name link follows it
     h1_title = detailed_output.find("h1", class_="title")
@@ -913,6 +942,16 @@ def extract_name_link(detailed_output, equipment_type=None):
         if link and is_name_link(link):
             return link
 
+    # Try Structure B2 (HTML5): name link is a next sibling of h1.title
+    if h1_title:
+        for sibling in h1_title.next_siblings:
+            if is_name_link(sibling):
+                return sibling
+            if isinstance(sibling, NavigableString):
+                continue
+            if hasattr(sibling, "name") and sibling.name in ("h3", "b", "br"):
+                break
+
     # Try Structure C: name is plain text inside h1.title (no link)
     # e.g., <h1 class="title">Blackaxe<span>Item 25</span></h1>
     if h1_title:
@@ -929,6 +968,16 @@ def extract_name_link(detailed_output, equipment_type=None):
                 href = child.get("href", "")
                 if "PFS" in href or not child.get("game-obj"):
                     continue
+
+    # Try Structure C2 (HTML5): name is plain text sibling after h1.title
+    if h1_title:
+        for sibling in h1_title.next_siblings:
+            if isinstance(sibling, NavigableString):
+                text = str(sibling).strip()
+                if text and not text.startswith("Item"):
+                    return text
+            elif hasattr(sibling, "name") and sibling.name in ("h3", "b", "br", "span"):
+                break
 
     raise AssertionError(f"Could not find equipment name link (type={equipment_type})")
 
@@ -1429,7 +1478,13 @@ def _extract_vehicle_stats(bs, stats_dict, recognized_stats, equipment_type):
             continue
 
         # Extract the value - preserve HTML for fields with links
-        preserve_html = label in ["Immunities", "Resistances", "Weaknesses", "Piloting Check"]
+        preserve_html = label in [
+            "Immunities",
+            "Resistances",
+            "Weaknesses",
+            "Piloting Check",
+            "Speed",
+        ]
         value = _extract_stat_value(bold_tag, preserve_html=preserve_html)
         if value:
             stats_dict[field_name] = value
@@ -2587,6 +2642,8 @@ def _extract_stat_value(label_tag, preserve_html=False):
 
     # Combine collected parts and clean up
     value_text = "".join(value_parts).strip()
+    # Strip newlines: HTML normalizer adds \n after tags but they carry no semantic value
+    value_text = value_text.replace("\n", "")
     # Strip trailing semicolons - they are field separators in the HTML, not part of the value
     value_text = value_text.rstrip(";").strip()
 
@@ -5545,6 +5602,10 @@ def _normalize_speed(sb):
       "20 feet (pulled or pushed)" -> speeds with 1 movement entry
 
     Each movement entry has: movement_type, value, unit, modifiers
+    Speed values may contain HTML <a> tags when preserve_html=True was used during
+    extraction. Parenthesized modifiers with links are handled by link_modifiers() in
+    _parse_single_speed. Non-speed entries after comma split (like "ignores difficult
+    terrain") are treated as additional modifiers on the previous speed entry.
     """
     if "speed" not in sb:
         return
@@ -5558,9 +5619,21 @@ def _normalize_speed(sb):
 
     movement_array = []
     for entry in speed_entries:
-        speed_obj = _parse_single_speed(entry.strip())
-        if speed_obj:
-            movement_array.append(speed_obj)
+        entry = entry.strip()
+        # Check if this looks like a speed entry (has digits + feet/ft.)
+        # vs an additional modifier (like "ignores difficult terrain" link)
+        if re.search(r"\d+\s*(feet|ft\.)", entry) or not movement_array:
+            speed_obj = _parse_single_speed(entry)
+            if speed_obj:
+                movement_array.append(speed_obj)
+        else:
+            # Non-speed text after comma is an additional modifier on the previous speed
+            # (e.g., '<a href="...">ignores difficult terrain</a>')
+            prev = movement_array[-1]
+            new_mods = link_modifiers(build_objects("stat_block_section", "modifier", [entry]))
+            if "modifiers" not in prev:
+                prev["modifiers"] = []
+            prev["modifiers"].extend(new_mods)
 
     # Create speeds container (matching creature schema)
     speeds_obj = {"type": "stat_block_section", "subtype": "speeds", "movement": movement_array}
