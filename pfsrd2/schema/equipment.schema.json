@@ -741,7 +741,7 @@
 					"Languages", "MonsterAbilities", "MonsterFamilies",
 					"Monsters", "NPCs", "Planes", "Rituals", "Rules",
 					"Shields", "SiegeWeapons", "Skills", "Sources",
-					"Spells", "Traits", "WeaponGroups", "Weapons"
+					"Spells", "Traits", "WeaponGroups", "WeatherHazards", "Weapons"
 				]},
 				"game-id": {"type": "string"},
 				"alternate_type": {"enum": ["legacy", "remastered"]},
@@ -780,7 +780,7 @@
 					"Planes", "Rackets", "Relics", "ResearchFields", "Rituals",
 					"Rules", "Shields", "SiegeWeapons", "Skills", "Sources", "Spells",
 					"Tenets", "Traits", "Vehicles",
-					"WeaponGroups", "Weapons"
+					"WeaponGroups", "WeatherHazards", "Weapons"
 				]},
 				"aonid": {"type": "integer"}
 			},

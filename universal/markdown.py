@@ -48,6 +48,7 @@ def markdown_pass(struct, name, path, fxn_valid_tags=None):
             "table",
             "tr",
             "td",
+            "th",
             "hr",
             "sup",
             "p",

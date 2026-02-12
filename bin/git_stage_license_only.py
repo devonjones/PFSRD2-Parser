@@ -19,11 +19,11 @@ import os
 
 def get_modified_json_files(path):
     result = subprocess.run(
-        ["git", "diff", "--name-only", "--", path],
+        ["git", "diff", "--name-only", "-z", "--", path],
         capture_output=True,
         text=True,
     )
-    return [f for f in result.stdout.strip().split("\n") if f.endswith(".json")]
+    return [f for f in result.stdout.split("\0") if f.endswith(".json")]
 
 
 def get_old_json(filepath):

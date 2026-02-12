@@ -224,6 +224,21 @@ def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, de
         href = link.get("href", "")
         return "PFS.aspx" in href
 
+    # Exclude sidebar links (supplementary info boxes added in HTML5 update)
+    # These contain tables, lists, and cross-references that the parser doesn't extract.
+    # Different from "siderbarlook" (alternate edition markers) which are handled above.
+    def is_sidebar_link(link):
+        from bs4 import Tag
+
+        parent = link.parent
+        while parent:
+            if isinstance(parent, Tag) and parent.name == "div":
+                div_classes = parent.get("class", [])
+                if "sidebar" in div_classes:
+                    return True
+            parent = parent.parent
+        return False
+
     before = len(links)
     links = [l for l in links if not is_pfs_link(l)]
     if debug and len(links) < before:
@@ -243,6 +258,11 @@ def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, de
     links = [l for l in links if not is_alternate_link(l)]
     if debug and len(links) < before:
         sys.stderr.write(f"DEBUG: Excluded {before - len(links)} alternate edition links\n")
+
+    before = len(links)
+    links = [l for l in links if not is_sidebar_link(l)]
+    if debug and len(links) < before:
+        sys.stderr.write(f"DEBUG: Excluded {before - len(links)} sidebar links\n")
 
     if debug:
         sys.stderr.write(f"DEBUG: Final count after exclusions: {len(links)}\n")
@@ -740,9 +760,10 @@ def _content_filter(soup):
         if span.find("h1"):
             span.unwrap()
             break
-    # Remove empty <a> tags (HTML5 artifacts)
+    # Remove empty <a> tags (HTML5 artifacts), including those with only whitespace
+    # but not tags containing images (PFS icons, thumbnails)
     for a in main.find_all("a"):
-        if not a.string and not a.contents:
+        if not a.get_text(strip=True) and not a.find("img"):
             a.decompose()
 
 
@@ -842,9 +863,7 @@ def parse_equipment_html(filename, equipment_type=None):
                 "image": image_filename,
             }
         a_tag.decompose()
-    assert (
-        image_link_count <= 1
-    ), f"Expected at most 1 image link for {name}, found {image_link_count}"
+    # Some multi-variant items have multiple images; we take the first one
     if image_link_count > 0:
         combined_content = str(content_soup)
 
@@ -2459,17 +2478,26 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
 
     Works for any equipment type based on configuration.
     """
-    # Find all bold tags that are stats
-    # For most equipment, stats are before the hr
-    # For intelligent items (equipment type), stats can also be after the hr
+    # Find all bold tags that are stats (only in section[0], before first HR)
+    # Stats are always in the stat block area before the first <hr>.
+    # Content after <hr> is description/ability text and may reuse stat labels
+    # (e.g., intelligent item stats in Sharpness Point progression for Briar).
     hr = bs.find("hr")
     bold_tags = []
     for tag in bs.find_all("b"):
-        # For equipment type, don't stop at hr (intelligent items have stats after hr)
-        if equipment_type != "equipment":
-            if hr and tag.sourceline and hr.sourceline and tag.sourceline > hr.sourceline:
-                break
+        if hr and tag.sourceline and hr.sourceline and tag.sourceline > hr.sourceline:
+            break
         bold_tags.append(tag)
+
+    # Second pass: "Craft Requirements" always appears after the description/abilities
+    # section (after <hr>), so the main loop above won't find it. Scan specifically for it.
+    if hr:
+        for tag in bs.find_all("b"):
+            if not (tag.sourceline and hr.sourceline and tag.sourceline > hr.sourceline):
+                continue
+            if tag.get_text().strip() == "Craft Requirements":
+                bold_tags.append(tag)
+                break
 
     # Track elements to remove after extraction (bold tags and their values)
     elements_to_remove = []
@@ -2478,6 +2506,10 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
     for bold_tag in bold_tags:
         # Skip bold tags inside table elements (table headers/cells, not stat labels)
         if bold_tag.find_parent(["table", "td", "th"]):
+            continue
+
+        # Skip bold tags inside sidebar divs (supplementary info, not stat labels)
+        if bold_tag.find_parent("div", class_="sidebar"):
             continue
 
         label = bold_tag.get_text().strip()
@@ -3075,18 +3107,24 @@ def _build_section_from_heading(heading, all_headings):
     """
     level = _get_heading_level(heading)
     name = heading.get_text().strip()
+
+    # Extract links from heading itself (e.g., action reference links in h3 titles)
+    heading_links = get_links(heading, unwrap=True)
+
     content = _get_content_until_next_heading(heading, all_headings)
 
     content_soup = BeautifulSoup(content, "html.parser")
     content_links = get_links(content_soup, unwrap=True)
+
+    all_links = heading_links + content_links
 
     section = {
         "name": name,
         "type": "section",
         "text": _normalize_whitespace(str(content_soup)),
     }
-    if content_links:
-        section["links"] = content_links
+    if all_links:
+        section["links"] = all_links
 
     return level, section
 
@@ -3293,17 +3331,32 @@ def _extract_affliction(desc_soup, item_name):
     # Parse affliction HTML to extract links
     affliction_soup = BeautifulSoup(affliction_html, "html.parser")
 
-    # Remove nested Activate content before extracting links - those links belong
-    # to the ability extraction, not the affliction (e.g., Phoenix Cinder has an
-    # Activate ability nested inside Stage 1)
+    # Remove nested Activate content before extracting links.
+    # But first, collect any links from the Activate content (e.g., trait links
+    # like concentrate, teleportation) so they aren't lost. These links are part
+    # of the affliction's content area and won't be seen by ability extraction.
+    activate_links = []
     for activate_bold in affliction_soup.find_all(
         "b", string=lambda s: s and s.strip() == "Activate"
     ):
-        # Remove from Activate bold to next Stage/Purging bold or end
+        # Collect links from Activate content before removing it
+        current = activate_bold.next_sibling
+        while current:
+            if isinstance(current, Tag) and current.name == "b":
+                txt = get_text(current).strip()
+                if txt.startswith("Stage") or txt == "Purging":
+                    break
+            if isinstance(current, Tag) and current.name == "a":
+                href = current.get("href", "")
+                if "PFS.aspx" not in href:
+                    _, link = extract_link(current)
+                    if link:
+                        activate_links.append(link)
+            current = current.next_sibling
+        # Now remove the Activate content from soup
         current = activate_bold
         while current:
             next_node = current.next_sibling
-            # Stop at next Stage or Purging bold
             if isinstance(current, Tag) and current.name == "b" and current is not activate_bold:
                 txt = get_text(current).strip()
                 if txt.startswith("Stage") or txt == "Purging":
@@ -3315,6 +3368,7 @@ def _extract_affliction(desc_soup, item_name):
             current = next_node
 
     affliction_links = get_links(affliction_soup, unwrap=True)
+    affliction_links.extend(activate_links)
 
     # Unwrap remaining <a> tags, normalize HR separators, and split by semicolon
     while affliction_soup.a:
@@ -3381,7 +3435,14 @@ def _extract_description(bs, struct, debug=False):
     """
     # Split by <hr> tags to get sections
     text = str(bs)
+    if debug:
+        bs_link_count = len(BeautifulSoup(text, "html.parser").find_all("a"))
+        sys.stderr.write(
+            f"DEBUG _extract_description: bs text has {bs_link_count} links, len={len(text)}\n"
+        )
     sections = split_on_tag(text, "hr")
+
+    sec0_activate_moved = False
 
     if len(sections) < 2:
         # No <hr> tags - extract all remaining text as description (armor, weapons)
@@ -3425,40 +3486,75 @@ def _extract_description(bs, struct, debug=False):
                 # Section[1] is description
                 desc_section = section1
         else:
-            # Check if content spans multiple HR sections (e.g., stage-based items
-            # like Heartblood Ring where Stage 1, Stage 2, etc. are HR-separated)
-            has_stage_in_sections = any(
-                "<b>Stage" in sec or "<b>\nStage" in sec for sec in sections
-            )
-            if has_stage_in_sections:
-                # Combine content sections (stages span multiple HR sections)
-                # Skip section 0 (stats area) which may still have Activate bold
-                desc_section = "<hr/>".join(sec for sec in sections[1:] if sec.strip())
-            else:
-                # Get the last non-empty section (siege weapons, etc.)
-                desc_section = None
-                for section in reversed(sections):
-                    if section.strip():
-                        desc_section = section
-                        break
+            # Combine all content sections after section[0] (stats area).
+            # Section[0] contains the stat block (title, traits, source, etc.)
+            # which has already been extracted. Remaining sections are all
+            # description content: stage-based items, relic gifts, activations, etc.
+            desc_section = "<hr/>".join(sec for sec in sections[1:] if sec.strip())
 
             if not desc_section:
                 # Fallback if all sections are empty
                 desc_section = sections[-1] if sections else ""
 
+            # Move Activate content from section[0] to desc_section.
+            # In HTML5 format, <hr> sometimes appears after the Activate line,
+            # placing it in section[0] (stats area). Stat extraction skips
+            # Activate for equipment type, so it stays in section[0] where
+            # ability extraction (which runs on desc_soup) wouldn't find it.
+            # Use <hr/> separator so _collect_equipment_ability_content stops
+            # at the boundary between Activate and description content.
+            if equipment_type != "siege_weapon":
+                sec0_activate = re.search(r"<b>\s*Activate\s*</b>", sections[0])
+                if sec0_activate:
+                    activate_content = sections[0][sec0_activate.start() :]
+                    sections[0] = sections[0][: sec0_activate.start()]
+                    if desc_section:
+                        desc_section = activate_content + "<hr/>" + desc_section
+                    else:
+                        desc_section = activate_content
+                    sec0_activate_moved = True
+
         desc_soup = BeautifulSoup(desc_section, "html.parser")
 
-        # For combination weapons, stop at first <h2 class="title"> (mode section header)
-        first_h2 = desc_soup.find("h2", class_="title")
-        if first_h2:
-            # This is a combination weapon - extract only content before first <h2>
-            content_before_h2 = []
-            for elem in desc_soup.children:
-                if elem == first_h2:
-                    break
-                content_before_h2.append(str(elem))
-            last_section = "".join(content_before_h2)
-            desc_soup = BeautifulSoup(last_section, "html.parser")
+        if debug:
+            sec0_soup = BeautifulSoup(sections[0], "html.parser")
+            sec0_links = sec0_soup.find_all("a")
+            sys.stderr.write(
+                f"DEBUG: section[0] has {len(sec0_links)} links, sections[1:] combined has {len(desc_soup.find_all('a'))} links, total sections={len(sections)}\n"
+            )
+
+        # Rescue non-sidebar links from section[0] (stat area remnants).
+        # After stat extraction and Activate content move, section[0] may still
+        # have stray links (e.g., from unrecognized stat content). Rescue them
+        # into stat_block.links so they aren't lost.
+        if sections[0].strip():
+            sec0_soup = BeautifulSoup(sections[0], "html.parser")
+            # Remove sidebar divs (their links were already excluded from HTML count)
+            for sidebar in sec0_soup.find_all("div", class_="sidebar"):
+                sidebar.decompose()
+            sec0_remaining_links = get_links(sec0_soup, unwrap=True)
+            if sec0_remaining_links:
+                sb = find_stat_block(struct)
+                existing_links = sb.setdefault("links", [])
+                existing_keys = {
+                    (l.get("name"), l.get("game-obj", l.get("href", ""))) for l in existing_links
+                }
+                item_name = struct.get("name", "")
+                for link in sec0_remaining_links:
+                    # Skip self-references (excluded from HTML count)
+                    if link.get("name") == item_name:
+                        continue
+                    # Skip links already in stat_block from stat extraction
+                    # (e.g., relic aspect links). Don't skip sec0 duplicates
+                    # though — HTML may have multiple <a> tags with same text.
+                    key = (link.get("name"), link.get("game-obj", link.get("href", "")))
+                    if key not in existing_keys:
+                        existing_links.append(link)
+
+        # Note: h2.title headings in content sections (e.g., "Deck Of Illusions Cards",
+        # "Dragon") are processed by _extract_sections_from_headings later.
+        # The len(sections) < 2 branch has a similar check for combination weapons,
+        # which don't have <hr> separators.
 
     # Extract Stage-only afflictions (no Saving Throw) BEFORE action detection,
     # because stage-based items may have nested Activate bolds within stages that
@@ -3471,6 +3567,41 @@ def _extract_description(bs, struct, debug=False):
     has_saving_throw = desc_soup.find("b", string=lambda s: s and s.strip() == "Saving Throw")
     if not has_saving_throw and _has_affliction_pattern(desc_soup):
         affliction, affliction_links = _extract_affliction(desc_soup, struct.get("name", ""))
+
+    # Extract abilities (Activate, etc.) from desc_soup BEFORE action detection.
+    # This properly handles combined sections: abilities are extracted with their links,
+    # and non-ability content (like relic gift lists) remains in desc_soup for the
+    # description link extraction below. Must run before action detection so that
+    # links aren't double-counted between abilities and description.
+    # Debug: show links BEFORE ability extraction
+    if debug:
+        pre_links = desc_soup.find_all("a")
+        sys.stderr.write(f"DEBUG: Before ability extraction, {len(pre_links)} links in desc_soup\n")
+        for rl in pre_links:
+            sys.stderr.write(f"  - {rl.get('href', '')[:60]} text={rl.get_text(strip=True)[:30]}\n")
+
+    sb_for_abilities = find_stat_block(struct)
+    trait_links_converted = _extract_abilities_from_description(
+        desc_soup, sb_for_abilities, struct, debug=debug
+    )
+
+    # After ability extraction, remove the separator <hr> that was added
+    # when Activate content was moved from section[0] to desc_soup.
+    # The ability extraction consumed the Activate content; the orphan <hr>
+    # would pollute the description text.
+    if sec0_activate_moved:
+        first_hr = desc_soup.find("hr")
+        if first_hr:
+            first_hr.decompose()
+
+    # Debug: show remaining links after ability extraction
+    if debug:
+        remaining_links = desc_soup.find_all("a")
+        sys.stderr.write(
+            f"DEBUG: After ability extraction, {len(remaining_links)} links remain in desc_soup\n"
+        )
+        for rl in remaining_links:
+            sys.stderr.write(f"  - {rl.get('href', '')[:60]} text={rl.get_text(strip=True)[:30]}\n")
 
     # Find the first action - either a bold tag with action name, or an action icon span
     # We need to find the EARLIEST action in document order, not just the first one we encounter
@@ -3521,6 +3652,18 @@ def _extract_description(bs, struct, debug=False):
         first_action_element = min(candidates, key=get_element_index)
 
     # Extract only the content before the first action
+    if debug and first_action_element:
+        sys.stderr.write(
+            f"DEBUG: Action detection found: {first_action_element.name} text='{first_action_element.get_text(strip=True)[:30]}'\n"
+        )
+        remaining_after = []
+        n = first_action_element.next_sibling
+        while n:
+            if isinstance(n, Tag) and n.name == "a":
+                remaining_after.append(n.get("href", "")[:40])
+            n = n.next_sibling
+        sys.stderr.write(f"DEBUG: Will remove {len(remaining_after)} links after action element\n")
+
     if first_action_element:
         # Remove everything from the action element onwards
         current = first_action_element
@@ -3714,6 +3857,7 @@ def _extract_description(bs, struct, debug=False):
     # Store extracted links if any exist (excluding trait links)
     # Merge with any existing links (e.g., from unrecognized stat fields like Aspects)
     # avoiding duplicates by checking (name, game-obj/href)
+    links_deduped = 0
     if non_trait_links:
         existing_links = sb.setdefault("links", [])
         existing_keys = {
@@ -3724,16 +3868,19 @@ def _extract_description(bs, struct, debug=False):
             if key not in existing_keys:
                 existing_links.append(l)
                 existing_keys.add(key)
+            else:
+                links_deduped += 1
 
     # Add sections if any were extracted from headings
     if sections:
         sb["sections"] = sections
 
-    # Extract abilities from content after description (Activate, etc.)
-    # This uses the original bs which still has the action content
-    trait_links_converted = _extract_abilities_from_description(bs, sb, struct, debug=debug)
+    if debug:
+        sys.stderr.write(
+            f"DEBUG _extract_description returning: trait_links_converted={trait_links_converted}, links_deduped={links_deduped}\n"
+        )
 
-    return trait_links_converted
+    return trait_links_converted + links_deduped
 
 
 def _parse_activation_types(activation_string):
@@ -4060,6 +4207,13 @@ def _parse_activation_content(activate_content, ability):
             if _TIME_PATTERN.search(time_part):
                 activation_time, converted = _extract_traits_from_time_part(time_part, ability)
                 trait_links_converted += converted
+            else:
+                # Non-time part may contain trait links (e.g., "auditory, linguistic)")
+                # Re-include only if it has <a> tags (links worth preserving).
+                # Don't re-include plain text/spans (e.g., "This activation takes
+                # [two-actions]...") as it would pollute activation_types.
+                if "<a " in time_part or "<a>" in time_part:
+                    activate_content = activate_content + " " + time_part
 
     # Parse the activate content soup to extract links and traits
     content_soup = BeautifulSoup(activate_content, "html.parser")
@@ -4388,8 +4542,21 @@ def _process_activate_content(ability_soup, ability):
     if ability_name:
         ability["ability_name"] = ability_name
 
-    # Collect content until next sub-field bold
-    content_parts, content_nodes = _collect_siblings_until_bold(current)
+    # Collect activation line content until next sub-field bold OR <br>.
+    # Stop at <br> to avoid consuming description text that follows the
+    # activation line (e.g., Archaic Wayfinder's description with "aeon stone" link).
+    content_parts = []
+    content_nodes = []
+    while current:
+        if isinstance(current, Tag):
+            if current.name == "b":
+                break
+            if current.name == "br":
+                content_nodes.append(current)
+                break
+        content_parts.append(str(current))
+        content_nodes.append(current)
+        current = current.next_sibling
     nodes_to_remove.extend(content_nodes)
 
     _remove_soup_nodes(nodes_to_remove)
@@ -4437,6 +4604,13 @@ def _extract_abilities_from_description(bs, sb, struct=None, debug=False, equipm
     if not ability_bolds:
         return 0
 
+    # Count per-(name, game-obj) link occurrences in desc soup BEFORE extraction.
+    # Used after dedup to distinguish genuine HTML duplicates from sibling artifacts.
+    desc_link_counts = {}
+    for link in get_links(bs, unwrap=False):
+        key = (link.get("name"), link.get("game-obj", link.get("href", "")))
+        desc_link_counts[key] = desc_link_counts.get(key, 0) + 1
+
     trait_links_converted = 0
     abilities = []
     elements_to_remove = []
@@ -4477,17 +4651,56 @@ def _extract_abilities_from_description(bs, sb, struct=None, debug=False, equipm
 
         abilities.append(ability)
 
+    if debug:
+        for ab_idx, ab in enumerate(abilities):
+            ab_links = ab.get("links", [])
+            sys.stderr.write(
+                f"DEBUG PRE-DEDUP ability[{ab_idx}] '{ab.get('name', '?')}': {len(ab_links)} links: {[(l.get('name'), l.get('game-obj')) for l in ab_links]}\n"
+            )
+    # Count pre-dedup per-pair occurrences across abilities
+    pre_dedup_pairs = {}
+    for ab in abilities:
+        for l in ab.get("links", []):
+            key = (l.get("name"), l.get("game-obj", l.get("href", "")))
+            pre_dedup_pairs[key] = pre_dedup_pairs.get(key, 0) + 1
+
     dedup_removed = _deduplicate_links_across_abilities(abilities)
-    # Dedup removals are added to trait_links_converted because both represent
-    # HTML links that were intentionally not carried into the JSON output.
-    # TODO: Consider separating into distinct counters for clearer accounting.
-    trait_links_converted += dedup_removed
+
+    # Compute genuine_dedup: how many of the deduped removals correspond to
+    # genuinely different HTML <a> tags (vs sibling traversal artifacts that
+    # collected the same <a> tag into multiple ability soups).
+    # For each deduped pair: genuine = min(times_deduped, html_occurrences - 1)
+    genuine_dedup = 0
+    if dedup_removed > 0:
+        post_dedup_pairs = {}
+        for ab in abilities:
+            for l in ab.get("links", []):
+                key = (l.get("name"), l.get("game-obj", l.get("href", "")))
+                post_dedup_pairs[key] = post_dedup_pairs.get(key, 0) + 1
+        for key, pre_count in pre_dedup_pairs.items():
+            post_count = post_dedup_pairs.get(key, 0)
+            if pre_count > post_count:
+                html_count = desc_link_counts.get(key, 1)
+                genuine_dedup += min(pre_count - post_count, max(0, html_count - 1))
+    trait_links_converted += genuine_dedup
+
+    if debug:
+        sys.stderr.write(
+            f"DEBUG _extract_abilities: trait_links_converted={trait_links_converted}, dedup_removed={dedup_removed}, genuine_dedup={genuine_dedup}, n_abilities={len(abilities)}\n"
+        )
+        for ab in abilities:
+            ab_links = ab.get("links", [])
+            sys.stderr.write(
+                f"  ability '{ab.get('name', '?')}': {len(ab_links)} links: {[(l.get('name'), l.get('game-obj')) for l in ab_links]}\n"
+            )
 
     # Remove all ability elements from original soup
+    # Use getattr for .parent — decompose() on a parent tag destroys descendants,
+    # so later elements in the list may already be detached.
     for elem in elements_to_remove:
-        if hasattr(elem, "decompose") and elem.parent is not None:
+        if hasattr(elem, "decompose") and getattr(elem, "parent", None) is not None:
             elem.decompose()
-        elif isinstance(elem, NavigableString) and elem.parent is not None:
+        elif isinstance(elem, NavigableString) and getattr(elem, "parent", None) is not None:
             elem.extract()
 
     if abilities:
