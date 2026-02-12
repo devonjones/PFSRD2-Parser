@@ -737,7 +737,7 @@
 				"game-obj": {"enum": [
 					"Actions", "Ancestries", "Archetypes", "Armor",
 					"Classes", "Conditions", "Deities", "Diseases",
-					"Domains", "Equipment", "Feats", "Heritages",
+					"Domains", "Equipment", "Feats", "Heritages", "Innovations",
 					"Languages", "MonsterAbilities", "MonsterFamilies",
 					"Monsters", "NPCs", "Planes", "Rituals", "Rules",
 					"Shields", "SiegeWeapons", "Skills", "Sources",
@@ -774,7 +774,7 @@
 					"Conditions", "Curses", "Deities", "DeityCategories",
 					"Diseases", "Doctrines", "Domains", "DruidicOrders",
 					"Equipment", "Familiars", "Feats", "Hazards", "Heritages",
-					"HuntersEdge", "HybridStudies", "Instincts", "Languages",
+					"HuntersEdge", "HybridStudies", "Innovations", "Instincts", "Languages",
 					"MonsterAbilities", "MonsterFamilies", "MonsterTemplates",
 					"Monsters", "Muses", "Mysteries", "NPCs", "Patrons",
 					"Planes", "Rackets", "Relics", "ResearchFields", "Rituals",

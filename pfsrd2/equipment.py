@@ -1520,8 +1520,8 @@ def _extract_siege_weapon_stats(bs, stats_dict, recognized_stats, equipment_type
         if field_name is None:
             continue
 
-        # Extract the value - preserve HTML for immunities to keep links
-        preserve_html = label == "Immunities"
+        # Extract the value - preserve HTML for fields with links
+        preserve_html = label in ("Immunities", "Ammunition")
         value = _extract_stat_value(bold_tag, preserve_html=preserve_html)
         if value:
             stats_dict[field_name] = value
@@ -1564,8 +1564,8 @@ def _parse_siege_weapon_launch(text):
     # Traits appear as: (attack, manipulate, range increment 120 feet)
     trait_names, text = _extract_traits_from_parentheses(text)
 
-    # Look for "DC \d+ \w+" pattern
-    dc_pattern = r"(DC\s+\d+\s+\w+)"
+    # Look for "DC \d+ [basic] \w+" pattern (basic is an optional modifier before save type)
+    dc_pattern = r"(DC\s+\d+\s+(?:basic\s+)?\w+)"
     match = re.search(dc_pattern, text)
     if not match:
         # No save found - just return the text as-is
@@ -1718,7 +1718,7 @@ def _collect_ability_content(bold_tag, addon_names, processed_bolds):
     current = bold_tag.next_sibling
 
     while current:
-        if isinstance(current, Tag) and current.name in ("hr", "h2"):
+        if isinstance(current, Tag) and current.name in ("hr", "h2", "div"):
             break
         if isinstance(current, Tag) and current.name == "br":
             break
@@ -1999,7 +1999,16 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
     Returns:
         List of ability objects matching the ability schema, or None if no abilities found.
     """
-    main_abilities = ["Aim", "Load", "Launch", "Ram", "Effect", "Requirements"]
+    main_abilities = [
+        "Aim",
+        "Load",
+        "Launch",
+        "Fire",
+        "Ram",
+        "Effect",
+        "Requirements",
+        "Activate Drill",
+    ]
     result_fields = ["Success", "Failure", "Critical Success", "Critical Failure"]
     addon_names = constants.CREATURE_ABILITY_ADDON_NAMES
 
