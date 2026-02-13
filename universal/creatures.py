@@ -232,6 +232,7 @@ def universal_handle_save_dc(text):
     # DC 22 Fortitude
     # DC 22 half
 
+    text = text.strip()
     assert "DC" in text, f"Saves must have DCs: {text}"
     if text.endswith(","):
         text = text[:-1]
@@ -239,7 +240,7 @@ def universal_handle_save_dc(text):
     text, modifiers = extract_modifiers(text)
     if modifiers:
         save_dc["modifiers"] = modifiers
-    parts = text.split(" ")
+    parts = text.split()
     types = {
         "Fortitude": "Fort",
         "Fort": "Fort",

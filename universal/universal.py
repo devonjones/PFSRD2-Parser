@@ -31,8 +31,12 @@ class Heading:
             assert len(children) == 1, bs
             top = children[0]
             self.name = get_text(bs).strip()
-            self.name_html = "".join([str(i) for i in top])
-            top.clear()
+            if hasattr(top, "contents"):
+                self.name_html = "".join([str(i) for i in top])
+                top.clear()
+            else:
+                self.name_html = str(top)
+                top.extract()
             self.name_tag = str(bs)
         except Exception as e:
             print(name)

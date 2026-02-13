@@ -1464,7 +1464,6 @@ def process_threshold(hp, section):
         t[f] = int(s)
     if len(thresholds) > 0:
         hp["thresholds"] = thresholds
-        assert "squares" in hp or "segments" in hp
 
 
 def process_defense(hp, section, ret=False):
@@ -1512,7 +1511,21 @@ def handle_aura(sb, ability):
                 return
             # Try to extract DC from body text (may have HTML links like <a>basic</a> before save type)
             text_stripped = re.sub(r"<[^>]+>", "", ability["text"])
+            # Format: "DC 23 Fortitude" or "DC 23 basic Fortitude"
             m = re.search(r"DC (\d+)\s+(?:\w+\s+)?(Fortitude|Fort|Reflex|Will|flat)", text_stripped)
+            if not m:
+                # Reverse format: "Fortitude DC 23"
+                m2 = re.search(r"(Fortitude|Fort|Reflex|Will|flat)\s+DC\s+(\d+)", text_stripped)
+                if m2:
+                    save_text = f"DC {m2.group(2)} {m2.group(1)}"
+                    ability["saving_throw"] = universal_handle_save_dc(save_text)
+                    return
+                # Standalone DC without explicit save type
+                m3 = re.search(r"DC (\d+)", text_stripped)
+                if m3:
+                    save_text = f"DC {m3.group(1)}"
+                    ability["saving_throw"] = universal_handle_save_dc(save_text)
+                    return
             if m:
                 save_text = f"DC {m.group(1)} {m.group(2)}"
                 ability["saving_throw"] = universal_handle_save_dc(save_text)
@@ -1709,10 +1722,22 @@ def process_speed(section):
     parts = [t.strip() for t in text.split(";")]
     text = parts.pop(0)
     modifiers = None
+    extra_movements = []
     if len(parts) > 0:
-        modifiers = [p.strip() for p in parts.pop().split(",")]
+        raw_mods = [p.strip() for p in parts.pop().split(",")]
+        modifiers = []
+        for rm in raw_mods:
+            # HTML5: additional speeds after semicolons (e.g. "climb 30 feet")
+            if re.match(r"^(?:burrow|climb|fly|swim|Speed) \d+ feet", rm):
+                extra_movements.append(rm)
+            else:
+                modifiers.append(rm)
+        if not modifiers:
+            modifiers = None
     assert len(parts) == 0, section
     movement = build_movement(text)
+    for em in extra_movements:
+        movement.extend(build_movement(em))
     speed = {"type": "stat_block_section", "subtype": "speeds", "movement": movement}
     if modifiers:
         speed["modifiers"] = link_modifiers(
@@ -1846,26 +1871,45 @@ def process_offensive_action(section):
             section["traits"] = parent_section["traits"]
             del parent_section["traits"]
         text = _handle_requirements(text)
+        # Normalize: HTML5 may have space between sign and digits (e.g. "+ 14")
+        text = re.sub(r"([+-])\s+(\d)", r"\1\2", text)
 
+        # Old format: name +bonus [MAP link] (traits), Damage ...
         m = re.search(r"^(.*) ([+-]\d*) \[(.*)\] \((.*)\), (.*)$", text)
+        has_map = True
         if not m:
             m = re.search(r"^(.*) ([+-]\d*) \[(.*)\], (.*)$", text)
+        if not m:
+            # HTML5 format: no MAP brackets
+            has_map = False
+            m = re.search(r"^(.*) ([+-]\d*) \((.*)\), (.*)$", text)
+            if not m:
+                m = re.search(r"^(.*) ([+-]\d*), (.*)$", text)
         assert m, f"Failed to parse: {text}"
         attack_data = list(m.groups())
         section["weapon"] = remove_html_weapon(attack_data.pop(0), section)
         attacks = [attack_data.pop(0)]
-        bs = BeautifulSoup(attack_data.pop(0), "html.parser")
-        children = list(bs.children)
-        assert len(children) == 1, f"Failed to parse: {text}"
-        data, link = extract_link(children[0])
-        attacks.extend(data.split("/"))
-        attacks = [int(a) for a in attacks]
-        section["bonus"] = {
-            "type": "stat_block_section",
-            "subtype": "attack_bonus",
-            "link": link,
-            "bonuses": attacks,
-        }
+
+        if has_map:
+            bs = BeautifulSoup(attack_data.pop(0), "html.parser")
+            children = list(bs.children)
+            assert len(children) == 1, f"Failed to parse: {text}"
+            data, link = extract_link(children[0])
+            attacks.extend(data.split("/"))
+            attacks = [int(a) for a in attacks]
+            section["bonus"] = {
+                "type": "stat_block_section",
+                "subtype": "attack_bonus",
+                "link": link,
+                "bonuses": attacks,
+            }
+        else:
+            attacks = [int(a) for a in attacks]
+            section["bonus"] = {
+                "type": "stat_block_section",
+                "subtype": "attack_bonus",
+                "bonuses": attacks,
+            }
 
         damage = attack_data.pop().split(" ")
         _ = damage.pop(0)
@@ -1898,10 +1942,13 @@ def process_offensive_action(section):
         def _handle_bloodline(section):
             if "Bloodline" in section["spell_type"]:
                 parts = section["spell_type"].split(" ")
-                assert len(parts) == 4, parts
-                section["bloodline"] = parts[1]
-                del parts[1]
-                section["spell_type"] = " ".join(parts)
+                if len(parts) == 4:
+                    # Old format: [class, bloodline_name, "Bloodline", "Spells"]
+                    section["bloodline"] = parts[1]
+                    del parts[1]
+                    section["spell_type"] = " ".join(parts)
+
+        valid_traditions = {"Occult", "Arcane", "Divine", "Primal", "Unique"}
 
         text = parent_section["text"]
         del parent_section["text"]
@@ -1920,7 +1967,11 @@ def process_offensive_action(section):
         name_parts = section["name"].split(" ")
         _handle_traditions(name_parts)
         if name_parts[-1] not in ["Formulas", "Rituals"] and "Monk" not in name_parts:
-            section["spell_tradition"] = name_parts.pop(0)
+            if name_parts[0] in valid_traditions:
+                section["spell_tradition"] = name_parts.pop(0)
+            elif len(name_parts) > 1 and name_parts[1] in valid_traditions:
+                # Class name before tradition (e.g. "Wizard Arcane Spells")
+                section["spell_tradition"] = name_parts.pop(1)
         if name_parts[-1] == "Rituals" and len(name_parts) > 1:
             name_parts.pop(0)
         section["spell_type"] = " ".join(name_parts)
@@ -2062,6 +2113,17 @@ def process_offensive_action(section):
         while bs.a:
             bs.a.unwrap()
         text = str(bs)
+        # HTML5 may omit semicolons between affliction section headers;
+        # normalize by inserting semicolons before known <b> headers
+        header_re = re.compile(
+            r"(<b>\s*(?:Saving Throw|Stage\s+\d+|Onset|Maximum Duration"
+            r"|Requirements|Effect|Special)\s*</b>)",
+            re.DOTALL,
+        )
+        for m in reversed(list(header_re.finditer(text))):
+            before = text[: m.start()].rstrip()
+            if before and not before.endswith(";"):
+                text = text[: m.start()] + "; " + text[m.start() :]
         parts = [p.strip() for p in text.split(";")]
         first = True
         for p in parts:
@@ -2071,6 +2133,19 @@ def process_offensive_action(section):
                 newtext = get_text(bs).strip()
                 if title == "Saving Throw":
                     assert "saving_throw" not in section, text
+                    # HTML5: extra text may follow the DC spec (e.g. period,
+                    # curse descriptions). Extract just the DC portion.
+                    dc_match = re.match(
+                        r"(DC\s+\d+\s*"
+                        r"(?:Fortitude|Fort|Reflex|Ref|Will|flat)?"
+                        r"(?:\s+(?:save|check|basic|half|negates))?)",
+                        newtext,
+                    )
+                    if dc_match:
+                        extra = newtext[dc_match.end() :].strip().lstrip(".")
+                        if extra:
+                            section.setdefault("text", []).append(extra)
+                        newtext = dc_match.group(1)
                     section["saving_throw"] = universal_handle_save_dc(newtext)
                 elif title == "Requirements":
                     assert "requirements" not in section, text
