@@ -182,7 +182,7 @@
 				"subtype": {"enum": ["attack_damage"]},
 				"formula": {"type": "string"},
 				"damage_type": {"enum": [
-					"", "slashing", "piercing", "bludgeoning", "nonlethal",
+					"slashing", "piercing", "bludgeoning", "nonlethal",
 					"acid", "sonic", "fire", "electricity", "elemental", "cold",
 					"astral", "mental", "poison", "force", "varies",
 					"cold or fire", "positive", "negative", "modular",
