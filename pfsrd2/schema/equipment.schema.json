@@ -627,6 +627,27 @@
 			"required": ["type", "subtype"],
 			"additionalProperties": false
 		},
+		"intelligent_item": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["intelligent_item"]},
+				"perception": {"type": "string"},
+				"communication": {"type": "string"},
+				"skills": {"type": "string"},
+				"int_mod": {"type": "string"},
+				"wis_mod": {"type": "string"},
+				"cha_mod": {"type": "string"},
+				"will": {"type": "string"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["type", "subtype"],
+			"additionalProperties": false
+		},
 		"attack_roll": {
 			"type": "object",
 			"properties": {
@@ -718,6 +739,7 @@
 				"statistics": {"$ref": "#/definitions/statistics"},
 				"defense": {"$ref": "#/definitions/defense"},
 				"offense": {"$ref": "#/definitions/offense"},
+				"intelligent_item": {"$ref": "#/definitions/intelligent_item"},
 				"sources": {"$ref": "#/definitions/sources"},
 				"sections": {"$ref": "#/definitions/sections"},
 				"image": {"$ref": "#/definitions/image"},

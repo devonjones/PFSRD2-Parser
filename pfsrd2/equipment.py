@@ -239,6 +239,52 @@ def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, de
             parent = parent.parent
         return False
 
+    # Exclude links inside HTML5 combination weapon appendix sections:
+    # - <div class="trait-entry"> blocks (trait descriptions after <h2>Traits</h2>)
+    # - Content after non-mode <h2 class="title"> (e.g., "Traits", "Critical Specialization Effects")
+    # These sections are removed by _extract_combination_weapon and not extracted to JSON.
+    # ONLY applies to combination weapons (which have Melee/Ranged h2 mode headers).
+    is_combination = any(
+        h2.get_text(strip=True).lower() in ("melee", "ranged")
+        for h2 in soup.find_all("h2", class_="title")
+    )
+
+    def _find_nonmode_h2_ranges(soup_obj):
+        """Find source line ranges of non-mode h2 sections to exclude."""
+        ranges = []
+        all_h2s = soup_obj.find_all("h2", class_="title")
+        for h2 in all_h2s:
+            h2_text = h2.get_text(strip=True).lower()
+            if h2_text not in ("melee", "ranged"):
+                start = h2.sourceline
+                next_h2 = h2.find_next_sibling("h2", class_="title")
+                end = next_h2.sourceline if next_h2 and next_h2.sourceline else float("inf")
+                if start:
+                    ranges.append((start, end))
+        return ranges
+
+    nonmode_ranges = _find_nonmode_h2_ranges(soup) if is_combination else []
+
+    def is_combination_appendix_link(link):
+        if not is_combination:
+            return False
+        from bs4 import Tag
+
+        # Check if inside <div class="trait-entry">
+        parent = link.parent
+        while parent:
+            if isinstance(parent, Tag) and parent.name == "div":
+                div_classes = parent.get("class", [])
+                if "trait-entry" in div_classes:
+                    return True
+            parent = parent.parent
+        # Check if in a non-mode h2 section by source line
+        if link.sourceline and nonmode_ranges:
+            for start, end in nonmode_ranges:
+                if start <= link.sourceline < end:
+                    return True
+        return False
+
     before = len(links)
     links = [l for l in links if not is_pfs_link(l)]
     if debug and len(links) < before:
@@ -263,6 +309,11 @@ def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, de
     links = [l for l in links if not is_sidebar_link(l)]
     if debug and len(links) < before:
         sys.stderr.write(f"DEBUG: Excluded {before - len(links)} sidebar links\n")
+
+    before = len(links)
+    links = [l for l in links if not is_combination_appendix_link(l)]
+    if debug and len(links) < before:
+        sys.stderr.write(f"DEBUG: Excluded {before - len(links)} combination weapon appendix links\n")
 
     if debug:
         sys.stderr.write(f"DEBUG: Final count after exclusions: {len(links)}\n")
@@ -466,6 +517,7 @@ EQUIPMENT_TYPES = {
             "HP": "hp_bt",  # HTML has just "HP" (value includes "(BT 20)" part)
             "Immunities": "immunities",
             "Speed": "speed",
+            "Bulk": "bulk",
             # Action sections (handled separately by section_pass)
             "Aim": None,
             "Load": None,
@@ -477,7 +529,7 @@ EQUIPMENT_TYPES = {
         # Fields at different nesting levels:
         # - shared_fields: top-level stat_block (price)
         # - nested_fields: nested in siege_weapon object (all others)
-        "shared_fields": ["price"],
+        "shared_fields": ["price", "bulk"],
         "nested_fields": [
             "usage",
             "crew",
@@ -718,6 +770,7 @@ def parse_equipment(filename, options):
     # This maintains backward compatibility during migration
     populate_equipment_buckets_pass(struct)
     remove_empty_sections_pass(struct)
+    _remove_empty_values_pass(struct)
 
     # Fix character encoding issues (UTF-8 interpreted as Latin-1)
     recursive_filter_entities(struct)
@@ -1229,6 +1282,136 @@ def _route_fields_to_destinations(sb, stats, config):
             sb[equipment_type] = nested_obj
 
 
+# Known fields in intelligent item stat blocks (between two <hr> tags).
+# Assert on any unknown field for strategic fragility.
+INTELLIGENT_ITEM_FIELDS = {
+    "Perception", "Communication", "Skills",
+    "Int", "Wis", "Cha", "Will",
+}
+
+
+def _extract_intelligent_item_section(bs, sb, debug=False):
+    """Extract intelligent item stat block section if present.
+
+    Intelligent items have a creature-like stat block between two <hr> tags with
+    fields: Perception, Communication, Skills, Int/Wis/Cha, Will. This function
+    detects the pattern, extracts it as a structured section, and removes it from
+    the soup so <hr> tags don't leak into description text.
+
+    Returns 0 (no link accounting adjustment needed — links in sections are
+    counted by _count_links_in_json's recursive walk).
+    """
+    # Find first <hr> tag
+    first_hr = bs.find("hr")
+    if not first_hr:
+        return 0
+
+    # Check if first bold tag after the <hr> is "Perception"
+    first_bold_after_hr = None
+    for sibling in first_hr.next_siblings:
+        if isinstance(sibling, Tag) and sibling.name == "b":
+            first_bold_after_hr = sibling
+            break
+
+    if not first_bold_after_hr or first_bold_after_hr.get_text().strip() != "Perception":
+        return 0
+
+    if debug:
+        sys.stderr.write("DEBUG: Detected intelligent item section\n")
+
+    # Find second <hr> (end of intelligent item section)
+    second_hr = None
+    for sibling in first_hr.next_siblings:
+        if isinstance(sibling, Tag) and sibling.name == "hr":
+            second_hr = sibling
+            break
+
+    # Collect all elements between first_hr and second_hr (exclusive)
+    elements_to_extract = []
+    elem = first_hr.next_sibling
+    while elem is not None and elem != second_hr:
+        elements_to_extract.append(elem)
+        elem = elem.next_sibling
+
+    # Build HTML from collected elements for parsing
+    section_html = "".join(str(e) for e in elements_to_extract)
+    section_soup = BeautifulSoup(section_html, "html.parser")
+
+    # Parse fields: iterate through children, each <b> starts a new field
+    fields = {}
+    current_label = None
+    current_value_parts = []
+
+    for child in section_soup.children:
+        if isinstance(child, Tag) and child.name == "b":
+            # Save previous field
+            if current_label is not None:
+                value_html = "".join(current_value_parts).strip().strip(",").strip()
+                fields[current_label] = value_html
+            current_label = child.get_text().strip()
+            assert current_label in INTELLIGENT_ITEM_FIELDS, (
+                f"Unknown intelligent item field: '{current_label}'"
+            )
+            current_value_parts = []
+        elif isinstance(child, Tag) and child.name == "br":
+            continue  # Skip line breaks
+        elif current_label is not None:
+            current_value_parts.append(str(child))
+
+    # Save last field
+    if current_label is not None:
+        value_html = "".join(current_value_parts).strip().strip(",").strip()
+        fields[current_label] = value_html
+
+    # Extract links from entire section
+    _, links = extract_links(section_html)
+
+    # Build section dict
+    field_map = {
+        "Perception": "perception",
+        "Communication": "communication",
+        "Skills": "skills",
+        "Int": "int_mod",
+        "Wis": "wis_mod",
+        "Cha": "cha_mod",
+        "Will": "will",
+    }
+
+    section = {
+        "type": "stat_block_section",
+        "subtype": "intelligent_item",
+    }
+
+    for label, key in field_map.items():
+        if label in fields:
+            # Get text-only value (strip HTML, normalize whitespace)
+            value_soup = BeautifulSoup(fields[label], "html.parser")
+            text = re.sub(r"\s+", " ", value_soup.get_text()).strip()
+            section[key] = text
+
+    if links:
+        section["links"] = links
+
+    # Add as direct property of stat block (like statistics, defense, offense)
+    sb["intelligent_item"] = section
+
+    if debug:
+        sys.stderr.write(
+            f"DEBUG: Intelligent item section: {list(section.keys())}, "
+            f"{len(links)} links\n"
+        )
+
+    # Remove extracted content from soup: first <hr> + all elements up to second <hr>
+    for elem in elements_to_extract:
+        if isinstance(elem, Tag):
+            elem.decompose()
+        elif isinstance(elem, NavigableString):
+            elem.extract()
+    first_hr.decompose()
+
+    return 0
+
+
 def _generic_section_pass(struct, config, debug=False):
     """Generic section pass for non-weapon equipment (armor, etc.).
 
@@ -1281,6 +1464,9 @@ def _generic_section_pass(struct, config, debug=False):
 
     # Route fields to their destinations based on config
     _route_fields_to_destinations(sb, stats, config)
+
+    # Extract intelligent item stat block if present (between first and second <hr>)
+    _extract_intelligent_item_section(main_bs, sb, debug=debug)
 
     # Process variants if present
     variant_trait_links = 0
@@ -1470,10 +1656,14 @@ def _extract_vehicle_stats(bs, stats_dict, recognized_stats, equipment_type):
     """Extract vehicle stats which span across multiple <hr> tags.
 
     Vehicles have stats similar to siege weapons but different fields.
+    Removes extracted stat elements from the soup so they don't leak into
+    description text.
     """
     # Find all bold tags that are stats (not action names)
     # Vehicles typically don't have action names like siege weapons
     action_names = ["Effect", "Requirements"]  # Keep minimal list just in case
+
+    elements_to_remove = []
 
     for bold_tag in bs.find_all("b"):
         label = bold_tag.get_text().strip()
@@ -1505,8 +1695,25 @@ def _extract_vehicle_stats(bs, stats_dict, recognized_stats, equipment_type):
             "Speed",
         ]
         value = _extract_stat_value(bold_tag, preserve_html=preserve_html)
+
         if value:
             stats_dict[field_name] = value
+
+        # Mark bold tag and its value siblings for removal
+        elements_to_remove.append(bold_tag)
+        current = bold_tag.next_sibling
+        while current:
+            if isinstance(current, Tag) and current.name in ("b", "hr", "br"):
+                break
+            elements_to_remove.append(current)
+            current = current.next_sibling
+
+    # Remove extracted stat elements from soup
+    for elem in elements_to_remove:
+        if isinstance(elem, Tag):
+            elem.decompose()
+        elif isinstance(elem, NavigableString):
+            elem.extract()
 
 
 def _extract_siege_weapon_stats(bs, stats_dict, recognized_stats, equipment_type):
@@ -1514,8 +1721,15 @@ def _extract_siege_weapon_stats(bs, stats_dict, recognized_stats, equipment_type
 
     Siege weapons have stats before actions, which appear after description.
     """
-    # Find all bold tags that are stats (not action names)
-    action_names = ["Aim", "Load", "Launch", "Ram", "Effect", "Requirements"]
+    # Find all bold tags that are stats (not action/ability names in description area)
+    action_names = [
+        "Aim", "Load", "Launch", "Ram", "Effect", "Requirements", "Trigger",
+        "Activate Drill", "Anesthetic Surge", "Quick Aim", "Reload Hopper", "Fire",
+        "Critical Success", "Success", "Failure", "Critical Failure",
+        "High Dilution", "Medium Dilution", "Low Dilution",
+    ]
+
+    elements_to_remove = []
 
     for bold_tag in bs.find_all("b"):
         label = bold_tag.get_text().strip()
@@ -1530,9 +1744,9 @@ def _extract_siege_weapon_stats(bs, stats_dict, recognized_stats, equipment_type
 
         # Fail fast if we encounter an unknown label
         if label not in recognized_stats:
-            # Check if this might be part of the description
-            # (some siege weapons have bold text in descriptions)
-            continue
+            raise AssertionError(
+                f"Unknown siege_weapon stat label: '{label}'. Add it to EQUIPMENT_TYPES['siege_weapon']['recognized_stats']."
+            )
 
         # Skip labels we handle elsewhere (like Source)
         field_name = recognized_stats[label]
@@ -1544,6 +1758,22 @@ def _extract_siege_weapon_stats(bs, stats_dict, recognized_stats, equipment_type
         value = _extract_stat_value(bold_tag, preserve_html=preserve_html)
         if value:
             stats_dict[field_name] = value
+
+        # Mark elements for removal: the bold tag and content until next <b>, <br>, or <hr>
+        elements_to_remove.append(bold_tag)
+        current = bold_tag.next_sibling
+        while current:
+            if isinstance(current, Tag) and current.name in ("b", "hr", "br"):
+                break
+            elements_to_remove.append(current)
+            current = current.next_sibling
+
+    # Remove extracted stat elements from soup
+    for elem in elements_to_remove:
+        if isinstance(elem, Tag):
+            elem.decompose()
+        elif isinstance(elem, NavigableString):
+            elem.extract()
 
 
 def _extract_traits_from_parentheses(text):
@@ -1742,11 +1972,15 @@ def _collect_ability_content(bold_tag, addon_names, processed_bolds):
         if isinstance(current, Tag) and current.name == "br":
             break
 
-        # If this is a <b> tag with an addon name, mark it as processed
+        # If this is a <b> tag, check if it's an addon (part of current ability)
+        # or a new ability boundary
         if isinstance(current, Tag) and current.name == "b":
             tag_text = get_text(current).strip()
             if tag_text in addon_names:
                 processed_bolds.add(current)
+            else:
+                # Non-addon bold tag = start of a new ability, stop here
+                break
 
         if isinstance(current, NavigableString | Tag):
             content_parts.append(str(current))
@@ -1929,7 +2163,8 @@ def _parse_ability_description(content_parts, ability, addon_names):
             else:
                 ability[k] = clear_garbage(v)
 
-        ability["text"] = ability_text
+        if ability_text:
+            ability["text"] = ability_text
 
         if other_links:
             ability["links"] = other_links
@@ -2084,7 +2319,8 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
 
         _extract_result_fields(current, ability, result_fields, processed_bolds)
 
-        if "text" in ability or "action_type" in ability:
+        has_content = "text" in ability or "action_type" in ability or "effect" in ability or "requirement" in ability
+        if has_content:
             abilities.append(ability)
 
     return (abilities if abilities else None), trait_links_converted_count
@@ -2171,12 +2407,17 @@ def _extract_combination_weapon(bs, sb, struct, config):
             if traits:
                 sb["traits"] = traits
 
+        # Remove extracted shared trait spans from soup
+        for span in shared_traits:
+            span.decompose()
+
     _extract_source(bs, struct)
 
     # Extract fields before first h2 (both shared and weapon-level)
     shared_fields = config.get("shared_fields", [])
     weapon_fields = config.get("weapon_fields", [])
     all_weapon_stats = {}
+    elements_to_remove = []
     hr = bs.find("hr")
     for tag in bs.find_all("b"):
         if hr and tag.sourceline and hr.sourceline and tag.sourceline > hr.sourceline:
@@ -2217,6 +2458,22 @@ def _extract_combination_weapon(bs, sb, struct, config):
             if value:
                 all_weapon_stats[field_name] = value
 
+        # Mark elements for removal: the bold tag and content until next <b>, <br>, or <hr>
+        elements_to_remove.append(tag)
+        current = tag.next_sibling
+        while current:
+            if isinstance(current, Tag) and current.name in ("b", "hr", "br"):
+                break
+            elements_to_remove.append(current)
+            current = current.next_sibling
+
+    # Remove extracted stat elements from soup
+    for elem in elements_to_remove:
+        if isinstance(elem, Tag):
+            elem.decompose()
+        elif isinstance(elem, NavigableString):
+            elem.extract()
+
     # Add shared fields to stat block top level
     for field in shared_fields:
         if field in all_weapon_stats:
@@ -2242,6 +2499,7 @@ def _extract_combination_weapon(bs, sb, struct, config):
         # Find mode-specific traits (after this h2, before next h2 or hr)
         # Use trait_class_matcher to match trait, traituncommon, traitrare, etc.
         next_h2 = h2.find_next_sibling("h2", class_="title")
+        trait_spans_to_remove = []
         for span in bs.find_all("span", class_=_trait_class_matcher):
             if not span.sourceline or not h2.sourceline:
                 continue
@@ -2266,8 +2524,14 @@ def _extract_combination_weapon(bs, sb, struct, config):
                     "link": link_obj,
                 }
                 mode_traits.append(trait)
+            trait_spans_to_remove.append(span)
+
+        # Remove extracted trait spans from soup
+        for span in trait_spans_to_remove:
+            span.decompose()
 
         # Find mode-specific stats (bold tags after this h2, before next h2)
+        elements_to_remove = []
         for tag in bs.find_all("b"):
             if not tag.sourceline or not h2.sourceline:
                 continue
@@ -2305,6 +2569,22 @@ def _extract_combination_weapon(bs, sb, struct, config):
             if value:
                 mode_stats[field_name] = value
 
+            # Mark elements for removal: the bold tag and content until next <b>, <br>, or <hr>
+            elements_to_remove.append(tag)
+            current = tag.next_sibling
+            while current:
+                if isinstance(current, Tag) and current.name in ("b", "hr", "br"):
+                    break
+                elements_to_remove.append(current)
+                current = current.next_sibling
+
+        # Remove extracted stat elements from soup
+        for elem in elements_to_remove:
+            if isinstance(elem, Tag):
+                elem.decompose()
+            elif isinstance(elem, NavigableString):
+                elem.extract()
+
         # Build mode object
         mode_obj = {"type": "stat_block_section", "subtype": mode_name}
         if mode_traits:
@@ -2315,6 +2595,24 @@ def _extract_combination_weapon(bs, sb, struct, config):
         mode_obj["weapon_type"] = "Melee" if mode_name == "melee" else "Ranged"
 
         weapon_obj[mode_name] = mode_obj
+
+    # Remove all h2 sections and their content from soup.
+    # Mode h2s (Melee/Ranged) have already had their stats/traits extracted above.
+    # Non-mode h2s (Traits, Critical Specialization Effects) are HTML5-added sections
+    # whose content we don't need — remove them and everything between them.
+    for h2 in bs.find_all("h2", class_="title"):
+        # Remove all siblings between this h2 and the next h2 (or end of content)
+        current = h2.next_sibling
+        while current:
+            next_node = current.next_sibling
+            if isinstance(current, Tag) and current.name == "h2":
+                break
+            if isinstance(current, Tag):
+                current.decompose()
+            elif isinstance(current, NavigableString):
+                current.extract()
+            current = next_node
+        h2.decompose()
 
     # Add weapon object to stat block
     sb["weapon"] = weapon_obj
@@ -2328,6 +2626,8 @@ def _extract_weapon_stats(bs, stats, config):
         if hr and tag.sourceline and hr.sourceline and tag.sourceline > hr.sourceline:
             break
         bold_tags.append(tag)
+
+    elements_to_remove = []
 
     for bold_tag in bold_tags:
         label = bold_tag.get_text().strip()
@@ -2354,6 +2654,22 @@ def _extract_weapon_stats(bs, stats, config):
             value = _extract_stat_value(bold_tag)
         if value:
             stats[field_name] = value
+
+        # Mark elements for removal: the bold tag and content until next <b>, <br>, or <hr>
+        elements_to_remove.append(bold_tag)
+        current = bold_tag.next_sibling
+        while current:
+            if isinstance(current, Tag) and current.name in ("b", "hr", "br"):
+                break
+            elements_to_remove.append(current)
+            current = current.next_sibling
+
+    # Remove extracted stat elements from soup
+    for elem in elements_to_remove:
+        if isinstance(elem, Tag):
+            elem.decompose()
+        elif isinstance(elem, NavigableString):
+            elem.extract()
 
 
 def _extract_traits(bs, sb):
@@ -3516,6 +3832,15 @@ def _extract_description(bs, struct, debug=False):
 
         desc_soup = BeautifulSoup(desc_section, "html.parser")
 
+        # Remove leading <hr> and <br> tags (artifacts from stat extraction leaving empty sections)
+        for child in list(desc_soup.children):
+            if isinstance(child, Tag) and child.name in ("hr", "br"):
+                child.decompose()
+            elif isinstance(child, NavigableString) and not child.strip():
+                child.extract()
+            else:
+                break  # Stop at first real content
+
         if debug:
             sec0_soup = BeautifulSoup(sections[0], "html.parser")
             sec0_links = sec0_soup.find_all("a")
@@ -3585,14 +3910,19 @@ def _extract_description(bs, struct, debug=False):
         desc_soup, sb_for_abilities, struct, debug=debug
     )
 
-    # After ability extraction, remove the separator <hr> that was added
-    # when Activate content was moved from section[0] to desc_soup.
-    # The ability extraction consumed the Activate content; the orphan <hr>
-    # would pollute the description text.
-    if sec0_activate_moved:
-        first_hr = desc_soup.find("hr")
-        if first_hr:
-            first_hr.decompose()
+    # Extract abilities from h3.title headings with action links (HTML5 format).
+    # Must run before HR cleanup since h3 abilities use <hr> as field/effect separator.
+    _extract_h3_abilities(desc_soup, sb_for_abilities, debug=debug)
+
+    # After ability extraction, remove all remaining <hr> tags from desc_soup.
+    # These were used as boundary markers: (1) section joins use <hr/> to
+    # preserve boundaries between description and supplementary content (relic
+    # gifts, tea ceremony, oathbreaker's calamity, etc.), and (2) moved
+    # Activate content uses <hr/> to separate from description. After ability
+    # extraction consumed the relevant content, orphan <hr> tags would
+    # pollute the description text and fail markdown validation.
+    for hr in desc_soup.find_all("hr"):
+        hr.decompose()
 
     # Debug: show remaining links after ability extraction
     if debug:
@@ -4260,6 +4590,209 @@ def _parse_activation_content(activate_content, ability):
     return trait_links_converted
 
 
+def _extract_h3_abilities(desc_soup, sb, debug=False):
+    """Extract abilities from h3.title headings that contain action links.
+
+    These appear in HTML5 format as:
+      <h3 class="title"><a href="Actions.aspx?ID=...">name</a>
+        <span class="action">[one-action]</span></h3>
+      <b>Source</b>...<br/><b>Frequency</b> once per day<hr/>
+      Effect description text...
+
+    Extracts them as structured ability objects and removes from desc_soup.
+
+    Args:
+        desc_soup: BeautifulSoup object containing description HTML
+        sb: Stat block dict to add abilities to
+        debug: Enable debug output
+
+    Returns:
+        int: 0 (no link accounting adjustment needed)
+    """
+    # Find h3.title headings that contain action links or action spans.
+    # After href_filter(), <a href="Actions.aspx?ID=X"> becomes
+    # <a game-obj="Actions" aonid="X">, so check game-obj attribute.
+    # Some h3 abilities have empty <a> tags (decomposed by _content_filter)
+    # but still have <span class="action"> — detect those too.
+    h3_abilities = []
+    for h3 in desc_soup.find_all("h3", class_="title"):
+        has_action_link = h3.find("a", attrs={"game-obj": "Actions"})
+        has_action_span = h3.find("span", class_="action")
+        if not has_action_link and not has_action_span:
+            continue
+        h3_abilities.append(h3)
+
+    if not h3_abilities:
+        return 0
+
+    abilities = []
+    for i, h3 in enumerate(h3_abilities):
+        next_h3 = h3_abilities[i + 1] if i + 1 < len(h3_abilities) else None
+
+        # Extract action name and link from h3
+        action_a = h3.find("a", attrs={"game-obj": "Actions"})
+        action_link_obj = None
+        if action_a:
+            ability_name = action_a.get_text().strip()
+            _, action_link_obj = extract_link(action_a)
+        else:
+            ability_name = ""
+
+        # Extract action type from span in h3
+        action_span = h3.find("span", class_="action")
+        action_type = None
+        if action_span:
+            title = action_span.get("title", "")
+            if title == "Single Action":
+                title = "One Action"
+            if title:
+                action_type = {
+                    "type": "stat_block_section",
+                    "subtype": "action_type",
+                    "name": title,
+                }
+                # If no name from link, use action type as name
+                if not ability_name:
+                    ability_name = title
+
+        # Collect content elements after h3 until next h3 ability (or end)
+        content_elements = []
+        current = h3.next_sibling
+        while current:
+            if next_h3 and current is next_h3:
+                break
+            content_elements.append(current)
+            current = current.next_sibling
+
+        # Build HTML from content and parse into separate soup for analysis
+        content_html = "".join(str(e) for e in content_elements)
+        content_soup = BeautifulSoup(content_html, "html.parser")
+
+        # Split on <hr> — before is fields (Source, Frequency, etc.), after is effect
+        hr = content_soup.find("hr")
+        if hr:
+            field_parts = []
+            for elem in list(content_soup.children):
+                if elem is hr:
+                    break
+                field_parts.append(str(elem))
+            effect_parts = []
+            found_hr = False
+            for elem in list(content_soup.children):
+                if elem is hr:
+                    found_hr = True
+                    continue
+                if found_hr:
+                    effect_parts.append(str(elem))
+            field_html = "".join(field_parts)
+            effect_html = "".join(effect_parts)
+        else:
+            field_html = ""
+            effect_html = content_html
+
+        field_soup = BeautifulSoup(field_html, "html.parser")
+        effect_soup = BeautifulSoup(effect_html, "html.parser")
+
+        # Build ability dict
+        ability = build_object("stat_block_section", "ability", ability_name)
+        ability["ability_type"] = "offensive"
+
+        if action_type:
+            ability["action_type"] = action_type
+
+        # Collect links — start with the action link from h3
+        ability_links = []
+        if action_link_obj:
+            ability_links.append(action_link_obj)
+
+        # Handle Source field — extract its link but don't add as a field
+        source_bold = field_soup.find(
+            "b", string=lambda s: s and s.strip() == "Source"
+        )
+        if source_bold:
+            src_parts = []
+            src_current = source_bold.next_sibling
+            while src_current:
+                if isinstance(src_current, Tag) and src_current.name in ("b", "br"):
+                    break
+                src_parts.append(str(src_current))
+                src_current = src_current.next_sibling
+            src_html = "".join(src_parts)
+            if src_html:
+                src_soup = BeautifulSoup(src_html, "html.parser")
+                src_links = get_links(src_soup, unwrap=True)
+                ability_links.extend(src_links)
+
+        # Extract standard ability fields (Frequency, Requirements, etc.)
+        for field in ABILITY_FIELD_NAMES:
+            field_bold = field_soup.find(
+                "b", string=lambda s, f=field: s and s.strip() == f
+            )
+            if not field_bold:
+                continue
+
+            value_parts = []
+            val_current = field_bold.next_sibling
+            while val_current:
+                if isinstance(val_current, Tag) and val_current.name in (
+                    "b",
+                    "br",
+                    "hr",
+                ):
+                    break
+                value_parts.append(str(val_current))
+                val_current = val_current.next_sibling
+            value_html = "".join(value_parts).strip()
+
+            if value_html:
+                value_text, value_links = extract_links(value_html)
+                value_text = _normalize_whitespace(value_text)
+
+                field_key = field.lower().replace(" ", "_")
+                if field_key == "requirements":
+                    field_key = "requirement"
+
+                ability[field_key] = value_text
+                ability_links.extend(value_links)
+
+        # Extract effect text and links
+        effect_links = get_links(effect_soup, unwrap=True)
+        ability_links.extend(effect_links)
+        effect_text = _normalize_whitespace(effect_soup.get_text())
+        if effect_text:
+            ability["effect"] = effect_text
+
+        if ability_links:
+            ability["links"] = ability_links
+
+        abilities.append(ability)
+
+        if debug:
+            sys.stderr.write(
+                f"DEBUG _extract_h3_abilities: extracted '{ability_name}' "
+                f"with {len(ability_links)} links\n"
+            )
+
+        # Remove h3 and its content from desc_soup
+        for elem in content_elements:
+            if isinstance(elem, Tag):
+                elem.decompose()
+            elif isinstance(elem, NavigableString):
+                elem.extract()
+        h3.decompose()
+
+    # Add abilities to stat block
+    if abilities:
+        stats = sb.setdefault(
+            "statistics",
+            {"type": "stat_block_section", "subtype": "statistics"},
+        )
+        existing_abilities = stats.setdefault("abilities", [])
+        existing_abilities.extend(abilities)
+
+    return 0
+
+
 def _find_ability_bolds(bs):
     """Find all ability-starting bold tags in the soup.
 
@@ -4770,6 +5303,30 @@ def _cleanup_stat_block(sb):
     """
     # Previously deleted text here, but now text stays in stat_block
     pass
+
+
+def _remove_empty_values_pass(obj):
+    """Recursively remove empty lists and empty strings from the structure."""
+    if isinstance(obj, dict):
+        keys_to_delete = []
+        for key, value in obj.items():
+            if isinstance(value, list):
+                if len(value) == 0:
+                    keys_to_delete.append(key)
+                else:
+                    for item in value:
+                        _remove_empty_values_pass(item)
+                    # Re-check after recursion — items may have been pruned
+                    obj[key] = [v for v in value if v != {} and v != []]
+                    if len(obj[key]) == 0:
+                        keys_to_delete.append(key)
+            elif isinstance(value, dict):
+                _remove_empty_values_pass(value)
+        for key in keys_to_delete:
+            del obj[key]
+    elif isinstance(obj, list):
+        for item in obj:
+            _remove_empty_values_pass(item)
 
 
 def normalize_numeric_fields_pass(struct, config):
@@ -5297,8 +5854,8 @@ EQUIPMENT_TYPES["shield"]["normalize_fields"] = normalize_shield_fields
 def normalize_siege_weapon_fields(sb):
     """Normalize siege weapon-specific fields."""
     # Normalize shared fields at top level
-    # Note: siege weapons don't have bulk
     _normalize_price(sb)
+    _normalize_bulk(sb)  # Portable siege weapons (rams) have bulk
 
     # Normalize siege weapon-specific fields within siege_weapon object
     if "siege_weapon" in sb:

@@ -36,9 +36,14 @@ def md(html, **options):
 
 def markdown_pass(struct, name, path, fxn_valid_tags=None):
     def _validate_acceptable_tags(text, fxn_valid_tags):
+        # NEVER add "hr" or "b" to this set. They are intentionally excluded
+        # for strategic fragility. If text still contains <hr> or <b>, it means
+        # the parser failed to properly extract structured content (sections,
+        # abilities, stat fields, etc.) from the item. Fix the parser, don't
+        # mask the problem by allowing the tag. Do NOT change <b> to <strong>
+        # without the user's express permission.
         validset = {
             "i",
-            "b",
             "u",
             "strong",
             "ol",
@@ -49,11 +54,14 @@ def markdown_pass(struct, name, path, fxn_valid_tags=None):
             "tr",
             "td",
             "th",
-            "hr",
             "sup",
             "p",
             "div",
         }
+        # License blocks contain OGL boilerplate with legitimate <b> tags
+        # for section numbering — not unparsed game data.
+        if "/license" in path:
+            validset.add("b")
         if fxn_valid_tags:
             fxn_valid_tags(struct, name, path, validset)
         tags = get_unique_tag_set(text)
