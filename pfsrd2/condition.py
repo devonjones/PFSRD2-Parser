@@ -71,7 +71,8 @@ def _content_filter(soup):
     main = soup.find(id="main")
     if not main:
         return
-    for hr in main.find_all("hr"):
+    hr = main.find("hr")
+    if hr:
         for sibling in list(hr.previous_siblings):
             sibling.extract()
         hr.extract()

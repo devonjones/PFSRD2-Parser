@@ -315,7 +315,9 @@ def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, de
     before = len(links)
     links = [l for l in links if not is_combination_appendix_link(l)]
     if debug and len(links) < before:
-        sys.stderr.write(f"DEBUG: Excluded {before - len(links)} combination weapon appendix links\n")
+        sys.stderr.write(
+            f"DEBUG: Excluded {before - len(links)} combination weapon appendix links\n"
+        )
 
     if debug:
         sys.stderr.write(f"DEBUG: Final count after exclusions: {len(links)}\n")
@@ -1289,8 +1291,13 @@ def _route_fields_to_destinations(sb, stats, config):
 # Known fields in intelligent item stat blocks (between two <hr> tags).
 # Assert on any unknown field for strategic fragility.
 INTELLIGENT_ITEM_FIELDS = {
-    "Perception", "Communication", "Skills",
-    "Int", "Wis", "Cha", "Will",
+    "Perception",
+    "Communication",
+    "Skills",
+    "Int",
+    "Wis",
+    "Cha",
+    "Will",
 }
 
 
@@ -1353,9 +1360,9 @@ def _extract_intelligent_item_section(bs, sb, debug=False):
                 value_html = "".join(current_value_parts).strip().strip(",").strip()
                 fields[current_label] = value_html
             current_label = child.get_text().strip()
-            assert current_label in INTELLIGENT_ITEM_FIELDS, (
-                f"Unknown intelligent item field: '{current_label}'"
-            )
+            assert (
+                current_label in INTELLIGENT_ITEM_FIELDS
+            ), f"Unknown intelligent item field: '{current_label}'"
             current_value_parts = []
         elif isinstance(child, Tag) and child.name == "br":
             continue  # Skip line breaks
@@ -1401,8 +1408,7 @@ def _extract_intelligent_item_section(bs, sb, debug=False):
 
     if debug:
         sys.stderr.write(
-            f"DEBUG: Intelligent item section: {list(section.keys())}, "
-            f"{len(links)} links\n"
+            f"DEBUG: Intelligent item section: {list(section.keys())}, " f"{len(links)} links\n"
         )
 
     # Remove extracted content from soup: first <hr> + all elements up to second <hr>
@@ -1727,10 +1733,25 @@ def _extract_siege_weapon_stats(bs, stats_dict, recognized_stats, equipment_type
     """
     # Find all bold tags that are stats (not action/ability names in description area)
     action_names = [
-        "Aim", "Load", "Launch", "Ram", "Effect", "Requirements", "Trigger",
-        "Activate Drill", "Anesthetic Surge", "Quick Aim", "Reload Hopper", "Fire",
-        "Critical Success", "Success", "Failure", "Critical Failure",
-        "High Dilution", "Medium Dilution", "Low Dilution",
+        "Aim",
+        "Load",
+        "Launch",
+        "Ram",
+        "Effect",
+        "Requirements",
+        "Trigger",
+        "Activate Drill",
+        "Anesthetic Surge",
+        "Quick Aim",
+        "Reload Hopper",
+        "Fire",
+        "Critical Success",
+        "Success",
+        "Failure",
+        "Critical Failure",
+        "High Dilution",
+        "Medium Dilution",
+        "Low Dilution",
     ]
 
     elements_to_remove = []
@@ -2323,7 +2344,12 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
 
         _extract_result_fields(current, ability, result_fields, processed_bolds)
 
-        has_content = "text" in ability or "action_type" in ability or "effect" in ability or "requirement" in ability
+        has_content = (
+            "text" in ability
+            or "action_type" in ability
+            or "effect" in ability
+            or "requirement" in ability
+        )
         if has_content:
             abilities.append(ability)
 
@@ -3003,8 +3029,8 @@ def _extract_stat_value(label_tag, preserve_html=False):
 
     # Combine collected parts and clean up
     value_text = "".join(value_parts).strip()
-    # Strip newlines: HTML normalizer adds \n after tags but they carry no semantic value
-    value_text = value_text.replace("\n", "")
+    # Normalize whitespace: HTML normalizer adds \n after tags but they carry no semantic value
+    value_text = _normalize_whitespace(value_text)
     # Strip trailing semicolons - they are field separators in the HTML, not part of the value
     value_text = value_text.rstrip(";").strip()
 
@@ -3762,8 +3788,6 @@ def _extract_description(bs, struct, debug=False):
         )
     sections = split_on_tag(text, "hr")
 
-    sec0_activate_moved = False
-
     if len(sections) < 2:
         # No <hr> tags - extract all remaining text as description (armor, weapons)
         # For combination weapons, stop at first <h2 class="title"> (mode section header)
@@ -3832,7 +3856,6 @@ def _extract_description(bs, struct, debug=False):
                         desc_section = activate_content + "<hr/>" + desc_section
                     else:
                         desc_section = activate_content
-                    sec0_activate_moved = True
 
         desc_soup = BeautifulSoup(desc_section, "html.parser")
 
@@ -4710,9 +4733,7 @@ def _extract_h3_abilities(desc_soup, sb, debug=False):
             ability_links.append(action_link_obj)
 
         # Handle Source field — extract its link but don't add as a field
-        source_bold = field_soup.find(
-            "b", string=lambda s: s and s.strip() == "Source"
-        )
+        source_bold = field_soup.find("b", string=lambda s: s and s.strip() == "Source")
         if source_bold:
             src_parts = []
             src_current = source_bold.next_sibling
@@ -4729,9 +4750,7 @@ def _extract_h3_abilities(desc_soup, sb, debug=False):
 
         # Extract standard ability fields (Frequency, Requirements, etc.)
         for field in ABILITY_FIELD_NAMES:
-            field_bold = field_soup.find(
-                "b", string=lambda s, f=field: s and s.strip() == f
-            )
+            field_bold = field_soup.find("b", string=lambda s, f=field: s and s.strip() == f)
             if not field_bold:
                 continue
 

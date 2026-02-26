@@ -27,8 +27,9 @@ def _content_filter(soup):
     main = soup.find(id="main")
     if not main:
         return
-    # Strip everything before and including each <hr>
-    for hr in main.find_all("hr"):
+    # Strip everything before and including the first <hr> (nav separator)
+    hr = main.find("hr")
+    if hr:
         for sibling in list(hr.previous_siblings):
             sibling.extract()
         hr.extract()

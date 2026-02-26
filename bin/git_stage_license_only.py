@@ -113,6 +113,7 @@ def main():
                 ["git", "hash-object", "-w", tmp_path],
                 capture_output=True,
                 text=True,
+                check=True,
             )
             blob_hash = result.stdout.strip()
 
