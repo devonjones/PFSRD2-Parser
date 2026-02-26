@@ -11,7 +11,7 @@ jsonschema==3.2.0
 lazy-object-proxy==1.12.0
 lxml==5.4.0
 mccabe==0.7.0
-pbr==5.4.5
+pbr==5.11.1
 pylint==2.17.7
 pyrsistent==0.17.3
 sh==1.12.14
