@@ -37,6 +37,12 @@ def md(html, **options):
 
 def markdown_pass(struct, name, path, fxn_valid_tags=None):
     def _validate_acceptable_tags(text, fxn_valid_tags):
+        # Allowed tags: i, b, u, strong, ol, ul, li, br, table, tr, td, th, hr, sup.
+        # NEVER add "div" or "p" to this set. Those tags indicate unparsed content
+        # that must be stripped/unwrapped before reaching markdown validation.
+        # The only exception is /license paths (OGL/ORC boilerplate) which has
+        # explicit handling below, and fxn_valid_tags callbacks for parser-specific
+        # tags (e.g. h2/h3 in equipment).
         validset = {
             "i",
             "b",

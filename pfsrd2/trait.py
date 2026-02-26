@@ -330,8 +330,6 @@ def markdown_pass(struct, name, path):
             "tr",
             "td",
             "hr",
-            "div",
-            "p",
         }
         tags = get_unique_tag_set(text)
         assert tags.issubset(validset), f"{name} : {text} - {tags}"
@@ -346,6 +344,17 @@ def markdown_pass(struct, name, path):
                 elif isinstance(item, str) and item.find("<") > -1:
                     raise AssertionError()  # For now, I'm unaware of any tags in lists of strings
         elif isinstance(v, str) and v.find("<") > -1:
+            if "<div" in v or "<p" in v:
+                bs = BeautifulSoup(v, "html.parser")
+                for div in bs.find_all("div"):
+                    if not div.get_text(strip=True):
+                        div.decompose()
+                    else:
+                        div.unwrap()
+                for p in bs.find_all("p"):
+                    p.unwrap()
+                v = str(bs)
+                struct[k] = v
             _validate_acceptable_tags(v)
             struct[k] = md(v).strip()
             log_element("markdown.log")("{} : {}".format(f"{path}/{k}", name))
