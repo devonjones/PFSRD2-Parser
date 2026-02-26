@@ -21,4 +21,4 @@ stevedore==1.32.0
 virtualenv==20.36.1
 virtualenv-clone==0.5.7
 virtualenvwrapper==4.8.4
-wrapt==1.17.3
+wrapt==2.1.1
