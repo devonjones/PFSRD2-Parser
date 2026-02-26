@@ -1,6 +1,6 @@
 appdirs==1.4.4
 astroid==2.15.8
-attrs==20.3.0
+attrs==25.4.0
 beautifulsoup4==4.14.3
 black>=23.0.0
 flake8>=6.0.0
