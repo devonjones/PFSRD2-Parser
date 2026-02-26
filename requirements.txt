@@ -15,7 +15,7 @@ pbr==5.11.1
 pylint==2.17.7
 pyrsistent==0.17.3
 sh==1.12.14
-six==1.14.0
+six==1.17.0
 soupsieve==2.0
 stevedore==1.32.0
 virtualenv==20.36.1
