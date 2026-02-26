@@ -28,6 +28,7 @@ from universal.universal import (
     aon_pass,
     build_object,
     build_objects,
+    edition_from_alternate_link,
     edition_pass,
     entity_pass,
     extract_link,
@@ -43,6 +44,7 @@ from universal.universal import (
     parse_universal,
     remove_empty_sections_pass,
     restructure_pass,
+    source_edition_override_pass,
     source_pass,
     string_with_modifiers,
     string_with_modifiers_from_string_list,
@@ -116,10 +118,15 @@ def parse_creature(filename, options):
     struct = restructure_creature_pass(details, options.subtype, edition)
     if alternate_link:
         struct["alternate_link"] = alternate_link
+        # Use alternate_link to correct edition if available
+        alt_edition = edition_from_alternate_link(struct)
+        if alt_edition:
+            struct["edition"] = alt_edition
     # TODO Deal with remaining sections
     # assert len(details) == 0, details
     creature_stat_block_pass(struct)
     source_pass(struct, find_stat_block)
+    source_edition_override_pass(struct)
     sidebar_pass(struct)
     elite_pass(struct)
     index_pass(struct, find_stat_block(struct))

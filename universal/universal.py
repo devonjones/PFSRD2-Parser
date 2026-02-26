@@ -764,3 +764,48 @@ def edition_pass(details):
         if result == "legacy":
             return result
     return "remastered"
+
+
+def edition_from_alternate_link(struct):
+    """Infer edition from the alternate_link sidebar if present.
+
+    If alternate_type is "remastered", this item IS legacy (it links to its remastered version).
+    If alternate_type is "legacy", this item IS remastered (it links to its legacy version).
+    Returns None if no alternate_link is present.
+    """
+    alt = struct.get("alternate_link")
+    if not alt:
+        return None
+    alt_type = alt.get("alternate_type")
+    if alt_type == "remastered":
+        return "legacy"
+    elif alt_type == "legacy":
+        return "remastered"
+    return None
+
+
+# Sources where AoN shares one page for legacy + remastered editions.
+# The source name in item HTML is always the base name (e.g. "Treasure Vault"),
+# so remastered items must be renamed programmatically.
+_SOURCE_EDITION_OVERRIDES = {
+    "Treasure Vault": {
+        "remastered": "Treasure Vault (Remastered)",
+    }
+}
+
+
+def source_edition_override_pass(struct):
+    """Rename source names for split sources based on detected edition.
+
+    Must be called AFTER edition and sources are set, BEFORE game_id_pass.
+    """
+    edition = struct.get("edition")
+    if not edition:
+        return
+    for source in struct.get("sources", []):
+        overrides = _SOURCE_EDITION_OVERRIDES.get(source["name"])
+        if overrides and edition in overrides:
+            source["name"] = overrides[edition]
+            if "link" in source:
+                source["link"]["name"] = overrides[edition]
+                source["link"]["alt"] = overrides[edition]

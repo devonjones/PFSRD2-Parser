@@ -13,6 +13,7 @@ from universal.markdown import md
 from universal.universal import (
     aon_pass,
     build_object,
+    edition_from_alternate_link,
     entity_pass,
     extract_link,
     extract_source,
@@ -23,6 +24,7 @@ from universal.universal import (
     parse_universal,
     remove_empty_sections_pass,
     restructure_pass,
+    source_edition_override_pass,
     source_pass,
 )
 from universal.utils import bs_pop_spaces, get_text, get_unique_tag_set, log_element
@@ -53,6 +55,7 @@ def parse_trait(filename, options):
         struct["alternate_link"] = alternate_link
     trait_struct_pass(struct)
     source_pass(struct, find_trait)
+    source_edition_override_pass(struct)
     trait_link_pass(struct)
     aon_pass(struct, basename)
     restructure_pass(struct, "trait", find_trait)
@@ -182,7 +185,7 @@ def trait_struct_pass(struct):
                 return [source]
 
     def _handle_legacy(struct):
-        struct["edition"] = "remastered"
+        struct["edition"] = edition_from_alternate_link(struct) or "remastered"
         if len(struct["sections"]) == 1:
             return
         if struct["sections"][1]["name"] == "Legacy Content":

@@ -33,6 +33,7 @@ from universal.universal import (
     aon_pass,
     build_object,
     build_objects,
+    edition_from_alternate_link,
     edition_pass,
     extract_link,
     extract_links,
@@ -43,6 +44,7 @@ from universal.universal import (
     link_modifiers,
     remove_empty_sections_pass,
     restructure_pass,
+    source_edition_override_pass,
     test_key_is_value,
     walk,
 )
@@ -738,13 +740,15 @@ def parse_equipment(filename, options):
     if debug_mode:
         sys.stderr.write(f"DEBUG: normalize_trait_links: {normalize_trait_links}\n")
         sys.stderr.write(f"DEBUG: initial_link_count after normalize: {initial_link_count}\n")
+    # Determine edition (legacy vs remastered) before game_id_pass
+    # so source_edition_override_pass can rename sources before game-id is computed
+    edition = edition_from_alternate_link(struct) or edition_pass(struct["sections"])
+    struct["edition"] = edition
+    source_edition_override_pass(struct)
     game_id_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
     markdown_pass(struct, struct["name"], "", fxn_valid_tags=equipment_markdown_valid_set)
-    # Determine edition (legacy vs remastered) before removing empty sections
-    edition = edition_pass(struct["sections"])
-    struct["edition"] = edition
 
     # LINK ACCOUNTING: Verify all links were extracted into structured objects
     # Must be done BEFORE trait_db_pass, which adds links from database that weren't in the HTML
