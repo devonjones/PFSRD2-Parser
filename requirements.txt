@@ -9,7 +9,7 @@ filelock==3.20.3
 isort==4.3.21
 jsonschema==3.2.0
 lazy-object-proxy==1.12.0
-lxml==5.4.0
+lxml==6.0.2
 mccabe==0.7.0
 pbr==5.11.1
 pylint==2.17.7
