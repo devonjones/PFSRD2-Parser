@@ -91,6 +91,7 @@ def main():
         old_raw_result = subprocess.run(
             ["git", "show", f"HEAD:{filepath}"],
             capture_output=True,
+            check=True,
         )
         old_has_newline = old_raw_result.stdout.endswith(b"\n")
 

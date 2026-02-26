@@ -34,6 +34,7 @@ def _content_filter(soup):
         return
     # Find the h1.title — it's inside a span; strip all siblings before that span
     h1 = main.find("h1", class_="title")
+    assert h1, "Item group page missing <h1 class='title'> — HTML structure changed?"
     if h1:
         # Walk up to the direct child of main that contains h1
         target = h1
