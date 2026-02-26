@@ -1,6 +1,9 @@
 #!/bin/bash
+set -e
 
 source dir.conf
+
+rm -f ~/.pfsrd2/pfsrd2.db
 
 ./pf2_run_licenses.sh
 ./pf2_run_sources.sh

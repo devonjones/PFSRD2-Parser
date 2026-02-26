@@ -23,16 +23,25 @@ from universal.utils import get_text
 
 
 def _content_filter(soup):
-    """Remove navigation elements before content and unwrap the content span."""
+    """Remove navigation elements before content and unwrap the content span.
+
+    Item group pages have TWO navigation sections (equipment categories + subcategories)
+    separated by <hr> tags before the actual <h1 class="title">. Strip everything
+    before the h1's parent span at the main div level.
+    """
     main = soup.find(id="main")
     if not main:
         return
-    # Strip everything before and including the first <hr> (nav separator)
-    hr = main.find("hr")
-    if hr:
-        for sibling in list(hr.previous_siblings):
+    # Find the h1.title — it's inside a span; strip all siblings before that span
+    h1 = main.find("h1", class_="title")
+    assert h1, "Item group page missing <h1 class='title'> — HTML structure changed?"
+    if h1:
+        # Walk up to the direct child of main that contains h1
+        target = h1
+        while target.parent and target.parent != main:
+            target = target.parent
+        for sibling in list(target.previous_siblings):
             sibling.extract()
-        hr.extract()
     # Unwrap the content span containing the title
     for span in main.find_all("span", recursive=False):
         if span.find("h1"):
