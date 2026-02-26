@@ -83,19 +83,34 @@ def main():
             skipped += 1
             continue
 
+        # Detect trailing newline style of each version
+        with open(filepath, "rb") as f:
+            new_raw = f.read()
+        new_has_newline = new_raw.endswith(b"\n")
+
+        old_raw_result = subprocess.run(
+            ["git", "show", f"HEAD:{filepath}"],
+            capture_output=True,
+        )
+        old_has_newline = old_raw_result.stdout.endswith(b"\n")
+
         # Build intermediate: old data with new key ordering + new license
         intermediate = reorder_keys(old, new)
         intermediate["license"] = new.get("license", intermediate.get("license"))
 
+        # Use new file's trailing newline style for the intermediate
+        new_trailing = "\n" if new_has_newline else ""
+        old_trailing = "\n" if old_has_newline else ""
+
         # Check if intermediate is same as old serialization
-        old_text = json.dumps(old, indent=4) + "\n"
-        int_text = json.dumps(intermediate, indent=4) + "\n"
+        old_text = json.dumps(old, indent=4) + old_trailing
+        int_text = json.dumps(intermediate, indent=4) + new_trailing
         if old_text == int_text:
             skipped += 1
             continue
 
         # Check if intermediate is same as new (nothing to leave unstaged)
-        new_text = json.dumps(new, indent=4) + "\n"
+        new_text = json.dumps(new, indent=4) + new_trailing
         if int_text == new_text:
             # Whole file is just reorder + license; stage it directly
             subprocess.run(["git", "add", filepath], check=True)

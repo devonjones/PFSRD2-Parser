@@ -113,13 +113,42 @@ class TestConditionContentFilter:
 
 
 class TestItemGroupContentFilter:
-    """Tests for item_group.py _content_filter."""
+    """Tests for item_group.py _content_filter.
 
-    def test_strips_nav_and_unwraps_h1(self):
-        soup = BeautifulSoup(HTML5_WITH_NAV, "html.parser")
+    Item group pages have TWO nav sections before the h1.title content.
+    """
+
+    # Item group pages have two nav sections separated by <hr> before the content
+    ITEM_GROUP_HTML = """<html><body>
+<div id="main">
+  <span><a href="nav1">All Equipment</a> | <a href="nav2">Armor</a></span>
+  <hr/>
+  <span><h2>Base Armor | Consumables</h2></span>
+  <hr/>
+  <span><h1 class="title"><a href="ArmorGroups.aspx?ID=1">Chain</a></h1></span>
+  <b>Source</b> <a href="Sources.aspx?ID=1">Player Core</a>
+</div>
+</body></html>"""
+
+    def test_strips_both_nav_sections(self):
+        soup = BeautifulSoup(self.ITEM_GROUP_HTML, "html.parser")
         item_group_content_filter(soup)
         main = soup.find(id="main")
-        assert main.find("hr") is None
+        # Both nav sections should be gone
+        assert "All Equipment" not in main.get_text()
+        assert "Base Armor" not in main.get_text()
+
+    def test_unwraps_h1_span(self):
+        soup = BeautifulSoup(self.ITEM_GROUP_HTML, "html.parser")
+        item_group_content_filter(soup)
+        main = soup.find(id="main")
         h1 = main.find("h1")
         assert h1 is not None
         assert h1.parent == main
+
+    def test_preserves_content(self):
+        soup = BeautifulSoup(self.ITEM_GROUP_HTML, "html.parser")
+        item_group_content_filter(soup)
+        main = soup.find(id="main")
+        assert "Chain" in main.get_text()
+        assert "Player Core" in main.get_text()

@@ -732,6 +732,7 @@
 					"items": {"$ref": "#/definitions/link"},
 					"additionalItems": false
 				},
+				"special": {"type": "string"},
 				"craft_requirements": {"type": "string"},
 				"base_material": {"$ref": "#/definitions/base_object"},
 				"affliction": {"$ref": "#/definitions/affliction"},

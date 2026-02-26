@@ -596,6 +596,7 @@ EQUIPMENT_TYPES = {
             "Requirements": None,  # Part of activation, handled separately
             "Access": "access",
             "PFS Note": None,  # PFS-specific notes, ignored for now
+            "Special": "special",
             "Craft Requirements": "craft_requirements",
             "Ammunition": "ammunition",
             "Base Weapon": "base_weapon",
@@ -632,6 +633,7 @@ EQUIPMENT_TYPES = {
             "hands": "statistics",
             "usage": "statistics",
             "activate": "statistics",  # Special handling converts to ability
+            "special": None,
             "craft_requirements": None,
             "ammunition": "offense",
             "base_weapon": "offense",
@@ -2827,15 +2829,16 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
             break
         bold_tags.append(tag)
 
-    # Second pass: "Craft Requirements" always appears after the description/abilities
-    # section (after <hr>), so the main loop above won't find it. Scan specifically for it.
+    # Second pass: "Craft Requirements" and "Special" always appear after the
+    # description/abilities section (after <hr>), so the main loop above won't
+    # find them. Scan specifically for them.
     if hr:
         for tag in bs.find_all("b"):
             if not (tag.sourceline and hr.sourceline and tag.sourceline > hr.sourceline):
                 continue
-            if tag.get_text().strip() == "Craft Requirements":
+            text = tag.get_text().strip()
+            if text in ("Craft Requirements", "Special"):
                 bold_tags.append(tag)
-                break
 
     # Track elements to remove after extraction (bold tags and their values)
     elements_to_remove = []
@@ -2936,6 +2939,7 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
             "Skills",
             "Perception",
             "Craft Requirements",
+            "Special",
             "Usage",
         ):
             # Preserve HTML for fields that may contain links or action icons
@@ -3021,8 +3025,8 @@ def _extract_stat_value(label_tag, preserve_html=False):
 
     # Combine collected parts and clean up
     value_text = "".join(value_parts).strip()
-    # Normalize whitespace: HTML normalizer adds \n after tags but they carry no semantic value
-    value_text = _normalize_whitespace(value_text)
+    # Strip newlines: HTML5 format adds \n after tags but they carry no semantic value
+    value_text = value_text.replace("\n", "")
     # Strip trailing semicolons - they are field separators in the HTML, not part of the value
     value_text = value_text.rstrip(";").strip()
 
@@ -5985,6 +5989,15 @@ def normalize_equipment_fields(sb):
             if "links" not in sb:
                 sb["links"] = []
             sb["links"].extend(cr_links)
+
+    # Normalize special - extract links, normalize whitespace, and convert to plain text
+    if "special" in sb and isinstance(sb["special"], str):
+        sp_text, sp_links = extract_links(sb["special"])
+        sb["special"] = _normalize_whitespace(sp_text)
+        if sp_links:
+            if "links" not in sb:
+                sb["links"] = []
+            sb["links"].extend(sp_links)
 
     # Convert activate string to ability in statistics.abilities
     # Activate is routed to statistics by field_destinations
