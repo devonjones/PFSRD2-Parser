@@ -1,3 +1,4 @@
+from bs4 import BeautifulSoup
 from markdownify import MarkdownConverter
 
 from universal.utils import get_unique_tag_set, log_element
@@ -36,6 +37,12 @@ def md(html, **options):
 
 def markdown_pass(struct, name, path, fxn_valid_tags=None):
     def _validate_acceptable_tags(text, fxn_valid_tags):
+        # Allowed tags: i, b, u, strong, ol, ul, li, br, table, tr, td, th, hr, sup.
+        # NEVER add "div" or "p" to this set. Those tags indicate unparsed content
+        # that must be stripped/unwrapped before reaching markdown validation.
+        # The only exception is /license paths (OGL/ORC boilerplate) which has
+        # explicit handling below, and fxn_valid_tags callbacks for parser-specific
+        # tags (e.g. h2/h3 in equipment).
         validset = {
             "i",
             "b",
@@ -48,11 +55,14 @@ def markdown_pass(struct, name, path, fxn_valid_tags=None):
             "table",
             "tr",
             "td",
+            "th",
             "hr",
             "sup",
         }
-        if "license" in struct:
-            validset.add("p")
+        # License blocks contain OGL/ORC boilerplate with legitimate <b>, <p>,
+        # and <div> tags for formatting — not unparsed game data.
+        if "/license" in path:
+            validset.update({"b", "p", "div"})
         if fxn_valid_tags:
             fxn_valid_tags(struct, name, path, validset)
         tags = get_unique_tag_set(text)
@@ -68,6 +78,17 @@ def markdown_pass(struct, name, path, fxn_valid_tags=None):
                 elif isinstance(item, str) and item.find("<") > -1:
                     raise AssertionError()  # For now, I'm unaware of any tags in lists of strings
         elif isinstance(v, str) and v.find("<") > -1:
+            # Strip empty divs (e.g. <div class="clear"></div>) — structural AoN artifacts
+            if "<div" in v:
+                bs = BeautifulSoup(v, "html.parser")
+                changed = False
+                for div in bs.find_all("div"):
+                    if not div.contents or not div.get_text(strip=True):
+                        div.decompose()
+                        changed = True
+                if changed:
+                    v = str(bs)
+                    struct[k] = v
             _validate_acceptable_tags(v, fxn_valid_tags)
             struct[k] = md(v).strip()
             log_element("markdown.log")("{} : {}".format(f"{path}/{k}", name))

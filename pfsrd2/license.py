@@ -18,10 +18,7 @@ def parse_license(filename, options):
     if not options.stdout:
         sys.stderr.write(f"{basename}\n")
     details = parse_universal(filename, max_title=4, cssclass="main")
-    ogl = ogl_pass(details)
-    sec8 = parse_universal(
-        filename, max_title=4, cssclass="ctl00_RadDrawer1_Content_MainContent_FullSourcesLabel"
-    )
+    ogl, sec8 = ogl_pass(details)
     ogl["sections"] = entity_pass(sec8)
     additional_sections_pass(ogl)
     remove_empty_sections_pass(ogl)
@@ -38,19 +35,24 @@ def parse_license(filename, options):
 
 def ogl_pass(details):
     license = details[1]["sections"][0]
-    assert len(license["sections"]) == 0
+    # HTML5 update: Section 8 entries are now parsed as subsections (h3 tags)
+    # instead of being in a separate ctl00_RadDrawer1_Content_MainContent_FullSourcesLabel span
+    sec8 = license.pop("sections", [])
     bs = BeautifulSoup(license["text"].strip(), "html.parser")
+    # Remove old ASP.NET elements if present (pre-HTML5 compatibility)
     span = bs.find(id="ctl00_RadDrawer1_Content_MainContent_FullSourcesLabel")
-    span.decompose()
-    bs.table.decompose()
-    children = list(bs.children)
-    last_p = children[-2]
+    if span:
+        span.decompose()
+    if bs.table:
+        bs.table.decompose()
+    # Find the last <p> tag (COPYRIGHT NOTICE) to append Masterwork Tools attribution
+    last_p = bs.find_all("p")[-1]
     new_b = bs.new_tag("b")
     new_b.string = "Pathfinder Open Reference"
     last_p.append(new_b)
     last_p.append(". © 2023 Masterwork Tools LLC, Authors: Devon Jones, Monica Jones.")
     license["text"] = str(bs).strip()
-    return license
+    return license, sec8
 
 
 def additional_sections_pass(ogl):

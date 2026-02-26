@@ -172,7 +172,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["link", "type", "subtype", "bonuses"],
+			"required": ["type", "subtype", "bonuses"],
 			"additionalProperties": false
 		},
 		"attack_damage": {

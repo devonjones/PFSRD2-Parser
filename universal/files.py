@@ -1,4 +1,6 @@
 import os
+import re
+import unicodedata
 
 
 def char_replace(instr):
@@ -23,7 +25,12 @@ def char_replace(instr):
         instr = instr.replace(char, "")
     instr = instr.strip()
     instr = instr.replace(" ", "_")
-    return instr.lower()
+    instr = instr.lower()
+    instr = "".join(
+        c for c in unicodedata.normalize("NFD", instr) if unicodedata.category(c) != "Mn"
+    )
+    instr = re.sub(r"[^a-z0-9_\-]", "", instr)
+    return instr
 
 
 def makedirs(output, game_obj, source=None):

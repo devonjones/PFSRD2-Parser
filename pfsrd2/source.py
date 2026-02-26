@@ -22,6 +22,26 @@ from universal.universal import (
 from universal.utils import bs_pop_spaces, get_text
 
 
+def _nav_filter(soup):
+    """Remove navigation elements before the <hr> and unwrap the content span."""
+    main = soup.find(id="main")
+    if not main:
+        return
+    hr = main.find("hr")
+    if not hr:
+        return
+    # Remove everything before and including the <hr>
+    for sibling in list(hr.previous_siblings):
+        sibling.extract()
+    hr.extract()
+    # Unwrap the content span so h1/h2/etc become direct children of main
+    # (In old HTML they were direct children of the container div)
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+            break
+
+
 def parse_source(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
@@ -31,7 +51,8 @@ def parse_source(filename, options):
         filename,
         subtitle_text=True,
         max_title=4,
-        cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput",
+        cssclass="main",
+        pre_filters=[_nav_filter],
     )
     details = entity_pass(details)
     struct = restructure_source_pass(details)

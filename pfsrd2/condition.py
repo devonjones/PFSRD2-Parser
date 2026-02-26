@@ -34,10 +34,11 @@ def parse_condition(filename, options):
     details = parse_universal(
         filename,
         max_title=4,
-        cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput",
-        pre_filters=[sidebar_filter],
+        cssclass="main",
+        pre_filters=[_content_filter, sidebar_filter],
     )
     details = entity_pass(details)
+    details = [d for d in details if not (isinstance(d, str) and not d.strip())]
     struct = restructure_condition_pass(details)
     condition_struct_pass(struct)
     source_pass(struct, find_condition)
@@ -63,6 +64,22 @@ def parse_condition(filename, options):
             write_condition(jsondir, struct, name)
     elif options.stdout:
         print(json.dumps(struct, indent=2))
+
+
+def _content_filter(soup):
+    """Remove navigation elements before <hr> and unwrap the content span."""
+    main = soup.find(id="main")
+    if not main:
+        return
+    hr = main.find("hr")
+    if hr:
+        for sibling in list(hr.previous_siblings):
+            sibling.extract()
+        hr.extract()
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+            break
 
 
 def sidebar_filter(soup):
@@ -237,9 +254,20 @@ def create_condition_filename(jsondir, struct):
 
 def markdown_pass(struct, name, path):
     def _validate_acceptable_tags(text):
-        validset = {"i", "b", "u", "strong", "ol", "ul", "li", "br", "table", "tr", "td", "hr"}
-        if "license" in struct:
-            validset.add("p")
+        validset = {
+            "i",
+            "b",
+            "u",
+            "strong",
+            "ol",
+            "ul",
+            "li",
+            "br",
+            "table",
+            "tr",
+            "td",
+            "hr",
+        }
         tags = get_unique_tag_set(text)
         assert tags.issubset(validset), f"{name} : {text} - {tags}"
 
@@ -253,6 +281,17 @@ def markdown_pass(struct, name, path):
                 elif isinstance(item, str) and item.find("<") > -1:
                     raise AssertionError()  # For now, I'm unaware of any tags in lists of strings
         elif isinstance(v, str) and v.find("<") > -1:
+            if "<div" in v or "<p" in v:
+                bs = BeautifulSoup(v, "html.parser")
+                for div in bs.find_all("div"):
+                    if not div.get_text(strip=True):
+                        div.decompose()
+                    else:
+                        div.unwrap()
+                for p in bs.find_all("p"):
+                    p.unwrap()
+                v = str(bs)
+                struct[k] = v
             _validate_acceptable_tags(v)
             struct[k] = md(v).strip()
             log_element("markdown.log")("{} : {}".format(f"{path}/{k}", name))
@@ -321,6 +360,10 @@ def _extract_trait(description):
             parts = [p.strip() for p in text.replace("(", "").split(",")]
             for part in parts:
                 bs = BeautifulSoup(part, "html.parser")
+                # Remove empty <a> tags (HTML5 artifacts)
+                for a in bs.find_all("a"):
+                    if not a.string and not a.contents:
+                        a.decompose()
                 children = list(bs.children)
                 assert len(children) == 1, part
                 child = children[0]

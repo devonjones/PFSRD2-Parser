@@ -13,6 +13,7 @@ from universal.markdown import md
 from universal.universal import (
     aon_pass,
     build_object,
+    edition_from_alternate_link,
     entity_pass,
     extract_link,
     extract_source,
@@ -23,19 +24,30 @@ from universal.universal import (
     parse_universal,
     remove_empty_sections_pass,
     restructure_pass,
+    source_edition_override_pass,
     source_pass,
 )
 from universal.utils import bs_pop_spaces, get_text, get_unique_tag_set, log_element
+
+
+def _content_filter(soup):
+    """Unwrap the content span so h1/h2/etc become direct children of main."""
+    main = soup.find(id="main")
+    if not main:
+        return
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+            break
 
 
 def parse_trait(filename, options):
     basename = os.path.basename(filename)
     if not options.stdout:
         sys.stderr.write(f"{basename}\n")
-    details = parse_universal(
-        filename, max_title=4, cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput"
-    )
+    details = parse_universal(filename, max_title=4, cssclass="main", pre_filters=[_content_filter])
     details = entity_pass(details)
+    details = [d for d in details if not (isinstance(d, str) and not d.strip())]
     alternate_link = handle_alternate_link(details)
     details = nethys_search_pass(details)
     struct = restructure_trait_pass(details)
@@ -43,6 +55,7 @@ def parse_trait(filename, options):
         struct["alternate_link"] = alternate_link
     trait_struct_pass(struct)
     source_pass(struct, find_trait)
+    source_edition_override_pass(struct)
     trait_link_pass(struct)
     aon_pass(struct, basename)
     restructure_pass(struct, "trait", find_trait)
@@ -172,7 +185,7 @@ def trait_struct_pass(struct):
                 return [source]
 
     def _handle_legacy(struct):
-        struct["edition"] = "remastered"
+        struct["edition"] = edition_from_alternate_link(struct) or "remastered"
         if len(struct["sections"]) == 1:
             return
         if struct["sections"][1]["name"] == "Legacy Content":
@@ -304,9 +317,20 @@ def create_trait_filename(jsondir, struct):
 
 def markdown_pass(struct, name, path):
     def _validate_acceptable_tags(text):
-        validset = {"i", "b", "u", "strong", "ol", "ul", "li", "br", "table", "tr", "td", "hr"}
-        if "license" in struct:
-            validset.add("p")
+        validset = {
+            "i",
+            "b",
+            "u",
+            "strong",
+            "ol",
+            "ul",
+            "li",
+            "br",
+            "table",
+            "tr",
+            "td",
+            "hr",
+        }
         tags = get_unique_tag_set(text)
         assert tags.issubset(validset), f"{name} : {text} - {tags}"
 
@@ -320,6 +344,17 @@ def markdown_pass(struct, name, path):
                 elif isinstance(item, str) and item.find("<") > -1:
                     raise AssertionError()  # For now, I'm unaware of any tags in lists of strings
         elif isinstance(v, str) and v.find("<") > -1:
+            if "<div" in v or "<p" in v:
+                bs = BeautifulSoup(v, "html.parser")
+                for div in bs.find_all("div"):
+                    if not div.get_text(strip=True):
+                        div.decompose()
+                    else:
+                        div.unwrap()
+                for p in bs.find_all("p"):
+                    p.unwrap()
+                v = str(bs)
+                struct[k] = v
             _validate_acceptable_tags(v)
             struct[k] = md(v).strip()
             log_element("markdown.log")("{} : {}".format(f"{path}/{k}", name))
@@ -389,19 +424,29 @@ def _extract_trait(description):
             for part in parts:
                 try:
                     bs = BeautifulSoup(part, "html.parser")
+                    # Remove empty <a> tags (HTML5 artifacts)
+                    for a in bs.find_all("a"):
+                        if not a.string and not a.contents:
+                            a.decompose()
                     children = list(bs.children)
                     assert len(children) == 1, part
                     child = children[0]
                     template = _handle_trait_template(str(child))
                     if template:
                         traits.append(template)
-                    else:
+                    elif child.name == "a":
                         name, trait_link = extract_link(child)
                         traits.append(
                             build_object(
                                 "stat_block_section", "trait", name.strip(), {"link": trait_link}
                             )
                         )
+                    elif str(child).strip().lower() == "magical tradition":
+                        traits.append(
+                            build_object("stat_block_section", "trait", "[Magical Tradition]")
+                        )
+                    else:
+                        raise Exception(f"Unexpected non-link trait: {child}")
                 except Exception as e:
                     print(parts)
                     raise e

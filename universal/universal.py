@@ -31,8 +31,12 @@ class Heading:
             assert len(children) == 1, bs
             top = children[0]
             self.name = get_text(bs).strip()
-            self.name_html = "".join([str(i) for i in top])
-            top.clear()
+            if hasattr(top, "contents"):
+                self.name_html = "".join([str(i) for i in top])
+                top.clear()
+            else:
+                self.name_html = str(top)
+                top.extract()
             self.name_tag = str(bs)
         except Exception as e:
             print(name)
@@ -188,6 +192,9 @@ def subtitle_pass(details, max_title):
                 h.details = sub
                 retdetails.append(h)
             elif has_name(detail, "span") and not is_trait(detail) and not is_action(detail):
+                # Skip empty spans (common in HTML5 update)
+                if not get_text(detail).strip():
+                    continue
                 try:
                     retdetails.append(span_to_heading(detail, 3))
                 except IndexError as e:
@@ -206,6 +213,8 @@ def subtitle_text_pass(details, max_title):
     for detail in details:
         try:
             if issubclass(detail.__class__, str):
+                if not detail.strip():
+                    continue
                 bs = BeautifulSoup(detail, "html.parser")
                 objs = list(bs.children)
                 fo = ""
@@ -755,3 +764,48 @@ def edition_pass(details):
         if result == "legacy":
             return result
     return "remastered"
+
+
+def edition_from_alternate_link(struct):
+    """Infer edition from the alternate_link sidebar if present.
+
+    If alternate_type is "remastered", this item IS legacy (it links to its remastered version).
+    If alternate_type is "legacy", this item IS remastered (it links to its legacy version).
+    Returns None if no alternate_link is present.
+    """
+    alt = struct.get("alternate_link")
+    if not alt:
+        return None
+    alt_type = alt.get("alternate_type")
+    if alt_type == "remastered":
+        return "legacy"
+    elif alt_type == "legacy":
+        return "remastered"
+    return None
+
+
+# Sources where AoN shares one page for legacy + remastered editions.
+# The source name in item HTML is always the base name (e.g. "Treasure Vault"),
+# so remastered items must be renamed programmatically.
+_SOURCE_EDITION_OVERRIDES = {
+    "Treasure Vault": {
+        "remastered": "Treasure Vault (Remastered)",
+    }
+}
+
+
+def source_edition_override_pass(struct):
+    """Rename source names for split sources based on detected edition.
+
+    Must be called AFTER edition and sources are set, BEFORE game_id_pass.
+    """
+    edition = struct.get("edition")
+    if not edition:
+        return
+    for source in struct.get("sources", []):
+        overrides = _SOURCE_EDITION_OVERRIDES.get(source["name"])
+        if overrides and edition in overrides:
+            source["name"] = overrides[edition]
+            if "link" in source:
+                source["link"]["name"] = overrides[edition]
+                source["link"]["alt"] = overrides[edition]
