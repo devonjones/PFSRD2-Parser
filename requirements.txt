@@ -1,5 +1,5 @@
 beautifulsoup4==4.14.3
 black>=23.0.0
-jsonschema==3.2.0
+jsonschema==4.26.0
 lxml==6.0.2
 sh==1.14.3
