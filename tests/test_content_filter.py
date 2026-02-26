@@ -6,7 +6,6 @@ from pfsrd2.equipment import _content_filter as equipment_content_filter
 from pfsrd2.condition import _content_filter as condition_content_filter
 from pfsrd2.item_group import _content_filter as item_group_content_filter
 
-
 # Minimal HTML5 page structure from AoN
 HTML5_WITH_NAV = """<html><body>
 <div id="main">
