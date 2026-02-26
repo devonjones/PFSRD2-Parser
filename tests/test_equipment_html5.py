@@ -4,7 +4,6 @@ Covers _remove_empty_values_pass, _extract_intelligent_item_section,
 _count_links_in_html (HTML5-specific exclusions), and _extract_h3_abilities.
 """
 
-import pytest
 from bs4 import BeautifulSoup
 
 from pfsrd2.equipment import (
@@ -116,12 +115,7 @@ class TestExtractIntelligentItemSection:
         assert section["will"] == "+15"
 
     def test_partial_fields(self):
-        html = (
-            "<hr/>"
-            "<b>Perception</b> +10<br/>"
-            "<b>Will</b> +8<br/>"
-            "<hr/>"
-        )
+        html = "<hr/>" "<b>Perception</b> +10<br/>" "<b>Will</b> +8<br/>" "<hr/>"
         soup = BeautifulSoup(html, "html.parser")
         sb = {}
         _extract_intelligent_item_section(soup, sb)
@@ -147,12 +141,7 @@ class TestExtractIntelligentItemSection:
         assert section["links"][0]["name"] == "detect magic"
 
     def test_elements_removed_from_soup(self):
-        html = (
-            "before<hr/>"
-            "<b>Perception</b> +10<br/>"
-            "<b>Will</b> +8<br/>"
-            "<hr/>after"
-        )
+        html = "before<hr/>" "<b>Perception</b> +10<br/>" "<b>Will</b> +8<br/>" "<hr/>after"
         soup = BeautifulSoup(html, "html.parser")
         sb = {}
         _extract_intelligent_item_section(soup, sb)
@@ -217,11 +206,7 @@ class TestCountLinksInHtmlHtml5Exclusions:
 
     def test_trait_entry_not_excluded_without_combination(self):
         """Without Melee/Ranged h2s, trait-entry links are NOT excluded."""
-        html = (
-            '<div class="trait-entry">'
-            '<a game-obj="Traits" aonid="10">Deadly</a>'
-            "</div>"
-        )
+        html = '<div class="trait-entry">' '<a game-obj="Traits" aonid="10">Deadly</a>' "</div>"
         assert _count_links_in_html(html) == 1
 
     def test_mixed_html5_exclusions(self):
@@ -254,7 +239,9 @@ class TestCountLinksInHtmlHtml5Exclusions:
 
     def test_trait_span_with_list_classes(self):
         """Trait span with multiple CSS classes (list format) still excluded."""
-        html = '<span class="trait trait-uncommon"><a game-obj="Traits" aonid="1">Uncommon</a></span>'
+        html = (
+            '<span class="trait trait-uncommon"><a game-obj="Traits" aonid="1">Uncommon</a></span>'
+        )
         assert _count_links_in_html(html) == 0
 
 
