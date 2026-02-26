@@ -14,7 +14,7 @@ mccabe==0.7.0
 pbr==5.11.1
 pylint==2.17.7
 pyrsistent==0.17.3
-sh==1.12.14
+sh==1.14.3
 six==1.17.0
 soupsieve==2.8.3
 stevedore==1.32.0
