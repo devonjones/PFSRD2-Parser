@@ -205,17 +205,12 @@ def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, de
     # These are extracted as separate alternate_link objects during parsing
     # They appear inside <div class="siderbarlook"> with text like "There is a Legacy version here"
     def is_alternate_link(link):
-        from bs4 import Tag
-
         # Look for ancestor div with class="siderbarlook"
         parent = link.parent
         while parent:
             if isinstance(parent, Tag) and parent.name == "div":
                 div_classes = parent.get("class", [])
                 if "siderbarlook" in div_classes:
-                    # Check if it contains alternate version text
-                    from universal.utils import get_text
-
                     div_text = get_text(parent).strip()
                     return bool("Legacy version" in div_text or "Remastered version" in div_text)
             parent = parent.parent
@@ -230,8 +225,6 @@ def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, de
     # These contain tables, lists, and cross-references that the parser doesn't extract.
     # Different from "siderbarlook" (alternate edition markers) which are handled above.
     def is_sidebar_link(link):
-        from bs4 import Tag
-
         parent = link.parent
         while parent:
             if isinstance(parent, Tag) and parent.name == "div":
@@ -270,7 +263,6 @@ def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, de
     def is_combination_appendix_link(link):
         if not is_combination:
             return False
-        from bs4 import Tag
 
         # Check if inside <div class="trait-entry">
         parent = link.parent
