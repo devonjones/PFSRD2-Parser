@@ -6003,8 +6003,7 @@ def _extract_usage_modifiers(usage_obj):
     usage_obj["text"] = cleaned
 
     usage_obj["modifiers"] = [
-        {"type": "stat_block_section", "subtype": "modifier", "name": m}
-        for m in modifiers
+        {"type": "stat_block_section", "subtype": "modifier", "name": m} for m in modifiers
     ]
 
 
