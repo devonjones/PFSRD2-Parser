@@ -9,5 +9,6 @@
 {"key":"compact_tier2_dep_levels","value":"5"}
 {"key":"compaction_enabled","value":"false"}
 {"key":"issue_prefix","value":"PFSRD2-Parser"}
+{"key":"kv.memory.test-coverage-is-never-out-of-scope-unit","value":"Test coverage is NEVER out of scope. Unit tests must be included in the same PR as the code they cover. Never mark test-coverage-reviewer feedback as 'out of scope'."}
 {"key":"schema_version","value":"6"}
 {"key":"types.custom","value":"molecule,gate,convoy,merge-request,slot,agent,role,rig,message"}
