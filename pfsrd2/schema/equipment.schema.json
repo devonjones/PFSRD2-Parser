@@ -890,7 +890,7 @@
 		"alternate_link": {"$ref": "#/definitions/alternate_link"},
 		"edition": {"enum": ["legacy", "remastered"]},
 		"pfs": {"enum": ["Standard", "Limited", "Restricted"]},
-		"schema_version": {"type": "number"},
+		"schema_version": {"enum": [1.0]},
 		"license": {"$ref": "#/definitions/license"}
 	},
 	"required": ["name", "type", "aonid", "game-obj", "game-id", "sources", "stat_block", "edition", "pfs", "license", "schema_version"],
