@@ -333,6 +333,17 @@ def markdown_valid_set(struct, name, path, validset):
     spans_allowed = constants.CREATURE_SPANS_ALLOWED
     if name in spans_allowed:
         validset.add("span")
+    # Mythic creatures with ul/li sub-abilities in Mythic Power
+    ul_allowed = constants.CREATURE_UL_ALLOWED
+    if name in ul_allowed:
+        validset.add("ul")
+        validset.add("li")
+    # Building-block creatures with tables in ability descriptions
+    table_allowed = constants.CREATURE_TABLE_ALLOWED
+    if name in table_allowed:
+        validset.add("table")
+        validset.add("tr")
+        validset.add("td")
     # Some creatures have non-standard links (URL parameters instead of game-obj)
     links_allowed = constants.CREATURE_LINKS_ALLOWED
     if name in links_allowed:
@@ -922,7 +933,7 @@ def process_stat_block(sb, sections):
             sb["gear"] = process_items(stats.pop(0))
         else:
             sb.setdefault("interaction_abilities", []).append(
-                process_interaction_ability(sb, stats.pop(0))
+                process_interaction_ability(sb, stats.pop(0), stats)
             )
 
     # Defense
@@ -1266,7 +1277,7 @@ def process_items(section):
     return items
 
 
-def process_interaction_ability(sb, section):
+def process_interaction_ability(sb, section, sections):
     ability_name = section[0]
     description = section[1]
     link = section[2]
@@ -1277,6 +1288,34 @@ def process_interaction_ability(sb, section):
         "subtype": "ability",
         "ability_type": "interaction",
     }
+    addons = [
+        "Frequency",
+        "Trigger",
+        "Effect",
+        "Duration",
+        "Requirement",
+        "Requirements",
+        "Critical Success",
+        "Success",
+        "Failure",
+        "Critical Failure",
+        "Cost",
+    ]
+    while len(sections) > 0 and sections[0][0] in addons:
+        addon = sections.pop(0)
+        assert addon[2] is None
+        addon_name = addon[0].lower().replace(" ", "_")
+        if addon_name == "requirements":
+            addon_name = "requirement"
+        value = addon[1].strip()
+        if value.endswith(";"):
+            value = value[:-1]
+        bs = BeautifulSoup(value, "html.parser")
+        links = get_links(bs, unwrap=True)
+        if len(links) > 0:
+            ability.setdefault("links", []).extend(links)
+        ability[addon_name] = str(bs)
+
     description, action = extract_action_type(description.strip())
     description, traits = extract_starting_traits(description.strip())
 
@@ -1289,7 +1328,8 @@ def process_interaction_ability(sb, section):
 
     if len(traits) > 0:
         ability["traits"] = traits
-    ability["text"] = description.strip()
+    if len(description.strip()) > 0:
+        ability["text"] = description.strip()
     if link:
         # TODO: fix []
         ability["links"] = [link]
