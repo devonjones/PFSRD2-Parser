@@ -5978,6 +5978,9 @@ def _html_to_stat_block_section(html_string, subtype):
     return result
 
 
+_USAGE_MODIFIER_RE = re.compile(r"\s*\(([^()]+)\)")
+
+
 def _extract_usage_modifiers(usage_obj):
     """Extract parenthesized modifiers from a usage stat_block_section object.
 
@@ -5988,10 +5991,8 @@ def _extract_usage_modifiers(usage_obj):
     if "(" not in text:
         return
 
-    _PAREN_RE = re.compile(r"\s*\(([^()]+)\)")
-
     modifiers = []
-    for match in _PAREN_RE.finditer(text):
+    for match in _USAGE_MODIFIER_RE.finditer(text):
         content = match.group(1).strip()
         if content == "s":
             continue
@@ -6005,7 +6006,7 @@ def _extract_usage_modifiers(usage_obj):
             return m.group(0)  # Keep plural marker
         return ""
 
-    usage_obj["text"] = _PAREN_RE.sub(_repl, text).strip()
+    usage_obj["text"] = _USAGE_MODIFIER_RE.sub(_repl, text).strip()
     usage_obj["modifiers"] = modifiers_from_string_list(modifiers)
 
 
