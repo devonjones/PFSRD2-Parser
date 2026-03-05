@@ -613,3 +613,38 @@ HTML5 omits class prefix from spell type names. Parser requires full name.
 **Pattern**: `) double resistance vs. non-magical)` — missing `;` between closing paren and modifier text.
 **Fix**: Add `;` separator.
 **Files**: M 2752 (Yuni)
+
+### 87. Missing `<b>Resistances</b>` or `<b>Immunities</b>` wrapper in weakness line
+**Pattern**: `cold iron 15, Resistances fire 15` or `holy 10, Immunities fear` — section header appears as plain text inside weakness list. Parser treats `"Resistances fire"` or `"Immunities fear"` as weakness names.
+**Fix**: Add `; <b>Resistances</b>` or `; <b>Immunities</b>` wrapper.
+**Files**: M 4540 (Sceaduinar), M 2371 (Defaced Naiad Queen), M 3161 (Raja-Krodha)
+
+### 88. Missing space between link and value in weakness
+**Pattern**: `cold iron</a>20` — no space between closing `</a>` tag and the numeric value. Parser gets `"cold iron20"`.
+**Fix**: Add space after `</a>`.
+**Files**: M 2209 (Risen Fetch), M 2708 (Hryngar Breccia Squad — `area damage12`)
+
+### 89. "or" connecting alternative weaknesses
+**Pattern**: `bludgeoning 5 (in skeletal corpses) or slashing 5 (in fleshy corpses)` — "or" connects two alternatives. Parser treats everything after "or" as part of the first weakness name.
+**Fix**: Replace "or" with comma separator.
+**Files**: M 3833, M 1035 (Corpselight)
+
+### 90. Italic `<i>` tag on weakness name
+**Pattern**: `<i>vorpal</i> weapons 20` — italic tag on part of weakness name. Parser converts to markdown `*vorpal*`.
+**Fix**: Strip `<i>` tags.
+**Files**: M 652 (Jabberwock)
+
+### 91. Orphaned closing paren in weakness value
+**Pattern**: `slashing 15)` — stray `)` after value.
+**Fix**: Remove orphaned paren.
+**Files**: M 3295 (Prismhydra)
+
+### 92. Complex multi-issue weakness line
+**Pattern**: `axe vulnerability,<br><b>fire 20</b> Resistances bludgeoning 20, piercing 20` — trailing comma + `<br>` creates empty entry, `<b>` wraps wrong content, Resistances header missing wrapper.
+**Fix**: Merge into single line, remove `<b>` from weakness value, add `; <b>Resistances</b>` wrapper.
+**Files**: M 1708 (Dimari-Diji)
+
+### 93. Trailing space inside weakness link text
+**Pattern**: `vampire </a>` or `strigoi </a>` — space before closing tag becomes part of the name.
+**Fix**: Remove trailing space inside `<a>` tag.
+**Files**: M 2129 (Zinogyvaz), N 3897 (Nizca Iricol)
