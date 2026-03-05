@@ -648,3 +648,8 @@ HTML5 omits class prefix from spell type names. Parser requires full name.
 **Pattern**: `vampire </a>` or `strigoi </a>` — space before closing tag becomes part of the name.
 **Fix**: Remove trailing space inside `<a>` tag.
 **Files**: M 2129 (Zinogyvaz), N 3897 (Nizca Iricol)
+
+### 94. Duplicate `</b>` tag on affliction name
+**Pattern**: `<b>Guillotine Golem Poison</b></b>` — extra closing `</b>` tag. Parser's markdown conversion wraps the orphaned `</b>` content in bold markers, producing `"**Guillotine Golem Poison**"`.
+**Fix**: Remove duplicate `</b>`.
+**Files**: M 1650 (Guillotine Golem), M 3820 (Vorvorak)
