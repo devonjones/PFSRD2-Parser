@@ -498,3 +498,53 @@ HTML5 omits class prefix from spell type names. Parser requires full name.
 **Pattern**: Sense link has comma inside: `greater darkvision,</a>`. After text extraction, the comma is part of the sense name rather than being a list separator.
 **Fix**: Move comma outside the `</a>` tag: `greater darkvision</a>,`.
 **Files**: M 4310 (Vanyver)
+
+### 64. Perception modifier with spurious "plus" prefix
+**Pattern**: Perception line reads `+24; plus vigilance` — the "plus" prefix causes parser to create a sense named "plus vigilance" instead of modifier "vigilance".
+**Fix**: Remove "plus " prefix: `+24; vigilance`.
+**Files**: N 3634 (Elven Court Guard)
+
+### 65. Missing comma between immunity names
+**Pattern**: Immunity list has `disease paralyzed` with no comma separator. Parser treats it as a single immunity name `"disease paralyzed"`.
+**Fix**: Add comma: `disease, paralyzed`.
+**Files**: M 2344 (Elder Elemental Tsunami)
+
+### 66. Ability text leaked into immunity line
+**Pattern**: `disease</a> Impossible Stature (aura, divine, ...)` — ability name and traits follow directly after last immunity with no separator. Parser merges them into `"disease Impossible Stature"`.
+**Fix**: Add `; <b>Impossible Stature</b>` to separate immunities from the ability.
+**Files**: M 4581 (Elysian Titan)
+
+### 67. Oxford comma in immunity list
+**Pattern**: `precision, and unconscious` — English "and" before last item. Parser splits on `,` and gets `"and unconscious"`.
+**Fix**: Remove oxford comma: `precision, unconscious`.
+**Files**: M 2336 (Kellid Graveknight), M 2337 (Korog)
+
+### 68. Italic `<i>` tags on immunity names instead of links
+**Pattern**: `<i>acid</i>` and `<i>sleep</i>` used instead of `<a>` links or plain text. Parser converts to markdown `*acid*`.
+**Fix**: Strip `<i>` tags, leaving plain text.
+**Files**: M 1546 (Belmazog)
+
+### 69. Missing `<b>` wrapper on Weaknesses header
+**Pattern**: `; Weaknesses <a ...>fire</a>` — "Weaknesses" is plain text instead of `<b>Weaknesses</b>`. Parser doesn't recognize section boundary, treats `"Weaknesses fire"` as an immunity.
+**Fix**: Add `<b>` wrapper: `; <b>\nWeaknesses</b>\n`.
+**Files**: M 3734 (Phytohydra)
+
+### 70. Trailing period on immunity name
+**Pattern**: `unconscious.<br>` — period at end of immunity list. Parser includes it in name: `"unconscious."`.
+**Fix**: Remove trailing period.
+**Files**: M 3331 (Statue of Alaznist)
+
+### 71. Typo in immunity name
+**Pattern**: `unconcious` misspelled (missing 's').
+**Fix**: Correct to `unconscious`.
+**Files**: M 1641 (Gray Death)
+
+### 72. Stray character after closing `</a>` tag in immunity
+**Pattern**: `olfactory</a>e` — extra `e` after closing tag merges into name as `"olfactorye"`.
+**Fix**: Remove stray character.
+**Files**: M 2120 (War Sauropelta)
+
+### 73. Trailing comma creating empty immunity
+**Pattern**: `disease</a>,<br>` — comma before `<br>` with nothing after. Parser splits on `,` and creates an empty `""` immunity entry.
+**Fix**: Remove trailing comma.
+**Files**: M 1715 (Taon)
