@@ -456,7 +456,7 @@ CREATURE_SPANS_ALLOWED = [
     "Zombie Mammoth",
     "Zombie Owlbear",
     "Zombie Shambler",
-    "Zombie Snake"
+    "Zombie Snake",
 ]
 
 CREATURE_UL_ALLOWED = [
