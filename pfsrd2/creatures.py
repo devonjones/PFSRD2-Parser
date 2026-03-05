@@ -2482,12 +2482,11 @@ def process_offensive_action(section):
 
 def split_stat_block_line(line):
     line = line.strip()
-    parts = line.split(";")
+    parts = split_maintain_parens(line, ";")
     newparts = []
     for part in parts:
-        newparts.extend(part.split(","))
-    parts = [p.strip() for p in newparts]
-    return parts
+        newparts.extend(split_maintain_parens(part, ","))
+    return [p.strip() for p in newparts]
 
 
 def get_attacks(sb):
