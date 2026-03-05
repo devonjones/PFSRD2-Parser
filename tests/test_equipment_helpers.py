@@ -15,6 +15,7 @@ from pfsrd2.equipment import (
     _extract_activation_traits_from_parens,
     _extract_affliction,
     _extract_traits_from_time_part,
+    _extract_usage_modifiers,
     _find_ability_bolds,
     _has_affliction_pattern,
     _normalize_activate_to_ability,
@@ -1728,6 +1729,66 @@ class TestCountLinksInHtmlNoAfflictionFalsePositive:
         html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Effect</b> something"
         soup = BeautifulSoup(html, "html.parser")
         assert _has_affliction_pattern(soup) is False
+
+
+class TestExtractUsageModifiers:
+    """Tests for _extract_usage_modifiers - extracts parenthesized modifiers from usage objects."""
+
+    def _make_usage(self, text):
+        return {"type": "stat_block_section", "subtype": "usage", "text": text}
+
+    def test_basic_modifier_extraction(self):
+        """Should extract (black powder) as a modifier."""
+        usage = self._make_usage("mounted (black powder)")
+        _extract_usage_modifiers(usage)
+        assert usage["text"] == "mounted"
+        assert len(usage["modifiers"]) == 1
+        assert usage["modifiers"][0]["name"] == "black powder"
+        assert usage["modifiers"][0]["type"] == "stat_block_section"
+        assert usage["modifiers"][0]["subtype"] == "modifier"
+
+    def test_no_parentheses(self):
+        """Should return early with no changes when no parens present."""
+        usage = self._make_usage("mounted")
+        _extract_usage_modifiers(usage)
+        assert usage["text"] == "mounted"
+        assert "modifiers" not in usage
+
+    def test_pluralization_marker_preserved(self):
+        """Should skip (s) pluralization marker."""
+        usage = self._make_usage("held in 1+ hand(s)")
+        _extract_usage_modifiers(usage)
+        assert usage["text"] == "held in 1+ hand(s)"
+        assert "modifiers" not in usage
+
+    def test_multiple_modifiers(self):
+        """Should extract multiple parenthesized groups."""
+        usage = self._make_usage("worn (light) armor (magical)")
+        _extract_usage_modifiers(usage)
+        assert usage["text"] == "worn armor"
+        assert len(usage["modifiers"]) == 2
+        assert usage["modifiers"][0]["name"] == "light"
+        assert usage["modifiers"][1]["name"] == "magical"
+
+    def test_modifier_with_comma_in_text(self):
+        """Should extract modifier when text also has commas."""
+        usage = self._make_usage("portable (black powder), held in 8 hands")
+        _extract_usage_modifiers(usage)
+        assert usage["text"] == "portable, held in 8 hands"
+        assert len(usage["modifiers"]) == 1
+        assert usage["modifiers"][0]["name"] == "black powder"
+
+    def test_double_space_stripped(self):
+        """Should strip extra whitespace from text after modifier removal."""
+        usage = self._make_usage("mounted  (black powder)")
+        _extract_usage_modifiers(usage)
+        assert usage["text"] == "mounted"
+
+    def test_only_pluralization_no_modifiers(self):
+        """Should not add modifiers key when only (s) is found."""
+        usage = self._make_usage("glove(s)")
+        _extract_usage_modifiers(usage)
+        assert "modifiers" not in usage
 
 
 if __name__ == "__main__":

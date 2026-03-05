@@ -488,6 +488,7 @@
 								"type": {"enum": ["stat_block_section"]},
 								"subtype": {"enum": ["usage"]},
 								"text": {"type": "string"},
+								"modifiers": {"$ref": "#/definitions/modifiers"},
 								"links": {
 									"type": "array",
 									"items": {"$ref": "#/definitions/link"}
