@@ -932,6 +932,29 @@ def load_armor(conn, options):
 - Development queries
 - Not for production deployment (use JSON)
 
+## Repository Layout and File Access
+
+The project lives in three sibling directories under `/home/devon/MasterworkTools/pfsrd2/`:
+
+```
+pfsrd2/
+├── PFSRD2-Parser/         # Parser code (this repo, CWD is bin/)
+├── pfsrd2-data/           # Output JSON data (separate git repo)
+└── pfsrd2-web/            # Source HTML from Archives of Nethys (separate git repo)
+    └── 2e.aonprd.com/
+        ├── Monsters/      # Monsters.aspx.ID_XXXX.html
+        ├── Armor/         # Armor.aspx.ID_XX.html
+        ├── Spells/        # etc.
+        └── ...
+```
+
+**From `PFSRD2-Parser/bin/`** (the normal CWD), relative paths are:
+- Parser code: `../pfsrd2/` (e.g., `../pfsrd2/creatures.py`)
+- HTML sources: `../../pfsrd2-web/2e.aonprd.com/` (matches `$PF2_WEB_DIR` from `dir.conf`)
+- JSON output: `../../pfsrd2-data/` (matches `$PF2_DATA_DIR` from `dir.conf`)
+
+All three directories are part of the normal working set. You should be able to read and edit files in any of them without special permission — they are all local project directories.
+
 ## Directory Structure
 
 ```
