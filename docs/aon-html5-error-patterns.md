@@ -548,3 +548,68 @@ HTML5 omits class prefix from spell type names. Parser requires full name.
 **Pattern**: `disease</a>,<br>` — comma before `<br>` with nothing after. Parser splits on `,` and creates an empty `""` immunity entry.
 **Fix**: Remove trailing comma.
 **Files**: M 1715 (Taon)
+
+### 74. Semicolon inside parentheses splits resistance (parser bug)
+**Pattern**: `all damage 10 (except force; double resistance vs. non-magical)` — `split_stat_block_line()` used naive `.split(";")` which broke on semicolons inside parentheses, splitting the modifier into a separate resistance entry like `"double resistance vs. non-magical)"`.
+**Fix**: Changed `split_stat_block_line()` to use `split_maintain_parens()` from `universal/utils.py` instead of naive `.split()`. Fixes all callers (immunities, resistances, weaknesses, speeds, languages, skills).
+**Files**: M 1371 (Elder Wyrmwraith), M 2752 (Yuni), M 4057 (Animate Dream), M 4618 (War Wraith), M 2805 (Path Maiden), N 4035, N 4039, N 4045
+
+### 75. Missing resistance type name — value only
+**Pattern**: `Resistances 10 (except adamantine)` — resistance value with no type name. Parser puts `"10"` as the name.
+**Fix**: Add `all damage` before the value.
+**Files**: M 249, M 3035 (Grikkitog), M 4405 (Garuda)
+
+### 76. Resistance value and type swapped
+**Pattern**: `10 physical (except adamantine)` or `5 poison` — value appears before the type name. Parser extracts `"10 physical"` as the name with no value.
+**Fix**: Swap to `physical 10` / `poison 5`.
+**Files**: M 2576 (Guardian Aluum), M 476 (Aluum Enforcer), M 477 (Spiritbound Aluum), M 1677 (Thasteron Khefak)
+
+### 77. Missing `<b>Weaknesses</b>` wrapper in resistance line
+**Pattern**: `poison 10, Weaknesses vulnerable to sunlight` — "Weaknesses" is plain text, not wrapped in `<b>`. Parser treats `"Weaknesses vulnerable to sunlight"` as a resistance name.
+**Fix**: Add `<b>` wrapper and `;` separator.
+**Files**: N 3896 (Deg)
+
+### 78. "or" in resistance list
+**Pattern**: `acid, electricity, or sonic 1` — the "or" before the last item sticks to the resistance name as `"or sonic"`.
+**Fix**: Remove "or".
+**Files**: M 1266, M 4512 (Ganzi Martial Artist)
+
+### 79. Trailing period on resistance line
+**Pattern**: `positive; double resistance vs. non-magical).` — period after closing paren.
+**Fix**: Remove trailing period.
+**Files**: M 1379 (Bright Walker)
+
+### 80. HP entry missing `<b>HP</b>` wrapper leaks into resistances
+**Pattern**: `100 (body) <br> HP 20 (tentacle)` — second HP entry not wrapped in `<b>HP</b>`, so `HP 20` and empty string leak into resistances.
+**Fix**: Add `<b>HP</b>` wrapper for second HP entry.
+**Files**: M 3765 (Trighoul)
+
+### 81. Soft hyphens (`&shy;`) in resistance value
+**Pattern**: `poison 5&shy;&shy;` — invisible soft hyphen characters after the value.
+**Fix**: Remove `&shy;` entities.
+**Files**: M 4325 (Zebub)
+
+### 82. Double space in resistance name
+**Pattern**: `bludgeoning  8` — extra space between type and value.
+**Fix**: Remove extra space.
+**Files**: M 2319 (Vicious Army Ant Swarm)
+
+### 83. Capitalized "All" in resistance name
+**Pattern**: `All 7` or `All damage 10` — should be lowercase `all damage`.
+**Fix**: Lowercase and add "damage" if missing.
+**Files**: M 2304 (Cyclops Zombie), M 2805 (Path Maiden)
+
+### 84. Ghost resistance data truncated — only tail remains
+**Pattern**: `Resistances ; double resistance vs. non-magical)` — the entire resistance type and value are missing, only the parenthetical modifier tail remains.
+**Fix**: Reconstruct full ghost resistance line from template: `all damage N (except force, ghost touch, or positive; double resistance vs. non-magical)`.
+**Files**: N 4035 (Jarelle Kaldrian), N 4039 (Chandriu Invisar), N 4045 (Otari Ilvashti)
+
+### 85. Resistance line split by `<br>` creates trailing comma
+**Pattern**: `precision 10,<br>protean anatomy 15` — the `<br>` breaks the line, and the trailing comma after "precision 10" creates an empty resistance entry.
+**Fix**: Remove `<br>` and merge into single line.
+**Files**: M 4519 (Imentesh)
+
+### 86. Missing semicolon before "double resistance" modifier
+**Pattern**: `) double resistance vs. non-magical)` — missing `;` between closing paren and modifier text.
+**Fix**: Add `;` separator.
+**Files**: M 2752 (Yuni)
