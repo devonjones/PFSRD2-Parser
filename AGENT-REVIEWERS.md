@@ -187,6 +187,7 @@ This is NOT optional. PRs without tests for new/modified code should be blocked.
 **Do NOT allow:**
 - Accepting "pure refactoring" as an excuse - refactoring PRs especially need tests to prove behavior is preserved
 - Accepting "verified with parser run" instead of unit tests
+- Marking test coverage as "out of scope" — test coverage is NEVER out of scope. Tests must be included in the same PR as the code they cover.
 
 **Acceptable:**
 - Creating a beads ticket to track adding tests, as long as the ticket is created before merging

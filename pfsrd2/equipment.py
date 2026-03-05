@@ -5988,21 +5988,24 @@ def _extract_usage_modifiers(usage_obj):
     if "(" not in text:
         return
 
+    _PAREN_RE = re.compile(r"\s*\(([^()]+)\)")
+
     modifiers = []
-    # Match parenthesized groups, but not (s) which is pluralization
-    for match in re.finditer(r"\s*\(([^)]+)\)", text):
-        content = match.group(1)
+    for match in _PAREN_RE.finditer(text):
+        content = match.group(1).strip()
         if content == "s":
             continue
-        modifiers.append(content.strip())
+        modifiers.append(content)
 
     if not modifiers:
         return
 
-    # Remove extracted paren groups from text (but not (s))
-    cleaned = re.sub(r"\s*\((?!s\))[^)]+\)", "", text).strip()
-    usage_obj["text"] = cleaned
+    def _repl(m):
+        if m.group(1).strip() == "s":
+            return m.group(0)  # Keep plural marker
+        return ""
 
+    usage_obj["text"] = _PAREN_RE.sub(_repl, text).strip()
     usage_obj["modifiers"] = modifiers_from_string_list(modifiers)
 
 
