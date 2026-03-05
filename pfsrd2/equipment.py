@@ -42,6 +42,7 @@ from universal.universal import (
     get_links,
     href_filter,
     link_modifiers,
+    modifiers_from_string_list,
     remove_empty_sections_pass,
     restructure_pass,
     source_edition_override_pass,
@@ -5380,6 +5381,8 @@ def normalize_numeric_fields_pass(struct, config):
                 container["usage"] = usage
             if isinstance(usage, dict):
                 _extract_usage_modifiers(usage)
+            else:
+                raise ValueError(f"Unexpected usage type {type(usage)}: {usage}")
 
     return result
 
@@ -5981,11 +5984,9 @@ def _extract_usage_modifiers(usage_obj):
     Modifies the object in-place: removes (...) from text and adds modifiers list.
     Skips '(s)' which is a pluralization marker, not a modifier.
     """
-    text = usage_obj.get("text", "")
+    text = usage_obj["text"]
     if "(" not in text:
         return
-
-    import re
 
     modifiers = []
     # Match parenthesized groups, but not (s) which is pluralization
@@ -6002,9 +6003,7 @@ def _extract_usage_modifiers(usage_obj):
     cleaned = re.sub(r"\s*\((?!s\))[^)]+\)", "", text).strip()
     usage_obj["text"] = cleaned
 
-    usage_obj["modifiers"] = [
-        {"type": "stat_block_section", "subtype": "modifier", "name": m} for m in modifiers
-    ]
+    usage_obj["modifiers"] = modifiers_from_string_list(modifiers)
 
 
 def normalize_equipment_fields(sb):
