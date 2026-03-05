@@ -5362,10 +5362,26 @@ def normalize_numeric_fields_pass(struct, config):
 
     # Call equipment-specific normalizer function
     normalizer = config.get("normalize_fields")
+    result = 0
     if normalizer:
-        result = normalizer(sb)
-        return result if result else 0
-    return 0
+        result = normalizer(sb) or 0
+
+    # Universal: extract parenthesized modifiers from usage fields
+    # Applies to all equipment types (equipment, siege_weapon, vehicle, etc.)
+    for container in [sb, sb.get("siege_weapon"), sb.get("vehicle"), sb.get("statistics")]:
+        if container and "usage" in container:
+            usage = container["usage"]
+            if isinstance(usage, str):
+                usage = {
+                    "type": "stat_block_section",
+                    "subtype": "usage",
+                    "text": usage.strip(),
+                }
+                container["usage"] = usage
+            if isinstance(usage, dict):
+                _extract_usage_modifiers(usage)
+
+    return result
 
 
 def _normalize_int_field(sb, field_name):
@@ -5957,6 +5973,39 @@ def _html_to_stat_block_section(html_string, subtype):
         result["links"] = links
 
     return result
+
+
+def _extract_usage_modifiers(usage_obj):
+    """Extract parenthesized modifiers from a usage stat_block_section object.
+
+    Modifies the object in-place: removes (...) from text and adds modifiers list.
+    Skips '(s)' which is a pluralization marker, not a modifier.
+    """
+    text = usage_obj.get("text", "")
+    if "(" not in text:
+        return
+
+    import re
+
+    modifiers = []
+    # Match parenthesized groups, but not (s) which is pluralization
+    for match in re.finditer(r"\s*\(([^)]+)\)", text):
+        content = match.group(1)
+        if content == "s":
+            continue
+        modifiers.append(content.strip())
+
+    if not modifiers:
+        return
+
+    # Remove extracted paren groups from text (but not (s))
+    cleaned = re.sub(r"\s*\((?!s\))[^)]+\)", "", text).strip()
+    usage_obj["text"] = cleaned
+
+    usage_obj["modifiers"] = [
+        {"type": "stat_block_section", "subtype": "modifier", "name": m}
+        for m in modifiers
+    ]
 
 
 def normalize_equipment_fields(sb):
