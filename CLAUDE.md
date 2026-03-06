@@ -2,13 +2,9 @@
 
 ## Issue Tracking
 
-This project uses **beads** for issue tracking. The beads database is located at:
+This project uses **beads** for issue tracking. The beads database is in this repo's `.beads/` directory.
 
-```
-/home/devon/MasterworkTools/pfsrd2/.beads/
-```
-
-To create issues for this project, run `bd` commands from `/home/devon/MasterworkTools/pfsrd2/` or any subdirectory (like `PFSRD2-Parser/`).
+Run `bd` commands from within the `PFSRD2-Parser/` directory (or any subdirectory).
 
 ## Project Mission
 
