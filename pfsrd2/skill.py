@@ -197,13 +197,19 @@ _RESULT_FIELDS = [
 
 
 def action_extract_pass(struct):
-    """Extract structured data from action subsections."""
+    """Extract structured data from action subsections into skill object."""
+    skill = find_skill(struct)
+    if not skill:
+        return
+    trained_actions = []
+    untrained_actions = []
+    remaining_sections = []
     for section in struct["sections"]:
         if not section.get("name", "").endswith("Actions"):
+            remaining_sections.append(section)
             continue
         # Determine trained/untrained from parent section name
         parts = section["name"].split()
-        # e.g. "Acrobatics Untrained Actions" or "Athletics Trained Actions"
         trained = None
         for p in parts:
             if p.lower() in ("trained", "untrained"):
@@ -211,10 +217,19 @@ def action_extract_pass(struct):
                 break
         for action_section in section.get("sections", []):
             _extract_action_type_from_name(action_section)
-            if trained is not None:
-                action_section["trained"] = trained
             if "text" in action_section:
                 _extract_action_text(action_section)
+            action_section["type"] = "stat_block_section"
+            action_section["subtype"] = "skill_action"
+            if trained is True:
+                trained_actions.append(action_section)
+            elif trained is False:
+                untrained_actions.append(action_section)
+    struct["sections"] = remaining_sections
+    if trained_actions:
+        skill["trained_actions"] = trained_actions
+    if untrained_actions:
+        skill["untrained_actions"] = untrained_actions
 
 
 def _extract_action_type_from_name(section):
@@ -441,20 +456,35 @@ def skill_link_pass(struct):
             span.decompose()
         section[field] = str(bs).strip()
 
-    for section in struct["sections"]:
+    def _process_section(section):
         _handle_text_field(section, "name", False)
         for field in _LINK_FIELDS:
             _handle_text_field(section, field)
-        if "sections" in section:
-            skill_link_pass(section)
+        for s in section.get("sections", []):
+            _process_section(s)
+
+    for section in struct["sections"]:
+        _process_section(section)
+
+    # Process skill actions
+    skill = find_skill(struct)
+    if skill:
+        for action in skill.get("trained_actions", []):
+            _process_section(action)
+        for action in skill.get("untrained_actions", []):
+            _process_section(action)
 
 
 def skill_cleanup_pass(struct):
-    def _clean_text():
-        struct["name"] = skill["name"]
-        del skill["name"]
-        if "text" not in skill:
-            return
+    skill = struct.get("skill")
+    if not skill:
+        return
+
+    # Move name from skill to top-level
+    struct["name"] = skill["name"]
+
+    # Extract and convert text
+    if "text" in skill:
         soup = BeautifulSoup(skill["text"], "html.parser")
         # Remove Nethys notes
         first = list(soup.children)[0] if list(soup.children) else None
@@ -466,50 +496,52 @@ def skill_cleanup_pass(struct):
         # Strip <details> (item bonuses widget)
         while soup.details:
             soup.details.decompose()
-        skill["text"] = str(soup).strip()
-        if skill["text"] != "":
+        cleaned = str(soup).strip()
+        if cleaned:
             assert "text" not in struct, struct
-            struct["text"] = html2markdown.convert(skill["text"])
+            struct["text"] = html2markdown.convert(cleaned)
         del skill["text"]
 
-    def _clean_sections():
-        def _clean_html(section):
-            if "html" in section:
-                section["text"] = section["html"]
-                del section["html"]
-            if "sections" in section:
-                for s in section["sections"]:
-                    _clean_html(s)
+    # Move sources to top-level
+    struct["sources"] = skill["sources"]
+    del skill["sources"]
 
-        if len(skill["sections"]) != 0:
-            struct["sections"] = skill["sections"]
+    # Move key_ability to top-level
+    if "key_ability" in skill:
+        struct["key_ability"] = skill["key_ability"]
+        del skill["key_ability"]
+
+    # Move links to top-level
+    if skill.get("links"):
+        assert "links" not in struct, struct
+        struct["links"] = skill["links"]
+        del skill["links"]
+
+    # Clean html fields in sections
+    def _clean_html(section):
+        if "html" in section:
+            section["text"] = section["html"]
+            del section["html"]
+        if "sections" in section:
+            for s in section["sections"]:
+                _clean_html(s)
+
+    # Remaining sections at top-level are plain text sections
+    if "sections" in struct:
+        for section in struct["sections"]:
+            _clean_html(section)
+
+    # Remove skill's own sections (already moved or empty)
+    if "sections" in skill:
         del skill["sections"]
-        if "sections" in struct:
-            for section in struct["sections"]:
-                _clean_html(section)
 
-    def _clean_links():
-        if skill.get("links"):
-            assert "links" not in struct, struct
-            struct["links"] = skill["links"]
-            del skill["links"]
+    # Keep name on both top-level and skill object
+    # (top-level set above, skill retains its name)
 
-    def _clean_misc():
-        struct["sources"] = skill["sources"]
-        del skill["sources"]
-        if "key_ability" in skill:
-            struct["key_ability"] = skill["key_ability"]
-            del skill["key_ability"]
-        del skill["type"]
-        del skill["subtype"]
-
-    skill = struct["skill"]
-    _clean_text()
-    _clean_sections()
-    _clean_links()
-    _clean_misc()
-    assert len(skill) == 0, skill
-    del struct["skill"]
+    # Verify skill object is clean
+    expected_keys = {"type", "subtype", "name", "trained_actions", "untrained_actions"}
+    remaining = set(skill.keys()) - expected_keys
+    assert not remaining, f"Unexpected keys in skill: {remaining}"
 
 
 def write_skill(jsondir, struct, source):

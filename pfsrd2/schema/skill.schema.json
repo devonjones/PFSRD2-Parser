@@ -81,6 +81,41 @@
 			"required": ["type", "subtype", "name"],
 			"additionalProperties": false
 		},
+		"skill_action": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["skill_action"]},
+				"text": {"type": "string"},
+				"action_type": {"$ref": "#/definitions/action_type"},
+				"traits": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/trait"},
+					"additionalItems": false
+				},
+				"source": {"$ref": "#/definitions/source"},
+				"sources": {"$ref": "#/definitions/sources"},
+				"sections": {"$ref": "#/definitions/sections"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				},
+				"requirements": {"type": "string"},
+				"trigger": {"type": "string"},
+				"frequency": {"type": "string"},
+				"cost": {"type": "string"},
+				"effect": {"type": "string"},
+				"duration": {"type": "string"},
+				"critical_success": {"type": "string"},
+				"success": {"type": "string"},
+				"failure": {"type": "string"},
+				"critical_failure": {"type": "string"}
+			},
+			"required": ["name", "type", "subtype"],
+			"additionalProperties": false
+		},
 		"section": {
 			"type": "object",
 			"properties": {
@@ -92,32 +127,15 @@
 				"subtype": {"enum": ["sidebar", "index"]},
 				"sidebar_type": {"enum": [
 					"treasure_and_rewards", "related_creatures", "locations",
-					"additional_lore", "advice_and_rules"
+					"additional_lore", "advice_and_rules", "geb"
 				]},
+				"sidebar_heading": {"type": "string"},
+				"image": {"$ref": "#/definitions/image"},
 				"links": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/link"},
 					"additionalItems": false
-				},
-				"image": {"$ref": "#/definitions/image"},
-				"action_type": {"$ref": "#/definitions/action_type"},
-				"trained": {"type": "boolean"},
-				"traits": {
-					"type": "array",
-					"items": {"$ref": "#/definitions/trait"},
-					"additionalItems": false
-				},
-				"source": {"$ref": "#/definitions/source"},
-				"requirements": {"type": "string"},
-				"trigger": {"type": "string"},
-				"frequency": {"type": "string"},
-				"cost": {"type": "string"},
-				"effect": {"type": "string"},
-				"duration": {"type": "string"},
-				"critical_success": {"type": "string"},
-				"success": {"type": "string"},
-				"failure": {"type": "string"},
-				"critical_failure": {"type": "string"}
+				}
 			},
 			"additionalProperties": false
 		},
@@ -143,6 +161,37 @@
 			"type": "array",
 			"items": {"$ref": "#/definitions/source"},
 			"additionalItems": false
+		},
+		"image": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["image"]},
+				"name": {"type": "string"},
+				"game-obj": {"type": "string"},
+				"image": {"type": "string"}
+			},
+			"required": ["type", "name", "image"],
+			"additionalProperties": false
+		},
+		"skill": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["skill"]},
+				"name": {"type": "string"},
+				"trained_actions": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/skill_action"},
+					"additionalItems": false
+				},
+				"untrained_actions": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/skill_action"},
+					"additionalItems": false
+				}
+			},
+			"required": ["type", "subtype", "name"],
+			"additionalProperties": false
 		}
 	},
 	"type": "object",
@@ -155,6 +204,7 @@
 		"key_ability": {"enum": ["str", "dex", "con", "int", "wis", "cha"]},
 		"text": {"type": "string"},
 		"sources": {"$ref": "#/definitions/sources"},
+		"skill": {"$ref": "#/definitions/skill"},
 		"sections": {"$ref": "#/definitions/sections"},
 		"links": {
 			"type": "array",
