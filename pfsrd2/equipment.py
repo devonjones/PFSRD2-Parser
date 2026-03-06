@@ -1614,8 +1614,7 @@ def _generic_section_pass(struct, config, debug=False):
         variants = []
         for h2 in variant_h2s:
             variant_sb, variant_links = _parse_variant_section(
-                h2, config, struct.get("name", ""),
-                parent_level=sb.get("level"), debug=debug
+                h2, config, struct.get("name", ""), parent_level=sb.get("level"), debug=debug
             )
             if variant_sb:
                 variants.append(variant_sb)
