@@ -1132,7 +1132,7 @@ def _parse_variant_name_and_level(h2_tag):
     """
     h2_text = get_text(h2_tag).strip()
     level_match = re.search(r"Item\s+(\d+)", h2_text)
-    level = int(level_match.group(1)) if level_match else 0
+    level = int(level_match.group(1)) if level_match else None
     name = re.sub(r"\s*Item\s+\d+\+?\s*$", "", h2_text).strip()
     return name, level
 
@@ -1179,14 +1179,19 @@ def _parse_variant_section(h2_tag, config, parent_name, debug=False):
         "type": "stat_block",
         "subtype": config.get("output_subdir", "equipment"),
         "name": name,
-        "level": level,
     }
+    if level is not None:
+        variant_sb["level"] = level
 
     # Extract source from variant (has its own source links)
     _extract_source(bs, variant_struct)
 
     # Extract traits from variant (some variants have their own traits like Uncommon)
     _extract_traits(bs, variant_sb)
+
+    # Extract inline intelligent item stats BEFORE stats extraction
+    # (stats extraction would consume Perception/Skills/etc. bolds)
+    _extract_inline_intelligent_item(bs, variant_sb)
 
     # Extract stats from variant content
     stats = {}
@@ -1427,6 +1432,122 @@ def _extract_intelligent_item_section(bs, sb, debug=False):
     return 0
 
 
+def _extract_inline_intelligent_item(bs, sb):
+    """Extract intelligent item stats from inline bold tags (no <hr> required).
+
+    Used for variant sections (e.g., Briar's Sharpness Point tiers) where
+    intelligent item stats appear inline rather than between <hr> tags.
+
+    Detects <b>Perception</b> followed by other INTELLIGENT_ITEM_FIELDS bolds,
+    extracts them into a structured intelligent_item object, and removes them
+    from the soup.
+    """
+    # Check if there's a <b>Perception</b> tag
+    perception_bold = None
+    for b in bs.find_all("b"):
+        if b.get_text().strip() == "Perception":
+            perception_bold = b
+            break
+
+    if not perception_bold:
+        return
+
+    # Verify at least one more intelligent item field follows
+    has_other = False
+    for b in perception_bold.find_next_siblings("b"):
+        if b.get_text().strip() in INTELLIGENT_ITEM_FIELDS:
+            has_other = True
+            break
+        # Stop if we hit a non-intelligent-item bold (e.g., "Activate")
+        if b.get_text().strip() not in INTELLIGENT_ITEM_FIELDS:
+            break
+
+    if not has_other:
+        return
+
+    # Collect all intelligent item fields: from Perception bold through Will value
+    fields = {}
+    current_label = None
+    current_value_parts = []
+    elements_to_remove = []
+    collecting = False
+
+    for child in list(bs.children):
+        if isinstance(child, Tag) and child.name == "b":
+            label = child.get_text().strip()
+            if label == "Perception":
+                collecting = True
+            if collecting and label in INTELLIGENT_ITEM_FIELDS:
+                # Save previous field
+                if current_label is not None:
+                    value_html = "".join(current_value_parts).strip().strip(",").strip()
+                    fields[current_label] = value_html
+                current_label = label
+                current_value_parts = []
+                elements_to_remove.append(child)
+                continue
+            elif collecting and label not in INTELLIGENT_ITEM_FIELDS:
+                # Hit a non-intelligent-item bold (e.g., "Activate") — stop
+                # Save last field
+                if current_label is not None:
+                    value_html = "".join(current_value_parts).strip().strip(",").strip()
+                    fields[current_label] = value_html
+                break
+        elif collecting:
+            if isinstance(child, Tag) and child.name == "br":
+                elements_to_remove.append(child)
+                continue
+            elif current_label is not None:
+                current_value_parts.append(str(child))
+                elements_to_remove.append(child)
+
+    # If we ended without hitting a non-intelligent bold, save last field
+    if current_label is not None and current_label not in fields:
+        value_html = "".join(current_value_parts).strip().strip(",").strip()
+        fields[current_label] = value_html
+
+    if not fields:
+        return
+
+    # Extract links from collected elements
+    section_html = "".join(str(e) for e in elements_to_remove)
+    _, links = extract_links(section_html)
+
+    # Build section dict (same structure as _extract_intelligent_item_section)
+    field_map = {
+        "Perception": "perception",
+        "Communication": "communication",
+        "Skills": "skills",
+        "Int": "int_mod",
+        "Wis": "wis_mod",
+        "Cha": "cha_mod",
+        "Will": "will",
+    }
+
+    section = {
+        "type": "stat_block_section",
+        "subtype": "intelligent_item",
+    }
+
+    for label, key in field_map.items():
+        if label in fields:
+            value_soup = BeautifulSoup(fields[label], "html.parser")
+            text = re.sub(r"\s+", " ", value_soup.get_text()).strip()
+            section[key] = text
+
+    if links:
+        section["links"] = links
+
+    sb["intelligent_item"] = section
+
+    # Remove extracted elements from soup
+    for elem in elements_to_remove:
+        if isinstance(elem, Tag):
+            elem.decompose()
+        elif isinstance(elem, NavigableString):
+            elem.extract()
+
+
 def _generic_section_pass(struct, config, debug=False):
     """Generic section pass for non-weapon equipment (armor, etc.).
 
@@ -1441,8 +1562,12 @@ def _generic_section_pass(struct, config, debug=False):
 
     # Check for variant h2 headers (not mode headers like Melee/Ranged)
     h2_tags = bs.find_all("h2", class_="title")
-    # Filter out mode headers - variants have "Item N" in them
-    variant_h2s = [h2 for h2 in h2_tags if re.search(r"Item\s+\d+", get_text(h2))]
+    # Filter out mode headers - variants have "Item N" or "Sharpness Point" in them
+    variant_h2s = [
+        h2
+        for h2 in h2_tags
+        if re.search(r"Item\s+\d+|Sharpness\s+Points?", get_text(h2))
+    ]
 
     # If we have variants, we need to extract main content (before first h2) separately
     if variant_h2s:
@@ -5634,8 +5759,24 @@ def _normalize_bulk(sb):
     # Convert mdash to dash
     value_str = value_str.replace("—", "-")
 
-    # Extract modifier from parentheses if present
+    # Split compound bulk values: "- varies", "- when not activated", "- L (...)"
+    # The dash is the bulk value; the rest is descriptive text → modifier
     modifiers = []
+    if re.match(r"^-\s+\S", value_str):
+        parts = value_str.split(None, 1)  # split on first whitespace
+        remainder = parts[1] if len(parts) > 1 else ""
+        # Check if remainder is itself a bulk value (e.g., "L", "varies")
+        if remainder.startswith("L") or remainder.startswith("varies"):
+            # "- L (...)" or "- varies (by armor)": the dash is noise, use remainder
+            value_str = remainder
+        else:
+            # "- when not activated": dash is the bulk, rest is modifier
+            value_str = "-"
+            modifiers.append(
+                {"type": "stat_block_section", "subtype": "modifier", "name": remainder}
+            )
+
+    # Extract modifier from parentheses if present
     base_value = value_str
     if "(" in value_str and ")" in value_str:
         paren_start = value_str.find("(")

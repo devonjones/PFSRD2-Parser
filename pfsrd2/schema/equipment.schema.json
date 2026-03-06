@@ -752,7 +752,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["type", "subtype", "level"],
+			"required": ["type", "subtype"],
 			"additionalProperties": false
 		},
 		"alternate_link": {
