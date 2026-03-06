@@ -48,11 +48,37 @@
 					"Equipment", "Deities", "Feats", "Actions", "Monsters",
 					"Heritages", "Rules", "Diseases", "Rituals", "Planes",
 					"MonsterFamilies", "Domains", "Classes", "Ancestries",
-					"Archetypes", "SiegeWeapons", "WeaponGroups"
+					"Archetypes", "SiegeWeapons", "WeaponGroups", "SpellLists"
 				]},
 				"aonid": {"type": "integer"}
 			},
 			"required": ["name", "type", "alt"],
+			"additionalProperties": false
+		},
+		"action_type": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["action_type"]},
+				"name": {"enum": [
+					"One Action", "Two Actions", "Three Actions",
+					"Reaction", "Free Action",
+					"One or Two Actions", "One or Three Actions",
+					"Two or Three Actions", "One Action or more"
+				]}
+			},
+			"required": ["type", "subtype", "name"],
+			"additionalProperties": false
+		},
+		"trait": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["trait"]},
+				"name": {"type": "string"},
+				"link": {"$ref": "#/definitions/link"}
+			},
+			"required": ["type", "subtype", "name"],
 			"additionalProperties": false
 		},
 		"section": {
@@ -73,7 +99,25 @@
 					"items": {"$ref": "#/definitions/link"},
 					"additionalItems": false
 				},
-				"image": {"$ref": "#/definitions/image"}
+				"image": {"$ref": "#/definitions/image"},
+				"action_type": {"$ref": "#/definitions/action_type"},
+				"trained": {"type": "boolean"},
+				"traits": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/trait"},
+					"additionalItems": false
+				},
+				"source": {"$ref": "#/definitions/source"},
+				"requirements": {"type": "string"},
+				"trigger": {"type": "string"},
+				"frequency": {"type": "string"},
+				"cost": {"type": "string"},
+				"effect": {"type": "string"},
+				"duration": {"type": "string"},
+				"critical_success": {"type": "string"},
+				"success": {"type": "string"},
+				"failure": {"type": "string"},
+				"critical_failure": {"type": "string"}
 			},
 			"additionalProperties": false
 		},

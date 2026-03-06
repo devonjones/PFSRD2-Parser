@@ -6,6 +6,9 @@ from pprint import pprint
 import html2markdown
 from bs4 import BeautifulSoup, Tag
 
+import re
+
+from pfsrd2.action import build_action_type
 from pfsrd2.condition import extract_span_traits
 from pfsrd2.license import license_pass
 from pfsrd2.schema import validate_against_schema
@@ -47,6 +50,7 @@ def parse_skill(filename, options):
     _extract_key_ability(struct)
     _remove_related_feats(struct)
     _strip_details_tags(struct)
+    action_extract_pass(struct)
     skill_link_pass(struct)
     # General_true filenames have format Skills.aspx.General_true.ID_X.html
     # Normalize to Skills.aspx.ID_X.html for aon_pass
@@ -58,22 +62,18 @@ def parse_skill(filename, options):
     skill_cleanup_pass(struct)
     set_edition_from_db_pass(struct)
     license_pass(struct)
-    # TODO: Enable these passes as extraction matures
-    # markdown_pass(struct, struct["name"], "")
-    # if not options.skip_schema:
-    #     struct["schema_version"] = 1.0
-    #     validate_against_schema(struct, "skill.schema.json")
-    # if not options.dryrun:
-    #     output = options.output
-    #     for source in struct["sources"]:
-    #         name = char_replace(source["name"])
-    #         jsondir = makedirs(output, struct["game-obj"], name)
-    #         write_skill(jsondir, struct, name)
-    # elif options.stdout:
-    #     print(json.dumps(struct, indent=2))
-
-    from pprint import pprint
-    pprint(struct)
+    markdown_pass(struct, struct["name"], "")
+    if not options.skip_schema:
+        struct["schema_version"] = 1.0
+        validate_against_schema(struct, "skill.schema.json")
+    if not options.dryrun:
+        output = options.output
+        for source in struct["sources"]:
+            name = char_replace(source["name"])
+            jsondir = makedirs(output, struct["game-obj"], name)
+            write_skill(jsondir, struct, name)
+    elif options.stdout:
+        print(json.dumps(struct, indent=2))
 
 
 def _content_filter(soup):
@@ -180,6 +180,183 @@ def _strip_details_tags(struct):
         _strip(section)
 
 
+_ACTION_TITLE_MAP = {
+    "Single Action": "One Action",
+    "Two Actions": "Two Actions",
+    "Three Actions": "Three Actions",
+    "Reaction": "Reaction",
+    "Free Action": "Free Action",
+}
+
+_RESULT_FIELDS = [
+    "Critical Success",
+    "Critical Failure",
+    "Success",
+    "Failure",
+]
+
+
+def action_extract_pass(struct):
+    """Extract structured data from action subsections."""
+    for section in struct["sections"]:
+        if not section.get("name", "").endswith("Actions"):
+            continue
+        # Determine trained/untrained from parent section name
+        parts = section["name"].split()
+        # e.g. "Acrobatics Untrained Actions" or "Athletics Trained Actions"
+        trained = None
+        for p in parts:
+            if p.lower() in ("trained", "untrained"):
+                trained = p.lower() == "trained"
+                break
+        for action_section in section.get("sections", []):
+            _extract_action_type_from_name(action_section)
+            if trained is not None:
+                action_section["trained"] = trained
+            if "text" in action_section:
+                _extract_action_text(action_section)
+
+
+def _extract_action_type_from_name(section):
+    """Extract action type span from section name before links are stripped."""
+    name = section.get("name", "")
+    bs = BeautifulSoup(name, "html.parser")
+    action_span = bs.find("span", {"class": "action"})
+    if action_span:
+        title = action_span.get("title", "")
+        if title in _ACTION_TITLE_MAP:
+            section["action_type"] = build_object(
+                "stat_block_section", "action_type", _ACTION_TITLE_MAP[title]
+            )
+
+
+def _extract_action_text(section):
+    """Extract traits, source, requirements, and result blocks from action text."""
+    bs = BeautifulSoup(section["text"], "html.parser")
+
+    # 1. Extract trait spans
+    traits = []
+    for span in bs.find_all("span", {"class": "trait"}):
+        a = span.find("a")
+        if a:
+            name, trait_link = extract_link(a)
+            traits.append(
+                build_object("stat_block_section", "trait", name.strip(), {"link": trait_link})
+            )
+        span.decompose()
+    if traits:
+        section["traits"] = traits
+
+    # 2. Strip letter-spacing spans (trait separators)
+    for span in bs.find_all("span", style=lambda s: s and "letter-spacing" in s):
+        span.decompose()
+
+    # 3. Extract source
+    source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
+    if source_tag:
+        siblings = list(source_tag.next_siblings)
+        source_tag.decompose()
+        while siblings and isinstance(siblings[0], str) and not siblings[0].strip():
+            siblings[0].extract()
+            siblings.pop(0)
+        if siblings and getattr(siblings[0], "name", None) in ("a", "i"):
+            book = siblings.pop(0)
+            source = extract_source(book)
+            book.decompose()
+            while siblings and isinstance(siblings[0], str) and not siblings[0].strip():
+                siblings[0].extract()
+                siblings.pop(0)
+            if siblings and getattr(siblings[0], "name", None) == "sup":
+                sup = siblings.pop(0)
+                _, source["errata"] = extract_link(sup.find("a"))
+                sup.decompose()
+            if siblings and getattr(siblings[0], "name", None) == "br":
+                siblings[0].decompose()
+            section["source"] = source
+
+    # 4. Split on <hr> — pre-hr is stats (requirements etc), post-hr is description
+    hr = bs.find("hr")
+    if hr:
+        # Everything before <hr> is the stats area
+        pre_hr_parts = []
+        for sibling in list(hr.previous_siblings):
+            pre_hr_parts.insert(0, str(sibling))
+            sibling.extract()
+        hr.decompose()
+        pre_hr_text = "".join(pre_hr_parts).strip()
+
+        # Extract bold fields from pre-hr area
+        _extract_bold_fields(section, pre_hr_text)
+
+    # 5. Extract result blocks from remaining text (post-hr / description area)
+    _extract_result_blocks(section, bs)
+
+    # 6. Clean remaining text
+    text = str(bs).strip()
+    text = re.sub(r"^(<br/?>[\s]*)+", "", text)
+    text = re.sub(r"(<br/?>[\s]*)+$", "", text)
+    section["text"] = text.strip()
+
+
+def _extract_bold_fields(section, text):
+    """Extract Requirements, Trigger, Frequency, Cost from pre-hr text."""
+    bs = BeautifulSoup(text, "html.parser")
+    for bold in bs.find_all("b"):
+        label = get_text(bold).strip()
+        if label not in ("Requirements", "Requirement", "Trigger",
+                          "Frequency", "Cost", "Duration"):
+            continue
+        parts = []
+        node = bold.next_sibling
+        while node:
+            if getattr(node, "name", None) == "b":
+                break
+            parts.append(str(node))
+            node = node.next_sibling
+        value = "".join(parts).strip()
+        value = re.sub(r"<br/?>[\s]*$", "", value)
+        if value.endswith(";"):
+            value = value[:-1].strip()
+        key = label.lower().replace(" ", "_")
+        if key == "requirement":
+            key = "requirements"
+        section[key] = value
+
+
+def _extract_result_blocks(section, bs):
+    """Extract Critical Success/Success/Failure/Critical Failure from description."""
+    result_labels = {
+        "Critical Success": "critical_success",
+        "Success": "success",
+        "Failure": "failure",
+        "Critical Failure": "critical_failure",
+    }
+    for bold in list(bs.find_all("b")):
+        label = get_text(bold).strip()
+        if label not in result_labels:
+            continue
+        key = result_labels[label]
+        parts = []
+        node = bold.next_sibling
+        while node:
+            if getattr(node, "name", None) == "b":
+                # Check if next bold is also a result label
+                next_label = get_text(node).strip()
+                if next_label in result_labels:
+                    break
+            parts.append(str(node))
+            node = node.next_sibling
+        value = "".join(parts).strip()
+        value = re.sub(r"<br/?>[\s]*$", "", value)
+        section[key] = value
+        # Remove the bold tag and its text from the soup
+        for node in list(bold.next_siblings):
+            if getattr(node, "name", None) == "b" and get_text(node).strip() in result_labels:
+                break
+            node.extract()
+        bold.decompose()
+
+
 def skill_struct_pass(struct):
     def _extract_source(section):
         if "text" not in section:
@@ -239,6 +416,12 @@ def skill_struct_pass(struct):
     _handle_legacy_content(struct)
 
 
+_LINK_FIELDS = [
+    "text", "requirements", "trigger", "frequency", "cost", "effect", "duration",
+    "critical_success", "success", "failure", "critical_failure",
+]
+
+
 def skill_link_pass(struct):
     def _handle_text_field(section, field, keep=True):
         if field not in section:
@@ -260,7 +443,8 @@ def skill_link_pass(struct):
 
     for section in struct["sections"]:
         _handle_text_field(section, "name", False)
-        _handle_text_field(section, "text")
+        for field in _LINK_FIELDS:
+            _handle_text_field(section, field)
         if "sections" in section:
             skill_link_pass(section)
 
