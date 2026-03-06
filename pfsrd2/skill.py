@@ -201,8 +201,7 @@ def action_extract_pass(struct):
     skill = find_skill(struct)
     if not skill:
         return
-    trained_actions = []
-    untrained_actions = []
+    actions = []
     remaining_sections = []
     for section in struct["sections"]:
         if not section.get("name", "").endswith("Actions"):
@@ -222,15 +221,12 @@ def action_extract_pass(struct):
             _extract_sample_tasks(action_section)
             action_section["type"] = "stat_block_section"
             action_section["subtype"] = "skill_action"
-            if trained is True:
-                trained_actions.append(action_section)
-            elif trained is False:
-                untrained_actions.append(action_section)
+            if trained is not None:
+                action_section["trained"] = trained
+            actions.append(action_section)
     struct["sections"] = remaining_sections
-    if trained_actions:
-        skill["trained_actions"] = trained_actions
-    if untrained_actions:
-        skill["untrained_actions"] = untrained_actions
+    if actions:
+        skill["actions"] = actions
 
 
 _PROFICIENCY_LEVELS = ["untrained", "trained", "expert", "master", "legendary"]
@@ -505,9 +501,7 @@ def skill_link_pass(struct):
     # Process skill actions
     skill = find_skill(struct)
     if skill:
-        for action in skill.get("trained_actions", []):
-            _process_section(action)
-        for action in skill.get("untrained_actions", []):
+        for action in skill.get("actions", []):
             _process_section(action)
 
 
@@ -575,7 +569,7 @@ def skill_cleanup_pass(struct):
     # (top-level set above, skill retains its name)
 
     # Verify skill object is clean
-    expected_keys = {"type", "subtype", "name", "trained_actions", "untrained_actions"}
+    expected_keys = {"type", "subtype", "name", "actions"}
     remaining = set(skill.keys()) - expected_keys
     assert not remaining, f"Unexpected keys in skill: {remaining}"
 

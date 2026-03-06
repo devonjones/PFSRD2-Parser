@@ -112,6 +112,7 @@
 				},
 				"source": {"$ref": "#/definitions/source"},
 				"sources": {"$ref": "#/definitions/sources"},
+				"trained": {"type": "boolean"},
 				"sections": {"$ref": "#/definitions/sections"},
 				"links": {
 					"type": "array",
@@ -195,12 +196,7 @@
 				"type": {"enum": ["stat_block_section"]},
 				"subtype": {"enum": ["skill"]},
 				"name": {"type": "string"},
-				"trained_actions": {
-					"type": "array",
-					"items": {"$ref": "#/definitions/skill_action"},
-					"additionalItems": false
-				},
-				"untrained_actions": {
+				"actions": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/skill_action"},
 					"additionalItems": false
