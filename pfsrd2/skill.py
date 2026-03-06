@@ -63,6 +63,7 @@ def parse_skill(filename, options):
     set_edition_from_db_pass(struct)
     license_pass(struct)
     markdown_pass(struct, struct["name"], "")
+    _remove_empty_fields(struct)
     if not options.skip_schema:
         struct["schema_version"] = 1.0
         validate_against_schema(struct, "skill.schema.json")
@@ -630,6 +631,39 @@ def markdown_pass(struct, name, path):
             _validate_acceptable_tags(v)
             struct[k] = md(v).strip()
             log_element("markdown.log")("{} : {}".format(f"{path}/{k}", name))
+
+
+def _is_empty(value):
+    if value is None:
+        return True
+    if isinstance(value, str) and value == "":
+        return True
+    if isinstance(value, (list, dict)) and len(value) == 0:
+        return True
+    return False
+
+
+def _remove_empty_fields(obj):
+    """Recursively remove fields with empty values ("", None, [], {})."""
+    if isinstance(obj, dict):
+        for key in list(obj.keys()):
+            value = obj[key]
+            if _is_empty(value):
+                del obj[key]
+            elif isinstance(value, dict):
+                _remove_empty_fields(value)
+                if _is_empty(value):
+                    del obj[key]
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        _remove_empty_fields(item)
+                if _is_empty(value):
+                    del obj[key]
+    elif isinstance(obj, list):
+        for item in obj:
+            if isinstance(item, dict):
+                _remove_empty_fields(item)
 
 
 def set_edition_from_db_pass(struct):
