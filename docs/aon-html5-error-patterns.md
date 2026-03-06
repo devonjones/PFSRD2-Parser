@@ -653,3 +653,68 @@ HTML5 omits class prefix from spell type names. Parser requires full name.
 **Pattern**: `<b>Guillotine Golem Poison</b></b>` — extra closing `</b>` tag. Parser's markdown conversion wraps the orphaned `</b>` content in bold markers, producing `"**Guillotine Golem Poison**"`.
 **Fix**: Remove duplicate `</b>`.
 **Files**: M 1650 (Guillotine Golem), M 3820 (Vorvorak)
+
+### 95. Capitalized movement type in speed
+**Pattern**: `Fly 40 feet` — movement type capitalized. Parser stores "Fly" instead of "fly".
+**Fix**: Lowercase the movement type in HTML.
+**Files**: M 13 (Cassisian)
+
+### 96. "or" conjunction in speed line
+**Pattern**: `0 feet (barrier), 15 feet (battle), or 25 feet (swarm)` — "or" before last speed entry gets parsed as movement_type "or".
+**Fix**: Remove "or" conjunction, use comma separator.
+**Files**: M 2651 (Nanoshard Swarm)
+
+### 98. Missing Humanoid creature type trait
+**Pattern**: NPC has ancestry traits (Human, Halfling, Elf, Lizardfolk) but missing the "Humanoid" base creature type trait.
+**Fix**: Add `<span class="trait"><a href="/Traits.aspx?ID=91">Humanoid</a></span>` (legacy) or aonid 628 (remastered).
+**Files**: N 2037 (Mother Mitera), N 1785 (Varilyn "Vare" Eridge), N 3630 (Aiuvarin Translator), N 3989 (Ulshuk)
+
+### 99. Missing Undead creature type trait
+**Pattern**: NPC has undead-related traits (Mummy, Unholy) but missing the "Undead" base creature type trait.
+**Fix**: Add `<span class="trait"><a href="/Traits.aspx?ID=722">Undead</a></span>` (remastered) or aonid 160 (legacy).
+**Files**: N 4261 (Equendia)
+
+### 104. "varies" as activation type text
+**Pattern**: `Activate varies (Interact)` — "varies" describes the action cost but gets parsed as activation_type instead of Interact.
+**Fix**: Remove "varies", keep just the activation type.
+**Files**: E 1596 (Winder's Ring)
+
+### 102. Variable action cost "or more" without second action span
+**Pattern**: `[one-action] or more (Interact)` — "or more" as plain text after action span. Parser treats "or more" as activation_type text.
+**Fix**: Replace with two action spans: `[one-action] to [three-actions]` matching the standard variable action pattern.
+**Files**: E 461 (Ring of the Ram), E 1046 (Cantrip Deck)
+
+### 103. Activation traits outside parentheses
+**Pattern**: Trait links appear directly after action span without wrapping parentheses: `concentrate, fortune, mental; 10 minutes`. Parser treats traits as activation_type values.
+**Fix**: Wrap traits in parentheses: `(concentrate, fortune, mental); 10 minutes`.
+**Files**: E 2139 (Laurel of the Empath), E 2842 (Holy), E 588 (Moonstone Diadem)
+
+### 101. Missing save type in affliction saving throw
+**Pattern**: `Saving Throw DC 20` — no Fortitude/Reflex/Will before DC. Parser extracts save_dc without save_type.
+**Fix**: Add save type based on context (e.g., poison → Fortitude).
+**Files**: E 3715 (Primal Pollen: added Fortitude)
+
+### 100. Activation type typos
+**Pattern**: Misspelled activation types in HTML: `Intract` (missing 'e'), `Ineteract` (extra 'e'), `envsion` (missing 'i').
+**Fix**: Correct spelling in HTML.
+**Files**: E 955 (Void Mirror: Intract→Interact), E 1480 (Sandstorm Top: Ineteract→Interact), E 3170 (Jiang-Shi Bell: envsion→envision)
+
+### 97. Extra whitespace in speed movement type (parser fix)
+**Pattern**: `climb  20 feet` — double space between movement type and value. Parser regex captures trailing space in movement_type ("climb ").
+**Fix**: Added `.strip()` to movement_type capture in `break_out_movement()`.
+**Files**: N 3886 (Anvaca)
+
+### 106. Missing `<b>` on affliction fields (Saving Throw, Stage, etc.)
+**Pattern**: Affliction fields like "Saving Throw", "Maximum Duration", "Stage 1/2/3" appear as plain text instead of `<b>` bold tags. Parser's `_extract_affliction()` requires `<b>Saving Throw</b>` and `<b>Stage N</b>` to find afflictions.
+**Fix**: Add `<b>` tags around affliction field names.
+**Files**: E 3202 (Black Scorpion Stingmace: added `<b>` around Saving Throw, Maximum Duration, Stage 1/2/3)
+
+### 107. `<b>Saving Throw DC</b>` instead of `<b>Saving Throw</b> DC`
+**Pattern**: DC value is inside the `<b>` tag: `<b>Saving Throw DC</b> 19` instead of `<b>Saving Throw</b> DC 19`. Parser matches exact text "Saving Throw".
+**Fix**: Move DC outside the `<b>` tag.
+**Files**: E 3451 (Midnight Milk: 3 variants — Experimental, Refined, Pure)
+
+### 108. Missing Saving Throw in affliction
+**Pattern**: Affliction block (poison/disease) has name, Level, Maximum Duration, and Stages but no Saving Throw line at all. The save DC is implied by the spell that delivers the poison.
+**Fix**: Add `<b>Saving Throw</b> DC NN Fortitude;` based on comparable level poisons.
+**Files**: E 2286 (Wand of Pernicious Poison 6th-rank: added DC 30 Fortitude for Level 11 Deadly Spider Venom)

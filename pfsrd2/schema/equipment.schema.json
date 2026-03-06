@@ -735,6 +735,7 @@
 				},
 				"special": {"type": "string"},
 				"craft_requirements": {"type": "string"},
+				"destruction": {"type": "string"},
 				"base_material": {"$ref": "#/definitions/base_object"},
 				"affliction": {"$ref": "#/definitions/affliction"},
 				"save_results": {"$ref": "#/definitions/save_results"},

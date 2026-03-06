@@ -599,6 +599,7 @@ EQUIPMENT_TYPES = {
             "PFS Note": None,  # PFS-specific notes, ignored for now
             "Special": "special",
             "Craft Requirements": "craft_requirements",
+            "Destruction": "destruction",
             "Ammunition": "ammunition",
             "Base Weapon": "base_weapon",
             "Base Armor": "base_armor",
@@ -636,6 +637,7 @@ EQUIPMENT_TYPES = {
             "activate": "statistics",  # Special handling converts to ability
             "special": None,
             "craft_requirements": None,
+            "destruction": None,
             "ammunition": "offense",
             "base_weapon": "offense",
             "base_armor": "defense",
@@ -1207,6 +1209,14 @@ def _parse_variant_section(h2_tag, config, parent_name, debug=False):
     trait_links_converted = _extract_abilities_from_description(
         bs, variant_sb, equipment_type="equipment"
     )
+
+    # Extract affliction from variant content (if present)
+    affliction = None
+    affliction_links = []
+    if _has_affliction_pattern(bs):
+        affliction, affliction_links = _extract_affliction(bs, name)
+    if affliction:
+        variant_sb["affliction"] = affliction
 
     # Extract any remaining text as description (with links)
     # Get links from remaining content and unwrap them
@@ -2838,7 +2848,7 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
             if not (tag.sourceline and hr.sourceline and tag.sourceline > hr.sourceline):
                 continue
             text = tag.get_text().strip()
-            if text in ("Craft Requirements", "Special"):
+            if text in ("Craft Requirements", "Special", "Destruction"):
                 bold_tags.append(tag)
 
     # Track elements to remove after extraction (bold tags and their values)
@@ -2941,6 +2951,7 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
             "Perception",
             "Craft Requirements",
             "Special",
+            "Destruction",
             "Usage",
         ):
             # Preserve HTML for fields that may contain links or action icons
@@ -6040,6 +6051,15 @@ def normalize_equipment_fields(sb):
             if "links" not in sb:
                 sb["links"] = []
             sb["links"].extend(cr_links)
+
+    # Normalize destruction - extract links, normalize whitespace, and convert to plain text
+    if "destruction" in sb and isinstance(sb["destruction"], str):
+        d_text, d_links = extract_links(sb["destruction"])
+        sb["destruction"] = _normalize_whitespace(d_text)
+        if d_links:
+            if "links" not in sb:
+                sb["links"] = []
+            sb["links"].extend(d_links)
 
     # Normalize special - extract links, normalize whitespace, and convert to plain text
     if "special" in sb and isinstance(sb["special"], str):
