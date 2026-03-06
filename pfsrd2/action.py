@@ -37,7 +37,7 @@ def extract_action_type(text, title=False):
             else:
                 raise AssertionError()
             # Re-add remaining text after "or more"
-            after = child.strip()[7:].strip()  # remove "or more"
+            after = child.strip()[len("or more") :].strip()
             if after:
                 newchildren.insert(0, NavigableString(after))
             return

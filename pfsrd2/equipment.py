@@ -1184,6 +1184,8 @@ def _parse_variant_section(h2_tag, config, parent_name, parent_level=None, debug
         variant_sb["level"] = level
     elif parent_level is not None:
         variant_sb["level"] = parent_level
+    else:
+        raise AssertionError(f"Variant '{name}' has no level and no parent level")
 
     # Extract source from variant (has its own source links)
     _extract_source(bs, variant_struct)
@@ -5138,9 +5140,16 @@ def _extract_action_type_from_spans(ability_soup):
         action_name = action_name_map.get(key)
         assert action_name, f"Unknown action type combo: {key}"
     elif len(action_titles) == 3:
+        assert action_titles == [
+            "One Action",
+            "Two Actions",
+            "Three Actions",
+        ], f"Unknown 3-span action combo: {action_titles}"
         action_name = "One to Three Actions"
     else:
-        action_name = " or ".join(action_titles)
+        raise AssertionError(
+            f"Unexpected number of action spans: {len(action_titles)}: {action_titles}"
+        )
     return {
         "type": "stat_block_section",
         "subtype": "action_type",
@@ -5803,7 +5812,7 @@ def _normalize_bulk(sb):
         parts = value_str.split(None, 1)  # split on first whitespace
         remainder = parts[1] if len(parts) > 1 else ""
         # Check if remainder is itself a bulk value (e.g., "L", "varies")
-        if remainder.startswith("L") or remainder.startswith("varies"):
+        if re.match(r"^L\b", remainder) or remainder.startswith("varies"):
             # "- L (...)" or "- varies (by armor)": the dash is noise, use remainder
             value_str = remainder
         else:
