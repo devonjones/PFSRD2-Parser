@@ -1156,7 +1156,7 @@ def _collect_content_until_h2(start_tag):
     return BeautifulSoup("".join(content_parts), "html.parser")
 
 
-def _parse_variant_section(h2_tag, config, parent_name, debug=False):
+def _parse_variant_section(h2_tag, config, parent_name, parent_level=None, debug=False):
     """Parse a variant section (h2 and its content) into a variant stat block.
 
     Args:
@@ -1182,6 +1182,8 @@ def _parse_variant_section(h2_tag, config, parent_name, debug=False):
     }
     if level is not None:
         variant_sb["level"] = level
+    elif parent_level is not None:
+        variant_sb["level"] = parent_level
 
     # Extract source from variant (has its own source links)
     _extract_source(bs, variant_struct)
@@ -1612,7 +1614,8 @@ def _generic_section_pass(struct, config, debug=False):
         variants = []
         for h2 in variant_h2s:
             variant_sb, variant_links = _parse_variant_section(
-                h2, config, struct.get("name", ""), debug=debug
+                h2, config, struct.get("name", ""),
+                parent_level=sb.get("level"), debug=debug
             )
             if variant_sb:
                 variants.append(variant_sb)

@@ -1744,7 +1744,7 @@ def process_speed(section):
         m = re.match(r"^([a-zA-Z ]*) (\d*) feet$", data)
         if m:
             # fly 30 feet
-            mtype = m.groups()[0]
+            mtype = m.groups()[0].strip()
             speed = int(m.groups()[1])
             movement["movement_type"] = mtype
             movement["value"] = speed

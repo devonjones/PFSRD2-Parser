@@ -750,7 +750,7 @@
 					"additionalItems": false
 				}
 			},
-			"required": ["type", "subtype"],
+			"required": ["type", "subtype", "level"],
 			"additionalProperties": false
 		},
 		"alternate_link": {
