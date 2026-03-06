@@ -1564,9 +1564,7 @@ def _generic_section_pass(struct, config, debug=False):
     h2_tags = bs.find_all("h2", class_="title")
     # Filter out mode headers - variants have "Item N" or "Sharpness Point" in them
     variant_h2s = [
-        h2
-        for h2 in h2_tags
-        if re.search(r"Item\s+\d+|Sharpness\s+Points?", get_text(h2))
+        h2 for h2 in h2_tags if re.search(r"Item\s+\d+|Sharpness\s+Points?", get_text(h2))
     ]
 
     # If we have variants, we need to extract main content (before first h2) separately

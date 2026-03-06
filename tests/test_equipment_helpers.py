@@ -1318,23 +1318,32 @@ class TestExtractActionTypeFromSpansEdgeCases:
 
         assert result["name"] == "Reaction or One Action"
 
-    def test_one_or_three_actions(self):
-        """Should map One Action + Three Actions to 'One or Three Actions'."""
+    def test_one_to_three_actions(self):
+        """Should map One Action + Three Actions to 'One to Three Actions' (default 'or' connector)."""
         html = '<span class="action" title="Single Action"></span><span class="action" title="Three Actions"></span>'
         soup = BeautifulSoup(html, "html.parser")
 
         result = _extract_action_type_from_spans(soup)
 
-        assert result["name"] == "One or Three Actions"
+        assert result["name"] == "One to Three Actions"
 
-    def test_unmapped_combination_uses_or_join(self):
-        """Should fall back to 'or' join for unmapped combinations."""
-        html = '<span class="action" title="Free Action"></span><span class="action" title="Three Actions"></span>'
+    def test_one_to_three_actions_with_to_connector(self):
+        """Should detect 'to' connector text between spans."""
+        html = '<span class="action" title="Single Action"></span> to <span class="action" title="Three Actions"></span>'
         soup = BeautifulSoup(html, "html.parser")
 
         result = _extract_action_type_from_spans(soup)
 
-        assert result["name"] == "Free Action or Three Actions"
+        assert result["name"] == "One to Three Actions"
+
+    def test_two_or_three_actions(self):
+        """Should map Two Actions + Three Actions with 'or' connector."""
+        html = '<span class="action" title="Two Actions"></span> or <span class="action" title="Three Actions"></span>'
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _extract_action_type_from_spans(soup)
+
+        assert result["name"] == "Two or Three Actions"
 
 
 class TestFindAbilityBoldsEdgeCases:
