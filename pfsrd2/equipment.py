@@ -599,6 +599,7 @@ EQUIPMENT_TYPES = {
             "PFS Note": None,  # PFS-specific notes, ignored for now
             "Special": "special",
             "Craft Requirements": "craft_requirements",
+            "Destruction": "destruction",
             "Ammunition": "ammunition",
             "Base Weapon": "base_weapon",
             "Base Armor": "base_armor",
@@ -636,6 +637,7 @@ EQUIPMENT_TYPES = {
             "activate": "statistics",  # Special handling converts to ability
             "special": None,
             "craft_requirements": None,
+            "destruction": None,
             "ammunition": "offense",
             "base_weapon": "offense",
             "base_armor": "defense",
@@ -1130,7 +1132,7 @@ def _parse_variant_name_and_level(h2_tag):
     """
     h2_text = get_text(h2_tag).strip()
     level_match = re.search(r"Item\s+(\d+)", h2_text)
-    level = int(level_match.group(1)) if level_match else 0
+    level = int(level_match.group(1)) if level_match else None
     name = re.sub(r"\s*Item\s+\d+\+?\s*$", "", h2_text).strip()
     return name, level
 
@@ -1154,7 +1156,7 @@ def _collect_content_until_h2(start_tag):
     return BeautifulSoup("".join(content_parts), "html.parser")
 
 
-def _parse_variant_section(h2_tag, config, parent_name, debug=False):
+def _parse_variant_section(h2_tag, config, parent_name, parent_level=None, debug=False):
     """Parse a variant section (h2 and its content) into a variant stat block.
 
     Args:
@@ -1177,14 +1179,23 @@ def _parse_variant_section(h2_tag, config, parent_name, debug=False):
         "type": "stat_block",
         "subtype": config.get("output_subdir", "equipment"),
         "name": name,
-        "level": level,
     }
+    if level is not None:
+        variant_sb["level"] = level
+    elif parent_level is not None:
+        variant_sb["level"] = parent_level
+    else:
+        raise AssertionError(f"Variant '{name}' has no level and no parent level")
 
     # Extract source from variant (has its own source links)
     _extract_source(bs, variant_struct)
 
     # Extract traits from variant (some variants have their own traits like Uncommon)
     _extract_traits(bs, variant_sb)
+
+    # Extract inline intelligent item stats BEFORE stats extraction
+    # (stats extraction would consume Perception/Skills/etc. bolds)
+    _extract_inline_intelligent_item(bs, variant_sb)
 
     # Extract stats from variant content
     stats = {}
@@ -1207,6 +1218,14 @@ def _parse_variant_section(h2_tag, config, parent_name, debug=False):
     trait_links_converted = _extract_abilities_from_description(
         bs, variant_sb, equipment_type="equipment"
     )
+
+    # Extract affliction from variant content (if present)
+    affliction = None
+    affliction_links = []
+    if _has_affliction_pattern(bs):
+        affliction, affliction_links = _extract_affliction(bs, name)
+    if affliction:
+        variant_sb["affliction"] = affliction
 
     # Extract any remaining text as description (with links)
     # Get links from remaining content and unwrap them
@@ -1417,6 +1436,122 @@ def _extract_intelligent_item_section(bs, sb, debug=False):
     return 0
 
 
+def _extract_inline_intelligent_item(bs, sb):
+    """Extract intelligent item stats from inline bold tags (no <hr> required).
+
+    Used for variant sections (e.g., Briar's Sharpness Point tiers) where
+    intelligent item stats appear inline rather than between <hr> tags.
+
+    Detects <b>Perception</b> followed by other INTELLIGENT_ITEM_FIELDS bolds,
+    extracts them into a structured intelligent_item object, and removes them
+    from the soup.
+    """
+    # Check if there's a <b>Perception</b> tag
+    perception_bold = None
+    for b in bs.find_all("b"):
+        if b.get_text().strip() == "Perception":
+            perception_bold = b
+            break
+
+    if not perception_bold:
+        return
+
+    # Verify at least one more intelligent item field follows
+    has_other = False
+    for b in perception_bold.find_next_siblings("b"):
+        if b.get_text().strip() in INTELLIGENT_ITEM_FIELDS:
+            has_other = True
+            break
+        # Stop if we hit a non-intelligent-item bold (e.g., "Activate")
+        if b.get_text().strip() not in INTELLIGENT_ITEM_FIELDS:
+            break
+
+    if not has_other:
+        return
+
+    # Collect all intelligent item fields: from Perception bold through Will value
+    fields = {}
+    current_label = None
+    current_value_parts = []
+    elements_to_remove = []
+    collecting = False
+
+    for child in list(bs.children):
+        if isinstance(child, Tag) and child.name == "b":
+            label = child.get_text().strip()
+            if label == "Perception":
+                collecting = True
+            if collecting and label in INTELLIGENT_ITEM_FIELDS:
+                # Save previous field
+                if current_label is not None:
+                    value_html = "".join(current_value_parts).strip().strip(",").strip()
+                    fields[current_label] = value_html
+                current_label = label
+                current_value_parts = []
+                elements_to_remove.append(child)
+                continue
+            elif collecting and label not in INTELLIGENT_ITEM_FIELDS:
+                # Hit a non-intelligent-item bold (e.g., "Activate") — stop
+                # Save last field
+                if current_label is not None:
+                    value_html = "".join(current_value_parts).strip().strip(",").strip()
+                    fields[current_label] = value_html
+                break
+        elif collecting:
+            if isinstance(child, Tag) and child.name == "br":
+                elements_to_remove.append(child)
+                continue
+            elif current_label is not None:
+                current_value_parts.append(str(child))
+                elements_to_remove.append(child)
+
+    # If we ended without hitting a non-intelligent bold, save last field
+    if current_label is not None and current_label not in fields:
+        value_html = "".join(current_value_parts).strip().strip(",").strip()
+        fields[current_label] = value_html
+
+    if not fields:
+        return
+
+    # Extract links from collected elements
+    section_html = "".join(str(e) for e in elements_to_remove)
+    _, links = extract_links(section_html)
+
+    # Build section dict (same structure as _extract_intelligent_item_section)
+    field_map = {
+        "Perception": "perception",
+        "Communication": "communication",
+        "Skills": "skills",
+        "Int": "int_mod",
+        "Wis": "wis_mod",
+        "Cha": "cha_mod",
+        "Will": "will",
+    }
+
+    section = {
+        "type": "stat_block_section",
+        "subtype": "intelligent_item",
+    }
+
+    for label, key in field_map.items():
+        if label in fields:
+            value_soup = BeautifulSoup(fields[label], "html.parser")
+            text = re.sub(r"\s+", " ", value_soup.get_text()).strip()
+            section[key] = text
+
+    if links:
+        section["links"] = links
+
+    sb["intelligent_item"] = section
+
+    # Remove extracted elements from soup
+    for elem in elements_to_remove:
+        if isinstance(elem, Tag):
+            elem.decompose()
+        elif isinstance(elem, NavigableString):
+            elem.extract()
+
+
 def _generic_section_pass(struct, config, debug=False):
     """Generic section pass for non-weapon equipment (armor, etc.).
 
@@ -1431,8 +1566,10 @@ def _generic_section_pass(struct, config, debug=False):
 
     # Check for variant h2 headers (not mode headers like Melee/Ranged)
     h2_tags = bs.find_all("h2", class_="title")
-    # Filter out mode headers - variants have "Item N" in them
-    variant_h2s = [h2 for h2 in h2_tags if re.search(r"Item\s+\d+", get_text(h2))]
+    # Filter out mode headers - variants have "Item N" or "Sharpness Point" in them
+    variant_h2s = [
+        h2 for h2 in h2_tags if re.search(r"Item\s+\d+|Sharpness\s+Points?", get_text(h2))
+    ]
 
     # If we have variants, we need to extract main content (before first h2) separately
     if variant_h2s:
@@ -1479,7 +1616,7 @@ def _generic_section_pass(struct, config, debug=False):
         variants = []
         for h2 in variant_h2s:
             variant_sb, variant_links = _parse_variant_section(
-                h2, config, struct.get("name", ""), debug=debug
+                h2, config, struct.get("name", ""), parent_level=sb.get("level"), debug=debug
             )
             if variant_sb:
                 variants.append(variant_sb)
@@ -2838,7 +2975,7 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
             if not (tag.sourceline and hr.sourceline and tag.sourceline > hr.sourceline):
                 continue
             text = tag.get_text().strip()
-            if text in ("Craft Requirements", "Special"):
+            if text in ("Craft Requirements", "Special", "Destruction"):
                 bold_tags.append(tag)
 
     # Track elements to remove after extraction (bold tags and their values)
@@ -2941,6 +3078,7 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
             "Perception",
             "Craft Requirements",
             "Special",
+            "Destruction",
             "Usage",
         ):
             # Preserve HTML for fields that may contain links or action icons
@@ -4918,6 +5056,8 @@ def _extract_action_type_from_spans(ability_soup):
 
     action_spans = ability_soup.find_all("span", class_="action")
     action_titles = []
+    connector = "or"  # default connector between action spans
+    front_matter_spans = []
     for action_span in action_spans:
         # Check if this span appears before the first semicolon
         preceding_text = ""
@@ -4931,11 +5071,28 @@ def _extract_action_type_from_spans(ability_soup):
             # description text, not front matter. Leave it in place.
             continue
 
+        # Detect connector text ("to" or "or") before this span
+        prev_sib = action_span.previous_sibling
+        if prev_sib and isinstance(prev_sib, NavigableString):
+            prev_text = prev_sib.strip()
+            if prev_text == "to":
+                connector = "to"
+            elif prev_text == "or":
+                connector = "or"
+
         action_title = action_span.get("title", "")
         if action_title:
             if action_title == "Single Action":
                 action_title = "One Action"
             action_titles.append(action_title)
+        front_matter_spans.append(action_span)
+
+    # Decompose front-matter spans and their connector text
+    for action_span in front_matter_spans:
+        # Also remove the connector text node before the span
+        prev_sib = action_span.previous_sibling
+        if prev_sib and isinstance(prev_sib, NavigableString) and prev_sib.strip() in ("to", "or"):
+            prev_sib.extract()
         action_span.decompose()
 
     # Deduplicate (nested abilities in <ul><li> can cause duplicates)
@@ -4951,23 +5108,48 @@ def _extract_action_type_from_spans(ability_soup):
         return None
 
     if len(action_titles) == 1:
+        # Check for "or more" text following the decomposed action span
+        # e.g., [one-action] or more (Interact) → "One Action or more"
+        for child in list(ability_soup.children):
+            if isinstance(child, NavigableString) and child.strip().startswith("or more"):
+                child.replace_with(NavigableString(child.replace("or more", "", 1)))
+                return {
+                    "type": "stat_block_section",
+                    "subtype": "action_type",
+                    "name": action_titles[0] + " or more",
+                }
         return {
             "type": "stat_block_section",
             "subtype": "action_type",
             "name": action_titles[0],
         }
 
-    # Variable action cost — map to valid schema values
-    action_name = " or ".join(action_titles)
+    # Variable action cost — build name using detected connector
     action_name_map = {
-        "One Action or Two Actions": "One or Two Actions",
-        "Two Actions or Three Actions": "Two or Three Actions",
-        "One Action or Three Actions": "One or Three Actions",
-        "One Action or Two Actions or Three Actions": "One to Three Actions",
-        "Free Action or One Action": "Free Action or Single Action",
-        "Reaction or One Action": "Reaction or One Action",
+        ("One Action", "to", "Two Actions"): "One or Two Actions",
+        ("One Action", "to", "Three Actions"): "One to Three Actions",
+        ("One Action", "or", "Two Actions"): "One or Two Actions",
+        ("One Action", "or", "Three Actions"): "One to Three Actions",
+        ("Two Actions", "to", "Three Actions"): "Two to Three Actions",
+        ("Two Actions", "or", "Three Actions"): "Two or Three Actions",
+        ("Free Action", "or", "One Action"): "Free Action or Single Action",
+        ("Reaction", "or", "One Action"): "Reaction or One Action",
     }
-    action_name = action_name_map.get(action_name, action_name)
+    if len(action_titles) == 2:
+        key = (action_titles[0], connector, action_titles[1])
+        action_name = action_name_map.get(key)
+        assert action_name, f"Unknown action type combo: {key}"
+    elif len(action_titles) == 3:
+        assert action_titles == [
+            "One Action",
+            "Two Actions",
+            "Three Actions",
+        ], f"Unknown 3-span action combo: {action_titles}"
+        action_name = "One to Three Actions"
+    else:
+        raise AssertionError(
+            f"Unexpected number of action spans: {len(action_titles)}: {action_titles}"
+        )
     return {
         "type": "stat_block_section",
         "subtype": "action_type",
@@ -5623,8 +5805,24 @@ def _normalize_bulk(sb):
     # Convert mdash to dash
     value_str = value_str.replace("—", "-")
 
-    # Extract modifier from parentheses if present
+    # Split compound bulk values: "- varies", "- when not activated", "- L (...)"
+    # The dash is the bulk value; the rest is descriptive text → modifier
     modifiers = []
+    if re.match(r"^-\s+\S", value_str):
+        parts = value_str.split(None, 1)  # split on first whitespace
+        remainder = parts[1] if len(parts) > 1 else ""
+        # Check if remainder is itself a bulk value (e.g., "L", "varies")
+        if re.match(r"^L\b", remainder) or remainder.startswith("varies"):
+            # "- L (...)" or "- varies (by armor)": the dash is noise, use remainder
+            value_str = remainder
+        else:
+            # "- when not activated": dash is the bulk, rest is modifier
+            value_str = "-"
+            modifiers.append(
+                {"type": "stat_block_section", "subtype": "modifier", "name": remainder}
+            )
+
+    # Extract modifier from parentheses if present
     base_value = value_str
     if "(" in value_str and ")" in value_str:
         paren_start = value_str.find("(")
@@ -6040,6 +6238,15 @@ def normalize_equipment_fields(sb):
             if "links" not in sb:
                 sb["links"] = []
             sb["links"].extend(cr_links)
+
+    # Normalize destruction - extract links, normalize whitespace, and convert to plain text
+    if "destruction" in sb and isinstance(sb["destruction"], str):
+        d_text, d_links = extract_links(sb["destruction"])
+        sb["destruction"] = _normalize_whitespace(d_text)
+        if d_links:
+            if "links" not in sb:
+                sb["links"] = []
+            sb["links"].extend(d_links)
 
     # Normalize special - extract links, normalize whitespace, and convert to plain text
     if "special" in sb and isinstance(sb["special"], str):

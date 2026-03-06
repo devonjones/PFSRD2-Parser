@@ -478,3 +478,243 @@ HTML5 omits class prefix from spell type names. Parser requires full name.
 **Pattern**: "Risen Runelord Spells" h3 section contained a description paragraph followed by 7 variant spell lists (one per sin: Envy, Gluttony, Greed, Lust, Pride, Sloth, Wrath). The parser's `get_attacks` treated this as a spell section (name ends with "Spells") and tried to split on `<br>` then extract level info from `<b>` tags. The description text had no `<b>` tags, and the sin names were not spell levels.
 **Fix**: (a) Added sidebar img `<img alt="Sidebar - Advice and Rules" ...>` inside the h3 title to make `is_attack()` return False, treating it as a sidebar. (b) Changed `<b>Sin Spells</b>` to `<strong>Sin Spells</strong>` for all 7 sin types to prevent them from interfering with any bold-tag-based parsing.
 **Files**: M 4271 (Risen Runelord)
+
+### 60. Duplicated text outside closing `</a>` tag in senses
+**Pattern**: Sense link text repeated as plain text after the `</a>`: `darkvision</a>\ndarkvision<br>`. Parser concatenates both into `"darkvisiondarkvision"`.
+**Fix**: Remove the duplicate plain text, keeping only the text inside the `<a>` tag.
+**Files**: M 2336 (Kellid Graveknight), M 2334 (Rezatha), M 3332 (Divine Warden of Haagenti), M 3331 (Statue of Alaznist)
+
+### 61. Missing `<b>Languages</b>` wrapper and `<br>` separator after senses
+**Pattern**: Languages line follows the last sense with no `<br>` break and no `<b>` wrapper: `low-light vision</a>\nLanguages Abyssal, Aklo, Common, Sylvan<br>`. Parser treats everything as senses — gets merged sense name and language names as senses.
+**Fix**: Add `<br>\n<b>\nLanguages</b>\n` before the language list.
+**Files**: M 2354 (Immense Mandragora), M 2352 (Kargstaad)
+
+### 62. Trailing semicolon with no senses in Perception line
+**Pattern**: Perception line ends with `; <br>` — semicolon followed by nothing. Parser splits on `;` and gets an empty sense entry.
+**Fix**: Remove the trailing `; ` before `<br>`.
+**Files**: N 2391 (Ekundayo Level 6)
+
+### 63. Comma inside `<a>` tag for sense name
+**Pattern**: Sense link has comma inside: `greater darkvision,</a>`. After text extraction, the comma is part of the sense name rather than being a list separator.
+**Fix**: Move comma outside the `</a>` tag: `greater darkvision</a>,`.
+**Files**: M 4310 (Vanyver)
+
+### 64. Perception modifier with spurious "plus" prefix
+**Pattern**: Perception line reads `+24; plus vigilance` — the "plus" prefix causes parser to create a sense named "plus vigilance" instead of modifier "vigilance".
+**Fix**: Remove "plus " prefix: `+24; vigilance`.
+**Files**: N 3634 (Elven Court Guard)
+
+### 65. Missing comma between immunity names
+**Pattern**: Immunity list has `disease paralyzed` with no comma separator. Parser treats it as a single immunity name `"disease paralyzed"`.
+**Fix**: Add comma: `disease, paralyzed`.
+**Files**: M 2344 (Elder Elemental Tsunami)
+
+### 66. Ability text leaked into immunity line
+**Pattern**: `disease</a> Impossible Stature (aura, divine, ...)` — ability name and traits follow directly after last immunity with no separator. Parser merges them into `"disease Impossible Stature"`.
+**Fix**: Add `; <b>Impossible Stature</b>` to separate immunities from the ability.
+**Files**: M 4581 (Elysian Titan)
+
+### 67. Oxford comma in immunity list
+**Pattern**: `precision, and unconscious` — English "and" before last item. Parser splits on `,` and gets `"and unconscious"`.
+**Fix**: Remove oxford comma: `precision, unconscious`.
+**Files**: M 2336 (Kellid Graveknight), M 2337 (Korog)
+
+### 68. Italic `<i>` tags on immunity names instead of links
+**Pattern**: `<i>acid</i>` and `<i>sleep</i>` used instead of `<a>` links or plain text. Parser converts to markdown `*acid*`.
+**Fix**: Strip `<i>` tags, leaving plain text.
+**Files**: M 1546 (Belmazog)
+
+### 69. Missing `<b>` wrapper on Weaknesses header
+**Pattern**: `; Weaknesses <a ...>fire</a>` — "Weaknesses" is plain text instead of `<b>Weaknesses</b>`. Parser doesn't recognize section boundary, treats `"Weaknesses fire"` as an immunity.
+**Fix**: Add `<b>` wrapper: `; <b>\nWeaknesses</b>\n`.
+**Files**: M 3734 (Phytohydra)
+
+### 70. Trailing period on immunity name
+**Pattern**: `unconscious.<br>` — period at end of immunity list. Parser includes it in name: `"unconscious."`.
+**Fix**: Remove trailing period.
+**Files**: M 3331 (Statue of Alaznist)
+
+### 71. Typo in immunity name
+**Pattern**: `unconcious` misspelled (missing 's').
+**Fix**: Correct to `unconscious`.
+**Files**: M 1641 (Gray Death)
+
+### 72. Stray character after closing `</a>` tag in immunity
+**Pattern**: `olfactory</a>e` — extra `e` after closing tag merges into name as `"olfactorye"`.
+**Fix**: Remove stray character.
+**Files**: M 2120 (War Sauropelta)
+
+### 73. Trailing comma creating empty immunity
+**Pattern**: `disease</a>,<br>` — comma before `<br>` with nothing after. Parser splits on `,` and creates an empty `""` immunity entry.
+**Fix**: Remove trailing comma.
+**Files**: M 1715 (Taon)
+
+### 74. Semicolon inside parentheses splits resistance (parser bug)
+**Pattern**: `all damage 10 (except force; double resistance vs. non-magical)` — `split_stat_block_line()` used naive `.split(";")` which broke on semicolons inside parentheses, splitting the modifier into a separate resistance entry like `"double resistance vs. non-magical)"`.
+**Fix**: Changed `split_stat_block_line()` to use `split_maintain_parens()` from `universal/utils.py` instead of naive `.split()`. Fixes all callers (immunities, resistances, weaknesses, speeds, languages, skills).
+**Files**: M 1371 (Elder Wyrmwraith), M 2752 (Yuni), M 4057 (Animate Dream), M 4618 (War Wraith), M 2805 (Path Maiden), N 4035, N 4039, N 4045
+
+### 75. Missing resistance type name — value only
+**Pattern**: `Resistances 10 (except adamantine)` — resistance value with no type name. Parser puts `"10"` as the name.
+**Fix**: Add `all damage` before the value.
+**Files**: M 249, M 3035 (Grikkitog), M 4405 (Garuda)
+
+### 76. Resistance value and type swapped
+**Pattern**: `10 physical (except adamantine)` or `5 poison` — value appears before the type name. Parser extracts `"10 physical"` as the name with no value.
+**Fix**: Swap to `physical 10` / `poison 5`.
+**Files**: M 2576 (Guardian Aluum), M 476 (Aluum Enforcer), M 477 (Spiritbound Aluum), M 1677 (Thasteron Khefak)
+
+### 77. Missing `<b>Weaknesses</b>` wrapper in resistance line
+**Pattern**: `poison 10, Weaknesses vulnerable to sunlight` — "Weaknesses" is plain text, not wrapped in `<b>`. Parser treats `"Weaknesses vulnerable to sunlight"` as a resistance name.
+**Fix**: Add `<b>` wrapper and `;` separator.
+**Files**: N 3896 (Deg)
+
+### 78. "or" in resistance list
+**Pattern**: `acid, electricity, or sonic 1` — the "or" before the last item sticks to the resistance name as `"or sonic"`.
+**Fix**: Remove "or".
+**Files**: M 1266, M 4512 (Ganzi Martial Artist)
+
+### 79. Trailing period on resistance line
+**Pattern**: `positive; double resistance vs. non-magical).` — period after closing paren.
+**Fix**: Remove trailing period.
+**Files**: M 1379 (Bright Walker)
+
+### 80. HP entry missing `<b>HP</b>` wrapper leaks into resistances
+**Pattern**: `100 (body) <br> HP 20 (tentacle)` — second HP entry not wrapped in `<b>HP</b>`, so `HP 20` and empty string leak into resistances.
+**Fix**: Add `<b>HP</b>` wrapper for second HP entry.
+**Files**: M 3765 (Trighoul)
+
+### 81. Soft hyphens (`&shy;`) in resistance value
+**Pattern**: `poison 5&shy;&shy;` — invisible soft hyphen characters after the value.
+**Fix**: Remove `&shy;` entities.
+**Files**: M 4325 (Zebub)
+
+### 82. Double space in resistance name
+**Pattern**: `bludgeoning  8` — extra space between type and value.
+**Fix**: Remove extra space.
+**Files**: M 2319 (Vicious Army Ant Swarm)
+
+### 83. Capitalized "All" in resistance name
+**Pattern**: `All 7` or `All damage 10` — should be lowercase `all damage`.
+**Fix**: Lowercase and add "damage" if missing.
+**Files**: M 2304 (Cyclops Zombie), M 2805 (Path Maiden)
+
+### 84. Ghost resistance data truncated — only tail remains
+**Pattern**: `Resistances ; double resistance vs. non-magical)` — the entire resistance type and value are missing, only the parenthetical modifier tail remains.
+**Fix**: Reconstruct full ghost resistance line from template: `all damage N (except force, ghost touch, or positive; double resistance vs. non-magical)`.
+**Files**: N 4035 (Jarelle Kaldrian), N 4039 (Chandriu Invisar), N 4045 (Otari Ilvashti)
+
+### 85. Resistance line split by `<br>` creates trailing comma
+**Pattern**: `precision 10,<br>protean anatomy 15` — the `<br>` breaks the line, and the trailing comma after "precision 10" creates an empty resistance entry.
+**Fix**: Remove `<br>` and merge into single line.
+**Files**: M 4519 (Imentesh)
+
+### 86. Missing semicolon before "double resistance" modifier
+**Pattern**: `) double resistance vs. non-magical)` — missing `;` between closing paren and modifier text.
+**Fix**: Add `;` separator.
+**Files**: M 2752 (Yuni)
+
+### 87. Missing `<b>Resistances</b>` or `<b>Immunities</b>` wrapper in weakness line
+**Pattern**: `cold iron 15, Resistances fire 15` or `holy 10, Immunities fear` — section header appears as plain text inside weakness list. Parser treats `"Resistances fire"` or `"Immunities fear"` as weakness names.
+**Fix**: Add `; <b>Resistances</b>` or `; <b>Immunities</b>` wrapper.
+**Files**: M 4540 (Sceaduinar), M 2371 (Defaced Naiad Queen), M 3161 (Raja-Krodha)
+
+### 88. Missing space between link and value in weakness
+**Pattern**: `cold iron</a>20` — no space between closing `</a>` tag and the numeric value. Parser gets `"cold iron20"`.
+**Fix**: Add space after `</a>`.
+**Files**: M 2209 (Risen Fetch), M 2708 (Hryngar Breccia Squad — `area damage12`)
+
+### 89. "or" connecting alternative weaknesses
+**Pattern**: `bludgeoning 5 (in skeletal corpses) or slashing 5 (in fleshy corpses)` — "or" connects two alternatives. Parser treats everything after "or" as part of the first weakness name.
+**Fix**: Replace "or" with comma separator.
+**Files**: M 3833, M 1035 (Corpselight)
+
+### 90. Italic `<i>` tag on weakness name
+**Pattern**: `<i>vorpal</i> weapons 20` — italic tag on part of weakness name. Parser converts to markdown `*vorpal*`.
+**Fix**: Strip `<i>` tags.
+**Files**: M 652 (Jabberwock)
+
+### 91. Orphaned closing paren in weakness value
+**Pattern**: `slashing 15)` — stray `)` after value.
+**Fix**: Remove orphaned paren.
+**Files**: M 3295 (Prismhydra)
+
+### 92. Complex multi-issue weakness line
+**Pattern**: `axe vulnerability,<br><b>fire 20</b> Resistances bludgeoning 20, piercing 20` — trailing comma + `<br>` creates empty entry, `<b>` wraps wrong content, Resistances header missing wrapper.
+**Fix**: Merge into single line, remove `<b>` from weakness value, add `; <b>Resistances</b>` wrapper.
+**Files**: M 1708 (Dimari-Diji)
+
+### 93. Trailing space inside weakness link text
+**Pattern**: `vampire </a>` or `strigoi </a>` — space before closing tag becomes part of the name.
+**Fix**: Remove trailing space inside `<a>` tag.
+**Files**: M 2129 (Zinogyvaz), N 3897 (Nizca Iricol)
+
+### 94. Duplicate `</b>` tag on affliction name
+**Pattern**: `<b>Guillotine Golem Poison</b></b>` — extra closing `</b>` tag. Parser's markdown conversion wraps the orphaned `</b>` content in bold markers, producing `"**Guillotine Golem Poison**"`.
+**Fix**: Remove duplicate `</b>`.
+**Files**: M 1650 (Guillotine Golem), M 3820 (Vorvorak)
+
+### 95. Capitalized movement type in speed
+**Pattern**: `Fly 40 feet` — movement type capitalized. Parser stores "Fly" instead of "fly".
+**Fix**: Lowercase the movement type in HTML.
+**Files**: M 13 (Cassisian)
+
+### 96. "or" conjunction in speed line
+**Pattern**: `0 feet (barrier), 15 feet (battle), or 25 feet (swarm)` — "or" before last speed entry gets parsed as movement_type "or".
+**Fix**: Remove "or" conjunction, use comma separator.
+**Files**: M 2651 (Nanoshard Swarm)
+
+### 98. Missing Humanoid creature type trait
+**Pattern**: NPC has ancestry traits (Human, Halfling, Elf, Lizardfolk) but missing the "Humanoid" base creature type trait.
+**Fix**: Add `<span class="trait"><a href="/Traits.aspx?ID=91">Humanoid</a></span>` (legacy) or aonid 628 (remastered).
+**Files**: N 2037 (Mother Mitera), N 1785 (Varilyn "Vare" Eridge), N 3630 (Aiuvarin Translator), N 3989 (Ulshuk)
+
+### 99. Missing Undead creature type trait
+**Pattern**: NPC has undead-related traits (Mummy, Unholy) but missing the "Undead" base creature type trait.
+**Fix**: Add `<span class="trait"><a href="/Traits.aspx?ID=722">Undead</a></span>` (remastered) or aonid 160 (legacy).
+**Files**: N 4261 (Equendia)
+
+### 104. "varies" as activation type text
+**Pattern**: `Activate varies (Interact)` — "varies" describes the action cost but gets parsed as activation_type instead of Interact.
+**Fix**: Remove "varies", keep just the activation type.
+**Files**: E 1596 (Winder's Ring)
+
+### 102. Variable action cost "or more" without second action span
+**Pattern**: `[one-action] or more (Interact)` — "or more" as plain text after action span. Parser treats "or more" as activation_type text.
+**Fix**: Replace with two action spans: `[one-action] to [three-actions]` matching the standard variable action pattern.
+**Files**: E 461 (Ring of the Ram), E 1046 (Cantrip Deck)
+
+### 103. Activation traits outside parentheses
+**Pattern**: Trait links appear directly after action span without wrapping parentheses: `concentrate, fortune, mental; 10 minutes`. Parser treats traits as activation_type values.
+**Fix**: Wrap traits in parentheses: `(concentrate, fortune, mental); 10 minutes`.
+**Files**: E 2139 (Laurel of the Empath), E 2842 (Holy), E 588 (Moonstone Diadem)
+
+### 101. Missing save type in affliction saving throw
+**Pattern**: `Saving Throw DC 20` — no Fortitude/Reflex/Will before DC. Parser extracts save_dc without save_type.
+**Fix**: Add save type based on context (e.g., poison → Fortitude).
+**Files**: E 3715 (Primal Pollen: added Fortitude)
+
+### 100. Activation type typos
+**Pattern**: Misspelled activation types in HTML: `Intract` (missing 'e'), `Ineteract` (extra 'e'), `envsion` (missing 'i').
+**Fix**: Correct spelling in HTML.
+**Files**: E 955 (Void Mirror: Intract→Interact), E 1480 (Sandstorm Top: Ineteract→Interact), E 3170 (Jiang-Shi Bell: envsion→envision)
+
+### 97. Extra whitespace in speed movement type (parser fix)
+**Pattern**: `climb  20 feet` — double space between movement type and value. Parser regex captures trailing space in movement_type ("climb ").
+**Fix**: Added `.strip()` to movement_type capture in `break_out_movement()`.
+**Files**: N 3886 (Anvaca)
+
+### 106. Missing `<b>` on affliction fields (Saving Throw, Stage, etc.)
+**Pattern**: Affliction fields like "Saving Throw", "Maximum Duration", "Stage 1/2/3" appear as plain text instead of `<b>` bold tags. Parser's `_extract_affliction()` requires `<b>Saving Throw</b>` and `<b>Stage N</b>` to find afflictions.
+**Fix**: Add `<b>` tags around affliction field names.
+**Files**: E 3202 (Black Scorpion Stingmace: added `<b>` around Saving Throw, Maximum Duration, Stage 1/2/3)
+
+### 107. `<b>Saving Throw DC</b>` instead of `<b>Saving Throw</b> DC`
+**Pattern**: DC value is inside the `<b>` tag: `<b>Saving Throw DC</b> 19` instead of `<b>Saving Throw</b> DC 19`. Parser matches exact text "Saving Throw".
+**Fix**: Move DC outside the `<b>` tag.
+**Files**: E 3451 (Midnight Milk: 3 variants — Experimental, Refined, Pure)
+
+### 108. Missing Saving Throw in affliction
+**Pattern**: Affliction block (poison/disease) has name, Level, Maximum Duration, and Stages but no Saving Throw line at all. The save DC is implied by the spell that delivers the poison.
+**Fix**: Add `<b>Saving Throw</b> DC NN Fortitude;` based on comparable level poisons.
+**Files**: E 2286 (Wand of Pernicious Poison 6th-rank: added DC 30 Fortitude for Level 11 Deadly Spider Venom)

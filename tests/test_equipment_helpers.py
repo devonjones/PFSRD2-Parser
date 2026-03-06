@@ -14,16 +14,20 @@ from pfsrd2.equipment import (
     _extract_action_type_from_spans,
     _extract_activation_traits_from_parens,
     _extract_affliction,
+    _extract_inline_intelligent_item,
     _extract_traits_from_time_part,
     _extract_usage_modifiers,
     _find_ability_bolds,
     _has_affliction_pattern,
     _normalize_activate_to_ability,
+    _normalize_bulk,
     _parse_activation_content,
     _parse_activation_types,
     _parse_named_activation,
+    _parse_variant_name_and_level,
     _process_activate_content,
     _should_exclude_link,
+    normalize_equipment_fields,
 )
 
 
@@ -1318,23 +1322,32 @@ class TestExtractActionTypeFromSpansEdgeCases:
 
         assert result["name"] == "Reaction or One Action"
 
-    def test_one_or_three_actions(self):
-        """Should map One Action + Three Actions to 'One or Three Actions'."""
+    def test_one_to_three_actions_no_connector(self):
+        """Should map One Action + Three Actions to 'One to Three Actions' (no connector text)."""
         html = '<span class="action" title="Single Action"></span><span class="action" title="Three Actions"></span>'
         soup = BeautifulSoup(html, "html.parser")
 
         result = _extract_action_type_from_spans(soup)
 
-        assert result["name"] == "One or Three Actions"
+        assert result["name"] == "One to Three Actions"
 
-    def test_unmapped_combination_uses_or_join(self):
-        """Should fall back to 'or' join for unmapped combinations."""
-        html = '<span class="action" title="Free Action"></span><span class="action" title="Three Actions"></span>'
+    def test_one_to_three_actions_with_to_connector(self):
+        """Should detect 'to' connector text between spans."""
+        html = '<span class="action" title="Single Action"></span> to <span class="action" title="Three Actions"></span>'
         soup = BeautifulSoup(html, "html.parser")
 
         result = _extract_action_type_from_spans(soup)
 
-        assert result["name"] == "Free Action or Three Actions"
+        assert result["name"] == "One to Three Actions"
+
+    def test_two_or_three_actions_with_or_connector(self):
+        """Should map Two Actions + Three Actions with explicit 'or' connector."""
+        html = '<span class="action" title="Two Actions"></span> or <span class="action" title="Three Actions"></span>'
+        soup = BeautifulSoup(html, "html.parser")
+
+        result = _extract_action_type_from_spans(soup)
+
+        assert result["name"] == "Two or Three Actions"
 
 
 class TestFindAbilityBoldsEdgeCases:
@@ -1789,6 +1802,220 @@ class TestExtractUsageModifiers:
         usage = self._make_usage("glove(s)")
         _extract_usage_modifiers(usage)
         assert "modifiers" not in usage
+
+
+class TestParseVariantNameAndLevel:
+    """Tests for _parse_variant_name_and_level."""
+
+    def _make_h2(self, text):
+        soup = BeautifulSoup(f"<h2>{text}</h2>", "html.parser")
+        return soup.find("h2")
+
+    def test_with_item_level(self):
+        """Should extract name and level from 'Foo Item 5'."""
+        h2 = self._make_h2("Artisan's Tools<span>Item 3</span>")
+        name, level = _parse_variant_name_and_level(h2)
+        assert name == "Artisan's Tools"
+        assert level == 3
+
+    def test_without_item_level(self):
+        """Should return None level when no 'Item N' pattern."""
+        h2 = self._make_h2("1 Sharpness Point")
+        name, level = _parse_variant_name_and_level(h2)
+        assert name == "1 Sharpness Point"
+        assert level is None
+
+    def test_with_trailing_plus(self):
+        """Should extract level from 'Item 10+' pattern."""
+        h2 = self._make_h2("Greater Boots Item 10+")
+        name, level = _parse_variant_name_and_level(h2)
+        assert name == "Greater Boots"
+        assert level == 10
+
+
+class TestNormalizeBulkCompound:
+    """Tests for _normalize_bulk compound value splitting."""
+
+    def test_dash_with_L_remainder(self):
+        """'- L' should resolve to L bulk (dash is noise)."""
+        sb = {"bulk": "- L"}
+        _normalize_bulk(sb)
+        assert sb["bulk"]["text"] == "L"
+        assert sb["bulk"]["value"] is None
+
+    def test_dash_with_varies(self):
+        """'- varies' should resolve to varies bulk."""
+        sb = {"bulk": "- varies"}
+        _normalize_bulk(sb)
+        assert sb["bulk"]["text"] == "varies"
+        assert sb["bulk"]["value"] is None
+
+    def test_dash_with_descriptive_text(self):
+        """'- when not activated' should keep dash as bulk with modifier."""
+        sb = {"bulk": "- when not activated"}
+        _normalize_bulk(sb)
+        assert sb["bulk"]["text"] == "-"
+        assert sb["bulk"]["value"] is None
+        assert len(sb["bulk"]["modifiers"]) == 1
+        assert sb["bulk"]["modifiers"][0]["name"] == "when not activated"
+
+    def test_plain_dash(self):
+        """Plain '-' should work unchanged."""
+        sb = {"bulk": "-"}
+        _normalize_bulk(sb)
+        assert sb["bulk"]["text"] == "-"
+        assert sb["bulk"]["value"] is None
+
+    def test_simple_numeric(self):
+        """Simple numeric bulk like '2'."""
+        sb = {"bulk": "2"}
+        _normalize_bulk(sb)
+        assert sb["bulk"]["text"] == "2"
+        assert sb["bulk"]["value"] == 2
+
+    def test_L_with_modifier(self):
+        """'L (when not activated)' should have L bulk with modifier."""
+        sb = {"bulk": "L (when not activated)"}
+        _normalize_bulk(sb)
+        assert sb["bulk"]["text"] == "L"
+        assert sb["bulk"]["value"] is None
+        assert len(sb["bulk"]["modifiers"]) == 1
+        assert sb["bulk"]["modifiers"][0]["name"] == "when not activated"
+
+
+class TestExtractInlineIntelligentItem:
+    """Tests for _extract_inline_intelligent_item."""
+
+    def test_basic_extraction(self):
+        """Should extract Perception and other fields into intelligent_item."""
+        html = (
+            "<b>Perception</b> +30"
+            "<br>"
+            "<b>Communication</b> speech"
+            "<br>"
+            "<b>Skills</b> Diplomacy +28"
+            "<br>"
+            "<b>Int</b> +4, <b>Wis</b> +5, <b>Cha</b> +6"
+            "<br>"
+            "<b>Will</b> +28"
+        )
+        bs = BeautifulSoup(html, "html.parser")
+        sb = {}
+        _extract_inline_intelligent_item(bs, sb)
+        assert "intelligent_item" in sb
+        assert sb["intelligent_item"]["perception"] == "+30"
+        assert sb["intelligent_item"]["communication"] == "speech"
+        assert sb["intelligent_item"]["skills"] == "Diplomacy +28"
+        assert sb["intelligent_item"]["will"] == "+28"
+
+    def test_no_perception_returns_early(self):
+        """Should not extract anything when no Perception bold."""
+        html = "<b>Activate</b> command; <b>Frequency</b> once per day"
+        bs = BeautifulSoup(html, "html.parser")
+        sb = {}
+        _extract_inline_intelligent_item(bs, sb)
+        assert "intelligent_item" not in sb
+
+    def test_perception_only_returns_early(self):
+        """Should return early when Perception has no other intelligent item fields."""
+        html = "<b>Perception</b> +30 <b>Activate</b> command"
+        bs = BeautifulSoup(html, "html.parser")
+        sb = {}
+        _extract_inline_intelligent_item(bs, sb)
+        assert "intelligent_item" not in sb
+
+    def test_non_intelligent_bold_stops_collection(self):
+        """Should stop collecting at non-intelligent-item bold like Activate."""
+        html = (
+            "<b>Perception</b> +30"
+            "<br>"
+            "<b>Communication</b> speech"
+            "<br>"
+            "<b>Activate</b> command"
+        )
+        bs = BeautifulSoup(html, "html.parser")
+        sb = {}
+        _extract_inline_intelligent_item(bs, sb)
+        assert "intelligent_item" in sb
+        assert "perception" in sb["intelligent_item"]
+        assert "communication" in sb["intelligent_item"]
+        # Activate should NOT be consumed
+        assert bs.find("b", string="Activate") is not None
+
+    def test_removes_elements_from_soup(self):
+        """Should remove extracted elements from the soup."""
+        html = (
+            "<b>Perception</b> +30"
+            "<br>"
+            "<b>Communication</b> speech"
+            "<br>"
+            "<b>Will</b> +28"
+            "<br>"
+            "<b>Activate</b> command"
+        )
+        bs = BeautifulSoup(html, "html.parser")
+        sb = {}
+        _extract_inline_intelligent_item(bs, sb)
+        # Perception, Communication, Will bolds should be removed
+        remaining_bolds = [b.get_text().strip() for b in bs.find_all("b")]
+        assert "Perception" not in remaining_bolds
+        assert "Communication" not in remaining_bolds
+        assert "Will" not in remaining_bolds
+        assert "Activate" in remaining_bolds
+
+
+class TestExtractActionTypeOrMore:
+    """Tests for 'or more' handling in _extract_action_type_from_spans."""
+
+    def test_one_action_or_more(self):
+        """Single action span + 'or more' should return 'One Action or more'."""
+        html = '<span class="action" title="Single Action"></span> or more (Interact)'
+        soup = BeautifulSoup(html, "html.parser")
+        result = _extract_action_type_from_spans(soup)
+        assert result["name"] == "One Action or more"
+
+    def test_two_actions_or_more(self):
+        """Two actions span + 'or more' should return 'Two Actions or more'."""
+        html = '<span class="action" title="Two Actions"></span> or more'
+        soup = BeautifulSoup(html, "html.parser")
+        result = _extract_action_type_from_spans(soup)
+        assert result["name"] == "Two Actions or more"
+
+    def test_or_more_text_removed_from_soup(self):
+        """'or more' text should be removed from the soup."""
+        html = '<span class="action" title="Single Action"></span> or more (Interact); some text'
+        soup = BeautifulSoup(html, "html.parser")
+        _extract_action_type_from_spans(soup)
+        text = soup.get_text().strip()
+        assert "or more" not in text
+
+
+class TestNormalizeEquipmentFieldsDestruction:
+    """Tests for destruction normalization in normalize_equipment_fields."""
+
+    def test_destruction_with_links(self):
+        """Should extract links from destruction HTML."""
+        sb = {
+            "destruction": 'Throw it into a <a game-obj="Equipment" aonid="123">volcano</a>',
+        }
+        normalize_equipment_fields(sb)
+        assert "links" in sb
+        assert len(sb["links"]) == 1
+        assert sb["links"][0]["name"] == "volcano"
+        assert "volcano" in sb["destruction"]
+
+    def test_destruction_without_links(self):
+        """Should normalize whitespace without links."""
+        sb = {"destruction": "Throw it   into   a   volcano"}
+        normalize_equipment_fields(sb)
+        assert sb["destruction"] == "Throw it into a volcano"
+        assert "links" not in sb
+
+    def test_non_string_destruction_ignored(self):
+        """Non-string destruction should be left alone."""
+        sb = {"destruction": {"already": "normalized"}}
+        normalize_equipment_fields(sb)
+        assert sb["destruction"] == {"already": "normalized"}
 
 
 if __name__ == "__main__":

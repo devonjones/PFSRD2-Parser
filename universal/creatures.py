@@ -351,7 +351,7 @@ def universal_handle_special_senses(parts):
             sense["modifiers"] = link_values(modifiers)
         part = _get_link(part)
 
-        sense["name"] = part
+        sense["name"] = part.strip()
         special_senses.append(sense)
     special_senses = link_values(special_senses, singleton=True)
     return special_senses
