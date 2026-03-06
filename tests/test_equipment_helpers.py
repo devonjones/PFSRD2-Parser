@@ -7,7 +7,9 @@ from pfsrd2.equipment import (
     DEFAULT_FIELD_DESTINATIONS,
     EQUIPMENT_TYPES,
     _clean_activation_cruft_from_text,
+    _collect_bold_field_values,
     _collect_equipment_ability_content,
+    _collect_front_matter_action_spans,
     _count_links_in_html,
     _deduplicate_links_across_abilities,
     _extract_ability_fields,
@@ -26,7 +28,9 @@ from pfsrd2.equipment import (
     _parse_named_activation,
     _parse_variant_name_and_level,
     _process_activate_content,
+    _resolve_action_name,
     _should_exclude_link,
+    _split_compound_bulk,
     normalize_equipment_fields,
 )
 
@@ -2016,6 +2020,170 @@ class TestNormalizeEquipmentFieldsDestruction:
         sb = {"destruction": {"already": "normalized"}}
         normalize_equipment_fields(sb)
         assert sb["destruction"] == {"already": "normalized"}
+
+
+class TestCollectBoldFieldValues:
+    """Tests for _collect_bold_field_values extracted helper."""
+
+    def test_collects_matching_fields(self):
+        """Should collect fields matching the given field names."""
+        html = "<b>Perception</b> +30" "<br>" "<b>Skills</b> Diplomacy +28"
+        bs = BeautifulSoup(html, "html.parser")
+        fields, elements = _collect_bold_field_values(
+            bs, {"Perception", "Skills", "Communication"}, "Perception"
+        )
+        assert "Perception" in fields
+        assert fields["Perception"] == "+30"
+        assert "Skills" in fields
+        assert fields["Skills"] == "Diplomacy +28"
+
+    def test_stops_at_non_matching_bold(self):
+        """Should stop collecting at a bold not in field_names."""
+        html = "<b>Perception</b> +30" "<br>" "<b>Activate</b> command"
+        bs = BeautifulSoup(html, "html.parser")
+        fields, elements = _collect_bold_field_values(bs, {"Perception", "Skills"}, "Perception")
+        assert "Perception" in fields
+        assert "Activate" not in fields
+
+    def test_returns_empty_when_start_label_missing(self):
+        """Should return empty when start_label not found."""
+        html = "<b>Skills</b> Diplomacy +28"
+        bs = BeautifulSoup(html, "html.parser")
+        fields, elements = _collect_bold_field_values(bs, {"Perception", "Skills"}, "Perception")
+        assert fields == {}
+        assert elements == []
+
+    def test_strips_trailing_commas(self):
+        """Should strip trailing commas from field values."""
+        html = "<b>Perception</b> +30, <b>Skills</b> Diplomacy"
+        bs = BeautifulSoup(html, "html.parser")
+        fields, _ = _collect_bold_field_values(bs, {"Perception", "Skills"}, "Perception")
+        assert fields["Perception"] == "+30"
+
+
+class TestCollectFrontMatterActionSpans:
+    """Tests for _collect_front_matter_action_spans extracted helper."""
+
+    def test_collects_single_span(self):
+        """Should collect a single action span."""
+        html = '<span class="action" title="Single Action"></span> text'
+        soup = BeautifulSoup(html, "html.parser")
+        titles, connector, spans = _collect_front_matter_action_spans(soup, -1)
+        assert titles == ["One Action"]
+
+    def test_detects_to_connector(self):
+        """Should detect 'to' connector between spans."""
+        html = (
+            '<span class="action" title="Single Action"></span>'
+            " to "
+            '<span class="action" title="Three Actions"></span>'
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        titles, connector, spans = _collect_front_matter_action_spans(soup, -1)
+        assert connector == "to"
+        assert titles == ["One Action", "Three Actions"]
+
+    def test_detects_or_connector(self):
+        """Should detect 'or' connector between spans."""
+        html = (
+            '<span class="action" title="Two Actions"></span>'
+            " or "
+            '<span class="action" title="Three Actions"></span>'
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        titles, connector, spans = _collect_front_matter_action_spans(soup, -1)
+        assert connector == "or"
+        assert titles == ["Two Actions", "Three Actions"]
+
+    def test_skips_spans_after_semicolon(self):
+        """Should not collect spans after the semicolon position."""
+        html = (
+            "<b>Activate</b> "
+            '<span class="action" title="Single Action"></span>'
+            " command; <b>Effect</b> "
+            '<span class="action" title="Reaction"></span>'
+            " triggers"
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        full_text = soup.get_text()
+        semicolon_pos = full_text.find(";")
+        titles, connector, spans = _collect_front_matter_action_spans(soup, semicolon_pos)
+        assert titles == ["One Action"]
+        # Reaction after semicolon should not be collected
+
+    def test_deduplicates_titles(self):
+        """Should deduplicate action titles."""
+        html = (
+            '<span class="action" title="Single Action"></span>'
+            '<span class="action" title="Single Action"></span>'
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        titles, _, _ = _collect_front_matter_action_spans(soup, -1)
+        assert titles == ["One Action"]
+
+
+class TestResolveActionName:
+    """Tests for _resolve_action_name extracted helper."""
+
+    def test_two_actions_with_or(self):
+        """Should resolve two actions with 'or' connector."""
+        result = _resolve_action_name(["Two Actions", "Three Actions"], "or")
+        assert result == "Two or Three Actions"
+
+    def test_two_actions_with_to(self):
+        """Should resolve two actions with 'to' connector."""
+        result = _resolve_action_name(["One Action", "Three Actions"], "to")
+        assert result == "One to Three Actions"
+
+    def test_three_actions(self):
+        """Should resolve three standard actions."""
+        result = _resolve_action_name(["One Action", "Two Actions", "Three Actions"], "or")
+        assert result == "One to Three Actions"
+
+    def test_unknown_combo_raises(self):
+        """Should raise on unknown action combination."""
+        with pytest.raises(AssertionError):
+            _resolve_action_name(["Reaction", "Three Actions"], "or")
+
+    def test_four_actions_raises(self):
+        """Should raise on 4+ action titles."""
+        with pytest.raises(AssertionError):
+            _resolve_action_name(["One Action", "Two Actions", "Three Actions", "Reaction"], "or")
+
+
+class TestSplitCompoundBulk:
+    """Tests for _split_compound_bulk extracted helper."""
+
+    def test_dash_L(self):
+        """'- L' should resolve to L (dash is noise)."""
+        value, mods = _split_compound_bulk("- L")
+        assert value == "L"
+        assert mods == []
+
+    def test_dash_varies(self):
+        """'- varies' should resolve to varies."""
+        value, mods = _split_compound_bulk("- varies")
+        assert value == "varies"
+        assert mods == []
+
+    def test_dash_descriptive(self):
+        """'- when not activated' should keep dash with modifier."""
+        value, mods = _split_compound_bulk("- when not activated")
+        assert value == "-"
+        assert len(mods) == 1
+        assert mods[0]["name"] == "when not activated"
+
+    def test_non_compound(self):
+        """Non-compound values should pass through unchanged."""
+        value, mods = _split_compound_bulk("2")
+        assert value == "2"
+        assert mods == []
+
+    def test_plain_dash(self):
+        """Plain dash without space should not trigger compound splitting."""
+        value, mods = _split_compound_bulk("-")
+        assert value == "-"
+        assert mods == []
 
 
 if __name__ == "__main__":
