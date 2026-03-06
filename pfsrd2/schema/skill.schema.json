@@ -213,6 +213,7 @@
 		"game-id": {"type": "string"},
 		"game-obj": {"enum": ["Skills"]},
 		"aonid": {"type": "integer"},
+		"skill_type": {"enum": ["character_skill", "kingdom_skill"]},
 		"key_ability": {"enum": ["str", "dex", "con", "int", "wis", "cha"]},
 		"text": {"type": "string"},
 		"sources": {"$ref": "#/definitions/sources"},

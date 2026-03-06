@@ -137,7 +137,7 @@ SKILL_ATTRIBUTES = {
 
 
 def _extract_key_ability(struct):
-    """Extract key ability from skill name like 'Acrobatics (Dex)'."""
+    """Extract key ability and skill_type from skill name like 'Acrobatics (Dex)'."""
     skill = find_skill(struct)
     if not skill:
         return
@@ -145,16 +145,19 @@ def _extract_key_ability(struct):
     bs = BeautifulSoup(name, "html.parser")
     text = get_text(bs).strip()
     if "(" not in text:
+        skill["skill_type"] = "character_skill"
         return
     parts = text.rsplit("(", 1)
-    clean_name = parts[0].strip()
     attr = parts[1].replace(")", "").strip().lower()
     if attr in SKILL_ATTRIBUTES:
         skill["key_ability"] = attr
+        skill["skill_type"] = "character_skill"
         # Rebuild name without the attribute
         # Preserve any HTML (links) but strip the "(Attr)" suffix
         if "(" in name:
             skill["name"] = name[: name.rfind("(")].strip()
+    else:
+        skill["skill_type"] = "kingdom_skill"
 
 
 def _remove_related_feats(struct):
@@ -537,10 +540,13 @@ def skill_cleanup_pass(struct):
     struct["sources"] = skill["sources"]
     del skill["sources"]
 
-    # Move key_ability to top-level
+    # Move key_ability and skill_type to top-level
     if "key_ability" in skill:
         struct["key_ability"] = skill["key_ability"]
         del skill["key_ability"]
+    if "skill_type" in skill:
+        struct["skill_type"] = skill["skill_type"]
+        del skill["skill_type"]
 
     # Move links to top-level
     if skill.get("links"):
