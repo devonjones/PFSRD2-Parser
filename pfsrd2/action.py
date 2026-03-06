@@ -27,6 +27,20 @@ def extract_action_type(text, title=False):
                 else:
                     raise AssertionError()
             newchildren.pop(0)
+        elif child.strip().startswith("or more"):
+            # Handle "or more (Interact);" as single text node
+            newchildren.pop(0)
+            if action["name"] in ["One Action", "Single Action"]:
+                action["name"] = "One Action or more"
+            elif action["name"] == "Two Actions":
+                action["name"] = "Two Actions or more"
+            else:
+                raise AssertionError()
+            # Re-add remaining text after "or more"
+            after = child.strip()[7:].strip()  # remove "or more"
+            if after:
+                newchildren.insert(0, NavigableString(after))
+            return
         elif child.strip() == "or":
             newchildren.pop(0)
             assert newchildren[0].name == "span"

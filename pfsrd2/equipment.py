@@ -5054,6 +5054,8 @@ def _extract_action_type_from_spans(ability_soup):
 
     action_spans = ability_soup.find_all("span", class_="action")
     action_titles = []
+    connector = "or"  # default connector between action spans
+    front_matter_spans = []
     for action_span in action_spans:
         # Check if this span appears before the first semicolon
         preceding_text = ""
@@ -5067,11 +5069,28 @@ def _extract_action_type_from_spans(ability_soup):
             # description text, not front matter. Leave it in place.
             continue
 
+        # Detect connector text ("to" or "or") before this span
+        prev_sib = action_span.previous_sibling
+        if prev_sib and isinstance(prev_sib, NavigableString):
+            prev_text = prev_sib.strip()
+            if prev_text == "to":
+                connector = "to"
+            elif prev_text == "or":
+                connector = "or"
+
         action_title = action_span.get("title", "")
         if action_title:
             if action_title == "Single Action":
                 action_title = "One Action"
             action_titles.append(action_title)
+        front_matter_spans.append(action_span)
+
+    # Decompose front-matter spans and their connector text
+    for action_span in front_matter_spans:
+        # Also remove the connector text node before the span
+        prev_sib = action_span.previous_sibling
+        if prev_sib and isinstance(prev_sib, NavigableString) and prev_sib.strip() in ("to", "or"):
+            prev_sib.extract()
         action_span.decompose()
 
     # Deduplicate (nested abilities in <ul><li> can cause duplicates)
@@ -5087,23 +5106,41 @@ def _extract_action_type_from_spans(ability_soup):
         return None
 
     if len(action_titles) == 1:
+        # Check for "or more" text following the decomposed action span
+        # e.g., [one-action] or more (Interact) → "One Action or more"
+        for child in list(ability_soup.children):
+            if isinstance(child, NavigableString) and child.strip().startswith("or more"):
+                child.replace_with(NavigableString(child.replace("or more", "", 1)))
+                return {
+                    "type": "stat_block_section",
+                    "subtype": "action_type",
+                    "name": action_titles[0] + " or more",
+                }
         return {
             "type": "stat_block_section",
             "subtype": "action_type",
             "name": action_titles[0],
         }
 
-    # Variable action cost — map to valid schema values
-    action_name = " or ".join(action_titles)
+    # Variable action cost — build name using detected connector
     action_name_map = {
-        "One Action or Two Actions": "One or Two Actions",
-        "Two Actions or Three Actions": "Two or Three Actions",
-        "One Action or Three Actions": "One or Three Actions",
-        "One Action or Two Actions or Three Actions": "One to Three Actions",
-        "Free Action or One Action": "Free Action or Single Action",
-        "Reaction or One Action": "Reaction or One Action",
+        ("One Action", "to", "Two Actions"): "One or Two Actions",
+        ("One Action", "to", "Three Actions"): "One to Three Actions",
+        ("One Action", "or", "Two Actions"): "One or Two Actions",
+        ("One Action", "or", "Three Actions"): "One to Three Actions",
+        ("Two Actions", "to", "Three Actions"): "Two to Three Actions",
+        ("Two Actions", "or", "Three Actions"): "Two or Three Actions",
+        ("Free Action", "or", "One Action"): "Free Action or Single Action",
+        ("Reaction", "or", "One Action"): "Reaction or One Action",
     }
-    action_name = action_name_map.get(action_name, action_name)
+    if len(action_titles) == 2:
+        key = (action_titles[0], connector, action_titles[1])
+        action_name = action_name_map.get(key)
+        assert action_name, f"Unknown action type combo: {key}"
+    elif len(action_titles) == 3:
+        action_name = "One to Three Actions"
+    else:
+        action_name = " or ".join(action_titles)
     return {
         "type": "stat_block_section",
         "subtype": "action_type",
