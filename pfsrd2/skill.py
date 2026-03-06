@@ -219,6 +219,7 @@ def action_extract_pass(struct):
             _extract_action_type_from_name(action_section)
             if "text" in action_section:
                 _extract_action_text(action_section)
+            _extract_sample_tasks(action_section)
             action_section["type"] = "stat_block_section"
             action_section["subtype"] = "skill_action"
             if trained is True:
@@ -230,6 +231,41 @@ def action_extract_pass(struct):
         skill["trained_actions"] = trained_actions
     if untrained_actions:
         skill["untrained_actions"] = untrained_actions
+
+
+_PROFICIENCY_LEVELS = ["untrained", "trained", "expert", "master", "legendary"]
+
+
+def _extract_sample_tasks(section):
+    """Extract Sample Tasks section into structured sample_tasks array."""
+    remaining = []
+    for sub in section.get("sections", []):
+        if "Sample" not in sub.get("name", "") or "Tasks" not in sub.get("name", ""):
+            remaining.append(sub)
+            continue
+        text = sub.get("text", "")
+        bs = BeautifulSoup(text, "html.parser")
+        sample_tasks = []
+        current_level = None
+        for node in bs.children:
+            if getattr(node, "name", None) == "b":
+                label = get_text(node).strip().lower()
+                if label in _PROFICIENCY_LEVELS:
+                    current_level = label
+            elif getattr(node, "name", None) == "br":
+                continue
+            elif isinstance(node, str) and current_level:
+                for task_name in node.split(","):
+                    task_name = task_name.strip()
+                    if task_name:
+                        task = build_object(
+                            "stat_block_section", "sample_task", task_name
+                        )
+                        task["proficiency"] = current_level
+                        sample_tasks.append(task)
+        if sample_tasks:
+            section["sample_tasks"] = sample_tasks
+    section["sections"] = remaining
 
 
 def _extract_action_type_from_name(section):

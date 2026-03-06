@@ -81,6 +81,17 @@
 			"required": ["type", "subtype", "name"],
 			"additionalProperties": false
 		},
+		"sample_task": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["sample_task"]},
+				"name": {"type": "string"},
+				"proficiency": {"enum": ["untrained", "trained", "expert", "master", "legendary"]}
+			},
+			"required": ["type", "subtype", "name", "proficiency"],
+			"additionalProperties": false
+		},
 		"skill_action": {
 			"type": "object",
 			"properties": {
@@ -89,6 +100,11 @@
 				"subtype": {"enum": ["skill_action"]},
 				"text": {"type": "string"},
 				"action_type": {"$ref": "#/definitions/action_type"},
+				"sample_tasks": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/sample_task"},
+					"additionalItems": false
+				},
 				"traits": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/trait"},
