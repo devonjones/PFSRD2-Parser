@@ -1436,6 +1436,65 @@ def _extract_intelligent_item_section(bs, sb, debug=False):
     return 0
 
 
+def _collect_bold_field_values(bs, field_names, start_label):
+    """Collect field values from consecutive bold tags in soup.
+
+    Walks bs.children starting from the bold matching start_label, collecting
+    label-value pairs for labels in field_names. Stops when a bold with a label
+    NOT in field_names is encountered.
+
+    Args:
+        bs: BeautifulSoup object to scan
+        field_names: Set of valid bold label strings to collect
+        start_label: The label that triggers collection (must be in field_names)
+
+    Returns:
+        Tuple of (fields_dict, elements_to_remove) where fields_dict maps
+        label strings to their HTML value strings, and elements_to_remove
+        is a list of soup elements that were consumed.
+    """
+    fields = {}
+    current_label = None
+    current_value_parts = []
+    elements_to_remove = []
+    collecting = False
+
+    for child in list(bs.children):
+        if isinstance(child, Tag) and child.name == "b":
+            label = child.get_text().strip()
+            if label == start_label:
+                collecting = True
+            if collecting and label in field_names:
+                # Save previous field
+                if current_label is not None:
+                    value_html = "".join(current_value_parts).strip().strip(",").strip()
+                    fields[current_label] = value_html
+                current_label = label
+                current_value_parts = []
+                elements_to_remove.append(child)
+                continue
+            elif collecting and label not in field_names:
+                # Hit a non-matching bold — stop
+                if current_label is not None:
+                    value_html = "".join(current_value_parts).strip().strip(",").strip()
+                    fields[current_label] = value_html
+                break
+        elif collecting:
+            if isinstance(child, Tag) and child.name == "br":
+                elements_to_remove.append(child)
+                continue
+            elif current_label is not None:
+                current_value_parts.append(str(child))
+                elements_to_remove.append(child)
+
+    # Save last field if we ended without hitting a non-matching bold
+    if current_label is not None and current_label not in fields:
+        value_html = "".join(current_value_parts).strip().strip(",").strip()
+        fields[current_label] = value_html
+
+    return fields, elements_to_remove
+
+
 def _extract_inline_intelligent_item(bs, sb):
     """Extract intelligent item stats from inline bold tags (no <hr> required).
 
@@ -1462,53 +1521,15 @@ def _extract_inline_intelligent_item(bs, sb):
         if b.get_text().strip() in INTELLIGENT_ITEM_FIELDS:
             has_other = True
             break
-        # Stop if we hit a non-intelligent-item bold (e.g., "Activate")
         if b.get_text().strip() not in INTELLIGENT_ITEM_FIELDS:
             break
 
     if not has_other:
         return
 
-    # Collect all intelligent item fields: from Perception bold through Will value
-    fields = {}
-    current_label = None
-    current_value_parts = []
-    elements_to_remove = []
-    collecting = False
-
-    for child in list(bs.children):
-        if isinstance(child, Tag) and child.name == "b":
-            label = child.get_text().strip()
-            if label == "Perception":
-                collecting = True
-            if collecting and label in INTELLIGENT_ITEM_FIELDS:
-                # Save previous field
-                if current_label is not None:
-                    value_html = "".join(current_value_parts).strip().strip(",").strip()
-                    fields[current_label] = value_html
-                current_label = label
-                current_value_parts = []
-                elements_to_remove.append(child)
-                continue
-            elif collecting and label not in INTELLIGENT_ITEM_FIELDS:
-                # Hit a non-intelligent-item bold (e.g., "Activate") — stop
-                # Save last field
-                if current_label is not None:
-                    value_html = "".join(current_value_parts).strip().strip(",").strip()
-                    fields[current_label] = value_html
-                break
-        elif collecting:
-            if isinstance(child, Tag) and child.name == "br":
-                elements_to_remove.append(child)
-                continue
-            elif current_label is not None:
-                current_value_parts.append(str(child))
-                elements_to_remove.append(child)
-
-    # If we ended without hitting a non-intelligent bold, save last field
-    if current_label is not None and current_label not in fields:
-        value_html = "".join(current_value_parts).strip().strip(",").strip()
-        fields[current_label] = value_html
+    fields, elements_to_remove = _collect_bold_field_values(
+        bs, INTELLIGENT_ITEM_FIELDS, "Perception"
+    )
 
     if not fields:
         return
@@ -5034,26 +5055,22 @@ def _collect_equipment_ability_content(ability_bold, next_ability, remaining_bol
     return "".join(ability_parts), ability_elements
 
 
-def _extract_action_type_from_spans(ability_soup):
-    """Extract action type from action icon spans in ability HTML.
+def _collect_front_matter_action_spans(ability_soup, semicolon_pos):
+    """Collect action spans from the front matter of ability HTML.
 
-    Only extracts action spans from the FRONT of the ability (before the first
-    semicolon separator). Action icons deeper in the text (inside Frequency,
-    Effect, etc.) are part of the description, not the action type.
-
-    Decomposes the front-matter spans from the soup as a side effect.
+    Scans for action spans that appear before the first semicolon separator.
+    Detects connector text ("to" or "or") between spans.
 
     Args:
         ability_soup: BeautifulSoup object of the ability content
+        semicolon_pos: Position of first semicolon in text, or -1 if none
 
     Returns:
-        dict or None: Action type object, or None if no action spans found
+        Tuple of (action_titles, connector, front_matter_spans) where
+        action_titles is a deduplicated list of canonical action names,
+        connector is "to" or "or", and front_matter_spans is the list
+        of span elements to decompose.
     """
-    # Find the position of the first semicolon in the text - action spans
-    # must appear before it to be considered front-matter action types
-    full_text = ability_soup.get_text()
-    semicolon_pos = full_text.find(";")
-
     action_spans = ability_soup.find_all("span", class_="action")
     action_titles = []
     connector = "or"  # default connector between action spans
@@ -5067,8 +5084,6 @@ def _extract_action_type_from_spans(ability_soup):
         span_text_pos = len(preceding_text)
 
         if semicolon_pos >= 0 and span_text_pos >= semicolon_pos:
-            # This action span is after the first semicolon - it's in the
-            # description text, not front matter. Leave it in place.
             continue
 
         # Detect connector text ("to" or "or") before this span
@@ -5089,9 +5104,16 @@ def _extract_action_type_from_spans(ability_soup):
 
     # Decompose front-matter spans and their connector text
     for action_span in front_matter_spans:
-        # Also remove the connector text node before the span
         prev_sib = action_span.previous_sibling
-        if prev_sib and isinstance(prev_sib, NavigableString) and prev_sib.strip() in ("to", "or"):
+        if (
+            prev_sib
+            and isinstance(prev_sib, NavigableString)
+            and prev_sib.strip()
+            in (
+                "to",
+                "or",
+            )
+        ):
             prev_sib.extract()
         action_span.decompose()
 
@@ -5102,14 +5124,75 @@ def _extract_action_type_from_spans(ability_soup):
         if t not in seen:
             seen.add(t)
             unique_titles.append(t)
-    action_titles = unique_titles
+
+    return unique_titles, connector, front_matter_spans
+
+
+_ACTION_NAME_MAP = {
+    ("One Action", "to", "Two Actions"): "One or Two Actions",
+    ("One Action", "to", "Three Actions"): "One to Three Actions",
+    ("One Action", "or", "Two Actions"): "One or Two Actions",
+    ("One Action", "or", "Three Actions"): "One to Three Actions",
+    ("Two Actions", "to", "Three Actions"): "Two to Three Actions",
+    ("Two Actions", "or", "Three Actions"): "Two or Three Actions",
+    ("Free Action", "or", "One Action"): "Free Action or Single Action",
+    ("Reaction", "or", "One Action"): "Reaction or One Action",
+}
+
+
+def _resolve_action_name(action_titles, connector):
+    """Resolve a list of action titles and connector to a canonical action name.
+
+    Args:
+        action_titles: List of canonical action title strings (e.g., ["One Action", "Three Actions"])
+        connector: "to" or "or"
+
+    Returns:
+        Canonical action name string (e.g., "One to Three Actions")
+    """
+    if len(action_titles) == 2:
+        key = (action_titles[0], connector, action_titles[1])
+        action_name = _ACTION_NAME_MAP.get(key)
+        assert action_name, f"Unknown action type combo: {key}"
+        return action_name
+    elif len(action_titles) == 3:
+        assert action_titles == [
+            "One Action",
+            "Two Actions",
+            "Three Actions",
+        ], f"Unknown 3-span action combo: {action_titles}"
+        return "One to Three Actions"
+    else:
+        raise AssertionError(
+            f"Unexpected number of action spans: {len(action_titles)}: {action_titles}"
+        )
+
+
+def _extract_action_type_from_spans(ability_soup):
+    """Extract action type from action icon spans in ability HTML.
+
+    Only extracts action spans from the FRONT of the ability (before the first
+    semicolon separator). Action icons deeper in the text (inside Frequency,
+    Effect, etc.) are part of the description, not the action type.
+
+    Decomposes the front-matter spans from the soup as a side effect.
+
+    Args:
+        ability_soup: BeautifulSoup object of the ability content
+
+    Returns:
+        dict or None: Action type object, or None if no action spans found
+    """
+    full_text = ability_soup.get_text()
+    semicolon_pos = full_text.find(";")
+
+    action_titles, connector, _ = _collect_front_matter_action_spans(ability_soup, semicolon_pos)
 
     if not action_titles:
         return None
 
     if len(action_titles) == 1:
         # Check for "or more" text following the decomposed action span
-        # e.g., [one-action] or more (Interact) → "One Action or more"
         for child in list(ability_soup.children):
             if isinstance(child, NavigableString) and child.strip().startswith("or more"):
                 child.replace_with(NavigableString(child.replace("or more", "", 1)))
@@ -5124,32 +5207,7 @@ def _extract_action_type_from_spans(ability_soup):
             "name": action_titles[0],
         }
 
-    # Variable action cost — build name using detected connector
-    action_name_map = {
-        ("One Action", "to", "Two Actions"): "One or Two Actions",
-        ("One Action", "to", "Three Actions"): "One to Three Actions",
-        ("One Action", "or", "Two Actions"): "One or Two Actions",
-        ("One Action", "or", "Three Actions"): "One to Three Actions",
-        ("Two Actions", "to", "Three Actions"): "Two to Three Actions",
-        ("Two Actions", "or", "Three Actions"): "Two or Three Actions",
-        ("Free Action", "or", "One Action"): "Free Action or Single Action",
-        ("Reaction", "or", "One Action"): "Reaction or One Action",
-    }
-    if len(action_titles) == 2:
-        key = (action_titles[0], connector, action_titles[1])
-        action_name = action_name_map.get(key)
-        assert action_name, f"Unknown action type combo: {key}"
-    elif len(action_titles) == 3:
-        assert action_titles == [
-            "One Action",
-            "Two Actions",
-            "Three Actions",
-        ], f"Unknown 3-span action combo: {action_titles}"
-        action_name = "One to Three Actions"
-    else:
-        raise AssertionError(
-            f"Unexpected number of action spans: {len(action_titles)}: {action_titles}"
-        )
+    action_name = _resolve_action_name(action_titles, connector)
     return {
         "type": "stat_block_section",
         "subtype": "action_type",
@@ -5773,6 +5831,36 @@ def _normalize_speed_penalty(sb, bonus_type="armor"):
     sb["speed_penalty"] = speed_obj
 
 
+def _split_compound_bulk(value_str):
+    """Split compound bulk values like "- varies" or "- when not activated".
+
+    Handles three patterns:
+    - "- L (...)" or "- varies": dash is noise, use remainder as value
+    - "- when not activated": dash is the bulk, rest becomes a modifier
+    - Non-compound values: returned unchanged
+
+    Args:
+        value_str: Bulk string (already stripped and mdash-converted)
+
+    Returns:
+        Tuple of (value_str, modifiers) where value_str is the resolved
+        bulk value and modifiers is a list of modifier dicts.
+    """
+    modifiers = []
+    if re.match(r"^-\s+\S", value_str):
+        parts = value_str.split(None, 1)  # split on first whitespace
+        remainder = parts[1] if len(parts) > 1 else ""
+        # Check if remainder is itself a bulk value (e.g., "L", "varies")
+        if re.match(r"^L\b", remainder) or remainder.startswith("varies"):
+            value_str = remainder
+        else:
+            value_str = "-"
+            modifiers.append(
+                {"type": "stat_block_section", "subtype": "modifier", "name": remainder}
+            )
+    return value_str, modifiers
+
+
 def _normalize_bulk(sb):
     """Convert bulk string to structured bulk object.
 
@@ -5805,22 +5893,8 @@ def _normalize_bulk(sb):
     # Convert mdash to dash
     value_str = value_str.replace("—", "-")
 
-    # Split compound bulk values: "- varies", "- when not activated", "- L (...)"
-    # The dash is the bulk value; the rest is descriptive text → modifier
-    modifiers = []
-    if re.match(r"^-\s+\S", value_str):
-        parts = value_str.split(None, 1)  # split on first whitespace
-        remainder = parts[1] if len(parts) > 1 else ""
-        # Check if remainder is itself a bulk value (e.g., "L", "varies")
-        if re.match(r"^L\b", remainder) or remainder.startswith("varies"):
-            # "- L (...)" or "- varies (by armor)": the dash is noise, use remainder
-            value_str = remainder
-        else:
-            # "- when not activated": dash is the bulk, rest is modifier
-            value_str = "-"
-            modifiers.append(
-                {"type": "stat_block_section", "subtype": "modifier", "name": remainder}
-            )
+    # Split compound bulk values
+    value_str, modifiers = _split_compound_bulk(value_str)
 
     # Extract modifier from parentheses if present
     base_value = value_str
