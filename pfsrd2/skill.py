@@ -5,7 +5,7 @@ import sys
 
 from bs4 import BeautifulSoup
 
-from pfsrd2.license import license_pass
+from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
 from pfsrd2.sql.traits import trait_db_pass
@@ -63,6 +63,7 @@ def parse_skill(filename, options):
     set_edition_from_db_pass(struct)
     trait_db_pass(struct)
     license_pass(struct)
+    license_consolidation_pass(struct)
     strip_block_tags(struct)
     universal_markdown_pass(struct, struct["name"], "")
     remove_empty_fields(struct)
