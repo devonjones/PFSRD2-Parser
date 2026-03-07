@@ -305,7 +305,10 @@
 		"spell": {"$ref": "#/definitions/spell"},
 		"sources": {"$ref": "#/definitions/sources"},
 		"sections": {"$ref": "#/definitions/sections"},
-		"alternate_link": {"$ref": "#/definitions/alternate_link"},
+		"alternate_link": {"oneOf": [
+			{"$ref": "#/definitions/alternate_link"},
+			{"type": "array", "items": {"$ref": "#/definitions/alternate_link"}, "additionalItems": false}
+		]},
 		"edition": {"enum": ["legacy", "remastered"]},
 		"schema_version": {"enum": [2.0]},
 		"license": {"$ref": "#/definitions/license"}

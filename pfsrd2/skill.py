@@ -21,6 +21,7 @@ from universal.universal import (
     extract_source,
     game_id_pass,
     get_links,
+    handle_alternate_link,
     parse_universal,
     remove_empty_sections_pass,
     restructure_pass,
@@ -41,7 +42,10 @@ def parse_skill(filename, options):
     )
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
+    alternate_link = handle_alternate_link(details)
     struct = restructure_skill_pass(details)
+    if alternate_link:
+        struct["alternate_link"] = alternate_link
     skill_struct_pass(struct)
     source_pass(struct, find_skill)
     _extract_key_ability(struct)
@@ -93,11 +97,8 @@ def _content_filter(soup):
 
 
 def _sidebar_filter(soup):
-    divs = soup.find_all("div", {"class": "siderbarlook"})
-    for div in divs:
-        div.decompose()
-    divs = soup.find_all("div", {"class": "sidebar-nofloat"})
-    for div in divs:
+    """Unwrap sidebar-nofloat divs. siderbarlook is handled by handle_alternate_link."""
+    for div in soup.find_all("div", {"class": "sidebar-nofloat"}):
         div.unwrap()
 
 

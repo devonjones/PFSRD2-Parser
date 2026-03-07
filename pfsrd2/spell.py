@@ -17,6 +17,7 @@ from universal.universal import (
     build_object,
     entity_pass,
     extract_link,
+    extract_links,
     extract_source,
     game_id_pass,
     get_links,
@@ -40,7 +41,10 @@ def parse_spell(filename, options):
     )
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
+    alternate_links = _extract_alternate_links(details)
     struct = restructure_spell_pass(details)
+    if alternate_links:
+        struct["alternate_link"] = alternate_links
     spell_struct_pass(struct)
     # Promote sources to top level early (needed by game_id_pass)
     spell = find_spell(struct)
@@ -110,11 +114,40 @@ def _content_filter(soup):
 
 
 def _sidebar_filter(soup):
-    """Remove sidebar divs (remastered/legacy version links)."""
-    for div in soup.find_all("div", {"class": "siderbarlook"}):
-        div.decompose()
+    """Unwrap sidebar-nofloat divs. siderbarlook is handled by _extract_alternate_links."""
     for div in soup.find_all("div", {"class": "sidebar-nofloat"}):
         div.unwrap()
+
+
+def _extract_alternate_links(details):
+    """Extract alternate link(s) from details, handling single and multi-link sidebars."""
+    if not details:
+        return None
+    d = details[0]
+    if not isinstance(d, str):
+        return None
+    if "Legacy version" not in d and "Remastered version" not in d:
+        return None
+    details.pop(0)
+    text, links = extract_links(d)
+    if not links:
+        return None
+    if "Legacy version" in d or "Legacy versions" in d:
+        alternate_type = "legacy"
+    else:
+        alternate_type = "remastered"
+    result = []
+    for link in links:
+        alt = {
+            "type": "alternate_link",
+            "game-obj": link["game-obj"],
+            "aonid": link["aonid"],
+            "alternate_type": alternate_type,
+        }
+        result.append(alt)
+    if len(result) == 1:
+        return result[0]
+    return result
 
 
 def restructure_spell_pass(details):
