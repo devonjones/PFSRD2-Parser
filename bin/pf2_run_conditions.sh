@@ -23,3 +23,5 @@ else
 	done
 fi
 
+
+./copy_schema.sh condition

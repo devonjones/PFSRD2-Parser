@@ -7,8 +7,7 @@ from bs4 import BeautifulSoup
 
 from pfsrd2.license import license_pass
 from pfsrd2.schema import validate_against_schema
-from pfsrd2.sql import get_db_connection, get_db_path
-from pfsrd2.sql.sources import fetch_source_by_name
+from pfsrd2.sql.sources import set_edition_from_db_pass
 from universal.files import char_replace, makedirs
 from universal.markdown import md
 from universal.universal import (
@@ -24,7 +23,7 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.utils import bs_pop_spaces, get_text, get_unique_tag_set, log_element
+from universal.utils import bs_pop_spaces, content_filter, get_text, get_unique_tag_set, log_element
 
 
 def parse_condition(filename, options):
@@ -67,19 +66,7 @@ def parse_condition(filename, options):
 
 
 def _content_filter(soup):
-    """Remove navigation elements before <hr> and unwrap the content span."""
-    main = soup.find(id="main")
-    if not main:
-        return
-    hr = main.find("hr")
-    if hr:
-        for sibling in list(hr.previous_siblings):
-            sibling.extract()
-        hr.extract()
-    for span in main.find_all("span", recursive=False):
-        if span.find("h1"):
-            span.unwrap()
-            break
+    content_filter(soup)
 
 
 def sidebar_filter(soup):
@@ -383,15 +370,3 @@ def _extract_trait(description):
         description = back
     newdescription.append(description)
     return "".join(newdescription).strip(), traits
-
-
-def set_edition_from_db_pass(struct):
-    db_path = get_db_path("pfsrd2.db")
-    conn = get_db_connection(db_path)
-    curs = conn.cursor()
-    for source in struct.get("sources", []):
-        fetch_source_by_name(curs, source["name"])
-        row = curs.fetchone()
-        if row and row.get("edition"):
-            struct["edition"] = row["edition"]
-    conn.close()

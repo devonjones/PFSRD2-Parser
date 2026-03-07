@@ -16,13 +16,11 @@ from pfsrd2.skill import (
     _extract_result_blocks,
     _extract_sample_tasks,
     _extract_source_from_bs,
-    _is_empty,
     _promote_skill_fields,
-    _remove_empty_fields,
-    _strip_block_tags,
     action_extract_pass,
     find_skill,
 )
+from universal.utils import is_empty, remove_empty_fields, strip_block_tags
 
 
 def _make_skill_section(name, sections=None):
@@ -313,108 +311,108 @@ class TestExtractResultBlocks:
 
 
 class TestIsEmpty:
-    def test_none_is_empty(self):
-        assert _is_empty(None) is True
+    def test_noneis_empty(self):
+        assert is_empty(None) is True
 
-    def test_empty_string_is_empty(self):
-        assert _is_empty("") is True
+    def test_empty_stringis_empty(self):
+        assert is_empty("") is True
 
-    def test_empty_list_is_empty(self):
-        assert _is_empty([]) is True
+    def test_empty_listis_empty(self):
+        assert is_empty([]) is True
 
-    def test_empty_dict_is_empty(self):
-        assert _is_empty({}) is True
+    def test_empty_dictis_empty(self):
+        assert is_empty({}) is True
 
     def test_nonempty_string(self):
-        assert _is_empty("hello") is False
+        assert is_empty("hello") is False
 
     def test_nonempty_list(self):
-        assert _is_empty([1]) is False
+        assert is_empty([1]) is False
 
     def test_nonempty_dict(self):
-        assert _is_empty({"a": 1}) is False
+        assert is_empty({"a": 1}) is False
 
     def test_zero_is_not_empty(self):
-        assert _is_empty(0) is False
+        assert is_empty(0) is False
 
     def test_false_is_not_empty(self):
-        assert _is_empty(False) is False
+        assert is_empty(False) is False
 
 
 class TestRemoveEmptyFields:
     def test_removes_empty_string(self):
         obj = {"a": "hello", "b": ""}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": "hello"}
 
     def test_removes_none(self):
         obj = {"a": 1, "b": None}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": 1}
 
     def test_removes_empty_list(self):
         obj = {"a": [1], "b": []}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": [1]}
 
     def test_removes_empty_dict(self):
         obj = {"a": {"x": 1}, "b": {}}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": {"x": 1}}
 
     def test_recursive_dict(self):
         obj = {"a": {"b": {"c": ""}}}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {}
 
     def test_recursive_list(self):
         obj = {"a": [{"b": ""}]}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {}
 
     def test_preserves_nonempty(self):
         obj = {"a": "x", "b": 0, "c": False, "d": [1], "e": {"f": "g"}}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": "x", "b": 0, "c": False, "d": [1], "e": {"f": "g"}}
 
     def test_list_filtering(self):
         obj = {"items": [{"a": ""}, {"b": "keep"}]}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"items": [{"b": "keep"}]}
 
 
 class TestStripBlockTags:
     def test_unwraps_p_tags(self):
         struct = {"text": "<p>Hello world</p>"}
-        _strip_block_tags(struct)
+        strip_block_tags(struct)
         assert "<p" not in struct["text"]
         assert "Hello world" in struct["text"]
 
     def test_unwraps_nonempty_div(self):
         struct = {"text": '<div class="something">Content</div>'}
-        _strip_block_tags(struct)
+        strip_block_tags(struct)
         assert "<div" not in struct["text"]
         assert "Content" in struct["text"]
 
     def test_decomposes_empty_div(self):
         struct = {"text": '<div class="clear"></div>More text'}
-        _strip_block_tags(struct)
+        strip_block_tags(struct)
         assert "<div" not in struct["text"]
         assert "More text" in struct["text"]
 
     def test_no_block_tags_unchanged(self):
         struct = {"text": "plain text with <b>bold</b>"}
-        _strip_block_tags(struct)
+        strip_block_tags(struct)
         assert struct["text"] == "plain text with <b>bold</b>"
 
     def test_recursive(self):
         struct = {"inner": {"text": "<p>nested</p>"}}
-        _strip_block_tags(struct)
+        strip_block_tags(struct)
         assert "<p" not in struct["inner"]["text"]
 
     def test_recursive_list(self):
         struct = {"items": [{"text": "<p>in list</p>"}]}
-        _strip_block_tags(struct)
+        strip_block_tags(struct)
         assert "<p" not in struct["items"][0]["text"]
 
 

@@ -12,10 +12,12 @@ def trait_db_pass(struct, pre_process=None):
 
     Args:
         struct: The parsed structure to walk.
-        pre_process: Optional function(trait, parent) called before DB lookup.
-            Use for parser-specific logic like value extraction, alignment
-            splitting, or name fixes. If it returns True, the trait is
-            considered fully handled and the default DB replacement is skipped.
+        pre_process: Optional function(trait, parent, curs) called before DB
+            lookup. Use for parser-specific logic like value extraction,
+            alignment splitting, or name fixes. The curs parameter allows
+            DB lookups in pre-processing (e.g., splitting alignment traits).
+            If it returns True, the trait is considered fully handled and the
+            default DB replacement is skipped.
     """
     from pfsrd2.sql import get_db_connection, get_db_path
 
@@ -27,7 +29,7 @@ def trait_db_pass(struct, pre_process=None):
     def _handle_trait_link(db_trait):
         trait = json.loads(db_trait["trait"])
         edition = trait["edition"]
-        if edition == struct["edition"]:
+        if "edition" not in struct or edition == struct["edition"]:
             return trait
         if "alternate_link" not in trait:
             return trait
@@ -43,7 +45,7 @@ def trait_db_pass(struct, pre_process=None):
         return json.loads(data["trait"])
 
     def _check_trait(trait, parent):
-        if pre_process and pre_process(trait, parent):
+        if pre_process and pre_process(trait, parent, curs):
             return
         data = fetch_trait_by_name(curs, trait["name"])
         assert data, f"Trait not found in database: {trait}"
@@ -57,6 +59,7 @@ def trait_db_pass(struct, pre_process=None):
             del db_trait["aonid"]
         if "license" in db_trait:
             del db_trait["license"]
+        db_trait["classes"].sort()
         parent[index] = db_trait
 
     db_path = get_db_path("pfsrd2.db")

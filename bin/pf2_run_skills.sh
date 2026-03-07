@@ -22,3 +22,5 @@ else
 		fi
 	done
 fi
+
+./copy_schema.sh skill
