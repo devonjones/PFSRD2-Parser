@@ -190,3 +190,15 @@
 {"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T02:33:10Z","event_type":"created","id":190,"issue_id":"PFSRD2-Parser-12t","new_value":"","old_value":""}
 {"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T06:47:31Z","event_type":"closed","id":191,"issue_id":"PFSRD2-Parser-12t","new_value":"Extracted 279 deity form entries across 2 Avatar spells into structured deity_forms array with name, link, and text fields","old_value":""}
 {"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:17:41Z","event_type":"created","id":192,"issue_id":"PFSRD2-Parser-qk7","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:17:50Z","event_type":"created","id":193,"issue_id":"PFSRD2-Parser-5dw","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:17:50Z","event_type":"created","id":194,"issue_id":"PFSRD2-Parser-hd2","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:17:50Z","event_type":"created","id":195,"issue_id":"PFSRD2-Parser-7ng","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:17:50Z","event_type":"created","id":196,"issue_id":"PFSRD2-Parser-e6k","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:17:50Z","event_type":"created","id":197,"issue_id":"PFSRD2-Parser-x65","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:17:50Z","event_type":"created","id":198,"issue_id":"PFSRD2-Parser-2ap","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:18:05Z","event_type":"created","id":199,"issue_id":"PFSRD2-Parser-eg5","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:18:05Z","event_type":"created","id":200,"issue_id":"PFSRD2-Parser-w7p","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:18:05Z","event_type":"created","id":201,"issue_id":"PFSRD2-Parser-3kj","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:18:05Z","event_type":"created","id":202,"issue_id":"PFSRD2-Parser-qor","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:18:05Z","event_type":"created","id":203,"issue_id":"PFSRD2-Parser-2d2","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:18:05Z","event_type":"created","id":204,"issue_id":"PFSRD2-Parser-3e3","new_value":"","old_value":""}
