@@ -329,6 +329,38 @@ def _extract_action_type_from_name(section):
         )
 
 
+def _extract_source_from_bs(bs):
+    """Extract source from a BeautifulSoup object, modifying it in place.
+
+    Finds <b>Source</b> followed by a book link (and optional errata sup),
+    removes those elements from the soup, and returns the source dict.
+    Returns None if no source found.
+    """
+    source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
+    if not source_tag:
+        return None
+    siblings = list(source_tag.next_siblings)
+    source_tag.decompose()
+    while siblings and isinstance(siblings[0], str) and not siblings[0].strip():
+        siblings[0].extract()
+        siblings.pop(0)
+    if not siblings or getattr(siblings[0], "name", None) not in ("a", "i"):
+        return None
+    book = siblings.pop(0)
+    source = extract_source(book)
+    book.decompose()
+    while siblings and isinstance(siblings[0], str) and not siblings[0].strip():
+        siblings[0].extract()
+        siblings.pop(0)
+    if siblings and getattr(siblings[0], "name", None) == "sup":
+        sup = siblings.pop(0)
+        _, source["errata"] = extract_link(sup.find("a"))
+        sup.decompose()
+    if siblings and getattr(siblings[0], "name", None) == "br":
+        siblings[0].decompose()
+    return source
+
+
 def _extract_action_text(section):
     """Extract traits, source, requirements, and result blocks from action text."""
     bs = BeautifulSoup(section["text"], "html.parser")
@@ -351,27 +383,9 @@ def _extract_action_text(section):
         span.decompose()
 
     # 3. Extract source
-    source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
-    if source_tag:
-        siblings = list(source_tag.next_siblings)
-        source_tag.decompose()
-        while siblings and isinstance(siblings[0], str) and not siblings[0].strip():
-            siblings[0].extract()
-            siblings.pop(0)
-        if siblings and getattr(siblings[0], "name", None) in ("a", "i"):
-            book = siblings.pop(0)
-            source = extract_source(book)
-            book.decompose()
-            while siblings and isinstance(siblings[0], str) and not siblings[0].strip():
-                siblings[0].extract()
-                siblings.pop(0)
-            if siblings and getattr(siblings[0], "name", None) == "sup":
-                sup = siblings.pop(0)
-                _, source["errata"] = extract_link(sup.find("a"))
-                sup.decompose()
-            if siblings and getattr(siblings[0], "name", None) == "br":
-                siblings[0].decompose()
-            section["source"] = source
+    source = _extract_source_from_bs(bs)
+    if source:
+        section["source"] = source
 
     # 4. Split on <hr> — pre-hr is stats (requirements etc), post-hr is description
     hr = bs.find("hr")
@@ -460,34 +474,9 @@ def skill_struct_pass(struct):
         if "text" not in section:
             return None
         bs = BeautifulSoup(section["text"], "html.parser")
-        source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
-        if not source_tag:
+        source = _extract_source_from_bs(bs)
+        if not source:
             return None
-        # Remove the <b>Source</b> tag and extract source info
-        siblings = list(source_tag.next_siblings)
-        source_tag.decompose()
-        # Pop whitespace
-        while siblings and isinstance(siblings[0], str) and not siblings[0].strip():
-            siblings[0].extract()
-            siblings.pop(0)
-        if siblings and siblings[0].name in ("a", "i"):
-            book = siblings.pop(0)
-            source = extract_source(book)
-            book.decompose()
-        else:
-            return None
-        # Pop whitespace
-        while siblings and isinstance(siblings[0], str) and not siblings[0].strip():
-            siblings[0].extract()
-            siblings.pop(0)
-        if siblings and getattr(siblings[0], "name", None) == "sup":
-            assert "errata" not in source, "Should be no more than one errata."
-            sup = siblings.pop(0)
-            _, source["errata"] = extract_link(sup.find("a"))
-            sup.decompose()
-        if siblings and getattr(siblings[0], "name", None) == "br":
-            siblings[0].decompose()
-            siblings.pop(0)
         section["text"] = str(bs).strip()
         return [source]
 
@@ -564,73 +553,65 @@ def skill_link_pass(struct):
         _process_section(action)
 
 
-def skill_cleanup_pass(struct):
-    assert "skill" in struct, f"No skill object found in struct: {struct.get('name')}"
-    skill = struct["skill"]
+def _convert_skill_text(struct, skill):
+    """Convert skill text HTML to markdown and move to top-level struct."""
+    if "text" not in skill:
+        return
+    soup = BeautifulSoup(skill["text"], "html.parser")
+    # Remove Nethys notes
+    first = list(soup.children)[0] if list(soup.children) else None
+    if first and first.name == "i":
+        text = get_text(first)
+        if text.find("Note from Nethys:") > -1:
+            first.clear()
+        first.unwrap()
+    # Strip <details> (item bonuses widget)
+    while soup.details:
+        soup.details.decompose()
+    cleaned = str(soup).strip()
+    if cleaned:
+        assert "text" not in struct, struct
+        struct["text"] = md(cleaned)
+    del skill["text"]
 
-    # Move name from skill to top-level
+
+def _promote_skill_fields(struct, skill):
+    """Move fields from skill object to top-level struct."""
     struct["name"] = skill["name"]
-
-    # Extract and convert text
-    if "text" in skill:
-        soup = BeautifulSoup(skill["text"], "html.parser")
-        # Remove Nethys notes
-        first = list(soup.children)[0] if list(soup.children) else None
-        if first and first.name == "i":
-            text = get_text(first)
-            if text.find("Note from Nethys:") > -1:
-                first.clear()
-            first.unwrap()
-        # Strip <details> (item bonuses widget)
-        while soup.details:
-            soup.details.decompose()
-        cleaned = str(soup).strip()
-        if cleaned:
-            assert "text" not in struct, struct
-            struct["text"] = md(cleaned)
-        del skill["text"]
-
-    # Move sources to top-level
     struct["sources"] = skill["sources"]
     del skill["sources"]
 
-    # Move key_ability/key_kingdom_ability and skill_type to top-level
-    if "key_ability" in skill:
-        struct["key_ability"] = skill["key_ability"]
-        del skill["key_ability"]
-    if "key_kingdom_ability" in skill:
-        struct["key_kingdom_ability"] = skill["key_kingdom_ability"]
-        del skill["key_kingdom_ability"]
-    if "skill_type" in skill:
-        struct["skill_type"] = skill["skill_type"]
-        del skill["skill_type"]
+    for field in ("key_ability", "key_kingdom_ability", "skill_type"):
+        if field in skill:
+            struct[field] = skill[field]
+            del skill[field]
 
-    # Move links to top-level
     if skill.get("links"):
         assert "links" not in struct, struct
         struct["links"] = skill["links"]
         del skill["links"]
 
-    # Clean html fields in sections
-    def _clean_html(section):
+    if "sections" in skill:
+        del skill["sections"]
+
+
+def _clean_html_fields(struct):
+    """Rename 'html' keys to 'text' in sections recursively."""
+    for section in struct.get("sections", []):
         if "html" in section:
             section["text"] = section["html"]
             del section["html"]
         if "sections" in section:
-            for s in section["sections"]:
-                _clean_html(s)
+            _clean_html_fields(section)
 
-    # Remaining sections at top-level are plain text sections
-    if "sections" in struct:
-        for section in struct["sections"]:
-            _clean_html(section)
 
-    # Remove skill's own sections (already moved or empty)
-    if "sections" in skill:
-        del skill["sections"]
+def skill_cleanup_pass(struct):
+    assert "skill" in struct, f"No skill object found in struct: {struct.get('name')}"
+    skill = struct["skill"]
 
-    # Keep name on both top-level and skill object
-    # (top-level set above, skill retains its name)
+    _convert_skill_text(struct, skill)
+    _promote_skill_fields(struct, skill)
+    _clean_html_fields(struct)
 
     # Verify skill object is clean
     expected_keys = {"type", "subtype", "name", "actions"}
