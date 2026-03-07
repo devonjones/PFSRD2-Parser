@@ -218,19 +218,54 @@ def action_extract_pass(struct):
             if p.lower() in ("trained", "untrained"):
                 trained = p.lower() == "trained"
                 break
+        last_action = None
         for action_section in section.get("sections", []):
+            # Skip "Related Feats" — just a link, not an action
+            if action_section.get("name", "").startswith("Related Feats"):
+                continue
             _extract_action_type_from_name(action_section)
             if "text" in action_section:
                 _extract_action_text(action_section)
             _extract_sample_tasks(action_section)
-            action_section["type"] = "stat_block_section"
-            action_section["subtype"] = "skill_action"
-            if trained is not None:
-                action_section["trained"] = trained
-            actions.append(action_section)
+            # If it has an action_type span or a source extracted from its
+            # text, it's a real action. Otherwise it's a descriptive section
+            # that belongs under the preceding action (or top-level).
+            if "action_type" in action_section or "source" in action_section:
+                action_section["type"] = "stat_block_section"
+                action_section["subtype"] = "skill_action"
+                if trained is not None:
+                    action_section["trained"] = trained
+                actions.append(action_section)
+                last_action = action_section
+            else:
+                # Not a real action — clean up any action-specific fields
+                # that may have been extracted from its text
+                _strip_action_fields(action_section)
+                action_section["type"] = "section"
+                action_section.pop("subtype", None)
+                if last_action is not None:
+                    # Attach as a subsection of the preceding action
+                    last_action.setdefault("sections", []).append(action_section)
+                else:
+                    # No preceding action — keep as top-level section
+                    remaining_sections.append(action_section)
     struct["sections"] = remaining_sections
     if actions:
         skill["actions"] = actions
+
+
+_ACTION_ONLY_FIELDS = [
+    "action_type", "traits", "source", "trained",
+    "requirements", "trigger", "frequency", "cost", "effect", "duration",
+    "critical_success", "success", "failure", "critical_failure",
+    "sample_tasks",
+]
+
+
+def _strip_action_fields(section):
+    """Remove action-specific fields from a section being reclassified."""
+    for field in _ACTION_ONLY_FIELDS:
+        section.pop(field, None)
 
 
 _PROFICIENCY_LEVELS = ["untrained", "trained", "expert", "master", "legendary"]
@@ -493,7 +528,9 @@ def skill_link_pass(struct):
         section[field] = str(bs).strip()
 
     def _process_section(section):
-        _handle_text_field(section, "name", False)
+        # Keep links from names for plain sections, discard for actions
+        keep_name_links = section.get("type") == "section"
+        _handle_text_field(section, "name", keep_name_links)
         for field in _LINK_FIELDS:
             _handle_text_field(section, field)
         for s in section.get("sections", []):
