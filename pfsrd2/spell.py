@@ -277,6 +277,9 @@ def spell_struct_pass(struct):
     # Extract result blocks from remaining body
     _extract_result_blocks(spell, bs)
 
+    # Extract deity form entries from <ul><li><b><a href="Deities...">
+    _extract_deity_forms(spell, bs)
+
     # Clean remaining text as description
     # Remove empty <ul> tags (AoN artifacts)
     for ul in bs.find_all("ul"):
@@ -473,6 +476,46 @@ def _extract_result_blocks(spell, bs):
         bold.decompose()
 
 
+def _extract_deity_forms(spell, bs):
+    """Extract deity-specific battle form entries from <ul><li> blocks.
+
+    Avatar and similar spells list deity-specific forms as <li> items
+    with a bold deity link: <li><b><a href="Deities.aspx?ID=...">Name</a></b> stats...</li>
+    """
+    forms = []
+    for ul in list(bs.find_all("ul")):
+        ul_forms = []
+        for li in ul.find_all("li"):
+            b = li.find("b", recursive=False)
+            if not b:
+                continue
+            a = b.find("a", attrs={"game-obj": "Deities"})
+            if not a:
+                # Also check for pre-href_filter links
+                a = b.find("a", href=lambda h: h and "Deities" in h)
+            if not a:
+                continue
+            name, link = extract_link(a)
+            name = name.strip()
+            # Remove the bold deity tag from the li text
+            b.decompose()
+            text = str(li)
+            # Strip li tags and leading/trailing whitespace
+            text = re.sub(r"^<li>\s*", "", text)
+            text = re.sub(r"\s*</li>$", "", text)
+            text = text.strip()
+            form = build_object(
+                "stat_block_section", "deity_form", name,
+                {"link": link, "text": text}
+            )
+            ul_forms.append(form)
+        if ul_forms:
+            forms.extend(ul_forms)
+            ul.decompose()
+    if forms:
+        spell["deity_forms"] = forms
+
+
 def _extract_heightened(spell, text):
     """Extract heightened entries into a structured array."""
     bs = BeautifulSoup(text, "html.parser")
@@ -580,6 +623,9 @@ def spell_link_pass(struct):
         # Process heightened entries
         for h in section.get("heightened", []):
             _handle_text_field(h, "text")
+        # Process deity form entries
+        for df in section.get("deity_forms", []):
+            _handle_text_field(df, "text")
         for s in section.get("sections", []):
             _process_section(s)
 

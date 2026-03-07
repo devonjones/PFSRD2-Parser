@@ -162,6 +162,23 @@
 			"required": ["type", "subtype", "text"],
 			"additionalProperties": false
 		},
+		"deity_form": {
+			"type": "object",
+			"properties": {
+				"type": {"enum": ["stat_block_section"]},
+				"subtype": {"enum": ["deity_form"]},
+				"name": {"type": "string"},
+				"link": {"$ref": "#/definitions/link"},
+				"text": {"type": "string"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
+			},
+			"required": ["type", "subtype", "name", "link", "text"],
+			"additionalProperties": false
+		},
 		"spell": {
 			"type": "object",
 			"properties": {
@@ -203,6 +220,11 @@
 				"success": {"type": "string"},
 				"failure": {"type": "string"},
 				"critical_failure": {"type": "string"},
+				"deity_forms": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/deity_form"},
+					"additionalItems": false
+				},
 				"sources": {"$ref": "#/definitions/sources"}
 			},
 			"required": ["type", "subtype", "name", "traits"],
