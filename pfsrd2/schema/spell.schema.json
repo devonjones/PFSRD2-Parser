@@ -313,7 +313,7 @@
 			{"type": "array", "items": {"$ref": "#/definitions/alternate_link"}, "additionalItems": false}
 		]},
 		"edition": {"enum": ["legacy", "remastered"]},
-		"schema_version": {"enum": [2.0]},
+		"schema_version": {"enum": [1.0]},
 		"license": {"$ref": "#/definitions/license"}
 	},
 	"required": ["name", "type", "aonid", "game-obj", "game-id", "spell", "sources", "edition", "schema_version", "license"],

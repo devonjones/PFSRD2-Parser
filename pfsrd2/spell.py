@@ -66,7 +66,7 @@ def parse_spell(filename, options):
     universal_markdown_pass(struct, struct["name"], "", fxn_valid_tags=_spell_valid_tags)
     remove_empty_fields(struct)
     if not options.skip_schema:
-        struct["schema_version"] = 2.0
+        struct["schema_version"] = 1.0
         validate_against_schema(struct, "spell.schema.json")
     if not options.dryrun:
         output = options.output
