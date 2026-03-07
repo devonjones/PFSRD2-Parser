@@ -763,11 +763,7 @@ class TestCleanHtmlFields:
         assert "html" not in struct["sections"][0]
 
     def test_recursive(self):
-        struct = {
-            "sections": [
-                {"name": "Outer", "sections": [{"html": "inner", "name": "Inner"}]}
-            ]
-        }
+        struct = {"sections": [{"name": "Outer", "sections": [{"html": "inner", "name": "Inner"}]}]}
         _clean_html_fields(struct)
         assert struct["sections"][0]["sections"][0]["text"] == "inner"
 

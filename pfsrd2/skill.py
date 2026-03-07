@@ -336,23 +336,26 @@ def _extract_source_from_bs(bs):
     removes those elements from the soup, and returns the source dict.
     Returns None if no source found.
     """
+
+    def _strip_whitespace(nodes):
+        while nodes and isinstance(nodes[0], str) and not nodes[0].strip():
+            nodes[0].extract()
+            nodes.pop(0)
+
     source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
     if not source_tag:
         return None
     siblings = list(source_tag.next_siblings)
     source_tag.decompose()
-    while siblings and isinstance(siblings[0], str) and not siblings[0].strip():
-        siblings[0].extract()
-        siblings.pop(0)
+    _strip_whitespace(siblings)
     if not siblings or getattr(siblings[0], "name", None) not in ("a", "i"):
         return None
     book = siblings.pop(0)
     source = extract_source(book)
     book.decompose()
-    while siblings and isinstance(siblings[0], str) and not siblings[0].strip():
-        siblings[0].extract()
-        siblings.pop(0)
+    _strip_whitespace(siblings)
     if siblings and getattr(siblings[0], "name", None) == "sup":
+        assert "errata" not in source, "Should be no more than one errata."
         sup = siblings.pop(0)
         _, source["errata"] = extract_link(sup.find("a"))
         sup.decompose()
