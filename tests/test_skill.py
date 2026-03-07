@@ -6,14 +6,18 @@ from bs4 import BeautifulSoup
 from pfsrd2.skill import (
     KINGDOM_ATTRIBUTES,
     SKILL_ATTRIBUTES,
+    _clean_html_fields,
     _content_filter,
+    _convert_skill_text,
     _extract_action_text,
     _extract_action_type_from_name,
     _extract_bold_fields,
     _extract_key_ability,
     _extract_result_blocks,
     _extract_sample_tasks,
+    _extract_source_from_bs,
     _is_empty,
+    _promote_skill_fields,
     _remove_empty_fields,
     _strip_block_tags,
     action_extract_pass,
@@ -626,3 +630,144 @@ class TestExtractActionText:
         _extract_action_text(section)
         assert "<span" not in section["text"]
         assert "Content" in section["text"]
+
+
+class TestExtractSourceFromBs:
+    def test_extracts_source_with_link(self):
+        html = '<b>Source</b> <a href="/Sources.aspx?ID=1">Core Rulebook pg. 240</a>'
+        bs = BeautifulSoup(html, "html.parser")
+        source = _extract_source_from_bs(bs)
+        assert source is not None
+        assert "name" in source
+
+    def test_returns_none_when_no_source(self):
+        bs = BeautifulSoup("Just some text", "html.parser")
+        source = _extract_source_from_bs(bs)
+        assert source is None
+
+    def test_extracts_errata(self):
+        html = (
+            '<b>Source</b> <a href="/Sources.aspx?ID=1">Book</a>'
+            '<sup><a href="/Errata.aspx?ID=1">Errata</a></sup>'
+        )
+        bs = BeautifulSoup(html, "html.parser")
+        source = _extract_source_from_bs(bs)
+        assert source is not None
+        assert "errata" in source
+
+    def test_removes_source_from_soup(self):
+        html = '<b>Source</b> <a href="/Sources.aspx?ID=1">Book</a> Remaining text'
+        bs = BeautifulSoup(html, "html.parser")
+        _extract_source_from_bs(bs)
+        remaining = str(bs)
+        assert "Source" not in remaining
+        assert "Remaining text" in remaining
+
+    def test_removes_trailing_br(self):
+        html = '<b>Source</b> <a href="/Sources.aspx?ID=1">Book</a><br/>Text'
+        bs = BeautifulSoup(html, "html.parser")
+        _extract_source_from_bs(bs)
+        assert "<br" not in str(bs).split("Text")[0]
+
+
+class TestConvertSkillText:
+    def test_converts_text_to_markdown(self):
+        struct = {}
+        skill = {"text": "Simple text"}
+        _convert_skill_text(struct, skill)
+        assert "text" in struct
+        assert "text" not in skill
+
+    def test_strips_nethys_note(self):
+        struct = {}
+        skill = {"text": "<i>Note from Nethys: blah blah</i>Real content"}
+        _convert_skill_text(struct, skill)
+        assert "Nethys" not in struct.get("text", "")
+
+    def test_strips_details_tags(self):
+        struct = {}
+        skill = {"text": "<details>Widget</details>Content"}
+        _convert_skill_text(struct, skill)
+        assert "details" not in struct.get("text", "")
+        assert "Content" in struct.get("text", "")
+
+    def test_no_text_is_noop(self):
+        struct = {}
+        skill = {"name": "Test"}
+        _convert_skill_text(struct, skill)
+        assert "text" not in struct
+
+
+class TestPromoteSkillFields:
+    def test_promotes_name_and_sources(self):
+        skill = {
+            "name": "Acrobatics",
+            "sources": [{"name": "CR", "type": "source"}],
+            "type": "stat_block_section",
+            "subtype": "skill",
+        }
+        struct = {"skill": skill, "sections": []}
+        _promote_skill_fields(struct, skill)
+        assert struct["name"] == "Acrobatics"
+        assert struct["sources"] == [{"name": "CR", "type": "source"}]
+        assert "sources" not in skill
+
+    def test_promotes_key_ability(self):
+        skill = {
+            "name": "Test",
+            "sources": [],
+            "key_ability": "dex",
+            "skill_type": "character_skill",
+            "type": "stat_block_section",
+            "subtype": "skill",
+        }
+        struct = {"skill": skill, "sections": []}
+        _promote_skill_fields(struct, skill)
+        assert struct["key_ability"] == "dex"
+        assert struct["skill_type"] == "character_skill"
+        assert "key_ability" not in skill
+
+    def test_promotes_kingdom_ability(self):
+        skill = {
+            "name": "Test",
+            "sources": [],
+            "key_kingdom_ability": "stability",
+            "skill_type": "kingdom_skill",
+            "type": "stat_block_section",
+            "subtype": "skill",
+        }
+        struct = {"skill": skill, "sections": []}
+        _promote_skill_fields(struct, skill)
+        assert struct["key_kingdom_ability"] == "stability"
+        assert "key_kingdom_ability" not in skill
+
+    def test_promotes_links(self):
+        skill = {
+            "name": "Test",
+            "sources": [],
+            "links": [{"name": "link1"}],
+            "type": "stat_block_section",
+            "subtype": "skill",
+        }
+        struct = {"skill": skill, "sections": []}
+        _promote_skill_fields(struct, skill)
+        assert struct["links"] == [{"name": "link1"}]
+        assert "links" not in skill
+
+
+class TestCleanHtmlFields:
+    def test_renames_html_to_text(self):
+        struct = {"sections": [{"html": "content", "name": "Test"}]}
+        _clean_html_fields(struct)
+        assert struct["sections"][0]["text"] == "content"
+        assert "html" not in struct["sections"][0]
+
+    def test_recursive(self):
+        struct = {"sections": [{"name": "Outer", "sections": [{"html": "inner", "name": "Inner"}]}]}
+        _clean_html_fields(struct)
+        assert struct["sections"][0]["sections"][0]["text"] == "inner"
+
+    def test_no_html_unchanged(self):
+        struct = {"sections": [{"text": "already text", "name": "Test"}]}
+        _clean_html_fields(struct)
+        assert struct["sections"][0]["text"] == "already text"
