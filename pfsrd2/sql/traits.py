@@ -57,8 +57,6 @@ def trait_db_pass(struct, pre_process=None):
             db_trait["value"] = trait["value"]
         if "aonid" in db_trait:
             del db_trait["aonid"]
-        if "license" in db_trait:
-            del db_trait["license"]
         db_trait["classes"].sort()
         parent[index] = db_trait
 
