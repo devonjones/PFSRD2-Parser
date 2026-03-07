@@ -213,3 +213,5 @@
 {"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T16:52:45Z","event_type":"closed","id":213,"issue_id":"PFSRD2-Parser-2d2","new_value":"trait_db_pass added to pfsrd2/sql/traits.py, integrated into both parsers, 0 errors","old_value":""}
 {"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T16:52:45Z","event_type":"closed","id":214,"issue_id":"PFSRD2-Parser-y2r","new_value":"trait_db_pass added to pfsrd2/sql/traits.py, integrated into both parsers, 0 errors","old_value":""}
 {"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T16:52:53Z","event_type":"created","id":215,"issue_id":"PFSRD2-Parser-fg7","new_value":"","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T17:40:52Z","event_type":"closed","id":216,"issue_id":"PFSRD2-Parser-5dw","new_value":"alternate_link extraction added, handles single and multi-link sidebars, 0 errors","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T17:40:52Z","event_type":"closed","id":217,"issue_id":"PFSRD2-Parser-hd2","new_value":"alternate_link extraction added, handles single and multi-link sidebars, 0 errors","old_value":""}
