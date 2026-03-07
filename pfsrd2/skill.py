@@ -556,8 +556,8 @@ def skill_link_pass(struct):
         _process_section(action)
 
 
-def _convert_skill_text(struct, skill):
-    """Convert skill text HTML to markdown and move to top-level struct."""
+def _convert_skill_text(skill):
+    """Convert skill text HTML to markdown, keeping it in the skill object."""
     if "text" not in skill:
         return
     soup = BeautifulSoup(skill["text"], "html.parser")
@@ -573,26 +573,16 @@ def _convert_skill_text(struct, skill):
         soup.details.decompose()
     cleaned = str(soup).strip()
     if cleaned:
-        assert "text" not in struct, struct
-        struct["text"] = md(cleaned)
-    del skill["text"]
+        skill["text"] = md(cleaned)
+    else:
+        del skill["text"]
 
 
 def _promote_skill_fields(struct, skill):
-    """Move fields from skill object to top-level struct."""
+    """Move only envelope fields from skill object to top-level struct."""
     struct["name"] = skill["name"]
     struct["sources"] = skill["sources"]
     del skill["sources"]
-
-    for field in ("key_ability", "key_kingdom_ability", "skill_type"):
-        if field in skill:
-            struct[field] = skill[field]
-            del skill[field]
-
-    if skill.get("links"):
-        assert "links" not in struct, struct
-        struct["links"] = skill["links"]
-        del skill["links"]
 
     if "sections" in skill:
         del skill["sections"]
@@ -612,12 +602,16 @@ def skill_cleanup_pass(struct):
     assert "skill" in struct, f"No skill object found in struct: {struct.get('name')}"
     skill = struct["skill"]
 
-    _convert_skill_text(struct, skill)
+    _convert_skill_text(skill)
     _promote_skill_fields(struct, skill)
     _clean_html_fields(struct)
 
     # Verify skill object is clean
-    expected_keys = {"type", "subtype", "name", "actions"}
+    expected_keys = {
+        "type", "subtype", "name", "actions",
+        "skill_type", "key_ability", "key_kingdom_ability",
+        "text", "links",
+    }
     remaining = set(skill.keys()) - expected_keys
     assert not remaining, f"Unexpected keys in skill: {remaining}"
 
