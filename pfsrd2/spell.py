@@ -15,6 +15,7 @@ from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.universal import (
     aon_pass,
     build_object,
+    edition_pass,
     entity_pass,
     extract_link,
     extract_links,
@@ -54,6 +55,11 @@ def parse_spell(filename, options):
     spell_link_pass(struct)
     aon_pass(struct, basename)
     restructure_pass(struct, "spell", find_spell)
+    struct["edition"] = edition_pass(struct["sections"])
+    struct["sections"] = [
+        s for s in struct["sections"]
+        if s.get("name") != "Legacy Content"
+    ]
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
     spell_cleanup_pass(struct)
