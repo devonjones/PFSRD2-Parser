@@ -189,3 +189,4 @@
 {"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T02:13:02Z","event_type":"closed","id":189,"issue_id":"PFSRD2-Parser-245","new_value":"Refactored in commit ed33994 on branch refactor/skill-parser-helpers","old_value":""}
 {"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T02:33:10Z","event_type":"created","id":190,"issue_id":"PFSRD2-Parser-12t","new_value":"","old_value":""}
 {"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T06:47:31Z","event_type":"closed","id":191,"issue_id":"PFSRD2-Parser-12t","new_value":"Extracted 279 deity form entries across 2 Avatar spells into structured deity_forms array with name, link, and text fields","old_value":""}
+{"actor":"Devon Jones","comment":null,"created_at":"2026-03-07T15:17:41Z","event_type":"created","id":192,"issue_id":"PFSRD2-Parser-qk7","new_value":"","old_value":""}
