@@ -1,20 +1,16 @@
 import json
 import os
-import sys
-from pprint import pprint
-
-import html2markdown
-from bs4 import BeautifulSoup, Tag
-
 import re
+import sys
 
-from pfsrd2.action import build_action_type
-from pfsrd2.condition import extract_span_traits
+from bs4 import BeautifulSoup
+
 from pfsrd2.license import license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.sources import fetch_source_by_name
 from universal.files import char_replace, makedirs
+from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.markdown import md
 from universal.universal import (
     aon_pass,
@@ -29,7 +25,7 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.utils import bs_pop_spaces, get_text, get_unique_tag_set, log_element
+from universal.utils import get_text
 
 
 def parse_skill(filename, options):
@@ -62,7 +58,8 @@ def parse_skill(filename, options):
     skill_cleanup_pass(struct)
     set_edition_from_db_pass(struct)
     license_pass(struct)
-    markdown_pass(struct, struct["name"], "")
+    _strip_block_tags(struct)
+    universal_markdown_pass(struct, struct["name"], "")
     _remove_empty_fields(struct)
     if not options.skip_schema:
         struct["schema_version"] = 1.0
@@ -135,12 +132,18 @@ SKILL_ATTRIBUTES = {
     "cha",
 }
 
+KINGDOM_ATTRIBUTES = {
+    "culture",
+    "economy",
+    "loyalty",
+    "stability",
+}
+
 
 def _extract_key_ability(struct):
     """Extract key ability and skill_type from skill name like 'Acrobatics (Dex)'."""
     skill = find_skill(struct)
-    if not skill:
-        return
+    assert skill is not None, f"No skill section found in {struct.get('name', 'unknown')}"
     name = skill["name"]
     bs = BeautifulSoup(name, "html.parser")
     text = get_text(bs).strip()
@@ -154,17 +157,19 @@ def _extract_key_ability(struct):
         skill["skill_type"] = "character_skill"
         # Rebuild name without the attribute
         # Preserve any HTML (links) but strip the "(Attr)" suffix
-        if "(" in name:
-            skill["name"] = name[: name.rfind("(")].strip()
+        skill["name"] = name[: name.rfind("(")].strip()
     else:
+        assert (
+            attr in KINGDOM_ATTRIBUTES
+        ), f"Unknown parenthesized attribute '{attr}' in skill '{text}'"
+        skill["key_kingdom_ability"] = attr
         skill["skill_type"] = "kingdom_skill"
+        skill["name"] = name[: name.rfind("(")].strip()
 
 
 def _remove_related_feats(struct):
     """Remove the 'Related Feats' section — it's just a link."""
-    struct["sections"] = [
-        s for s in struct["sections"] if s.get("name") != "Related Feats"
-    ]
+    struct["sections"] = [s for s in struct["sections"] if s.get("name") != "Related Feats"]
 
 
 def _strip_details_tags(struct):
@@ -203,8 +208,7 @@ _RESULT_FIELDS = [
 def action_extract_pass(struct):
     """Extract structured data from action subsections into skill object."""
     skill = find_skill(struct)
-    if not skill:
-        return
+    assert skill is not None, f"No skill section found in {struct.get('name', 'unknown')}"
     actions = []
     remaining_sections = []
     for section in struct["sections"]:
@@ -255,9 +259,20 @@ def action_extract_pass(struct):
 
 
 _ACTION_ONLY_FIELDS = [
-    "action_type", "traits", "source", "trained",
-    "requirements", "trigger", "frequency", "cost", "effect", "duration",
-    "critical_success", "success", "failure", "critical_failure",
+    "action_type",
+    "traits",
+    "source",
+    "trained",
+    "requirement",
+    "trigger",
+    "frequency",
+    "cost",
+    "effect",
+    "duration",
+    "critical_success",
+    "success",
+    "failure",
+    "critical_failure",
     "sample_tasks",
 ]
 
@@ -293,9 +308,7 @@ def _extract_sample_tasks(section):
                 for task_name in node.split(","):
                     task_name = task_name.strip()
                     if task_name:
-                        task = build_object(
-                            "stat_block_section", "sample_task", task_name
-                        )
+                        task = build_object("stat_block_section", "sample_task", task_name)
                         task["proficiency"] = current_level
                         sample_tasks.append(task)
         if sample_tasks:
@@ -310,10 +323,10 @@ def _extract_action_type_from_name(section):
     action_span = bs.find("span", {"class": "action"})
     if action_span:
         title = action_span.get("title", "")
-        if title in _ACTION_TITLE_MAP:
-            section["action_type"] = build_object(
-                "stat_block_section", "action_type", _ACTION_TITLE_MAP[title]
-            )
+        assert title in _ACTION_TITLE_MAP, f"Unknown action title: {title}"
+        section["action_type"] = build_object(
+            "stat_block_section", "action_type", _ACTION_TITLE_MAP[title]
+        )
 
 
 def _extract_action_text(section):
@@ -389,8 +402,7 @@ def _extract_bold_fields(section, text):
     bs = BeautifulSoup(text, "html.parser")
     for bold in bs.find_all("b"):
         label = get_text(bold).strip()
-        if label not in ("Requirements", "Requirement", "Trigger",
-                          "Frequency", "Cost", "Duration"):
+        if label not in ("Requirements", "Requirement", "Trigger", "Frequency", "Cost", "Duration"):
             continue
         parts = []
         node = bold.next_sibling
@@ -404,8 +416,8 @@ def _extract_bold_fields(section, text):
         if value.endswith(";"):
             value = value[:-1].strip()
         key = label.lower().replace(" ", "_")
-        if key == "requirement":
-            key = "requirements"
+        if key == "requirements":
+            key = "requirement"
         section[key] = value
 
 
@@ -503,8 +515,16 @@ def skill_struct_pass(struct):
 
 
 _LINK_FIELDS = [
-    "text", "requirements", "trigger", "frequency", "cost", "effect", "duration",
-    "critical_success", "success", "failure", "critical_failure",
+    "text",
+    "requirement",
+    "trigger",
+    "frequency",
+    "cost",
+    "effect",
+    "critical_success",
+    "success",
+    "failure",
+    "critical_failure",
 ]
 
 
@@ -513,12 +533,10 @@ def skill_link_pass(struct):
         if field not in section:
             return
         bs = BeautifulSoup(section[field], "html.parser")
-        links = get_links(bs)
+        links = get_links(bs, unwrap=True)
         if len(links) > 0 and keep:
             linklist = section.setdefault("links", [])
             linklist.extend(links)
-        while bs.a:
-            bs.a.unwrap()
         # Strip action spans from names
         for span in bs.find_all("span", {"class": "action"}):
             span.decompose()
@@ -541,15 +559,14 @@ def skill_link_pass(struct):
 
     # Process skill actions
     skill = find_skill(struct)
-    if skill:
-        for action in skill.get("actions", []):
-            _process_section(action)
+    assert skill is not None, f"No skill section found in {struct.get('name', 'unknown')}"
+    for action in skill.get("actions", []):
+        _process_section(action)
 
 
 def skill_cleanup_pass(struct):
-    skill = struct.get("skill")
-    if not skill:
-        return
+    assert "skill" in struct, f"No skill object found in struct: {struct.get('name')}"
+    skill = struct["skill"]
 
     # Move name from skill to top-level
     struct["name"] = skill["name"]
@@ -570,17 +587,20 @@ def skill_cleanup_pass(struct):
         cleaned = str(soup).strip()
         if cleaned:
             assert "text" not in struct, struct
-            struct["text"] = html2markdown.convert(cleaned)
+            struct["text"] = md(cleaned)
         del skill["text"]
 
     # Move sources to top-level
     struct["sources"] = skill["sources"]
     del skill["sources"]
 
-    # Move key_ability and skill_type to top-level
+    # Move key_ability/key_kingdom_ability and skill_type to top-level
     if "key_ability" in skill:
         struct["key_ability"] = skill["key_ability"]
         del skill["key_ability"]
+    if "key_kingdom_ability" in skill:
+        struct["key_kingdom_ability"] = skill["key_kingdom_ability"]
+        del skill["key_kingdom_ability"]
     if "skill_type" in skill:
         struct["skill_type"] = skill["skill_type"]
         del skill["skill_type"]
@@ -631,49 +651,25 @@ def create_skill_filename(jsondir, struct):
     return os.path.abspath(title)
 
 
-def markdown_pass(struct, name, path):
-    def _validate_acceptable_tags(text):
-        validset = {
-            "i",
-            "b",
-            "u",
-            "strong",
-            "ol",
-            "ul",
-            "li",
-            "br",
-            "table",
-            "tr",
-            "td",
-            "hr",
-        }
-        tags = get_unique_tag_set(text)
-        assert tags.issubset(validset), f"{name} : {text} - {tags}"
-
+def _strip_block_tags(struct):
+    """Pre-strip <p> and non-empty <div> tags before markdown validation."""
     for k, v in struct.items():
         if isinstance(v, dict):
-            markdown_pass(v, name, f"{path}/{k}")
+            _strip_block_tags(v)
         elif isinstance(v, list):
             for item in v:
                 if isinstance(item, dict):
-                    markdown_pass(item, name, f"{path}/{k}")
-                elif isinstance(item, str) and item.find("<") > -1:
-                    raise AssertionError()
-        elif isinstance(v, str) and v.find("<") > -1:
-            if "<div" in v or "<p" in v:
-                bs = BeautifulSoup(v, "html.parser")
-                for div in bs.find_all("div"):
-                    if not div.get_text(strip=True):
-                        div.decompose()
-                    else:
-                        div.unwrap()
-                for p in bs.find_all("p"):
-                    p.unwrap()
-                v = str(bs)
-                struct[k] = v
-            _validate_acceptable_tags(v)
-            struct[k] = md(v).strip()
-            log_element("markdown.log")("{} : {}".format(f"{path}/{k}", name))
+                    _strip_block_tags(item)
+        elif isinstance(v, str) and ("<p" in v or "<div" in v):
+            bs = BeautifulSoup(v, "html.parser")
+            for div in bs.find_all("div"):
+                if not div.get_text(strip=True):
+                    div.decompose()
+                else:
+                    div.unwrap()
+            for p in bs.find_all("p"):
+                p.unwrap()
+            struct[k] = str(bs)
 
 
 def _is_empty(value):
@@ -681,9 +677,7 @@ def _is_empty(value):
         return True
     if isinstance(value, str) and value == "":
         return True
-    if isinstance(value, (list, dict)) and len(value) == 0:
-        return True
-    return False
+    return isinstance(value, list | dict) and len(value) == 0
 
 
 def _remove_empty_fields(obj):
@@ -691,22 +685,13 @@ def _remove_empty_fields(obj):
     if isinstance(obj, dict):
         for key in list(obj.keys()):
             value = obj[key]
+            _remove_empty_fields(value)
             if _is_empty(value):
                 del obj[key]
-            elif isinstance(value, dict):
-                _remove_empty_fields(value)
-                if _is_empty(value):
-                    del obj[key]
-            elif isinstance(value, list):
-                for item in value:
-                    if isinstance(item, dict):
-                        _remove_empty_fields(item)
-                if _is_empty(value):
-                    del obj[key]
     elif isinstance(obj, list):
         for item in obj:
-            if isinstance(item, dict):
-                _remove_empty_fields(item)
+            _remove_empty_fields(item)
+        obj[:] = [item for item in obj if not _is_empty(item)]
 
 
 def set_edition_from_db_pass(struct):
