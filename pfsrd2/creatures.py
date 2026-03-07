@@ -483,6 +483,11 @@ def monster_ability_db_pass(struct):
             db_ability = json.loads(data["monster_ability"])
             _handle_trait_template(curs, ability, db_ability)
             strip_nested_metadata(db_ability, EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION)
+            # Traits inside the DB ability also carry schema_version from
+            # when they were enriched by trait_db_pass during monster_ability parsing
+            for trait in db_ability.get("traits", []):
+                if "schema_version" in trait:
+                    strip_nested_metadata(trait, EXPECTED_TRAIT_SCHEMA_VERSION)
             ability["universal_monster_ability"] = db_ability
 
     db_path = get_db_path("pfsrd2.db")
