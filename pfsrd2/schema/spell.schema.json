@@ -137,12 +137,25 @@
 		"trait": {
 			"type": "object",
 			"properties": {
-				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["trait"]},
 				"name": {"type": "string"},
-				"link": {"$ref": "#/definitions/link"}
+				"type": {"enum": ["trait"]},
+				"game-id": {"type": "string"},
+				"game-obj": {"enum": ["Traits"]},
+				"value": {"type": "string"},
+				"text": {"type": "string"},
+				"classes": {
+					"type": "array",
+					"items": {"type": "string"},
+					"additionalItems": false
+				},
+				"sources": {"$ref": "#/definitions/sources"},
+				"sections": {"$ref": "#/definitions/sections"},
+				"links": {"$ref": "#/definitions/links"},
+				"alternate_link": {"$ref": "#/definitions/alternate_link"},
+				"schema_version": {"enum": [1.1]},
+				"edition": {"enum": ["legacy", "remastered"]}
 			},
-			"required": ["type", "subtype", "name"],
+			"required": ["name", "type", "game-id", "game-obj", "sources", "schema_version", "edition"],
 			"additionalProperties": false
 		},
 		"heightened": {

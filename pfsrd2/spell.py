@@ -9,6 +9,7 @@ from pfsrd2.license import license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.sources import fetch_source_by_name
+from pfsrd2.sql.traits import trait_db_pass
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.universal import (
@@ -53,6 +54,7 @@ def parse_spell(filename, options):
     game_id_pass(struct)
     spell_cleanup_pass(struct)
     set_edition_from_db_pass(struct)
+    trait_db_pass(struct)
     license_pass(struct)
     _strip_block_tags(struct)
     universal_markdown_pass(struct, struct["name"], "", fxn_valid_tags=_spell_valid_tags)
