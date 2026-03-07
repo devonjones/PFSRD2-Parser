@@ -124,6 +124,7 @@
 				"trigger": {"type": "string"},
 				"frequency": {"type": "string"},
 				"cost": {"type": "string"},
+				"duration": {"type": "string"},
 				"effect": {"type": "string"},
 				"critical_success": {"type": "string"},
 				"success": {"type": "string"},

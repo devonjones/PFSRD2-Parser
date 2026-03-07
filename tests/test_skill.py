@@ -6,6 +6,8 @@ from bs4 import BeautifulSoup
 from pfsrd2.skill import (
     KINGDOM_ATTRIBUTES,
     SKILL_ATTRIBUTES,
+    _content_filter,
+    _extract_action_text,
     _extract_action_type_from_name,
     _extract_bold_fields,
     _extract_key_ability,
@@ -14,6 +16,7 @@ from pfsrd2.skill import (
     _is_empty,
     _remove_empty_fields,
     _strip_block_tags,
+    action_extract_pass,
     find_skill,
 )
 
@@ -409,3 +412,217 @@ class TestStripBlockTags:
         struct = {"items": [{"text": "<p>in list</p>"}]}
         _strip_block_tags(struct)
         assert "<p" not in struct["items"][0]["text"]
+
+
+class TestContentFilter:
+    def _make_soup(self, html):
+        return BeautifulSoup(html, "html.parser")
+
+    def test_strips_nav_before_hr(self):
+        soup = self._make_soup('<div id="main"><nav>Nav</nav><a>Link</a><hr/><h1>Title</h1></div>')
+        _content_filter(soup)
+        main = soup.find(id="main")
+        assert main.find("nav") is None
+        assert main.find("hr") is None
+        assert main.find("h1") is not None
+
+    def test_unwraps_span_containing_h1(self):
+        soup = self._make_soup('<div id="main"><span><h1>Skill Name</h1></span></div>')
+        _content_filter(soup)
+        main = soup.find(id="main")
+        # span should be unwrapped, h1 should remain
+        assert main.find("span") is None
+        assert main.find("h1") is not None
+
+    def test_no_main_div_is_noop(self):
+        soup = self._make_soup("<div>No main here</div>")
+        _content_filter(soup)
+        assert "No main here" in str(soup)
+
+    def test_no_hr_keeps_content(self):
+        soup = self._make_soup('<div id="main"><h1>Title</h1><p>Content</p></div>')
+        _content_filter(soup)
+        assert soup.find("h1") is not None
+        assert soup.find("p") is not None
+
+    def test_only_first_span_with_h1_unwrapped(self):
+        soup = self._make_soup(
+            '<div id="main">' "<span><h1>Title</h1></span>" "<span>Other span</span>" "</div>"
+        )
+        _content_filter(soup)
+        main = soup.find(id="main")
+        # First span unwrapped, second span preserved
+        spans = main.find_all("span")
+        assert len(spans) == 1
+        assert "Other span" in spans[0].text
+
+
+class TestActionExtractPass:
+    def _make_struct(self, action_sections, section_name="Untrained Actions"):
+        skill = {
+            "type": "stat_block_section",
+            "subtype": "skill",
+            "name": "TestSkill",
+            "sections": [],
+        }
+        actions_section = {
+            "name": section_name,
+            "type": "section",
+            "sections": action_sections,
+        }
+        return {"name": "TestSkill", "type": "skill", "sections": [skill, actions_section]}
+
+    def test_extracts_action_with_source(self):
+        action = {
+            "name": "Balance",
+            "type": "section",
+            "text": '<b>Source</b> <a href="/Sources.aspx?ID=1">Core Rulebook pg. 1</a>',
+            "sections": [],
+        }
+        struct = self._make_struct([action])
+        action_extract_pass(struct)
+        skill = find_skill(struct)
+        assert "actions" in skill
+        assert skill["actions"][0]["subtype"] == "skill_action"
+        assert skill["actions"][0]["name"] == "Balance"
+
+    def test_trained_flag_set(self):
+        action = {
+            "name": "Identify",
+            "type": "section",
+            "text": '<b>Source</b> <a href="/Sources.aspx?ID=1">Core Rulebook pg. 1</a>',
+            "sections": [],
+        }
+        struct = self._make_struct([action], section_name="Trained Actions")
+        action_extract_pass(struct)
+        skill = find_skill(struct)
+        assert skill["actions"][0]["trained"] is True
+
+    def test_untrained_flag_set(self):
+        action = {
+            "name": "Balance",
+            "type": "section",
+            "text": '<b>Source</b> <a href="/Sources.aspx?ID=1">Core Rulebook pg. 1</a>',
+            "sections": [],
+        }
+        struct = self._make_struct([action], section_name="Untrained Actions")
+        action_extract_pass(struct)
+        skill = find_skill(struct)
+        assert skill["actions"][0]["trained"] is False
+
+    def test_descriptive_section_attached_to_preceding_action(self):
+        real_action = {
+            "name": "Balance",
+            "type": "section",
+            "text": '<b>Source</b> <a href="/Sources.aspx?ID=1">Core Rulebook pg. 1</a>',
+            "sections": [],
+        }
+        descriptive = {
+            "name": "Table of DCs",
+            "type": "section",
+            "text": "Some table data",
+            "sections": [],
+        }
+        struct = self._make_struct([real_action, descriptive])
+        action_extract_pass(struct)
+        skill = find_skill(struct)
+        assert len(skill["actions"]) == 1
+        assert "sections" in skill["actions"][0]
+        assert skill["actions"][0]["sections"][0]["name"] == "Table of DCs"
+
+    def test_related_feats_skipped(self):
+        related = {
+            "name": "Related Feats",
+            "type": "section",
+            "text": "Some feats",
+            "sections": [],
+        }
+        action = {
+            "name": "Balance",
+            "type": "section",
+            "text": '<b>Source</b> <a href="/Sources.aspx?ID=1">Core Rulebook pg. 1</a>',
+            "sections": [],
+        }
+        struct = self._make_struct([related, action])
+        action_extract_pass(struct)
+        skill = find_skill(struct)
+        assert len(skill["actions"]) == 1
+        assert skill["actions"][0]["name"] == "Balance"
+
+    def test_non_actions_section_preserved(self):
+        other = {"name": "Description", "type": "section", "text": "Desc"}
+        skill = {
+            "type": "stat_block_section",
+            "subtype": "skill",
+            "name": "TestSkill",
+            "sections": [],
+        }
+        struct = {"name": "TestSkill", "type": "skill", "sections": [skill, other]}
+        action_extract_pass(struct)
+        assert any(s.get("name") == "Description" for s in struct["sections"])
+
+    def test_no_actions_no_key(self):
+        skill = {
+            "type": "stat_block_section",
+            "subtype": "skill",
+            "name": "TestSkill",
+            "sections": [],
+        }
+        struct = {"name": "TestSkill", "type": "skill", "sections": [skill]}
+        action_extract_pass(struct)
+        assert "actions" not in find_skill(struct)
+
+
+class TestExtractActionText:
+    def test_extracts_traits(self):
+        section = {
+            "text": '<span class="trait"><a href="/Traits.aspx?ID=1">Auditory</a></span> Some text',
+            "sections": [],
+        }
+        _extract_action_text(section)
+        assert "traits" in section
+        assert section["traits"][0]["name"] == "Auditory"
+        assert "<span" not in section["text"]
+
+    def test_extracts_source(self):
+        section = {
+            "text": '<b>Source</b> <a href="/Sources.aspx?ID=1">Core Rulebook pg. 240</a><br/>Description here',
+            "sections": [],
+        }
+        _extract_action_text(section)
+        assert "source" in section
+
+    def test_extracts_fields_from_pre_hr(self):
+        section = {
+            "text": "<b>Requirements</b> You have a shield raised<hr/>Description text",
+            "sections": [],
+        }
+        _extract_action_text(section)
+        assert section["requirement"] == "You have a shield raised"
+        assert "Description text" in section["text"]
+
+    def test_extracts_result_blocks(self):
+        section = {
+            "text": "<b>Success</b> You succeed.<b>Failure</b> You fail.",
+            "sections": [],
+        }
+        _extract_action_text(section)
+        assert section["success"] == "You succeed."
+        assert section["failure"] == "You fail."
+
+    def test_strips_leading_trailing_br(self):
+        section = {
+            "text": "<br/><br/>Some text<br/>",
+            "sections": [],
+        }
+        _extract_action_text(section)
+        assert section["text"] == "Some text"
+
+    def test_strips_letter_spacing_spans(self):
+        section = {
+            "text": '<span style="letter-spacing:5px"> </span>Content',
+            "sections": [],
+        }
+        _extract_action_text(section)
+        assert "<span" not in section["text"]
+        assert "Content" in section["text"]

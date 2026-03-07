@@ -189,8 +189,8 @@ When creating a new schema:
 2. **Match field names** — use `requirement` (singular), not `requirements`
 3. **Match enum values** — copy the full `action_type` name enum from creature schema
 4. **Use `$ref`** for all reusable definitions
-5. **Don't add fields that aren't populated** — remove speculative fields (like
-   `duration`) until data actually uses them
+5. **Don't add fields that aren't populated** — remove speculative fields until data
+   actually uses them (but keep fields the parser actively extracts)
 6. **Separate parallel concepts** — use `key_ability` for character skills and
    `key_kingdom_ability` for kingdom skills, not one field with mixed semantics
 
