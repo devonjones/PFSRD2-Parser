@@ -49,17 +49,14 @@ def parse_spell(filename, options):
     spell_struct_pass(struct)
     # Promote sources to top level early (needed by game_id_pass)
     spell = find_spell(struct)
-    struct["sources"] = spell.get("sources", [])
+    struct["sources"] = spell["sources"]
     source_pass(struct, find_spell)
     spell_structurize_pass(struct)
     spell_link_pass(struct)
     aon_pass(struct, basename)
     restructure_pass(struct, "spell", find_spell)
     struct["edition"] = edition_pass(struct["sections"])
-    struct["sections"] = [
-        s for s in struct["sections"]
-        if s.get("name") != "Legacy Content"
-    ]
+    struct["sections"] = [s for s in struct["sections"] if s.get("name") != "Legacy Content"]
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
     spell_cleanup_pass(struct)
@@ -333,7 +330,6 @@ def spell_struct_pass(struct):
     spell["text"] = text.strip()
 
 
-
 def _clean_spell_name(name):
     """Strip trailing conjunctions and extra whitespace from spell names."""
     name = re.sub(r"\s+(or more|or|to)\s*$", "", name)
@@ -419,11 +415,13 @@ def _extract_legacy_marker(bs, struct):
     """Extract Legacy Content h3 marker into a section for edition detection."""
     h3 = bs.find("h3", string=lambda s: s and "Legacy Content" in s)
     if h3:
-        struct["sections"].append({
-            "type": "section",
-            "name": "Legacy Content",
-            "sections": [],
-        })
+        struct["sections"].append(
+            {
+                "type": "section",
+                "name": "Legacy Content",
+                "sections": [],
+            }
+        )
         h3.decompose()
 
 
@@ -547,8 +545,7 @@ def _extract_deity_forms(spell, bs):
             text = re.sub(r"\s*</li>$", "", text)
             text = text.strip()
             form = build_object(
-                "stat_block_section", "deity_form", name,
-                {"link": link, "text": text}
+                "stat_block_section", "deity_form", name, {"link": link, "text": text}
             )
             ul_forms.append(form)
         if ul_forms:
@@ -652,7 +649,9 @@ def _build_spell_access(spell):
                 continue
             _, link = extract_link(a)
             obj = build_object(
-                "stat_block_section", "spell_access", name,
+                "stat_block_section",
+                "spell_access",
+                name,
                 {"access_type": access_type, "link": link},
             )
             access.append(obj)
@@ -668,7 +667,9 @@ def _build_spell_access(spell):
                 name = part.strip()
                 if name:
                     obj = build_object(
-                        "stat_block_section", "spell_access", name,
+                        "stat_block_section",
+                        "spell_access",
+                        name,
                         {"access_type": access_type},
                     )
                     access.append(obj)
@@ -708,7 +709,9 @@ def _build_spell_cast(spell):
             if comp_name:
                 _, comp_link = extract_link(a)
                 comp = build_object(
-                    "stat_block_section", "spell_cast_component", comp_name,
+                    "stat_block_section",
+                    "spell_cast_component",
+                    comp_name,
                     {"link": comp_link},
                 )
                 components.append(comp)
@@ -739,7 +742,9 @@ def _build_spell_cast(spell):
                     name = part.strip()
                     if name:
                         comp = build_object(
-                            "stat_block_section", "spell_cast_component", name,
+                            "stat_block_section",
+                            "spell_cast_component",
+                            name,
                         )
                         components.append(comp)
 
@@ -941,8 +946,10 @@ def _strip_block_tags(struct):
 def _spell_valid_tags(struct, name, path, validset):
     """Add spell-specific tags to the markdown valid set.
 
-    Battle form spells (Avatar, Aberrant Form, etc.) have inline stat blocks
-    with <b> for labels, <i> for spell names, and <span> for action icons.
+    202+ spells use <b> for inline labels in descriptions (battle forms,
+    heightened sub-effects, variant entries). <i> for spell names and <span>
+    for action icons are also common. Blanket allowance trades some strategic
+    fragility for correctness — scoping narrowly would break too many spells.
     """
     validset.update({"b", "i", "span"})
 
@@ -950,7 +957,7 @@ def _spell_valid_tags(struct, name, path, validset):
 def _is_empty(value):
     if value is None:
         return True
-    if isinstance(value, str) and value == "":
+    if isinstance(value, str) and not value.strip():
         return True
     return isinstance(value, list | dict) and len(value) == 0
 

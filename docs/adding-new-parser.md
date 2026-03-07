@@ -409,7 +409,9 @@ schema validation) to clean up `""`, `None`, `[]`, `{}`:
 def _is_empty(value):
     if value is None:
         return True
-    if isinstance(value, (str, list, dict)) and len(value) == 0:
+    if isinstance(value, str) and not value.strip():
+        return True
+    if isinstance(value, list | dict) and len(value) == 0:
         return True
     return False
 

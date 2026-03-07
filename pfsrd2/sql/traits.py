@@ -37,8 +37,9 @@ def trait_db_pass(struct, pre_process=None):
         else:
             kwargs["remastered_trait_id"] = db_trait["trait_id"]
         data = fetch_trait_by_link(curs, **kwargs)
-        if not data:
-            return trait
+        assert (
+            data
+        ), f"Trait has alternate_link but linked trait not found in DB: {trait['name']} (id={db_trait['trait_id']})"
         return json.loads(data["trait"])
 
     def _check_trait(trait, parent):

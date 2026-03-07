@@ -611,9 +611,15 @@ def skill_cleanup_pass(struct):
 
     # Verify skill object is clean
     expected_keys = {
-        "type", "subtype", "name", "actions",
-        "skill_type", "key_ability", "key_kingdom_ability",
-        "text", "links",
+        "type",
+        "subtype",
+        "name",
+        "actions",
+        "skill_type",
+        "key_ability",
+        "key_kingdom_ability",
+        "text",
+        "links",
     }
     remaining = set(skill.keys()) - expected_keys
     assert not remaining, f"Unexpected keys in skill: {remaining}"

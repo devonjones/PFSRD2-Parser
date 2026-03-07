@@ -672,30 +672,25 @@ class TestExtractSourceFromBs:
 
 class TestConvertSkillText:
     def test_converts_text_to_markdown(self):
-        struct = {}
         skill = {"text": "Simple text"}
-        _convert_skill_text(struct, skill)
-        assert "text" in struct
-        assert "text" not in skill
+        _convert_skill_text(skill)
+        assert "text" in skill
 
     def test_strips_nethys_note(self):
-        struct = {}
         skill = {"text": "<i>Note from Nethys: blah blah</i>Real content"}
-        _convert_skill_text(struct, skill)
-        assert "Nethys" not in struct.get("text", "")
+        _convert_skill_text(skill)
+        assert "Nethys" not in skill.get("text", "")
 
     def test_strips_details_tags(self):
-        struct = {}
         skill = {"text": "<details>Widget</details>Content"}
-        _convert_skill_text(struct, skill)
-        assert "details" not in struct.get("text", "")
-        assert "Content" in struct.get("text", "")
+        _convert_skill_text(skill)
+        assert "details" not in skill.get("text", "")
+        assert "Content" in skill.get("text", "")
 
     def test_no_text_is_noop(self):
-        struct = {}
         skill = {"name": "Test"}
-        _convert_skill_text(struct, skill)
-        assert "text" not in struct
+        _convert_skill_text(skill)
+        assert "text" not in skill
 
 
 class TestPromoteSkillFields:
@@ -712,7 +707,7 @@ class TestPromoteSkillFields:
         assert struct["sources"] == [{"name": "CR", "type": "source"}]
         assert "sources" not in skill
 
-    def test_promotes_key_ability(self):
+    def test_retains_key_ability_in_skill(self):
         skill = {
             "name": "Test",
             "sources": [],
@@ -723,11 +718,12 @@ class TestPromoteSkillFields:
         }
         struct = {"skill": skill, "sections": []}
         _promote_skill_fields(struct, skill)
-        assert struct["key_ability"] == "dex"
-        assert struct["skill_type"] == "character_skill"
-        assert "key_ability" not in skill
+        assert "key_ability" not in struct
+        assert "skill_type" not in struct
+        assert skill["key_ability"] == "dex"
+        assert skill["skill_type"] == "character_skill"
 
-    def test_promotes_kingdom_ability(self):
+    def test_retains_kingdom_ability_in_skill(self):
         skill = {
             "name": "Test",
             "sources": [],
@@ -738,10 +734,10 @@ class TestPromoteSkillFields:
         }
         struct = {"skill": skill, "sections": []}
         _promote_skill_fields(struct, skill)
-        assert struct["key_kingdom_ability"] == "stability"
-        assert "key_kingdom_ability" not in skill
+        assert "key_kingdom_ability" not in struct
+        assert skill["key_kingdom_ability"] == "stability"
 
-    def test_promotes_links(self):
+    def test_retains_links_in_skill(self):
         skill = {
             "name": "Test",
             "sources": [],
@@ -751,8 +747,8 @@ class TestPromoteSkillFields:
         }
         struct = {"skill": skill, "sections": []}
         _promote_skill_fields(struct, skill)
-        assert struct["links"] == [{"name": "link1"}]
-        assert "links" not in skill
+        assert "links" not in struct
+        assert skill["links"] == [{"name": "link1"}]
 
 
 class TestCleanHtmlFields:
