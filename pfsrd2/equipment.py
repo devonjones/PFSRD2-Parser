@@ -749,7 +749,6 @@ def parse_equipment(filename, options):
     source_edition_override_pass(struct)
     game_id_pass(struct)
     license_pass(struct)
-    license_consolidation_pass(struct)
     markdown_pass(struct, struct["name"], "", fxn_valid_tags=equipment_markdown_valid_set)
 
     # LINK ACCOUNTING: Verify all links were extracted into structured objects
@@ -769,6 +768,9 @@ def parse_equipment(filename, options):
 
     # Enrich traits with database data (must be after edition is set)
     universal_trait_db_pass(struct, pre_process=_equipment_trait_pre_process)
+    # Consolidate licenses after trait_db_pass (traits from DB carry license data
+    # that must be merged into the top-level license before schema validation)
+    license_consolidation_pass(struct)
     # Enrich equipment groups with database data (only for equipment types that have groups)
     if "group_table" in config:
         equipment_group_pass(struct, config)

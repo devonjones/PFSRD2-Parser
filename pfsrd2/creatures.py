@@ -13,7 +13,9 @@ from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 from pfsrd2.sql.traits import (
+    EXPECTED_TRAIT_SCHEMA_VERSION,
     fetch_trait_by_name,
+    strip_nested_metadata,
     trait_db_pass as universal_trait_db_pass,
 )
 from pfsrd2.trait import extract_starting_traits, trait_parse
@@ -396,6 +398,7 @@ def _creature_handle_alignment(trait, parent, curs):
         db_trait["classes"] = sorted(trait_classes | db_trait_classes)
         if "aonid" in db_trait:
             del db_trait["aonid"]
+        strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
         parent.insert(index, db_trait)
         index += 1
 
@@ -471,12 +474,15 @@ def monster_ability_db_pass(struct):
                 return
         raise AssertionError("Shouldn't get here")
 
+    EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION = 1.2
+
     def _check_ability(ability, parent):
         abilities = fetch_monster_abilities_by_name(curs, ability["name"])
         data = _pick_best_ability(abilities, struct["edition"])
         if data:
             db_ability = json.loads(data["monster_ability"])
             _handle_trait_template(curs, ability, db_ability)
+            strip_nested_metadata(db_ability, EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION)
             ability["universal_monster_ability"] = db_ability
 
     db_path = get_db_path("pfsrd2.db")

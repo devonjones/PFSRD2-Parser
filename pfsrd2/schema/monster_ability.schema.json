@@ -139,7 +139,6 @@
 					"additionalItems": false
 				},
 				"alternate_link": {"$ref": "#/definitions/alternate_link"},
-				"schema_version": {"enum": [1.1]},
 				"edition": {"enum": ["legacy", "remastered"]}
 			},
 			"required": ["name", "type", "text", "game-id", "game-obj", "sources"],

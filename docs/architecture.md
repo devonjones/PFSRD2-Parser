@@ -1224,6 +1224,48 @@ trait_db_pass(struct)  # No pre_process, pure universal behavior
 - `markdown_pass(struct, name, path, fxn_valid_tags=None)` — custom tag validator per parser
 - `content_filter(soup)` — identical across spell/skill/condition, but creatures/equipment have different versions (keep those local)
 
+### Nested DB Object Metadata Rules
+
+When objects are pulled from the database and embedded inside other structures (traits inside creatures, monster abilities inside creatures), two metadata fields require special handling:
+
+**`schema_version` — validate then strip:**
+
+`schema_version` is reserved for the top-level document only. Nested DB objects carry their own `schema_version` from when they were stored. We validate it matches the expected version (catches stale DB data), then strip it before embedding.
+
+```python
+from pfsrd2.sql.traits import strip_nested_metadata, EXPECTED_TRAIT_SCHEMA_VERSION
+
+# In trait_db_pass (automatic for all parsers):
+strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
+
+# In creature's monster_ability_db_pass:
+strip_nested_metadata(db_ability, EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION)
+
+# In creature's alignment splitting (bypasses universal _check_trait):
+strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
+```
+
+**`license` — keep for consolidation:**
+
+License data on nested objects is NOT stripped during DB enrichment. Instead, `license_consolidation_pass` walks the entire structure, collects all `license` fields, merges unique sections into the top-level license, and removes them from nested locations. This ensures Attribution sections (e.g., "Masterwork Tools LLC, Authors: Devon Jones, Monica Jones") from trait licenses are preserved in the final output.
+
+**Critical pipeline ordering:**
+
+```
+trait_db_pass(struct)              # Enriches traits with DB data (keeps license)
+monster_ability_db_pass(struct)    # Enriches abilities with DB data (keeps license)
+license_pass(struct)               # Extracts license from HTML sections
+license_consolidation_pass(struct) # Merges ALL licenses into top-level, strips from nested
+...
+validate_against_schema(struct)    # Traits now have no license or schema_version
+```
+
+`trait_db_pass` MUST run before `license_consolidation_pass`. If a parser's pre_process hook does its own DB lookups (e.g., creature alignment splitting), it must also call `strip_nested_metadata` on the result.
+
+**Schema implications:**
+
+Embedded trait/monster_ability definitions in schemas do NOT include `schema_version` or `license` properties — those fields are stripped before validation. Only the top-level document definition has `schema_version`.
+
 ### Text Processing
 
 #### filter_entities(text)

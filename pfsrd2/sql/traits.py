@@ -2,6 +2,28 @@ import json
 
 from universal.universal import test_key_is_value, walk
 
+# Expected schema versions for nested objects pulled from the database.
+# When we embed DB objects (traits, monster abilities) inside other structures,
+# we validate their schema_version matches what we expect, then strip it —
+# schema_version is reserved for the top-level document only.
+EXPECTED_TRAIT_SCHEMA_VERSION = 1.1
+
+
+def strip_nested_metadata(db_obj, expected_version):
+    """Validate and strip schema_version from a DB object embedded in another structure.
+
+    Schema_version is reserved for top-level documents. Nested objects pulled from
+    the database have their own schema_version which we validate matches expectations,
+    then remove. License is kept so license_consolidation_pass can merge it into
+    the top-level license.
+    """
+    actual = db_obj.get("schema_version")
+    assert actual == expected_version, (
+        f"Nested object '{db_obj.get('name')}' has schema_version {actual}, "
+        f"expected {expected_version}"
+    )
+    del db_obj["schema_version"]
+
 
 def trait_db_pass(struct, pre_process=None):
     """Enrich minimal trait objects with full trait data from database.
@@ -57,6 +79,7 @@ def trait_db_pass(struct, pre_process=None):
             db_trait["value"] = trait["value"]
         if "aonid" in db_trait:
             del db_trait["aonid"]
+        strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
         db_trait["classes"].sort()
         parent[index] = db_trait
 
