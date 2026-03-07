@@ -25,7 +25,9 @@ from pprint import pprint
 from bs4 import BeautifulSoup, Tag
 from universal.universal import parse_universal, entity_pass
 from universal.universal import extract_link, extract_links, extract_source
-from universal.universal import aon_pass
+from universal.universal import aon_pass, get_links, build_object
+from universal.markdown import markdown_pass as universal_markdown_pass
+from universal.markdown import md
 from universal.utils import is_tag_named, get_text
 from pfsrd2.license import license_pass, license_consolidation_pass
 
@@ -36,10 +38,13 @@ def parse_<type>(filename, options):
     if not options.stdout:
         sys.stderr.write("%s\n" % basename)
 
-    # Parse HTML into initial structure
+    # Parse HTML into initial structure (use cssclass="main" for HTML5 AoN)
     details = parse_universal(filename, subtitle_text=True, max_title=4,
-                              cssclass="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
+                              cssclass="main",
+                              pre_filters=[_content_filter])
     details = entity_pass(details)
+    # Filter whitespace-only strings left by content filter
+    details = [d for d in details if not (isinstance(d, str) and not d.strip())]
 
     # Restructure and process
     struct = restructure_<type>_pass(details)
@@ -116,6 +121,34 @@ def section_pass(struct):
 - **Use existing helpers** - Import from `universal.universal` and `universal.utils`
 - **Fail fast** - Don't catch exceptions unless you're 100% certain how to handle them
 - **Iterate** - Add structured extraction passes incrementally
+
+### HTML5 AoN Content Filter
+
+All HTML5 AoN parsers need a `_content_filter` pre-filter passed to `parse_universal()`. This strips navigation elements and unwraps the content span:
+
+```python
+def _content_filter(soup):
+    """Remove navigation elements before <hr> and unwrap the content span."""
+    main = soup.find("div", id="main")
+    if not main:
+        return
+    # Strip nav before first <hr>
+    hr = main.find("hr")
+    if hr:
+        for sibling in list(hr.previous_siblings):
+            sibling.extract()
+        hr.extract()
+    # Unwrap content span containing h1
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+    # Remove empty anchors (AoN artifacts)
+    for a in main.find_all("a"):
+        if not a.string and not a.contents:
+            a.decompose()
+```
+
+**Important:** Use `cssclass="main"` with `parse_universal()`, NOT the old `"ctl00_RadDrawer1_Content_MainContent_DetailedOutput"`.
 
 ## Step 2: Create the Parse Script
 
@@ -323,6 +356,117 @@ Each pass should extract specific mechanical properties into discrete fields rat
 - **Error file:** `bin/errors.pf2.<type>` (singular, no extension)
 - **Output directory:** `pfsrd2-data/<type>s/` (plural)
 
+## Use Universal Passes — Don't Reimplement
+
+Before writing custom code, check if a universal function already exists. Reimplementing
+utilities is the most common review feedback.
+
+### Must use from `universal/markdown.py`
+
+- **`markdown_pass(struct, name, path, fxn_valid_tags=None)`** — Recursively walks the struct, validates tags, converts HTML to markdown. Do NOT write your own version.
+- **`md(html)`** — Converts HTML string to markdown using `PFSRDConverter` (handles action spans, underlines, list formatting). Do NOT use `html2markdown.convert()` directly — it bypasses custom converters and produces inconsistent output.
+
+### Must use from `universal/universal.py`
+
+- **`get_links(bs, unwrap=True)`** — Extracts link objects from BeautifulSoup AND unwraps `<a>` tags in place. Do NOT write separate `while bs.a: bs.a.unwrap()` loops.
+- **`build_object(dtype, subtype, name, keys=None)`** — Creates typed objects with consistent structure. Always use this instead of manual dict construction.
+- **`extract_link(a_tag)`** — Parses anchor tags into link objects.
+- **`extract_source(tag)`** — Parses source book references.
+
+### Import patterns
+
+```python
+# Correct: use universal markdown_pass with alias
+from universal.markdown import markdown_pass as universal_markdown_pass
+from universal.markdown import md
+
+# Correct: import specific functions
+from universal.universal import (
+    aon_pass, build_object, entity_pass, extract_link, extract_source,
+    game_id_pass, get_links, parse_universal, remove_empty_sections_pass,
+    restructure_pass, source_pass,
+)
+from universal.utils import get_text
+```
+
+## Pipeline Ordering Lessons
+
+Critical ordering dependencies learned from real parsers:
+
+- **Extract structured data BEFORE link passes**: Action spans, stat fields, and other structured elements must be read before `get_links(unwrap=True)` strips the `<a>` tags.
+- **Extract in dependency order**: If two extraction passes compete for the same text, run the more specific one first. Example: spell parser extracts heightened BEFORE result blocks, because result block extraction would consume heightened text.
+- **`restructure_pass` changes struct layout**: After this call, `find_<type>(struct)` no longer works because the content moves from `struct["sections"]` to `struct["<type>"]`. Use `struct["<type>"]` directly after this point.
+- **`_strip_block_tags` before `universal_markdown_pass`**: The universal markdown_pass validates tags strictly. If your HTML has `<p>` or non-empty `<div>` tags, they must be unwrapped before reaching markdown validation.
+- **Edition detection before cleanup**: `edition_pass()` needs section structure intact. Call before `remove_empty_sections_pass()`.
+- **Use `set_edition_from_db_pass` OR `edition_pass`**: DB lookup for edition when your content type doesn't have "Legacy Content" markers in sections. Use `edition_pass` from universal if it does.
+
+## Empty Field Stripping
+
+Add a `_remove_empty_fields` pass near the end of the pipeline (after markdown, before
+schema validation) to clean up `""`, `None`, `[]`, `{}`:
+
+```python
+def _is_empty(value):
+    if value is None:
+        return True
+    if isinstance(value, (str, list, dict)) and len(value) == 0:
+        return True
+    return False
+
+def _remove_empty_fields(obj):
+    if isinstance(obj, dict):
+        for key in list(obj.keys()):
+            _remove_empty_fields(obj[key])
+            if _is_empty(obj[key]):
+                del obj[key]
+    elif isinstance(obj, list):
+        for item in obj:
+            _remove_empty_fields(item)
+        obj[:] = [item for item in obj if not _is_empty(item)]
+```
+
+## Strategic Fragility
+
+The parser should fail fast on unexpected data. Use assertions, not defensive gets:
+
+```python
+# GOOD: Assert when key must exist at this pipeline stage
+assert "skill" in struct, f"No skill object found: {struct.get('name')}"
+skill = struct["skill"]
+
+# GOOD: Assert known values to catch format changes
+assert label in KNOWN_LABELS, f"Unknown label: {label}"
+
+# BAD: Silent None propagation produces empty output with no error
+skill = struct.get("skill")  # Returns None silently if missing
+```
+
+`<span>` appearing in markdown validation output means unparsed content — fix the extraction, don't add `span` to the valid tag set. Similarly, `<b>` tags appearing in parsed text usually mean the parser failed to extract a structured field (see CLAUDE.md HTML Tag Rules).
+
+## Testing
+
+Write `tests/test_<type>.py` with the PR. Focus on:
+
+1. **Pure extraction functions** — functions that take HTML strings and produce dicts are easy to test
+2. **Classification logic** — heuristics for distinguishing object types
+3. **Edge cases** — empty inputs, missing fields, unknown values (assert failures)
+4. **Empty field stripping** — `_is_empty` and `_remove_empty_fields` are trivial to test
+
+You do NOT need to test the full pipeline end-to-end in unit tests — the parser run against all files serves as the integration test.
+
+## Common Pitfalls
+
+1. **Don't use `html2markdown` directly** — always use `md()` from `universal.markdown`
+2. **Don't reimplement tag stripping** — use `get_links(unwrap=True)` not manual loops
+3. **Don't write a local `markdown_pass`** — use the universal one with `fxn_valid_tags` callback if you need custom tag handling
+4. **Don't use `struct.get()` defensively** — use assertions when keys must exist
+5. **`<span>` in markdown validation = unparsed content** — fix the extraction, don't add `span` to the valid tag set
+6. **Watch `restructure_pass` layout changes** — after it runs, sections move to a top-level key; code searching `struct["sections"]` for the content type will break
+7. **Pre-commit runs black and ruff** — run `ruff check --fix` before committing to catch import ordering and unused imports
+8. **`href_filter` transforms links early** — by the time struct passes run, `href` attributes are already converted to `game-obj`/`aonid` attrs. Check `attrs={"game-obj": "Deities"}` not `href=lambda h: "Deities" in h`
+9. **Multi-action spell names leave artifacts** — when moving action spans out of titles, clean orphaned text nodes (trailing "or", "to", "or more")
+10. **Always `.strip()` after extracting text from HTML** — prevents trailing spaces, newlines, and inconsistent spacing
+
 ## Summary Checklist
 
 - [ ] Create `pfsrd2/<type>.py` with `parse_<type>()` function
@@ -334,6 +478,53 @@ Each pass should extract specific mechanical properties into discrete fields rat
 - [ ] Run full pipeline and check errors
 - [ ] Iterate on extracting structured mechanics
 - [ ] Create/update JSON schema when ready
+- [ ] **Add alternate_link pass** (see Required Standard Passes below)
+- [ ] **Add trait DB pass** if the content type has traits (see Required Standard Passes below)
+
+## Required Standard Passes
+
+Every parser MUST include these passes where applicable. These are not optional — they ensure consistency across all content types.
+
+### Alternate Link Pass
+
+**Every content type** that can have legacy/remastered variants must extract the alternate link. The HTML contains a `<div class="siderbarlook">` with text like "There is a Legacy version here" or "There is a Remastered version here".
+
+Use the shared `handle_alternate_link()` function from `universal/universal.py`:
+
+```python
+from universal.universal import handle_alternate_link, edition_from_alternate_link
+
+# After initial parsing
+alternate_link = handle_alternate_link(details)
+if alternate_link:
+    struct["alternate_link"] = alternate_link
+    alt_edition = edition_from_alternate_link(struct)
+    if alt_edition:
+        struct["edition"] = alt_edition
+```
+
+**Do NOT** reimplement alternate link extraction in each parser. Use the universal function.
+
+### Trait DB Pass
+
+**Every content type that has traits** must enrich them from the database. Raw HTML gives minimal trait objects (just name + link). The trait DB pass replaces them with full trait data including descriptions, classes, edition info, and cross-edition links.
+
+```python
+from universal.universal import walk, test_key_is_value
+from pfsrd2.sql.traits import fetch_trait_by_name
+
+def trait_db_pass(struct):
+    """Replace minimal trait objects with full database data."""
+    db_path = get_db_path("pfsrd2.db")
+    conn = get_db_connection(db_path)
+    curs = conn.cursor()
+    walk(struct, test_key_is_value("subtype", "trait"), _check_trait)
+    conn.close()
+```
+
+See `creatures.py` or `equipment.py` for the full implementation pattern including edition-aware lookups and trait value extraction.
+
+**When to run:** After edition detection but before `remove_empty_sections_pass()`.
 
 ## Advanced Parsing Patterns
 

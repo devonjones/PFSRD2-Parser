@@ -45,6 +45,7 @@ def parse_spell(filename, options):
     spell = find_spell(struct)
     struct["sources"] = spell.get("sources", [])
     source_pass(struct, find_spell)
+    spell_structurize_pass(struct)
     spell_link_pass(struct)
     aon_pass(struct, basename)
     restructure_pass(struct, "spell", find_spell)
@@ -57,7 +58,7 @@ def parse_spell(filename, options):
     universal_markdown_pass(struct, struct["name"], "", fxn_valid_tags=_spell_valid_tags)
     _remove_empty_fields(struct)
     if not options.skip_schema:
-        struct["schema_version"] = 1.0
+        struct["schema_version"] = 2.0
         validate_against_schema(struct, "spell.schema.json")
     if not options.dryrun:
         output = options.output
@@ -567,27 +568,215 @@ def _parse_heightened_label(label):
     return entry
 
 
+_ACCESS_FIELDS = {
+    "traditions": "tradition",
+    "spell_list": "spell_list",
+    "bloodline": "bloodline",
+    "deity": "deity",
+    "domain": "domain",
+    "mystery": "mystery",
+    "lesson": "lesson",
+    "patron_theme": "patron_theme",
+}
+
+
+def spell_structurize_pass(struct):
+    """Convert flat string fields into structured objects.
+
+    Runs BEFORE spell_link_pass — fields still contain HTML with <a> tags.
+    Builds: spell_access, spell_cast, spell_defense.
+    """
+    spell = find_spell(struct)
+    assert spell is not None, f"No spell found in {struct.get('name')}"
+    _build_spell_access(spell)
+    _build_spell_cast(spell)
+    _build_spell_defense(spell)
+
+
+def _build_spell_access(spell):
+    """Build spell_access array from access field HTML strings."""
+    access = []
+    for field, access_type in _ACCESS_FIELDS.items():
+        if field not in spell:
+            continue
+        value = spell[field]
+        if value == "N/A":
+            del spell[field]
+            continue
+        bs = BeautifulSoup(value, "html.parser")
+        # Extract linked entries
+        for a in list(bs.find_all("a")):
+            name = get_text(a).strip()
+            if not name:
+                continue
+            _, link = extract_link(a)
+            obj = build_object(
+                "stat_block_section", "spell_access", name,
+                {"access_type": access_type, "link": link},
+            )
+            access.append(obj)
+            parent = a.parent
+            if parent and parent.name == "u":
+                parent.decompose()
+            else:
+                a.decompose()
+        # Check for remaining unlinked entries
+        remaining = get_text(bs).strip()
+        if remaining:
+            for part in remaining.split(","):
+                name = part.strip()
+                if name:
+                    obj = build_object(
+                        "stat_block_section", "spell_access", name,
+                        {"access_type": access_type},
+                    )
+                    access.append(obj)
+        del spell[field]
+    if access:
+        spell["spell_access"] = access
+
+
+def _build_spell_cast(spell):
+    """Build spell_cast object from cast HTML string + action_type."""
+    cast_html = spell.pop("cast", None)
+    action_type = spell.pop("action_type", None)
+
+    if not cast_html and not action_type:
+        return
+
+    cast_obj = {
+        "type": "stat_block_section",
+        "subtype": "spell_cast",
+    }
+
+    if action_type:
+        cast_obj["action_type"] = action_type
+
+    if cast_html:
+        bs = BeautifulSoup(cast_html, "html.parser")
+        # Strip action spans (already extracted as action_type)
+        for span in bs.find_all("span", {"class": "action"}):
+            span.decompose()
+        for span in bs.find_all("span", style=lambda s: s and "letter-spacing" in s):
+            span.decompose()
+
+        # Extract component objects from <a> tags
+        components = []
+        for a in list(bs.find_all("a")):
+            comp_name = get_text(a).strip()
+            if comp_name:
+                _, comp_link = extract_link(a)
+                comp = build_object(
+                    "stat_block_section", "spell_cast_component", comp_name,
+                    {"link": comp_link},
+                )
+                components.append(comp)
+                parent = a.parent
+                if parent and parent.name == "u":
+                    parent.decompose()
+                else:
+                    a.decompose()
+
+        # Get remaining text (time, artifacts, etc.)
+        text = get_text(bs).strip()
+        text = re.sub(r"^\s*(to|or|more)\s+", "", text)
+        text = re.sub(r"\s{2,}", " ", text).strip()
+        # Remove empty parenthetical left from extracted components
+        text = re.sub(r"\s*\([,\s]*\)\s*", "", text).strip()
+        text = text.strip(", ")
+
+        if text:
+            if re.match(r"\d", text):
+                # Timed cast: "1 minute", "10 minutes", etc.
+                cast_obj["time"] = text
+            elif text.startswith("*"):
+                # Nethys notes: "*(none printed)*", etc.
+                cast_obj["note"] = text
+            elif not components:
+                # Plain text components (no links)
+                for part in text.split(","):
+                    name = part.strip()
+                    if name:
+                        comp = build_object(
+                            "stat_block_section", "spell_cast_component", name,
+                        )
+                        components.append(comp)
+
+        if components:
+            cast_obj["components"] = components
+
+    spell["cast"] = cast_obj
+
+
+def _build_spell_defense(spell):
+    """Build spell_defense object from saving_throw/defense + result blocks."""
+    save_html = None
+    if "defense" in spell:
+        save_html = spell.pop("defense")
+    elif "saving_throw" in spell:
+        save_html = spell.pop("saving_throw")
+
+    result_keys = ["critical_success", "success", "failure", "critical_failure"]
+    has_results = any(k in spell for k in result_keys)
+
+    if not save_html and not has_results:
+        return
+
+    defense = {
+        "type": "stat_block_section",
+        "subtype": "spell_defense",
+    }
+
+    if save_html:
+        bs = BeautifulSoup(save_html, "html.parser")
+        # Extract "basic" link if present
+        for a in list(bs.find_all("a")):
+            name = get_text(a).strip()
+            if name.lower() == "basic":
+                _, basic_link = extract_link(a)
+                defense.setdefault("links", []).append(basic_link)
+                parent = a.parent
+                if parent and parent.name == "u":
+                    parent.decompose()
+                else:
+                    a.decompose()
+        clean_text = get_text(bs).strip()
+        basic = clean_text.lower().startswith("basic") or "links" in defense
+        if basic:
+            defense["basic"] = True
+            save_name = re.sub(r"^basic\s*", "", clean_text, flags=re.IGNORECASE).strip()
+        else:
+            save_name = clean_text
+
+        _SAVE_TYPES = {
+            "fortitude": "Fort",
+            "reflex": "Ref",
+            "will": "Will",
+        }
+        save_lower = save_name.lower()
+        if save_lower in _SAVE_TYPES:
+            defense["save_type"] = _SAVE_TYPES[save_lower]
+        elif save_name:
+            defense["text"] = save_name
+
+    # Move result blocks into defense (still HTML, processed by link_pass later)
+    for key in result_keys:
+        if key in spell:
+            defense[key] = spell.pop(key)
+
+    spell["defense"] = defense
+
+
 def spell_link_pass(struct):
     """Extract links from all text fields and unwrap <a> tags."""
+    # Fields that still need link extraction. Access fields, cast, defense,
+    # and result blocks are handled by spell_structurize_pass.
     _LINK_FIELDS = [
         "text",
         "requirement",
         "trigger",
         "effect",
-        "critical_success",
-        "success",
-        "failure",
-        "critical_failure",
-        "cast",
-        "traditions",
-        "spell_list",
-        "bloodline",
-        "deity",
-        "domain",
-        "mystery",
         "catalysts",
-        "patron_theme",
-        "lesson",
         "access",
         "amp",
         "pfs_note",
@@ -595,8 +784,6 @@ def spell_link_pass(struct):
         "targets",
         "duration",
         "area",
-        "saving_throw",
-        "defense",
         "cost",
     ]
 
@@ -620,6 +807,11 @@ def spell_link_pass(struct):
         _handle_text_field(section, "name")
         for field in _LINK_FIELDS:
             _handle_text_field(section, field)
+        # Process defense result block fields
+        defense = section.get("defense")
+        if defense and isinstance(defense, dict):
+            for field in ("critical_success", "success", "failure", "critical_failure"):
+                _handle_text_field(defense, field)
         # Process heightened entries
         for h in section.get("heightened", []):
             _handle_text_field(h, "text")
@@ -634,36 +826,17 @@ def spell_link_pass(struct):
 
 
 def spell_cleanup_pass(struct):
-    """Promote fields from spell object to top level."""
+    """Clean up spell object after restructuring."""
     assert "spell" in struct, f"No spell object found in struct: {struct.get('name')}"
     spell = struct["spell"]
 
-    # Promote name
+    # Promote name to top level
     struct["name"] = spell["name"]
 
-    # Promote sources
+    # Promote sources to top level (needed for file output and game_id)
     if "sources" in spell:
         struct["sources"] = spell["sources"]
         del spell["sources"]
-
-    # Promote spell_type and rank
-    for field in ("spell_type", "rank"):
-        if field in spell:
-            struct[field] = spell[field]
-            del spell[field]
-
-    # Promote text to top level
-    if "text" in spell:
-        text = spell["text"]
-        if text:
-            struct["text"] = text
-        del spell["text"]
-
-    # Promote links
-    if spell.get("links"):
-        assert "links" not in struct, struct
-        struct["links"] = spell["links"]
-        del spell["links"]
 
     # Clean up empty sections
     if "sections" in spell:
