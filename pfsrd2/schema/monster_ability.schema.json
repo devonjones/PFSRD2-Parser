@@ -133,6 +133,7 @@
 					"additionalItems": false
 				},
 				"sources": {"$ref": "#/definitions/sources"},
+				"sections": {"$ref": "#/definitions/sections"},
 				"links": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/link"},
@@ -141,7 +142,7 @@
 				"alternate_link": {"$ref": "#/definitions/alternate_link"},
 				"edition": {"enum": ["legacy", "remastered"]}
 			},
-			"required": ["name", "type", "text", "game-id", "game-obj", "sources"],
+			"required": ["name", "type", "game-id", "game-obj", "sources", "edition"],
 			"additionalProperties": false
 		},
 		"traits": {
