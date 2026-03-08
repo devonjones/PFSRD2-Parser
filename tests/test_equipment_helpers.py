@@ -12,6 +12,7 @@ from pfsrd2.equipment import (
     _collect_front_matter_action_spans,
     _count_links_in_html,
     _deduplicate_links_across_abilities,
+    _equipment_handle_value,
     _extract_ability_fields,
     _extract_action_type_from_spans,
     _extract_activation_traits_from_parens,
@@ -2184,6 +2185,41 @@ class TestSplitCompoundBulk:
         value, mods = _split_compound_bulk("-")
         assert value == "-"
         assert mods == []
+
+
+class TestEquipmentHandleValue:
+    def _make_trait(self, name):
+        return {"name": name, "type": "trait"}
+
+    def test_range_increment_case_insensitive(self):
+        trait = self._make_trait("Range Increment 30 feet")
+        _equipment_handle_value(trait)
+        assert trait["name"] == "range"
+        assert trait["value"] == "Increment 30 feet"
+
+    def test_numeric_dice_value(self):
+        trait = self._make_trait("Deadly d8")
+        _equipment_handle_value(trait)
+        assert trait["name"] == "Deadly"
+        assert trait["value"] == "d8"
+
+    def test_word_value_split(self):
+        trait = self._make_trait("Entrench Melee")
+        _equipment_handle_value(trait)
+        assert trait["name"] == "Entrench"
+        assert trait["value"] == "Melee"
+
+    def test_single_word_unchanged(self):
+        trait = self._make_trait("Fire")
+        _equipment_handle_value(trait)
+        assert trait["name"] == "Fire"
+        assert "value" not in trait
+
+    def test_plus_numeric(self):
+        trait = self._make_trait("Potency +1")
+        _equipment_handle_value(trait)
+        assert trait["name"] == "Potency"
+        assert trait["value"] == "+1"
 
 
 if __name__ == "__main__":

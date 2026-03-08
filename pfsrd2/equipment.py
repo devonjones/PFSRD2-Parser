@@ -20,6 +20,8 @@ from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.traits import (
     fetch_trait_by_name,
+)
+from pfsrd2.sql.traits import (
     trait_db_pass as universal_trait_db_pass,
 )
 

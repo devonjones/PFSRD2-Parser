@@ -122,8 +122,7 @@ def handle_alternate_link(details, allow_multiple=False):
         return None
     details.pop(0)
     text, links = extract_links(d)
-    if not links:
-        return None
+    assert links, f"Version text found but no links extracted: {d}"
     if "Legacy version" in d:
         alternate_type = "legacy"
     else:

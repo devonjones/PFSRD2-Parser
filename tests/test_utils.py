@@ -1,7 +1,14 @@
+import pytest
 from bs4 import BeautifulSoup
 
+from pfsrd2.sql.traits import strip_nested_metadata
 from universal.universal import get_links
-from universal.utils import filter_entities, recursive_filter_entities
+from universal.utils import (
+    content_filter,
+    filter_entities,
+    recursive_filter_entities,
+    strip_block_tags,
+)
 
 
 class TestFilterEntities:
@@ -159,3 +166,82 @@ class TestGetLinks:
         names = [l["name"] for l in links]
         assert "fireball" in names
         assert "rule" in names
+
+
+class TestStripNestedMetadata:
+    def test_strips_matching_version(self):
+        obj = {"name": "Fire", "schema_version": 1.1}
+        strip_nested_metadata(obj, 1.1)
+        assert "schema_version" not in obj
+        assert obj["name"] == "Fire"
+
+    def test_assertion_on_version_mismatch(self):
+        obj = {"name": "Fire", "schema_version": 2.0}
+        with pytest.raises(AssertionError, match="expected 1.1"):
+            strip_nested_metadata(obj, 1.1)
+
+    def test_assertion_on_missing_version(self):
+        obj = {"name": "Fire"}
+        with pytest.raises(AssertionError, match="expected 1.1"):
+            strip_nested_metadata(obj, 1.1)
+
+
+class TestContentFilter:
+    def test_strips_nav_before_hr(self):
+        html = '<div id="main"><nav>Nav</nav><hr/><span><h1>Title</h1>Content</span></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        content_filter(soup)
+        main = soup.find(id="main")
+        assert main.find("nav") is None
+        assert main.find("hr") is None
+
+    def test_unwraps_span_with_h1(self):
+        html = '<div id="main"><span><h1>Title</h1>Content</span></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        content_filter(soup)
+        main = soup.find(id="main")
+        assert main.find("h1") is not None
+        # span should be unwrapped (content accessible directly)
+        assert main.find("span") is None
+
+    def test_no_hr_does_not_crash(self):
+        html = '<div id="main"><span><h1>Title</h1></span></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        content_filter(soup)  # Should not raise
+
+    def test_no_main_does_nothing(self):
+        html = "<div>No main div</div>"
+        soup = BeautifulSoup(html, "html.parser")
+        content_filter(soup)  # Should not raise
+
+
+class TestStripBlockTagsExtraTags:
+    def test_strips_extra_tags(self):
+        struct = {"text": "<u>underlined</u> normal"}
+        strip_block_tags(struct, extra_tags=["u"])
+        assert "<u>" not in struct["text"]
+        assert "underlined" in struct["text"]
+
+    def test_strips_nethys_search(self):
+        struct = {"text": "before<nethys-search>search</nethys-search>after"}
+        strip_block_tags(struct)
+        assert "nethys-search" not in struct["text"]
+        assert "before" in struct["text"]
+        assert "after" in struct["text"]
+
+    def test_strips_margin_left_span(self):
+        struct = {"text": 'before<span style="margin-left:auto">junk</span>after'}
+        strip_block_tags(struct)
+        assert "junk" not in struct["text"]
+
+    def test_strips_corrupted_tags(self):
+        struct = {"text": "before<spells%6%%>corrupted</spells%6%%>after"}
+        strip_block_tags(struct)
+        assert "%" not in struct["text"] or "corrupted" not in struct["text"]
+
+    def test_extra_tags_h2_h3(self):
+        struct = {"text": "<h2>heading</h2><h3>sub</h3>text"}
+        strip_block_tags(struct, extra_tags=["h2", "h3"])
+        assert "<h2>" not in struct["text"]
+        assert "<h3>" not in struct["text"]
+        assert "heading" in struct["text"]

@@ -2,7 +2,11 @@
 
 import pytest
 
-from pfsrd2.creatures import split_stat_block_line
+from pfsrd2.creatures import (
+    _creature_handle_value,
+    _creature_trait_pre_process,
+    split_stat_block_line,
+)
 
 
 class TestSplitStatBlockLine:
@@ -55,6 +59,77 @@ class TestBreakOutMovementStrip:
         # split_stat_block_line as the entry point that feeds into it.
         result = split_stat_block_line(" fly 30 feet")
         assert result[0] == "fly 30 feet"
+
+
+class TestCreatureHandleValue:
+    def _make_trait(self, name):
+        return {"name": name, "type": "trait"}
+
+    def test_range_increment(self):
+        trait = self._make_trait("range increment 30 feet")
+        _creature_handle_value(trait)
+        assert trait["name"] == "range"
+        assert trait["value"] == "increment 30 feet"
+
+    def test_regex_numeric_match(self):
+        trait = self._make_trait("Deadly d8")
+        _creature_handle_value(trait)
+        assert trait["name"] == "Deadly"
+        assert trait["value"] == "d8"
+
+    def test_regex_plus_match(self):
+        trait = self._make_trait("Damage +2")
+        _creature_handle_value(trait)
+        assert trait["name"] == "Damage"
+        assert trait["value"] == "+2"
+
+    def test_versatile(self):
+        trait = self._make_trait("versatile S")
+        _creature_handle_value(trait)
+        assert trait["name"] == "versatile"
+        assert trait["value"] == "S"
+
+    def test_reload(self):
+        trait = self._make_trait("reload 1")
+        _creature_handle_value(trait)
+        assert trait["name"] == "reload"
+        assert trait["value"] == "1"
+
+    def test_precious(self):
+        trait = self._make_trait("precious cold iron")
+        _creature_handle_value(trait)
+        assert trait["name"] == "precious"
+        assert trait["value"] == "cold iron"
+
+    def test_attached(self):
+        trait = self._make_trait("attached to shield")
+        _creature_handle_value(trait)
+        assert trait["name"] == "attached"
+        assert trait["value"] == "to shield"
+
+    def test_no_match_unchanged(self):
+        trait = self._make_trait("Fire")
+        _creature_handle_value(trait)
+        assert trait["name"] == "Fire"
+        assert "value" not in trait
+
+
+class TestCreatureTraitPreProcess:
+    def test_non_alignment_returns_false(self):
+        trait = {"name": "Fire", "type": "trait", "classes": ["energy"]}
+        result = _creature_trait_pre_process(trait, [trait], None)
+        assert result is False
+
+    def test_no_alignment_trait_returns_false(self):
+        trait = {"name": "No Alignment", "type": "trait", "classes": ["alignment"]}
+        result = _creature_trait_pre_process(trait, [trait], None)
+        assert result is False
+
+    def test_value_extraction_in_pre_process(self):
+        trait = {"name": "versatile P", "type": "trait", "classes": ["weapon"]}
+        _creature_trait_pre_process(trait, [trait], None)
+        assert trait["name"] == "versatile"
+        assert trait["value"] == "P"
 
 
 if __name__ == "__main__":

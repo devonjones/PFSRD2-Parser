@@ -4,6 +4,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from pfsrd2.spell import (
+    _classify_cast_text,
     _clean_spell_name,
     _extract_heightened,
     _extract_legacy_marker,
@@ -12,11 +13,11 @@ from pfsrd2.spell import (
     _extract_traits,
     _label_to_key,
     _parse_heightened_label,
+    _split_on_hr,
     find_spell,
 )
 from universal.universal import handle_alternate_link
 from universal.utils import is_empty, remove_empty_fields
-
 
 # --- _clean_spell_name ---
 
@@ -56,9 +57,9 @@ class TestExtractAlternateLinks:
 
     def test_single_legacy_link(self):
         html = (
-            '<div>Legacy version: '
+            "<div>Legacy version: "
             '<a href="/Spells.aspx?ID=207" game-obj="Spells" aonid="207">'
-            'Neutralize Poison</a></div>'
+            "Neutralize Poison</a></div>"
         )
         details = [html]
         result = handle_alternate_link(details)
@@ -71,9 +72,9 @@ class TestExtractAlternateLinks:
 
     def test_single_remastered_link(self):
         html = (
-            '<div>Remastered version: '
+            "<div>Remastered version: "
             '<a href="/Spells.aspx?ID=1467" game-obj="Spells" aonid="1467">'
-            'Cleanse Affliction</a></div>'
+            "Cleanse Affliction</a></div>"
         )
         details = [html]
         result = handle_alternate_link(details)
@@ -82,7 +83,7 @@ class TestExtractAlternateLinks:
 
     def test_multi_link_returns_array(self):
         html = (
-            '<div>Legacy versions: '
+            "<div>Legacy versions: "
             '<a href="/Spells.aspx?ID=207" game-obj="Spells" aonid="207">Neutralize Poison</a>, '
             '<a href="/Spells.aspx?ID=251" game-obj="Spells" aonid="251">Remove Disease</a>, '
             '<a href="/Spells.aspx?ID=250" game-obj="Spells" aonid="250">Remove Curse</a></div>'
@@ -98,7 +99,7 @@ class TestExtractAlternateLinks:
 
     def test_multi_link_asserts_without_allow_multiple(self):
         html = (
-            '<div>Legacy versions: '
+            "<div>Legacy versions: "
             '<a href="/Spells.aspx?ID=207" game-obj="Spells" aonid="207">Neutralize Poison</a>, '
             '<a href="/Spells.aspx?ID=251" game-obj="Spells" aonid="251">Remove Disease</a></div>'
         )
@@ -326,10 +327,7 @@ class TestExtractHeightened:
 
     def test_multiple_heightened(self):
         spell = {}
-        text = (
-            "<b>Heightened (+1)</b> More damage<br/>"
-            "<b>Heightened (4th)</b> Extra targets"
-        )
+        text = "<b>Heightened (+1)</b> More damage<br/>" "<b>Heightened (4th)</b> Extra targets"
         _extract_heightened(spell, text)
         assert len(spell["heightened"]) == 2
 
@@ -438,3 +436,67 @@ class TestRemoveEmptyFields:
         obj = {"items": [{"a": 1}, {"b": None}]}
         remove_empty_fields(obj)
         assert obj == {"items": [{"a": 1}]}
+
+
+class TestSplitOnHr:
+    def test_before_extracts_content_before_hr(self):
+        html = "before text<hr/>after text"
+        bs = BeautifulSoup(html, "html.parser")
+        result = _split_on_hr(bs, before=True)
+        assert result == "before text"
+        assert bs.find("hr") is None
+
+    def test_after_extracts_content_after_hr(self):
+        html = "before text<hr/>after text"
+        bs = BeautifulSoup(html, "html.parser")
+        result = _split_on_hr(bs, before=False)
+        assert result == "after text"
+        assert bs.find("hr") is None
+
+    def test_no_hr_returns_none(self):
+        html = "just text"
+        bs = BeautifulSoup(html, "html.parser")
+        result = _split_on_hr(bs, before=True)
+        assert result is None
+
+    def test_multiple_hrs_splits_on_first(self):
+        html = "part1<hr/>part2<hr/>part3"
+        bs = BeautifulSoup(html, "html.parser")
+        result = _split_on_hr(bs, before=True)
+        assert result == "part1"
+        # Second hr should still be present
+        assert bs.find("hr") is not None
+
+
+class TestClassifyCastText:
+    def test_timed_cast(self):
+        cast_obj = {}
+        _classify_cast_text(cast_obj, "1 minute", [])
+        assert cast_obj["time"] == "1 minute"
+
+    def test_note_cast(self):
+        cast_obj = {}
+        _classify_cast_text(cast_obj, "*(none printed)*", [])
+        assert cast_obj["note"] == "*(none printed)*"
+
+    def test_plain_text_components(self):
+        cast_obj = {}
+        components = []
+        _classify_cast_text(cast_obj, "somatic, verbal", components)
+        assert len(components) == 2
+        assert components[0]["name"] == "somatic"
+        assert components[1]["name"] == "verbal"
+
+    def test_plain_text_with_existing_components_does_nothing(self):
+        cast_obj = {}
+        existing = [
+            {"name": "somatic", "type": "stat_block_section", "subtype": "spell_cast_component"}
+        ]
+        _classify_cast_text(cast_obj, "somatic", existing)
+        assert len(existing) == 1  # No duplicates added
+
+    def test_empty_text_does_nothing(self):
+        cast_obj = {}
+        _classify_cast_text(cast_obj, "", [])
+        assert "time" not in cast_obj
+        assert "note" not in cast_obj

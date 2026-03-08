@@ -26,7 +26,12 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.utils import content_filter, get_text, is_empty, remove_empty_fields, strip_block_tags
+from universal.utils import (
+    content_filter,
+    get_text,
+    remove_empty_fields,
+    strip_block_tags,
+)
 
 
 def parse_spell(filename, options):

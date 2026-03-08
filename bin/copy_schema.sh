@@ -14,8 +14,8 @@ SCHEMA_DIR=$(dirname "$0")/../pfsrd2/schema
 SCHEMA_FILE="${SCHEMA_DIR}/${SCHEMA_NAME}.schema.json"
 
 if [ ! -f "$SCHEMA_FILE" ]; then
-	echo "Warning: Schema file not found: $SCHEMA_FILE"
-	exit 0
+	echo "Error: Schema file not found: $SCHEMA_FILE"
+	exit 1
 fi
 
 # Extract schema_version from the schema's top-level properties
@@ -32,8 +32,8 @@ else:
 " 2>/dev/null)
 
 if [ -z "$VERSION" ]; then
-	echo "Warning: No schema_version found in $SCHEMA_FILE"
-	exit 0
+	echo "Error: No schema_version found in $SCHEMA_FILE"
+	exit 1
 fi
 
 DEST="${PF2_DATA_DIR}/${SCHEMA_NAME}.schema.${VERSION}.json"

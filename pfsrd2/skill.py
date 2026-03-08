@@ -624,5 +624,3 @@ def write_skill(jsondir, struct, source):
 def create_skill_filename(jsondir, struct):
     title = jsondir + "/" + char_replace(struct["name"]) + ".json"
     return os.path.abspath(title)
-
-

@@ -20,23 +20,12 @@ from universal.universal import (
     parse_universal,
     remove_empty_sections_pass,
 )
-from universal.utils import get_text, is_tag_named
+from universal.utils import content_filter, get_text, is_tag_named
 
 
 def _content_filter(soup):
-    """Remove navigation elements before <hr> and unwrap the content span."""
-    main = soup.find(id="main")
-    if not main:
-        return
-    hr = main.find("hr")
-    if hr:
-        for sibling in list(hr.previous_siblings):
-            sibling.extract()
-        hr.extract()
-    for span in main.find_all("span", recursive=False):
-        if span.find("h1"):
-            span.unwrap()
-            break
+    """Delegate to shared content_filter."""
+    content_filter(soup)
 
 
 def parse_monster_ability(filename, options):
@@ -56,7 +45,7 @@ def parse_monster_ability(filename, options):
     aon_pass(struct, basename)
     section_pass(struct)
     addon_pass(struct)
-    universal_trait_db_pass(struct)
+    universal_trait_db_pass(struct, edition_required=False)
     game_id_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
@@ -280,5 +269,3 @@ def addon_pass(struct):
             parts.append(str(child))
     _handle_ranges(addons)
     _set_struct_text(struct, parts)
-
-

@@ -16,6 +16,8 @@ from pfsrd2.sql.traits import (
     EXPECTED_TRAIT_SCHEMA_VERSION,
     fetch_trait_by_name,
     strip_nested_metadata,
+)
+from pfsrd2.sql.traits import (
     trait_db_pass as universal_trait_db_pass,
 )
 from pfsrd2.trait import extract_starting_traits, trait_parse
@@ -355,33 +357,26 @@ def markdown_valid_set(struct, name, path, validset):
         validset.add("a")
 
 
+_CREATURE_PREFIX_TRAITS = ["versatile", "reload", "precious", "attached"]
+
+
 def _creature_handle_value(trait):
     """Extract value from creature trait names like 'range increment 30 feet'."""
-    m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
     if trait["name"].startswith("range increment"):
-        value = trait["name"].replace("range ", "")
+        trait["value"] = trait["name"].replace("range ", "")
         trait["name"] = "range"
-        trait["value"] = value
-    elif m:
+        return
+    m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
+    if m:
         name, value = m.groups()
         trait["name"] = name
         trait["value"] = value
-    elif trait["name"].startswith("versatile "):
-        value = trait["name"].replace("versatile ", "")
-        trait["name"] = "versatile"
-        trait["value"] = value
-    elif trait["name"].startswith("reload"):
-        value = trait["name"].replace("reload ", "")
-        trait["name"] = "reload"
-        trait["value"] = value
-    elif trait["name"].startswith("precious"):
-        value = trait["name"].replace("precious ", "")
-        trait["name"] = "precious"
-        trait["value"] = value
-    elif trait["name"].startswith("attached"):
-        value = trait["name"].replace("attached ", "")
-        trait["name"] = "attached"
-        trait["value"] = value
+        return
+    for prefix in _CREATURE_PREFIX_TRAITS:
+        if trait["name"].startswith(prefix + " "):
+            trait["value"] = trait["name"][len(prefix) + 1 :]
+            trait["name"] = prefix
+            return
 
 
 def _creature_handle_alignment(trait, parent, curs):
