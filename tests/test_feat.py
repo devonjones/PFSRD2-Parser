@@ -5,6 +5,9 @@ from bs4 import BeautifulSoup
 
 from pfsrd2.feat import (
     _attach_archetype_note,
+    _clean_html_fields,
+    _convert_feat_text,
+    _detect_archetype_level,
     _extract_action_type,
     _extract_archetypes,
     _extract_bold_fields,
@@ -14,6 +17,7 @@ from pfsrd2.feat import (
     _extract_source_from_bs,
     _extract_trailing_sections,
     _parse_called_action,
+    _promote_feat_fields,
     feat_extract_pass,
     feat_link_pass,
     find_feat,
@@ -970,3 +974,141 @@ class TestFeatLinkPassAbilities:
         arch = struct["sections"][0]["archetype"][0]
         assert "<a " not in arch["note"]
         assert "links" in arch
+
+
+# --- _detect_archetype_level ---
+
+
+class TestDetectArchetypeLevel:
+    def test_detects_level_from_archlevel_file(self, tmp_path):
+        """Creates a fake ArchLevel file and verifies detection."""
+        base = tmp_path / "Feats.aspx.ID_364"
+        base.write_text("base file")
+        archlevel = tmp_path / "Feats.aspx.ID_364.ArchLevel_4"
+        archlevel.write_text("variant")
+        struct = {
+            "sections": [
+                {"type": "stat_block_section", "subtype": "feat", "name": "Test", "level": 2}
+            ]
+        }
+        _detect_archetype_level(struct, str(base))
+        feat = find_feat(struct)
+        assert feat["archetype_level"] == 4
+
+    def test_no_archlevel_file(self, tmp_path):
+        """No ArchLevel file means no archetype_level field."""
+        base = tmp_path / "Feats.aspx.ID_100"
+        base.write_text("base file")
+        struct = {
+            "sections": [
+                {"type": "stat_block_section", "subtype": "feat", "name": "Test", "level": 1}
+            ]
+        }
+        _detect_archetype_level(struct, str(base))
+        feat = find_feat(struct)
+        assert "archetype_level" not in feat
+
+    def test_extracts_correct_level_number(self, tmp_path):
+        base = tmp_path / "Feats.aspx.ID_1499"
+        base.write_text("base")
+        archlevel = tmp_path / "Feats.aspx.ID_1499.ArchLevel_10"
+        archlevel.write_text("variant")
+        struct = {
+            "sections": [
+                {"type": "stat_block_section", "subtype": "feat", "name": "Test", "level": 8}
+            ]
+        }
+        _detect_archetype_level(struct, str(base))
+        assert find_feat(struct)["archetype_level"] == 10
+
+
+# --- _convert_feat_text ---
+
+
+class TestConvertFeatText:
+    def test_converts_html_to_markdown(self):
+        feat = {"text": "You gain a <strong>bonus</strong> to attacks."}
+        _convert_feat_text(feat)
+        assert "**bonus**" in feat["text"]
+
+    def test_removes_nethys_note(self):
+        feat = {"text": "<i>Note from Nethys: this is a test</i>Actual description."}
+        _convert_feat_text(feat)
+        assert "Note from Nethys" not in feat["text"]
+        assert "Actual description" in feat["text"]
+
+    def test_deletes_empty_text(self):
+        feat = {"text": "<i>Note from Nethys: only note here</i>"}
+        _convert_feat_text(feat)
+        assert "text" not in feat
+
+    def test_no_text_field_is_noop(self):
+        feat = {"name": "Test"}
+        _convert_feat_text(feat)
+        assert "text" not in feat
+
+
+# --- _promote_feat_fields ---
+
+
+class TestPromoteFeatFields:
+    def test_promotes_name_and_sources(self):
+        feat = {
+            "name": "Power Attack",
+            "sources": [{"name": "Core Rulebook", "type": "source"}],
+            "sections": [],
+        }
+        struct = {"name": "", "sections": [feat]}
+        _promote_feat_fields(struct, feat)
+        assert struct["name"] == "Power Attack"
+        assert struct["sources"] == [{"name": "Core Rulebook", "type": "source"}]
+        assert "sources" not in feat
+        assert "sections" not in feat
+
+    def test_keeps_existing_sources_if_none_in_feat(self):
+        feat = {"name": "Test", "sections": []}
+        struct = {"name": "", "sections": [feat], "sources": [{"name": "Existing"}]}
+        _promote_feat_fields(struct, feat)
+        assert struct["sources"] == [{"name": "Existing"}]
+
+    def test_empty_sources_when_none_anywhere(self):
+        feat = {"name": "Test", "sections": []}
+        struct = {"name": "", "sections": [feat]}
+        _promote_feat_fields(struct, feat)
+        assert struct["sources"] == []
+
+
+# --- _clean_html_fields ---
+
+
+class TestCleanHtmlFields:
+    def test_renames_html_to_text(self):
+        struct = {
+            "sections": [
+                {"name": "Desc", "html": "<p>Content</p>", "sections": []}
+            ]
+        }
+        _clean_html_fields(struct)
+        assert struct["sections"][0]["text"] == "<p>Content</p>"
+        assert "html" not in struct["sections"][0]
+
+    def test_recursive_rename(self):
+        struct = {
+            "sections": [
+                {
+                    "name": "Outer",
+                    "html": "outer html",
+                    "sections": [
+                        {"name": "Inner", "html": "inner html", "sections": []}
+                    ],
+                }
+            ]
+        }
+        _clean_html_fields(struct)
+        assert struct["sections"][0]["text"] == "outer html"
+        assert struct["sections"][0]["sections"][0]["text"] == "inner html"
+
+    def test_no_html_key_is_noop(self):
+        struct = {"sections": [{"name": "Test", "text": "already text", "sections": []}]}
+        _clean_html_fields(struct)
+        assert struct["sections"][0]["text"] == "already text"

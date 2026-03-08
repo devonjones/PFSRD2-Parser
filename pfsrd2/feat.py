@@ -1,3 +1,4 @@
+import glob
 import json
 import os
 import re
@@ -137,9 +138,7 @@ def restructure_feat_pass(details):
             feat_name = get_text(name_link).strip()
             action_text = str(bs)
             break
-    if not feat_name:
-        # Last resort: use whatever text is available
-        feat_name = get_text(BeautifulSoup(first.get("name", ""), "html.parser")).strip()
+    assert feat_name, f"Could not extract feat name from sections: {[s.get('name') for s in first.get('sections', [])]}"
 
     # Scan all sections recursively to find feat level and content
     feat_level = None
@@ -294,7 +293,8 @@ def feat_extract_pass(struct):
             sources.append(source)
         else:
             break
-    feat["sources"] = sources if sources else feat.get("sources", [])
+    assert sources, f"No sources found for feat {feat.get('name', 'unknown')}"
+    feat["sources"] = sources
 
     # 4. Split on <hr> — pre-hr is stats, post-hr is description
     hr = bs.find("hr")
@@ -335,8 +335,6 @@ def feat_extract_pass(struct):
 
 def _detect_archetype_level(struct, filename):
     """If an ArchLevel variant file exists, set archetype_level on the feat."""
-    import glob
-
     pattern = filename + ".ArchLevel_*"
     matches = glob.glob(pattern)
     if not matches:
@@ -375,10 +373,10 @@ def _extract_source_from_bs(bs):
     if not source_tag:
         return None
     siblings = list(source_tag.next_siblings)
-    source_tag.decompose()
     _strip_whitespace(siblings)
     if not siblings or getattr(siblings[0], "name", None) not in ("a", "i"):
         return None
+    source_tag.decompose()
     book = siblings.pop(0)
     source = extract_source(book)
     book.decompose()
@@ -450,11 +448,10 @@ def _extract_archetypes(section, bs):
 
     archetypes = []
     for a in value_bs.find_all("a"):
-        name = get_text(a).strip()
-        link = extract_link(a)
-        arch_obj = {"name": name, "type": "feat_archetype"}
-        if link and len(link) == 2:
-            arch_obj["link"] = link[1]
+        name, link_obj = extract_link(a)
+        arch_obj = {"name": name.strip(), "type": "feat_archetype"}
+        if link_obj:
+            arch_obj["link"] = link_obj
         # Check for '*' immediately after this link's parent <u> or the <a> itself
         parent = a.parent
         target = parent if parent and parent.name == "u" else a
@@ -850,7 +847,7 @@ def _convert_feat_text(feat):
     first = list(soup.children)[0] if list(soup.children) else None
     if first and first.name == "i":
         text = get_text(first)
-        if text.find("Note from Nethys:") > -1:
+        if "Note from Nethys:" in text:
             first.clear()
         first.unwrap()
     cleaned = str(soup).strip()
@@ -886,9 +883,8 @@ def _clean_html_fields(struct):
 def write_feat(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
     filename = create_feat_filename(jsondir, struct)
-    fp = open(filename, "w")
-    json.dump(struct, fp, indent=4)
-    fp.close()
+    with open(filename, "w") as fp:
+        json.dump(struct, fp, indent=4)
 
 
 def create_feat_filename(jsondir, struct):
