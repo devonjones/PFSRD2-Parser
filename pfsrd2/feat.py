@@ -52,6 +52,7 @@ def parse_feat(filename, options):
         else:
             struct["alternate_link"] = alternate_link
     feat_extract_pass(struct)
+    _detect_archetype_level(struct, filename)
     _extract_called_actions(struct)
     source_pass(struct, find_feat)
     feat_link_pass(struct)
@@ -60,6 +61,10 @@ def parse_feat(filename, options):
     aon_pass(struct, aon_basename)
     restructure_pass(struct, "feat", find_feat)
     struct["edition"] = edition_from_alternate_link(struct) or edition_pass(struct["sections"])
+    struct["sections"] = [
+        s for s in struct["sections"]
+        if s.get("name") not in ("Legacy Content", "Traits")
+    ]
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
     feat_cleanup_pass(struct)
@@ -302,14 +307,45 @@ def feat_extract_pass(struct):
         pre_hr_text = "".join(pre_hr_parts).strip()
         _extract_bold_fields(feat, pre_hr_text)
 
-    # 5. Extract result blocks from remaining text
+    # 5. Extract calledAction divs from post-hr text before bold field extraction
+    # (prevents calledAction content from being absorbed into bold fields)
+    for div in list(bs.find_all("div", {"class": "calledAction"})):
+        action = _parse_called_action(div)
+        div.extract()
+        feat.setdefault("abilities", []).append(action)
+
+    # 6. Extract trailing h2 sections ("Leads To...", "Traits") and trait-entry
+    # divs that are sometimes trapped in the feat text instead of being split
+    # into separate sections by parse_universal
+    _extract_trailing_sections(struct, bs)
+
+    # 7. Extract result blocks from remaining text
     _extract_result_blocks(feat, bs)
 
-    # 6. Clean remaining text
+    # 8. Extract bold fields from post-hr text (Special, Trigger, Requirement
+    # can appear in the description after the <hr> divider)
+    _extract_bold_fields_from_bs(feat, bs)
+
+    # 9. Clean remaining text
     text = str(bs).strip()
     text = re.sub(r"^(<br/?>[\s]*)+", "", text)
     text = re.sub(r"(<br/?>[\s]*)+$", "", text)
     feat["text"] = text.strip()
+
+
+def _detect_archetype_level(struct, filename):
+    """If an ArchLevel variant file exists, set archetype_level on the feat."""
+    import glob
+
+    pattern = filename + ".ArchLevel_*"
+    matches = glob.glob(pattern)
+    if not matches:
+        return
+    # Extract the level number from the first match
+    m = re.search(r"\.ArchLevel_(\d+)$", matches[0])
+    if m:
+        feat = find_feat(struct)
+        feat["archetype_level"] = int(m.group(1))
 
 
 def _extract_action_type(feat):
@@ -363,8 +399,137 @@ def _extract_source_from_bs(bs):
 
 
 def _extract_bold_fields(section, text):
-    """Extract Prerequisites, Archetype, Requirements, Trigger, etc. from pre-hr text."""
+    """Extract Prerequisites, Archetype, Requirements, Trigger, etc. from text string."""
     bs = BeautifulSoup(text, "html.parser")
+    _extract_bold_fields_from_bs(section, bs)
+    _attach_archetype_note(section)
+
+
+def _extract_archetypes(section, bs):
+    """Extract Archetype/Archetypes bold field into structured array.
+
+    Parses archetype links, detects '*' footnote markers on individual archetypes,
+    and extracts the '* This archetype/version...' note text.
+    """
+    bold = None
+    for b in list(bs.find_all("b")):
+        label = get_text(b).strip()
+        if label in ("Archetype", "Archetypes"):
+            bold = b
+            break
+    if not bold:
+        return
+
+    # Collect sibling nodes until next <b> tag
+    nodes_to_remove = []
+    node = bold.next_sibling
+    value_nodes = []
+    note_nodes = []
+    in_note = False
+    while node:
+        if getattr(node, "name", None) == "b":
+            break
+        # Detect "* This archetype/version..." note (not a bare "*" star marker)
+        if (
+            not in_note
+            and isinstance(node, str)
+            and re.match(r"^\*\s+\w", node.lstrip())
+        ):
+            in_note = True
+        if in_note:
+            note_nodes.append(node)
+        else:
+            value_nodes.append(node)
+        nodes_to_remove.append(node)
+        node = node.next_sibling
+
+    # Parse archetype links from value nodes
+    value_html = "".join(str(n) for n in value_nodes).strip()
+    value_html = re.sub(r"<br/?>[\s]*$", "", value_html)
+    value_bs = BeautifulSoup(value_html, "html.parser")
+
+    archetypes = []
+    for a in value_bs.find_all("a"):
+        name = get_text(a).strip()
+        link = extract_link(a)
+        arch_obj = {"name": name, "type": "feat_archetype"}
+        if link and len(link) == 2:
+            arch_obj["link"] = link[1]
+        # Check for '*' immediately after this link's parent <u> or the <a> itself
+        parent = a.parent
+        target = parent if parent and parent.name == "u" else a
+        next_sib = target.next_sibling
+        if isinstance(next_sib, str) and next_sib.startswith("*"):
+            arch_obj["star"] = True
+        archetypes.append(arch_obj)
+
+    if not archetypes:
+        return
+
+    # Extract note text if present
+    if note_nodes:
+        note_text = "".join(str(n) for n in note_nodes).strip()
+        note_text = re.sub(r"<br/?>[\s]*$", "", note_text)
+        # Strip leading "* " from note
+        note_text = re.sub(r"^\*\s*", "", note_text)
+        if note_text:
+            for arch in archetypes:
+                if arch.get("star"):
+                    arch["note"] = note_text
+                    del arch["star"]
+
+    section["archetype"] = archetypes
+
+    # Remove extracted nodes from BS
+    for n in nodes_to_remove:
+        n.extract()
+    bold.decompose()
+
+
+def _attach_archetype_note(section):
+    """Find '* This archetype/version...' note in field values and move to archetypes.
+
+    The note often ends up appended to the last pre-hr bold field value (e.g. requirement)
+    because it appears after all bold fields in the HTML. Strip it from the field and
+    attach it to starred archetype objects.
+    """
+    archetypes = section.get("archetype")
+    if not archetypes or not isinstance(archetypes, list):
+        return
+    # Already have notes from inline detection
+    starred = [a for a in archetypes if a.get("star")]
+    if starred and any("note" in a for a in starred):
+        return
+
+    # Only scan bold-extracted fields, not description text or name
+    _note_scan_fields = {
+        "requirement", "prerequisite", "trigger", "frequency", "cost",
+        "duration", "access", "special", "effect",
+    }
+    note_re = re.compile(r"\s*\*\s+(This (?:archetype|version)\b.+)")
+    for key in _note_scan_fields:
+        val = section.get(key)
+        if not isinstance(val, str):
+            continue
+        m = note_re.search(val)
+        if m:
+            note_text = m.group(1).strip()
+            # Strip trailing <br> from note
+            note_text = re.sub(r"<br/?>[\s]*$", "", note_text).strip()
+            # Remove note from field value
+            section[key] = val[: m.start()].rstrip()
+            # Strip trailing <br> from cleaned value
+            section[key] = re.sub(r"<br/?>[\s]*$", "", section[key]).strip()
+            # Attach note to starred archetypes, or all if none are starred
+            targets = starred if starred else archetypes
+            for arch in targets:
+                arch["note"] = note_text
+                arch.pop("star", None)
+            return
+
+
+def _extract_bold_fields_from_bs(section, bs):
+    """Extract bold-labeled fields from a BS object, removing them in place."""
     known_labels = {
         "Prerequisites",
         "Prerequisite",
@@ -375,20 +540,26 @@ def _extract_bold_fields(section, text):
         "Cost",
         "Duration",
         "Access",
-        "Archetype",
         "Special",
         "Effect",
     }
-    for bold in bs.find_all("b"):
+
+    # Handle Archetype/Archetypes separately with structured extraction
+    _extract_archetypes(section, bs)
+
+    for bold in list(bs.find_all("b")):
         label = get_text(bold).strip()
         if label not in known_labels:
             continue
-        parts = []
+        # Collect value nodes between this bold and the next bold
+        nodes_to_remove = []
         node = bold.next_sibling
+        parts = []
         while node:
             if getattr(node, "name", None) == "b":
                 break
             parts.append(str(node))
+            nodes_to_remove.append(node)
             node = node.next_sibling
         value = "".join(parts).strip()
         value = re.sub(r"<br/?>[\s]*$", "", value)
@@ -400,6 +571,47 @@ def _extract_bold_fields(section, text):
         if key == "prerequisites":
             key = "prerequisite"
         section[key] = value
+        # Remove extracted nodes from BS
+        for n in nodes_to_remove:
+            n.extract()
+        bold.decompose()
+
+
+def _extract_trailing_sections(struct, bs):
+    """Extract h2 sections and trait-entry divs trapped in feat text.
+
+    Some feats (mostly legacy dedication feats) have "X Leads To..." and
+    "Traits" h2 sections inside the feat text instead of as separate sections.
+    This happens when parse_universal can't split them due to DOM structure.
+    """
+    for h2 in list(bs.find_all("h2", class_="title")):
+        name = get_text(h2).strip()
+        # Collect all content after the h2 until the next h2
+        parts = []
+        nodes_to_remove = []
+        node = h2.next_sibling
+        while node:
+            if getattr(node, "name", None) == "h2":
+                break
+            parts.append(str(node))
+            nodes_to_remove.append(node)
+            node = node.next_sibling
+        text = "".join(parts).strip()
+        for n in nodes_to_remove:
+            n.extract()
+        h2.decompose()
+        # Drop "Traits" sections — redundant with enriched trait objects
+        if name == "Traits":
+            continue
+        if name or text:
+            section = {"name": name, "type": "section", "sections": []}
+            if text:
+                section["text"] = text
+            struct["sections"].append(section)
+
+    # Remove any remaining trait-entry divs
+    for div in list(bs.find_all("div", {"class": "trait-entry"})):
+        div.extract()
 
 
 def _extract_result_blocks(section, bs):
@@ -415,22 +627,20 @@ def _extract_result_blocks(section, bs):
         if label not in result_labels:
             continue
         key = result_labels[label]
+        nodes_to_remove = []
         parts = []
         node = bold.next_sibling
         while node:
             if getattr(node, "name", None) == "b":
-                next_label = get_text(node).strip()
-                if next_label in result_labels:
-                    break
+                break
             parts.append(str(node))
+            nodes_to_remove.append(node)
             node = node.next_sibling
         value = "".join(parts).strip()
         value = re.sub(r"<br/?>[\s]*$", "", value)
         section[key] = value
-        for node in list(bold.next_siblings):
-            if getattr(node, "name", None) == "b" and get_text(node).strip() in result_labels:
-                break
-            node.extract()
+        for n in nodes_to_remove:
+            n.extract()
         bold.decompose()
 
 
@@ -510,19 +720,58 @@ def _parse_called_action(div):
     if source:
         ability["sources"] = [source]
 
-    # Remove leading br/hr tags
+    # Extract bold fields (Trigger, Requirements, Frequency, etc.) from pre-hr
+    # content, then use post-hr as description text
+    hr = div.find("hr")
+    if hr:
+        pre_hr_parts = []
+        for sibling in list(hr.previous_siblings):
+            pre_hr_parts.insert(0, str(sibling))
+            sibling.extract()
+        hr.decompose()
+        pre_hr_text = "".join(pre_hr_parts).strip()
+        _extract_bold_fields(ability, pre_hr_text)
+
+    # Remove leading br tags from remaining content
     for child in list(div.children):
-        if getattr(child, "name", None) in ("br", "hr"):
+        if getattr(child, "name", None) == "br":
             child.decompose()
         elif isinstance(child, str) and not child.strip():
             child.extract()
         else:
             break
 
-    # Remaining text is the description
-    text = get_text(div).strip()
-    if text:
-        ability["text"] = text
+    # Extract result blocks from post-hr content
+    _extract_result_blocks(ability, div)
+
+    # Extract trailing h2 sections (e.g. "Spellstrike Specifics")
+    for h2 in list(div.find_all("h2", class_="title")):
+        name = get_text(h2).strip()
+        parts = []
+        nodes_to_remove = []
+        node = h2.next_sibling
+        while node:
+            if getattr(node, "name", None) == "h2":
+                break
+            parts.append(str(node))
+            nodes_to_remove.append(node)
+            node = node.next_sibling
+        text = "".join(parts).strip()
+        for n in nodes_to_remove:
+            n.extract()
+        h2.decompose()
+        if name or text:
+            section = {"name": name, "type": "section", "sections": []}
+            if text:
+                section["text"] = text
+            ability["sections"].append(section)
+
+    # Remaining inner HTML is the description (preserve tags for link extraction)
+    text = "".join(str(c) for c in div.children).strip()
+    text = re.sub(r"^(<br/?>[\s]*)+", "", text)
+    text = re.sub(r"(<br/?>[\s]*)+$", "", text)
+    if text.strip():
+        ability["text"] = text.strip()
 
     return ability
 
@@ -536,7 +785,6 @@ _LINK_FIELDS = [
     "cost",
     "effect",
     "access",
-    "archetype",
     "special",
     "critical_success",
     "success",
@@ -567,8 +815,13 @@ def feat_link_pass(struct):
         _handle_text_field(section, "name", keep_name_links)
         for field in _LINK_FIELDS:
             _handle_text_field(section, field)
+        for arch in section.get("archetype", []):
+            if isinstance(arch, dict) and "note" in arch:
+                _handle_text_field(arch, "note")
         for s in section.get("sections", []):
             _process_section(s)
+        for ability in section.get("abilities", []):
+            _process_section(ability)
 
     for section in struct["sections"]:
         _process_section(section)

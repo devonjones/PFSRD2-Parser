@@ -167,6 +167,18 @@
 			"required": ["name", "type", "game-id", "game-obj", "sources", "edition"],
 			"additionalProperties": false
 		},
+		"feat_archetype": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["feat_archetype"]},
+				"link": {"$ref": "#/definitions/link"},
+				"note": {"type": "string"},
+				"links": {"$ref": "#/definitions/links"}
+			},
+			"required": ["name", "type"],
+			"additionalProperties": false
+		},
 		"called_ability": {
 			"type": "object",
 			"properties": {
@@ -183,7 +195,25 @@
 				},
 				"sources": {"$ref": "#/definitions/sources"},
 				"text": {"type": "string"},
-				"links": {"$ref": "#/definitions/links"}
+				"links": {"$ref": "#/definitions/links"},
+				"trigger": {"type": "string"},
+				"requirement": {"type": "string"},
+				"frequency": {"type": "string"},
+				"prerequisite": {"type": "string"},
+				"effect": {"type": "string"},
+				"cost": {"type": "string"},
+				"duration": {"type": "string"},
+				"access": {"type": "string"},
+				"special": {"type": "string"},
+				"archetype": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/feat_archetype"},
+					"additionalItems": false
+				},
+				"critical_success": {"type": "string"},
+				"success": {"type": "string"},
+				"failure": {"type": "string"},
+				"critical_failure": {"type": "string"}
 			},
 			"required": ["type", "subtype", "ability_type", "name"],
 			"additionalProperties": false
@@ -207,7 +237,12 @@
 				"trigger": {"type": "string"},
 				"frequency": {"type": "string"},
 				"access": {"type": "string"},
-				"archetype": {"type": "string"},
+				"archetype": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/feat_archetype"},
+					"additionalItems": false
+				},
+				"archetype_level": {"type": "integer"},
 				"special": {"type": "string"},
 				"effect": {"type": "string"},
 				"cost": {"type": "string"},
