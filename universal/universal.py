@@ -100,27 +100,47 @@ def entity_pass(details):
     return details
 
 
-def handle_alternate_link(details):
+def handle_alternate_link(details, allow_multiple=False):
+    """Extract alternate link(s) from the first detail element.
+
+    Args:
+        details: List of detail elements (first is checked for version text).
+        allow_multiple: If True, return array for multiple links, single dict
+            for one link, None for no match. If False (default), assert exactly
+            one link exists.
+
+    Returns:
+        Single alternate_link dict, list of dicts (if allow_multiple and >1),
+        or None if no version text found.
+    """
+    if not details:
+        return None
     d = details[0]
-    if "Legacy version" in d or "Remastered version" in d:
-        details.pop(0)
-        text, links = extract_links(d)
-        bs = BeautifulSoup(text.strip(), "html.parser")
-        assert len(list(bs.children)) == 1, bs
-        div = list(bs.children)[0]
-        assert div.name == "div", div
-        assert list(div.children)[0].__class__ == NavigableString, bs
-        text = get_text(div)
+    if not isinstance(d, str):
+        return None
+    if "Legacy version" not in d and "Remastered version" not in d:
+        return None
+    details.pop(0)
+    text, links = extract_links(d)
+    assert links, f"Version text found but no links extracted: {d}"
+    if "Legacy version" in d:
+        alternate_type = "legacy"
+    else:
+        alternate_type = "remastered"
+    if not allow_multiple:
         assert len(links) == 1, links
-        link = links[0]
-        del link["alt"]
-        del link["name"]
-        link["type"] = "alternate_link"
-        if "Legacy version" in d:
-            link["alternate_type"] = "legacy"
-        else:
-            link["alternate_type"] = "remastered"
-        return link
+    result = []
+    for link in links:
+        alt = {
+            "type": "alternate_link",
+            "game-obj": link["game-obj"],
+            "aonid": link["aonid"],
+            "alternate_type": alternate_type,
+        }
+        result.append(alt)
+    if len(result) == 1:
+        return result[0]
+    return result
 
 
 def nethys_search_pass(details):

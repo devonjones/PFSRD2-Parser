@@ -6,8 +6,7 @@ from bs4 import BeautifulSoup, Tag
 
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
-from pfsrd2.sql import get_db_connection, get_db_path
-from pfsrd2.sql.traits import fetch_trait_by_name
+from pfsrd2.sql.traits import trait_db_pass as universal_trait_db_pass
 from pfsrd2.trait import extract_starting_traits
 from universal.creatures import universal_handle_range, write_creature
 from universal.files import char_replace, makedirs
@@ -20,26 +19,13 @@ from universal.universal import (
     game_id_pass,
     parse_universal,
     remove_empty_sections_pass,
-    test_key_is_value,
-    walk,
 )
-from universal.utils import get_text, is_tag_named
+from universal.utils import content_filter, get_text, is_tag_named
 
 
 def _content_filter(soup):
-    """Remove navigation elements before <hr> and unwrap the content span."""
-    main = soup.find(id="main")
-    if not main:
-        return
-    hr = main.find("hr")
-    if hr:
-        for sibling in list(hr.previous_siblings):
-            sibling.extract()
-        hr.extract()
-    for span in main.find_all("span", recursive=False):
-        if span.find("h1"):
-            span.unwrap()
-            break
+    """Delegate to shared content_filter."""
+    content_filter(soup)
 
 
 def parse_monster_ability(filename, options):
@@ -59,7 +45,7 @@ def parse_monster_ability(filename, options):
     aon_pass(struct, basename)
     section_pass(struct)
     addon_pass(struct)
-    trait_db_pass(struct)
+    universal_trait_db_pass(struct, edition_required=False)
     game_id_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
@@ -283,35 +269,3 @@ def addon_pass(struct):
             parts.append(str(child))
     _handle_ranges(addons)
     _set_struct_text(struct, parts)
-
-
-def trait_db_pass(struct):
-    # TODO: Copied from creature.py
-    def _merge_classes(trait, db_trait):
-        trait_classes = set(trait.get("classes", []))
-        db_trait_classes = set(db_trait.get("classes", []))
-        db_trait["classes"] = list(trait_classes | db_trait_classes)
-
-    def _check_trait(trait, parent):
-        data = fetch_trait_by_name(curs, trait["name"])
-        assert data, f"{data} | {trait}"
-        db_trait = json.loads(data["trait"])
-        _merge_classes(trait, db_trait)
-        if "link" in trait and trait["link"]["game-obj"] == "Trait":
-            assert trait["link"]["aonid"] == db_trait["aonid"], f"{trait} : {db_trait}"
-        assert isinstance(parent, list), parent
-        index = parent.index(trait)
-        if "value" in trait:
-            db_trait["value"] = trait["value"]
-        if "aonid" in db_trait:
-            del db_trait["aonid"]
-        _sort_classes(db_trait)
-        parent[index] = db_trait
-
-    def _sort_classes(trait):
-        trait["classes"].sort()
-
-    db_path = get_db_path("pfsrd2.db")
-    conn = get_db_connection(db_path)
-    curs = conn.cursor()
-    walk(struct, test_key_is_value("subtype", "trait"), _check_trait)

@@ -5,10 +5,9 @@ import sys
 
 from bs4 import BeautifulSoup
 
-from pfsrd2.license import license_pass
+from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
-from pfsrd2.sql import get_db_connection, get_db_path
-from pfsrd2.sql.sources import fetch_source_by_name
+from pfsrd2.sql.sources import set_edition_from_db_pass
 from pfsrd2.sql.traits import trait_db_pass
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
@@ -27,7 +26,7 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.utils import get_text
+from universal.utils import content_filter, get_text, remove_empty_fields, strip_block_tags
 
 
 def parse_skill(filename, options):
@@ -64,9 +63,10 @@ def parse_skill(filename, options):
     set_edition_from_db_pass(struct)
     trait_db_pass(struct)
     license_pass(struct)
-    _strip_block_tags(struct)
+    license_consolidation_pass(struct)
+    strip_block_tags(struct)
     universal_markdown_pass(struct, struct["name"], "")
-    _remove_empty_fields(struct)
+    remove_empty_fields(struct)
     if not options.skip_schema:
         struct["schema_version"] = 1.0
         validate_against_schema(struct, "skill.schema.json")
@@ -81,19 +81,7 @@ def parse_skill(filename, options):
 
 
 def _content_filter(soup):
-    """Remove navigation elements before <hr> and unwrap the content span."""
-    main = soup.find(id="main")
-    if not main:
-        return
-    hr = main.find("hr")
-    if hr:
-        for sibling in list(hr.previous_siblings):
-            sibling.extract()
-        hr.extract()
-    for span in main.find_all("span", recursive=False):
-        if span.find("h1"):
-            span.unwrap()
-            break
+    content_filter(soup)
 
 
 def _sidebar_filter(soup):
@@ -636,58 +624,3 @@ def write_skill(jsondir, struct, source):
 def create_skill_filename(jsondir, struct):
     title = jsondir + "/" + char_replace(struct["name"]) + ".json"
     return os.path.abspath(title)
-
-
-def _strip_block_tags(struct):
-    """Pre-strip <p> and non-empty <div> tags before markdown validation."""
-    for k, v in struct.items():
-        if isinstance(v, dict):
-            _strip_block_tags(v)
-        elif isinstance(v, list):
-            for item in v:
-                if isinstance(item, dict):
-                    _strip_block_tags(item)
-        elif isinstance(v, str) and ("<p" in v or "<div" in v):
-            bs = BeautifulSoup(v, "html.parser")
-            for div in bs.find_all("div"):
-                if not div.get_text(strip=True):
-                    div.decompose()
-                else:
-                    div.unwrap()
-            for p in bs.find_all("p"):
-                p.unwrap()
-            struct[k] = str(bs)
-
-
-def _is_empty(value):
-    if value is None:
-        return True
-    if isinstance(value, str) and value == "":
-        return True
-    return isinstance(value, list | dict) and len(value) == 0
-
-
-def _remove_empty_fields(obj):
-    """Recursively remove fields with empty values ("", None, [], {})."""
-    if isinstance(obj, dict):
-        for key in list(obj.keys()):
-            value = obj[key]
-            _remove_empty_fields(value)
-            if _is_empty(value):
-                del obj[key]
-    elif isinstance(obj, list):
-        for item in obj:
-            _remove_empty_fields(item)
-        obj[:] = [item for item in obj if not _is_empty(item)]
-
-
-def set_edition_from_db_pass(struct):
-    db_path = get_db_path("pfsrd2.db")
-    conn = get_db_connection(db_path)
-    curs = conn.cursor()
-    for source in struct.get("sources", []):
-        fetch_source_by_name(curs, source["name"])
-        row = curs.fetchone()
-        if row and row.get("edition"):
-            struct["edition"] = row["edition"]
-    conn.close()

@@ -184,3 +184,94 @@ def clear_garbage(text):
     while children and is_tag_named(children[-1], ["br", "hr"]):
         children.pop().decompose()
     return str(bs)
+
+
+def content_filter(soup):
+    """Remove navigation elements before <hr> and unwrap the content span.
+
+    Standard pre-filter for HTML5 AoN pages. Strips nav before first <hr>,
+    then unwraps the content span that contains the h1 title.
+    """
+    main = soup.find(id="main")
+    if not main:
+        return
+    hr = main.find("hr")
+    if hr:
+        for sibling in list(hr.previous_siblings):
+            sibling.extract()
+        hr.extract()
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+            break
+
+
+def is_empty(value):
+    """Check if a value is empty (None, blank string, empty list/dict).
+
+    Returns False for 0 and False (non-empty values).
+    """
+    if value is None:
+        return True
+    if isinstance(value, str) and not value.strip():
+        return True
+    return isinstance(value, list | dict) and len(value) == 0
+
+
+def remove_empty_fields(obj):
+    """Recursively remove fields with empty values ("", None, [], {})."""
+    if isinstance(obj, dict):
+        for key in list(obj.keys()):
+            value = obj[key]
+            remove_empty_fields(value)
+            if is_empty(value):
+                del obj[key]
+    elif isinstance(obj, list):
+        for item in obj:
+            remove_empty_fields(item)
+        obj[:] = [item for item in obj if not is_empty(item)]
+
+
+def strip_block_tags(struct, extra_tags=None):
+    """Pre-strip block-level HTML tags before markdown validation.
+
+    Always strips: div, p, nethys-search, margin-left spans, corrupted tags (% or #).
+    Pass extra_tags (e.g. ["u", "h2", "h3"]) for parser-specific additional tags.
+    """
+    for k, v in struct.items():
+        if isinstance(v, dict):
+            strip_block_tags(v, extra_tags)
+        elif isinstance(v, list):
+            for item in v:
+                if isinstance(item, dict):
+                    strip_block_tags(item, extra_tags)
+        elif isinstance(v, str) and ("<" in v):
+            bs = BeautifulSoup(v, "html.parser")
+            changed = False
+            for div in bs.find_all("div"):
+                changed = True
+                if not div.get_text(strip=True):
+                    div.decompose()
+                else:
+                    div.unwrap()
+            for p in bs.find_all("p"):
+                changed = True
+                p.unwrap()
+            for ns in bs.find_all("nethys-search"):
+                changed = True
+                ns.decompose()
+            for span in bs.find_all("span", style=lambda s: s and "margin-left:auto" in s):
+                changed = True
+                span.decompose()
+            # Strip corrupted HTML tags (e.g. <spells%6%%>, <action.types#2%%>)
+            for tag in bs.find_all(True):
+                if "%" in tag.name or "#" in tag.name:
+                    changed = True
+                    tag.unwrap()
+            if extra_tags:
+                for tag_name in extra_tags:
+                    for tag in bs.find_all(tag_name):
+                        changed = True
+                        tag.unwrap()
+            if changed:
+                struct[k] = str(bs)

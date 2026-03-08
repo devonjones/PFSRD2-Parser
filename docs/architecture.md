@@ -1155,6 +1155,117 @@ def handle_remaster_traits(struct):
   walk(struct, predicate, process_link)
   ```
 
+### Universal Function Hook Pattern
+
+When extracting shared logic into universal functions, **accept functions as arguments** for places where parser-specific behavior is needed. This avoids duplicating the entire function while allowing each parser to customize specific steps.
+
+**Pattern: Pre/post-process hooks**
+
+```python
+def trait_db_pass(struct, pre_process=None):
+    """Enrich traits from database.
+
+    Args:
+        struct: The parsed structure to enrich.
+        pre_process: Optional function(trait, parent, curs) called before
+            DB lookup. Return True to skip the trait (already handled).
+            Use for parser-specific transformations like splitting
+            alignment abbreviations or extracting trait values.
+    """
+    conn = get_db_connection(get_db_path("pfsrd2.db"))
+    curs = conn.cursor()
+
+    def _check_trait(trait, parent):
+        if pre_process and pre_process(trait, parent, curs):
+            return  # Parser handled this trait
+        # ... universal DB lookup and enrichment logic
+
+    walk(struct, test_key_is_value('subtype', 'trait'), _check_trait)
+    conn.close()
+```
+
+**Parser-specific customization via hooks:**
+
+```python
+# creatures.py - splits "CG" into two traits, extracts range values
+def _creature_pre_process(trait, parent, curs):
+    _handle_value(trait)  # Extract "range increment 30 feet" → value field
+    if _is_alignment_abbreviation(trait["name"]):
+        _handle_alignment_trait(trait, parent, curs)  # Split + DB lookup
+        return True  # Skip universal processing
+    return False
+
+trait_db_pass(struct, pre_process=_creature_pre_process)
+
+# equipment.py - fixes name casing, tries word-splitting for compound traits
+def _equipment_pre_process(trait, parent, curs):
+    _fix_trait_name(trait)  # "concentration" → "Concentrate"
+    _handle_value(trait)
+    return False  # Always continue to universal processing
+
+trait_db_pass(struct, pre_process=_equipment_pre_process)
+
+# monster_ability.py - no customization needed
+trait_db_pass(struct)  # No pre_process, pure universal behavior
+```
+
+**When to use this pattern:**
+- A function is duplicated across parsers with small variations
+- The core logic (DB lookup, tree walk, field extraction) is identical
+- Differences are in specific steps (pre-processing, validation, special cases)
+
+**When NOT to use this pattern:**
+- Functions are completely different despite similar names
+- The "hook" would need to replace most of the function's logic
+- Only 1-2 parsers use the function (just keep it local)
+
+**Other hook examples:**
+- `strip_block_tags(struct, extra_tags=None)` — default strips div+p, parsers pass extra tags
+- `markdown_pass(struct, name, path, fxn_valid_tags=None)` — custom tag validator per parser
+- `content_filter(soup)` — identical across spell/skill/condition, but creatures/equipment have different versions (keep those local)
+
+### Nested DB Object Metadata Rules
+
+When objects are pulled from the database and embedded inside other structures (traits inside creatures, monster abilities inside creatures), two metadata fields require special handling:
+
+**`schema_version` — validate then strip:**
+
+`schema_version` is reserved for the top-level document only. Nested DB objects carry their own `schema_version` from when they were stored. We validate it matches the expected version (catches stale DB data), then strip it before embedding.
+
+```python
+from pfsrd2.sql.traits import strip_nested_metadata, EXPECTED_TRAIT_SCHEMA_VERSION
+
+# In trait_db_pass (automatic for all parsers):
+strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
+
+# In creature's monster_ability_db_pass:
+strip_nested_metadata(db_ability, EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION)
+
+# In creature's alignment splitting (bypasses universal _check_trait):
+strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
+```
+
+**`license` — keep for consolidation:**
+
+License data on nested objects is NOT stripped during DB enrichment. Instead, `license_consolidation_pass` walks the entire structure, collects all `license` fields, merges unique sections into the top-level license, and removes them from nested locations. This ensures Attribution sections (e.g., "Masterwork Tools LLC, Authors: Devon Jones, Monica Jones") from trait licenses are preserved in the final output.
+
+**Critical pipeline ordering:**
+
+```
+trait_db_pass(struct)              # Enriches traits with DB data (keeps license)
+monster_ability_db_pass(struct)    # Enriches abilities with DB data (keeps license)
+license_pass(struct)               # Extracts license from HTML sections
+license_consolidation_pass(struct) # Merges ALL licenses into top-level, strips from nested
+...
+validate_against_schema(struct)    # Traits now have no license or schema_version
+```
+
+`trait_db_pass` MUST run before `license_consolidation_pass`. If a parser's pre_process hook does its own DB lookups (e.g., creature alignment splitting), it must also call `strip_nested_metadata` on the result.
+
+**Schema implications:**
+
+Embedded trait/monster_ability definitions in schemas do NOT include `schema_version` or `license` properties — those fields are stripped before validation. Only the top-level document definition has `schema_version`.
+
 ### Text Processing
 
 #### filter_entities(text)

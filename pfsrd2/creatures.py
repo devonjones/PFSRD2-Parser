@@ -12,7 +12,14 @@ from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
-from pfsrd2.sql.traits import fetch_trait_by_link, fetch_trait_by_name
+from pfsrd2.sql.traits import (
+    EXPECTED_TRAIT_SCHEMA_VERSION,
+    fetch_trait_by_name,
+    strip_nested_metadata,
+)
+from pfsrd2.sql.traits import (
+    trait_db_pass as universal_trait_db_pass,
+)
 from pfsrd2.trait import extract_starting_traits, trait_parse
 from universal.creatures import (
     universal_handle_perception,
@@ -135,7 +142,7 @@ def parse_creature(filename, options):
     recall_knowledge_pass(struct)
     trait_pass(struct)
     section_pass(struct)
-    trait_db_pass(struct)
+    universal_trait_db_pass(struct, pre_process=_creature_trait_pre_process)
     monster_ability_db_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
@@ -350,98 +357,54 @@ def markdown_valid_set(struct, name, path, validset):
         validset.add("a")
 
 
-def trait_db_pass(struct):
-    def _merge_classes(trait, db_trait):
+_CREATURE_PREFIX_TRAITS = ["versatile", "reload", "precious", "attached"]
+
+
+def _creature_handle_value(trait):
+    """Extract value from creature trait names like 'range increment 30 feet'."""
+    if trait["name"].startswith("range increment"):
+        trait["value"] = trait["name"].replace("range ", "")
+        trait["name"] = "range"
+        return
+    m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
+    if m:
+        name, value = m.groups()
+        trait["name"] = name
+        trait["value"] = value
+        return
+    for prefix in _CREATURE_PREFIX_TRAITS:
+        if trait["name"].startswith(prefix + " "):
+            trait["value"] = trait["name"][len(prefix) + 1 :]
+            trait["name"] = prefix
+            return
+
+
+def _creature_handle_alignment(trait, parent, curs):
+    """Split alignment abbreviations (e.g. 'CG') into individual alignment traits."""
+    index = parent.index(trait)
+    parent.remove(trait)
+    parts = trait["name"].split(" ")
+    for part in parts:
+        data = fetch_trait_by_name(curs, part)
+        assert data, f"Trait '{part}' not found in database"
+        db_trait = json.loads(data["trait"])
         trait_classes = set(trait.get("classes", []))
         db_trait_classes = set(db_trait.get("classes", []))
-        db_trait["classes"] = list(trait_classes | db_trait_classes)
+        db_trait["classes"] = sorted(trait_classes | db_trait_classes)
+        if "aonid" in db_trait:
+            del db_trait["aonid"]
+        strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
+        parent.insert(index, db_trait)
+        index += 1
 
-    def _handle_trait_link(db_trait):
-        trait = json.loads(db_trait["trait"])
-        edition = trait["edition"]
-        if edition == struct["edition"]:
-            return trait
-        if "alternate_link" not in trait:
-            return trait
-        kwargs = {}
-        if edition == "legacy":
-            kwargs["legacy_trait_id"] = db_trait["trait_id"]
-        else:
-            kwargs["remastered_trait_id"] = db_trait["trait_id"]
-        data = fetch_trait_by_link(curs, **kwargs)
-        if not data:
-            return trait
-        return json.loads(data["trait"])
 
-    def _check_trait(trait, parent):
-        _handle_value(trait)
-        if "alignment" in trait.get("classes", []) and trait["name"] != "No Alignment":
-            _handle_alignment_trait(trait, parent)
-        else:
-            data = fetch_trait_by_name(curs, trait["name"])
-            assert data, f"{data} | {trait}"
-            db_trait = _handle_trait_link(data)
-            _merge_classes(trait, db_trait)
-            if "link" in trait and trait["link"]["game-obj"] == "Trait":
-                assert trait["link"]["aonid"] == db_trait["aonid"], f"{trait} : {db_trait}"
-            assert isinstance(parent, list), parent
-            index = parent.index(trait)
-            if "value" in trait:
-                db_trait["value"] = trait["value"]
-            if "aonid" in db_trait:
-                del db_trait["aonid"]
-            _sort_classes(db_trait)
-            parent[index] = db_trait
-
-    def _handle_value(trait):
-        m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
-        if trait["name"].startswith("range increment"):
-            value = trait["name"].replace("range ", "")
-            trait["name"] = "range"
-            trait["value"] = value
-        elif m:
-            name, value = m.groups()
-            trait["name"] = name
-            trait["value"] = value
-        elif trait["name"].startswith("versatile "):
-            value = trait["name"].replace("versatile ", "")
-            trait["name"] = "versatile"
-            trait["value"] = value
-        elif trait["name"].startswith("reload"):
-            value = trait["name"].replace("reload ", "")
-            trait["name"] = "reload"
-            trait["value"] = value
-        elif trait["name"].startswith("precious"):
-            value = trait["name"].replace("precious ", "")
-            trait["name"] = "precious"
-            trait["value"] = value
-        elif trait["name"].startswith("attached"):
-            value = trait["name"].replace("attached ", "")
-            trait["name"] = "attached"
-            trait["value"] = value
-
-    def _handle_alignment_trait(trait, parent):
-        index = parent.index(trait)
-        parent.remove(trait)
-        parts = trait["name"].split(" ")
-        for part in parts:
-            data = fetch_trait_by_name(curs, part)
-            assert data, f"Trait '{part}' not found in database"
-            db_trait = json.loads(data["trait"])
-            _merge_classes(trait, db_trait)
-            if "aonid" in db_trait:
-                del db_trait["aonid"]
-            _sort_classes(db_trait)
-            parent.insert(index, db_trait)
-            index += 1
-
-    def _sort_classes(trait):
-        trait["classes"].sort()
-
-    db_path = get_db_path("pfsrd2.db")
-    conn = get_db_connection(db_path)
-    curs = conn.cursor()
-    walk(struct, test_key_is_value("subtype", "trait"), _check_trait)
+def _creature_trait_pre_process(trait, parent, curs):
+    """Pre-process creature traits: extract values and handle alignment splitting."""
+    _creature_handle_value(trait)
+    if "alignment" in trait.get("classes", []) and trait["name"] != "No Alignment":
+        _creature_handle_alignment(trait, parent, curs)
+        return True
+    return False
 
 
 def monster_ability_db_pass(struct):
@@ -506,12 +469,20 @@ def monster_ability_db_pass(struct):
                 return
         raise AssertionError("Shouldn't get here")
 
+    EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION = 1.2
+
     def _check_ability(ability, parent):
         abilities = fetch_monster_abilities_by_name(curs, ability["name"])
         data = _pick_best_ability(abilities, struct["edition"])
         if data:
             db_ability = json.loads(data["monster_ability"])
             _handle_trait_template(curs, ability, db_ability)
+            strip_nested_metadata(db_ability, EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION)
+            # Traits inside the DB ability also carry schema_version from
+            # when they were enriched by trait_db_pass during monster_ability parsing
+            for trait in db_ability.get("traits", []):
+                if "schema_version" in trait:
+                    strip_nested_metadata(trait, EXPECTED_TRAIT_SCHEMA_VERSION)
             ability["universal_monster_ability"] = db_ability
 
     db_path = get_db_path("pfsrd2.db")

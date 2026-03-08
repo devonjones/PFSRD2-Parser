@@ -18,7 +18,12 @@ from pfsrd2.creatures import (
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
-from pfsrd2.sql.traits import fetch_trait_by_link, fetch_trait_by_name
+from pfsrd2.sql.traits import (
+    fetch_trait_by_name,
+)
+from pfsrd2.sql.traits import (
+    trait_db_pass as universal_trait_db_pass,
+)
 
 # Import DC/save parsing from universal
 from universal.creatures import (
@@ -746,7 +751,6 @@ def parse_equipment(filename, options):
     source_edition_override_pass(struct)
     game_id_pass(struct)
     license_pass(struct)
-    license_consolidation_pass(struct)
     markdown_pass(struct, struct["name"], "", fxn_valid_tags=equipment_markdown_valid_set)
 
     # LINK ACCOUNTING: Verify all links were extracted into structured objects
@@ -765,7 +769,10 @@ def parse_equipment(filename, options):
         )
 
     # Enrich traits with database data (must be after edition is set)
-    trait_db_pass(struct)
+    universal_trait_db_pass(struct, pre_process=_equipment_trait_pre_process)
+    # Consolidate licenses after trait_db_pass (traits from DB carry license data
+    # that must be merged into the top-level license before schema validation)
+    license_consolidation_pass(struct)
     # Enrich equipment groups with database data (only for equipment types that have groups)
     if "group_table" in config:
         equipment_group_pass(struct, config)
@@ -7008,117 +7015,47 @@ def _normalize_reload(sb):
     sb["reload"] = reload_obj
 
 
-def trait_db_pass(struct):
-    """Enrich minimal trait objects with full trait data from database."""
+def _equipment_handle_value(trait):
+    """Extract value from trait names like 'Entrench Melee' -> name='Entrench', value='Melee'."""
+    original_name = trait["name"]
+    if original_name.lower().startswith("range increment"):
+        trait["name"] = "range"
+        trait["value"] = original_name[6:].strip()
+        return
 
-    def _merge_classes(trait, db_trait):
-        """Merge class arrays from extracted trait and database trait."""
-        trait_classes = set(trait.get("classes", []))
-        db_trait_classes = set(db_trait.get("classes", []))
-        db_trait["classes"] = list(trait_classes | db_trait_classes)
+    m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
+    if m:
+        name, value = m.groups()
+        trait["name"] = name.strip()
+        trait["value"] = value.strip()
+    elif " " in trait["name"]:
+        parts = trait["name"].split(" ", 1)
+        trait["name"] = parts[0].strip()
+        trait["value"] = parts[1].strip()
 
-    def _handle_trait_link(db_trait):
-        """Handle edition matching for traits with alternate links."""
-        trait = json.loads(db_trait["trait"])
-        edition = trait["edition"]
-        if edition == struct["edition"]:
-            return trait
-        if "alternate_link" not in trait:
-            return trait
-        # Fetch the alternate edition version
-        kwargs = {}
-        if edition == "legacy":
-            kwargs["legacy_trait_id"] = db_trait["trait_id"]
-        else:
-            kwargs["remastered_trait_id"] = db_trait["trait_id"]
-        data = fetch_trait_by_link(curs, **kwargs)
-        assert data, f"{data} | {trait}"
-        return json.loads(data["trait"])
 
-    def _handle_value(trait):
-        """Extract value from trait names like 'Entrench Melee' -> name='Entrench', value='Melee'."""
-        # Special case: "range increment X feet" -> name="range", value="increment X feet"
-        original_name = trait["name"]
-        if original_name.lower().startswith("range increment"):
-            trait["name"] = "range"
-            trait["value"] = original_name[6:].strip()  # Everything after "range "
-            return
+def _equipment_trait_pre_process(trait, parent, curs):
+    """Pre-process equipment traits: alignment expansion, name fixes, value splitting."""
+    # Handle alignment abbreviations (CG -> Chaotic Good, etc.)
+    full_alignment = universal_handle_alignment(trait["name"])
+    if full_alignment:
+        trait["name"] = full_alignment
 
-        m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
-        if m:
-            # Numeric or dice values like "Deadly d8"
-            name, value = m.groups()
-            trait["name"] = name.strip()  # Remove trailing whitespace
-            trait["value"] = value.strip()
-        elif " " in trait["name"]:
-            # Word values like "Entrench Melee"
-            parts = trait["name"].split(" ", 1)
-            # Try with first word as the base trait name
-            trait["name"] = parts[0].strip()
-            trait["value"] = parts[1].strip()
+    # Handle trait name mismatches in source HTML
+    trait_name_fixes = {
+        "concentration": "Concentrate",
+    }
+    if trait["name"] in trait_name_fixes:
+        trait["name"] = trait_name_fixes[trait["name"]]
 
-    def _check_trait(trait, parent):
-        """Look up trait in database and replace with enriched version."""
+    # Try full name first (handles traits like "Ranged Trip", "Double Barrel")
+    data = fetch_trait_by_name(curs, trait["name"])
 
-        original_name = trait["name"]
+    # If not found and name has space, try splitting into name + value
+    if not data and " " in trait["name"]:
+        _equipment_handle_value(trait)
 
-        # Handle alignment abbreviations (CG -> Chaotic Good, LG -> Lawful Good, etc.)
-        full_alignment = universal_handle_alignment(trait["name"])
-        if full_alignment:
-            trait["name"] = full_alignment
-
-        # Handle trait name mismatches in source HTML
-        trait_name_fixes = {
-            "concentration": "Concentrate",  # HTML link text doesn't match trait name
-        }
-        if trait["name"] in trait_name_fixes:
-            trait["name"] = trait_name_fixes[trait["name"]]
-
-        # Try full name first (handles traits like "Ranged Trip", "Double Barrel", "Critical Fusion")
-        data = fetch_trait_by_name(curs, trait["name"])
-
-        # If not found and name has space, try splitting into name + value
-        # E.g., "Entrench Melee" -> name="Entrench", value="Melee"
-        if not data and " " in trait["name"]:
-            _handle_value(trait)
-            data = fetch_trait_by_name(curs, trait["name"])
-
-        assert data, "Trait not found in database: {} (original: {})".format(
-            trait["name"],
-            original_name,
-        )
-
-        db_trait = _handle_trait_link(data)
-        _merge_classes(trait, db_trait)
-
-        # Note: Don't verify link aonid matches db_trait aonid because traits can have
-        # legacy/remastered versions with different aonids. The link points to the
-        # original version, but _handle_trait_link fetches the edition-appropriate version.
-
-        # Replace trait in parent list
-        assert isinstance(parent, list), parent
-        index = parent.index(trait)
-
-        # Preserve value if extracted
-        if "value" in trait:
-            db_trait["value"] = trait["value"]
-
-        # Remove fields that shouldn't be in embedded traits
-        if "aonid" in db_trait:
-            del db_trait["aonid"]
-        if "license" in db_trait:
-            del db_trait["license"]
-
-        # Sort classes for consistency
-        db_trait["classes"].sort()
-        parent[index] = db_trait
-
-    db_path = get_db_path("pfsrd2.db")
-    with get_db_connection(db_path) as conn:
-        curs = conn.cursor()
-
-        # Walk the structure and enrich all traits
-        walk(struct, test_key_is_value("subtype", "trait"), _check_trait)
+    return False  # Continue with universal processing
 
 
 def equipment_group_pass(struct, config):

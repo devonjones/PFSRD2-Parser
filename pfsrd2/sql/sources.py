@@ -1,6 +1,21 @@
 import json
 
 
+def set_edition_from_db_pass(struct):
+    """Set struct edition based on source book edition from DB."""
+    from pfsrd2.sql import get_db_connection, get_db_path
+
+    db_path = get_db_path("pfsrd2.db")
+    conn = get_db_connection(db_path)
+    curs = conn.cursor()
+    for source in struct.get("sources", []):
+        fetch_source_by_name(curs, source["name"])
+        row = curs.fetchone()
+        if row and row.get("edition"):
+            struct["edition"] = row["edition"]
+    conn.close()
+
+
 def create_sources_table(curs):
     sql = "\n".join(
         [

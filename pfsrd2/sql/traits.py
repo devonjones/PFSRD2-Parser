@@ -2,8 +2,30 @@ import json
 
 from universal.universal import test_key_is_value, walk
 
+# Expected schema versions for nested objects pulled from the database.
+# When we embed DB objects (traits, monster abilities) inside other structures,
+# we validate their schema_version matches what we expect, then strip it —
+# schema_version is reserved for the top-level document only.
+EXPECTED_TRAIT_SCHEMA_VERSION = 1.1
 
-def trait_db_pass(struct, pre_process=None):
+
+def strip_nested_metadata(db_obj, expected_version):
+    """Validate and strip schema_version from a DB object embedded in another structure.
+
+    Schema_version is reserved for top-level documents. Nested objects pulled from
+    the database have their own schema_version which we validate matches expectations,
+    then remove. License is kept so license_consolidation_pass can merge it into
+    the top-level license.
+    """
+    actual = db_obj.get("schema_version")
+    assert actual == expected_version, (
+        f"Nested object '{db_obj.get('name')}' has schema_version {actual}, "
+        f"expected {expected_version}"
+    )
+    del db_obj["schema_version"]
+
+
+def trait_db_pass(struct, pre_process=None, edition_required=True):
     """Enrich minimal trait objects with full trait data from database.
 
     Walks the struct finding all objects with subtype=="trait", looks up
@@ -12,10 +34,15 @@ def trait_db_pass(struct, pre_process=None):
 
     Args:
         struct: The parsed structure to walk.
-        pre_process: Optional function(trait, parent) called before DB lookup.
-            Use for parser-specific logic like value extraction, alignment
-            splitting, or name fixes. If it returns True, the trait is
-            considered fully handled and the default DB replacement is skipped.
+        pre_process: Optional function(trait, parent, curs) called before DB
+            lookup. Use for parser-specific logic like value extraction,
+            alignment splitting, or name fixes. The curs parameter allows
+            DB lookups in pre-processing (e.g., splitting alignment traits).
+            If it returns True, the trait is considered fully handled and the
+            default DB replacement is skipped.
+        edition_required: If True (default), assert that struct has 'edition'
+            set before doing edition matching. Set to False for parsers like
+            monster_ability that legitimately lack edition.
     """
     from pfsrd2.sql import get_db_connection, get_db_path
 
@@ -27,6 +54,12 @@ def trait_db_pass(struct, pre_process=None):
     def _handle_trait_link(db_trait):
         trait = json.loads(db_trait["trait"])
         edition = trait["edition"]
+        if not edition_required and "edition" not in struct:
+            return trait
+        if edition_required:
+            assert "edition" in struct, (
+                f"struct missing 'edition' but edition_required=True " f"(trait: {trait['name']})"
+            )
         if edition == struct["edition"]:
             return trait
         if "alternate_link" not in trait:
@@ -43,7 +76,7 @@ def trait_db_pass(struct, pre_process=None):
         return json.loads(data["trait"])
 
     def _check_trait(trait, parent):
-        if pre_process and pre_process(trait, parent):
+        if pre_process and pre_process(trait, parent, curs):
             return
         data = fetch_trait_by_name(curs, trait["name"])
         assert data, f"Trait not found in database: {trait}"
@@ -55,8 +88,8 @@ def trait_db_pass(struct, pre_process=None):
             db_trait["value"] = trait["value"]
         if "aonid" in db_trait:
             del db_trait["aonid"]
-        if "license" in db_trait:
-            del db_trait["license"]
+        strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
+        db_trait["classes"].sort()
         parent[index] = db_trait
 
     db_path = get_db_path("pfsrd2.db")

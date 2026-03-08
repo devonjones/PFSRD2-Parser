@@ -27,3 +27,5 @@ else
 	done
 fi
 
+
+./copy_schema.sh creature

@@ -163,6 +163,12 @@ These definitions should be identical across **all** schemas. When creating a ne
 ```
 
 **trait** - Enriched trait object (for stat blocks)
+
+Note: When traits are embedded as nested objects (via `trait_db_pass`), `schema_version`
+is validated then stripped by `strip_nested_metadata()`, and `license` is kept temporarily
+for `license_consolidation_pass` to merge into the top-level license, then removed.
+The template below shows the nested form (without `schema_version` or `license`).
+
 ```json
 "trait": {
     "type": "object",
@@ -186,10 +192,9 @@ These definitions should be identical across **all** schemas. When creating a ne
             "additionalItems": false
         },
         "alternate_link": {"$ref": "#/definitions/alternate_link"},
-        "schema_version": {"enum": [1.1]},
         "edition": {"enum": ["legacy", "remastered"]}
     },
-    "required": ["name", "type", "game-id", "game-obj", "sources", "schema_version", "edition"],
+    "required": ["name", "type", "game-id", "game-obj", "sources", "edition"],
     "additionalProperties": false
 }
 ```

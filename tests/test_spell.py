@@ -4,20 +4,20 @@ import pytest
 from bs4 import BeautifulSoup
 
 from pfsrd2.spell import (
+    _classify_cast_text,
     _clean_spell_name,
-    _extract_alternate_links,
     _extract_heightened,
     _extract_legacy_marker,
     _extract_result_blocks,
     _extract_stat_fields,
     _extract_traits,
-    _is_empty,
     _label_to_key,
     _parse_heightened_label,
-    _remove_empty_fields,
+    _split_on_hr,
     find_spell,
 )
-
+from universal.universal import handle_alternate_link
+from universal.utils import is_empty, remove_empty_fields
 
 # --- _clean_spell_name ---
 
@@ -42,27 +42,27 @@ class TestCleanSpellName:
         assert _clean_spell_name("  Fireball  ") == "Fireball"
 
 
-# --- _extract_alternate_links ---
+# --- handle_alternate_link ---
 
 
 class TestExtractAlternateLinks:
     def test_returns_none_for_empty_details(self):
-        assert _extract_alternate_links([]) is None
+        assert handle_alternate_link([]) is None
 
     def test_returns_none_for_non_string_first(self):
-        assert _extract_alternate_links([{"type": "section"}]) is None
+        assert handle_alternate_link([{"type": "section"}]) is None
 
     def test_returns_none_for_no_version_text(self):
-        assert _extract_alternate_links(["Some random text"]) is None
+        assert handle_alternate_link(["Some random text"]) is None
 
     def test_single_legacy_link(self):
         html = (
-            '<div>Legacy version: '
+            "<div>Legacy version: "
             '<a href="/Spells.aspx?ID=207" game-obj="Spells" aonid="207">'
-            'Neutralize Poison</a></div>'
+            "Neutralize Poison</a></div>"
         )
         details = [html]
-        result = _extract_alternate_links(details)
+        result = handle_alternate_link(details)
         assert result is not None
         assert result["type"] == "alternate_link"
         assert result["game-obj"] == "Spells"
@@ -72,24 +72,24 @@ class TestExtractAlternateLinks:
 
     def test_single_remastered_link(self):
         html = (
-            '<div>Remastered version: '
+            "<div>Remastered version: "
             '<a href="/Spells.aspx?ID=1467" game-obj="Spells" aonid="1467">'
-            'Cleanse Affliction</a></div>'
+            "Cleanse Affliction</a></div>"
         )
         details = [html]
-        result = _extract_alternate_links(details)
+        result = handle_alternate_link(details)
         assert result["alternate_type"] == "remastered"
         assert result["aonid"] == 1467
 
     def test_multi_link_returns_array(self):
         html = (
-            '<div>Legacy versions: '
+            "<div>Legacy versions: "
             '<a href="/Spells.aspx?ID=207" game-obj="Spells" aonid="207">Neutralize Poison</a>, '
             '<a href="/Spells.aspx?ID=251" game-obj="Spells" aonid="251">Remove Disease</a>, '
             '<a href="/Spells.aspx?ID=250" game-obj="Spells" aonid="250">Remove Curse</a></div>'
         )
         details = [html]
-        result = _extract_alternate_links(details)
+        result = handle_alternate_link(details, allow_multiple=True)
         assert isinstance(result, list)
         assert len(result) == 3
         assert result[0]["aonid"] == 207
@@ -97,9 +97,19 @@ class TestExtractAlternateLinks:
         assert result[2]["aonid"] == 250
         assert all(r["alternate_type"] == "legacy" for r in result)
 
+    def test_multi_link_asserts_without_allow_multiple(self):
+        html = (
+            "<div>Legacy versions: "
+            '<a href="/Spells.aspx?ID=207" game-obj="Spells" aonid="207">Neutralize Poison</a>, '
+            '<a href="/Spells.aspx?ID=251" game-obj="Spells" aonid="251">Remove Disease</a></div>'
+        )
+        details = [html]
+        with pytest.raises(AssertionError):
+            handle_alternate_link(details)
+
     def test_does_not_consume_non_matching(self):
         details = ["Some other text", "more stuff"]
-        _extract_alternate_links(details)
+        handle_alternate_link(details)
         assert len(details) == 2
 
 
@@ -317,10 +327,7 @@ class TestExtractHeightened:
 
     def test_multiple_heightened(self):
         spell = {}
-        text = (
-            "<b>Heightened (+1)</b> More damage<br/>"
-            "<b>Heightened (4th)</b> Extra targets"
-        )
+        text = "<b>Heightened (+1)</b> More damage<br/>" "<b>Heightened (4th)</b> Extra targets"
         _extract_heightened(spell, text)
         assert len(spell["heightened"]) == 2
 
@@ -354,78 +361,142 @@ class TestFindSpell:
         assert find_spell(struct) is None
 
 
-# --- _is_empty ---
+# --- is_empty ---
 
 
 class TestIsEmpty:
-    def test_none_is_empty(self):
-        assert _is_empty(None) is True
+    def test_noneis_empty(self):
+        assert is_empty(None) is True
 
-    def test_empty_string_is_empty(self):
-        assert _is_empty("") is True
+    def test_empty_stringis_empty(self):
+        assert is_empty("") is True
 
-    def test_whitespace_string_is_empty(self):
-        assert _is_empty("   ") is True
+    def test_whitespace_stringis_empty(self):
+        assert is_empty("   ") is True
 
-    def test_empty_list_is_empty(self):
-        assert _is_empty([]) is True
+    def test_empty_listis_empty(self):
+        assert is_empty([]) is True
 
-    def test_empty_dict_is_empty(self):
-        assert _is_empty({}) is True
+    def test_empty_dictis_empty(self):
+        assert is_empty({}) is True
 
     def test_non_empty_string(self):
-        assert _is_empty("hello") is False
+        assert is_empty("hello") is False
 
     def test_non_empty_list(self):
-        assert _is_empty([1]) is False
+        assert is_empty([1]) is False
 
     def test_zero_is_not_empty(self):
-        assert _is_empty(0) is False
+        assert is_empty(0) is False
 
     def test_false_is_not_empty(self):
-        assert _is_empty(False) is False
+        assert is_empty(False) is False
 
 
-# --- _remove_empty_fields ---
+# --- remove_empty_fields ---
 
 
 class TestRemoveEmptyFields:
     def test_removes_none_values(self):
         obj = {"a": 1, "b": None}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": 1}
 
     def test_removes_empty_strings(self):
         obj = {"a": "hello", "b": ""}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": "hello"}
 
     def test_removes_whitespace_strings(self):
         obj = {"a": "hello", "b": "   "}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": "hello"}
 
     def test_removes_empty_lists(self):
         obj = {"a": [1], "b": []}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": [1]}
 
     def test_removes_empty_dicts(self):
         obj = {"a": {"x": 1}, "b": {}}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": {"x": 1}}
 
     def test_recursive_cleanup(self):
         obj = {"a": {"nested": None, "keep": "yes"}}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": {"keep": "yes"}}
 
     def test_preserves_zero_and_false(self):
         obj = {"a": 0, "b": False, "c": None}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"a": 0, "b": False}
 
     def test_list_cleanup(self):
         obj = {"items": [{"a": 1}, {"b": None}]}
-        _remove_empty_fields(obj)
+        remove_empty_fields(obj)
         assert obj == {"items": [{"a": 1}]}
+
+
+class TestSplitOnHr:
+    def test_before_extracts_content_before_hr(self):
+        html = "before text<hr/>after text"
+        bs = BeautifulSoup(html, "html.parser")
+        result = _split_on_hr(bs, before=True)
+        assert result == "before text"
+        assert bs.find("hr") is None
+
+    def test_after_extracts_content_after_hr(self):
+        html = "before text<hr/>after text"
+        bs = BeautifulSoup(html, "html.parser")
+        result = _split_on_hr(bs, before=False)
+        assert result == "after text"
+        assert bs.find("hr") is None
+
+    def test_no_hr_returns_none(self):
+        html = "just text"
+        bs = BeautifulSoup(html, "html.parser")
+        result = _split_on_hr(bs, before=True)
+        assert result is None
+
+    def test_multiple_hrs_splits_on_first(self):
+        html = "part1<hr/>part2<hr/>part3"
+        bs = BeautifulSoup(html, "html.parser")
+        result = _split_on_hr(bs, before=True)
+        assert result == "part1"
+        # Second hr should still be present
+        assert bs.find("hr") is not None
+
+
+class TestClassifyCastText:
+    def test_timed_cast(self):
+        cast_obj = {}
+        _classify_cast_text(cast_obj, "1 minute", [])
+        assert cast_obj["time"] == "1 minute"
+
+    def test_note_cast(self):
+        cast_obj = {}
+        _classify_cast_text(cast_obj, "*(none printed)*", [])
+        assert cast_obj["note"] == "*(none printed)*"
+
+    def test_plain_text_components(self):
+        cast_obj = {}
+        components = []
+        _classify_cast_text(cast_obj, "somatic, verbal", components)
+        assert len(components) == 2
+        assert components[0]["name"] == "somatic"
+        assert components[1]["name"] == "verbal"
+
+    def test_plain_text_with_existing_components_does_nothing(self):
+        cast_obj = {}
+        existing = [
+            {"name": "somatic", "type": "stat_block_section", "subtype": "spell_cast_component"}
+        ]
+        _classify_cast_text(cast_obj, "somatic", existing)
+        assert len(existing) == 1  # No duplicates added
+
+    def test_empty_text_does_nothing(self):
+        cast_obj = {}
+        _classify_cast_text(cast_obj, "", [])
+        assert "time" not in cast_obj
+        assert "note" not in cast_obj

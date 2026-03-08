@@ -5,10 +5,9 @@ import sys
 
 from bs4 import BeautifulSoup, NavigableString
 
-from pfsrd2.license import license_pass
+from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
-from pfsrd2.sql import get_db_connection, get_db_path
-from pfsrd2.sql.sources import fetch_source_by_name
+from pfsrd2.sql.sources import set_edition_from_db_pass
 from pfsrd2.sql.traits import trait_db_pass
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
@@ -18,16 +17,21 @@ from universal.universal import (
     edition_pass,
     entity_pass,
     extract_link,
-    extract_links,
     extract_source,
     game_id_pass,
     get_links,
+    handle_alternate_link,
     parse_universal,
     remove_empty_sections_pass,
     restructure_pass,
     source_pass,
 )
-from universal.utils import get_text
+from universal.utils import (
+    content_filter,
+    get_text,
+    remove_empty_fields,
+    strip_block_tags,
+)
 
 
 def parse_spell(filename, options):
@@ -42,7 +46,7 @@ def parse_spell(filename, options):
     )
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
-    alternate_links = _extract_alternate_links(details)
+    alternate_links = handle_alternate_link(details, allow_multiple=True)
     struct = restructure_spell_pass(details)
     if alternate_links:
         struct["alternate_link"] = alternate_links
@@ -63,11 +67,12 @@ def parse_spell(filename, options):
     set_edition_from_db_pass(struct)
     trait_db_pass(struct)
     license_pass(struct)
-    _strip_block_tags(struct)
+    license_consolidation_pass(struct)
+    strip_block_tags(struct, extra_tags=["u", "h2", "h3"])
     universal_markdown_pass(struct, struct["name"], "", fxn_valid_tags=_spell_valid_tags)
-    _remove_empty_fields(struct)
+    remove_empty_fields(struct)
     if not options.skip_schema:
-        struct["schema_version"] = 2.0
+        struct["schema_version"] = 1.0
         validate_against_schema(struct, "spell.schema.json")
     if not options.dryrun:
         output = options.output
@@ -80,19 +85,11 @@ def parse_spell(filename, options):
 
 
 def _content_filter(soup):
-    """Remove navigation elements before <hr> and unwrap the content span."""
+    """Spell-specific content filter: base filter plus empty <a> and h1 span cleanup."""
+    content_filter(soup)
     main = soup.find(id="main")
     if not main:
         return
-    hr = main.find("hr")
-    if hr:
-        for sibling in list(hr.previous_siblings):
-            sibling.extract()
-        hr.extract()
-    for span in main.find_all("span", recursive=False):
-        if span.find("h1"):
-            span.unwrap()
-            break
     for a in main.find_all("a"):
         if not a.string and not a.contents:
             a.decompose()
@@ -117,40 +114,9 @@ def _content_filter(soup):
 
 
 def _sidebar_filter(soup):
-    """Unwrap sidebar-nofloat divs. siderbarlook is handled by _extract_alternate_links."""
+    """Unwrap sidebar-nofloat divs. siderbarlook is handled by handle_alternate_link."""
     for div in soup.find_all("div", {"class": "sidebar-nofloat"}):
         div.unwrap()
-
-
-def _extract_alternate_links(details):
-    """Extract alternate link(s) from details, handling single and multi-link sidebars."""
-    if not details:
-        return None
-    d = details[0]
-    if not isinstance(d, str):
-        return None
-    if "Legacy version" not in d and "Remastered version" not in d:
-        return None
-    details.pop(0)
-    text, links = extract_links(d)
-    if not links:
-        return None
-    if "Legacy version" in d or "Legacy versions" in d:
-        alternate_type = "legacy"
-    else:
-        alternate_type = "remastered"
-    result = []
-    for link in links:
-        alt = {
-            "type": "alternate_link",
-            "game-obj": link["game-obj"],
-            "aonid": link["aonid"],
-            "alternate_type": alternate_type,
-        }
-        result.append(alt)
-    if len(result) == 1:
-        return result[0]
-    return result
 
 
 def restructure_spell_pass(details):
@@ -265,6 +231,31 @@ _HEIGHTENED_RE = re.compile(r"^Heightened\b")
 _AMP_HEIGHTENED_RE = re.compile(r"^Amp Heightened\b")
 
 
+def _split_on_hr(bs, before=True):
+    """Find the next <hr> in bs and extract content from one side.
+
+    If before=True, extracts siblings before the hr (stats section).
+    If before=False, extracts siblings after the hr (heightened section).
+    Returns the extracted text, or None if no <hr> found.
+    The <hr> is decomposed in either case.
+    """
+    hr = bs.find("hr")
+    if not hr:
+        return None
+    if before:
+        parts = []
+        for sibling in list(hr.previous_siblings):
+            parts.insert(0, str(sibling))
+            sibling.extract()
+    else:
+        parts = []
+        for sibling in list(hr.next_siblings):
+            parts.append(str(sibling))
+            sibling.extract()
+    hr.decompose()
+    return "".join(parts).strip()
+
+
 def spell_struct_pass(struct):
     """Extract structured fields from the spell stat block text."""
     spell = find_spell(struct)
@@ -291,27 +282,15 @@ def spell_struct_pass(struct):
         spell["sources"] = []
 
     # Split on <hr> — pre-hr is stats, post-hr is description + heightened
-    hr = bs.find("hr")
-    if hr:
-        pre_hr_parts = []
-        for sibling in list(hr.previous_siblings):
-            pre_hr_parts.insert(0, str(sibling))
-            sibling.extract()
-        hr.decompose()
-        pre_hr_text = "".join(pre_hr_parts).strip()
+    pre_hr_text = _split_on_hr(bs, before=True)
+    if pre_hr_text is not None:
         _extract_stat_fields(spell, pre_hr_text)
 
     # Extract heightened from after the second <hr> BEFORE result blocks,
     # so result block extraction doesn't consume heightened text.
-    hr2 = bs.find("hr")
-    if hr2:
-        post_hr_parts = []
-        for sibling in list(hr2.next_siblings):
-            post_hr_parts.append(str(sibling))
-            sibling.extract()
-        hr2.decompose()
-        heightened_text = "".join(post_hr_parts).strip()
-        _extract_heightened(spell, heightened_text)
+    post_hr_text = _split_on_hr(bs, before=False)
+    if post_hr_text is not None:
+        _extract_heightened(spell, post_hr_text)
 
     # Extract result blocks from remaining body
     _extract_result_blocks(spell, bs)
@@ -678,6 +657,29 @@ def _build_spell_access(spell):
         spell["spell_access"] = access
 
 
+def _classify_cast_text(cast_obj, text, components):
+    """Classify remaining cast text as time, note, or plain-text components."""
+    if not text:
+        return
+    if re.match(r"\d", text):
+        # Timed cast: "1 minute", "10 minutes", etc.
+        cast_obj["time"] = text
+    elif text.startswith("*"):
+        # Nethys notes: "*(none printed)*", etc.
+        cast_obj["note"] = text
+    elif not components:
+        # Plain text components (no links)
+        for part in text.split(","):
+            name = part.strip()
+            if name:
+                comp = build_object(
+                    "stat_block_section",
+                    "spell_cast_component",
+                    name,
+                )
+                components.append(comp)
+
+
 def _build_spell_cast(spell):
     """Build spell_cast object from cast HTML string + action_type."""
     cast_html = spell.pop("cast", None)
@@ -729,24 +731,7 @@ def _build_spell_cast(spell):
         text = re.sub(r"\s*\([,\s]*\)\s*", "", text).strip()
         text = text.strip(", ")
 
-        if text:
-            if re.match(r"\d", text):
-                # Timed cast: "1 minute", "10 minutes", etc.
-                cast_obj["time"] = text
-            elif text.startswith("*"):
-                # Nethys notes: "*(none printed)*", etc.
-                cast_obj["note"] = text
-            elif not components:
-                # Plain text components (no links)
-                for part in text.split(","):
-                    name = part.strip()
-                    if name:
-                        comp = build_object(
-                            "stat_block_section",
-                            "spell_cast_component",
-                            name,
-                        )
-                        components.append(comp)
+        _classify_cast_text(cast_obj, text, components)
 
         if components:
             cast_obj["components"] = components
@@ -889,60 +874,6 @@ def spell_cleanup_pass(struct):
         del spell["sections"]
 
 
-def set_edition_from_db_pass(struct):
-    db_path = get_db_path("pfsrd2.db")
-    conn = get_db_connection(db_path)
-    curs = conn.cursor()
-    for source in struct.get("sources", []):
-        fetch_source_by_name(curs, source["name"])
-        row = curs.fetchone()
-        if row and row.get("edition"):
-            struct["edition"] = row["edition"]
-    conn.close()
-
-
-def _strip_block_tags(struct):
-    """Pre-strip <p>, <div>, <u>, <h2>, <h3>, <nethys-search> tags before markdown validation."""
-    for k, v in struct.items():
-        if isinstance(v, dict):
-            _strip_block_tags(v)
-        elif isinstance(v, list):
-            for item in v:
-                if isinstance(item, dict):
-                    _strip_block_tags(item)
-        elif isinstance(v, str) and ("<" in v):
-            bs = BeautifulSoup(v, "html.parser")
-            changed = False
-            for div in bs.find_all("div"):
-                changed = True
-                if not div.get_text(strip=True):
-                    div.decompose()
-                else:
-                    div.unwrap()
-            for p in bs.find_all("p"):
-                changed = True
-                p.unwrap()
-            for u in bs.find_all("u"):
-                changed = True
-                u.unwrap()
-            for h in bs.find_all(["h2", "h3"]):
-                changed = True
-                h.unwrap()
-            for ns in bs.find_all("nethys-search"):
-                changed = True
-                ns.decompose()
-            for span in bs.find_all("span", style=lambda s: s and "margin-left:auto" in s):
-                changed = True
-                span.decompose()
-            # Strip corrupted HTML tags (e.g. <spells%6%%>, <action.types#2%%>)
-            for tag in bs.find_all(True):
-                if "%" in tag.name or "#" in tag.name:
-                    changed = True
-                    tag.unwrap()
-            if changed:
-                struct[k] = str(bs)
-
-
 def _spell_valid_tags(struct, name, path, validset):
     """Add spell-specific tags to the markdown valid set.
 
@@ -952,28 +883,6 @@ def _spell_valid_tags(struct, name, path, validset):
     fragility for correctness — scoping narrowly would break too many spells.
     """
     validset.update({"b", "i", "span"})
-
-
-def _is_empty(value):
-    if value is None:
-        return True
-    if isinstance(value, str) and not value.strip():
-        return True
-    return isinstance(value, list | dict) and len(value) == 0
-
-
-def _remove_empty_fields(obj):
-    """Recursively remove fields with empty values ("", None, [], {})."""
-    if isinstance(obj, dict):
-        for key in list(obj.keys()):
-            value = obj[key]
-            _remove_empty_fields(value)
-            if _is_empty(value):
-                del obj[key]
-    elif isinstance(obj, list):
-        for item in obj:
-            _remove_empty_fields(item)
-        obj[:] = [item for item in obj if not _is_empty(item)]
 
 
 def write_spell(jsondir, struct, source):
