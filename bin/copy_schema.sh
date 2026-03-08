@@ -19,17 +19,7 @@ if [ ! -f "$SCHEMA_FILE" ]; then
 fi
 
 # Extract schema_version from the schema's top-level properties
-VERSION=$(python3 -c "
-import json, sys
-with open('$SCHEMA_FILE') as f:
-    schema = json.load(f)
-v = schema.get('properties', {}).get('schema_version', {}).get('enum', [])
-if v:
-    print(v[0])
-else:
-    print('', file=sys.stderr)
-    sys.exit(1)
-" 2>/dev/null)
+VERSION=$(jq -re '.properties.schema_version.enum[0]' "$SCHEMA_FILE" 2>/dev/null)
 
 if [ -z "$VERSION" ]; then
 	echo "Error: No schema_version found in $SCHEMA_FILE"
