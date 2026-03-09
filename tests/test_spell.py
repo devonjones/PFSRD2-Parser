@@ -8,7 +8,6 @@ from pfsrd2.spell import (
     _clean_spell_name,
     _extract_heightened,
     _extract_legacy_marker,
-    _extract_result_blocks,
     _extract_stat_fields,
     _extract_traits,
     _label_to_key,
@@ -16,7 +15,7 @@ from pfsrd2.spell import (
     _split_on_hr,
     find_spell,
 )
-from universal.universal import handle_alternate_link
+from universal.universal import extract_result_blocks, handle_alternate_link
 from universal.utils import is_empty, remove_empty_fields
 
 # --- _clean_spell_name ---
@@ -259,7 +258,7 @@ class TestExtractLegacyMarker:
         assert len(struct["sections"]) == 0
 
 
-# --- _extract_result_blocks ---
+# --- extract_result_blocks ---
 
 
 class TestExtractResultBlocks:
@@ -272,7 +271,7 @@ class TestExtractResultBlocks:
             "<br/><b>Critical Failure</b> Double damage"
         )
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(spell, bs)
+        extract_result_blocks(spell, bs)
         assert spell["critical_success"] == "No damage"
         assert spell["success"] == "Half damage"
         assert spell["failure"] == "Full damage"
@@ -282,7 +281,7 @@ class TestExtractResultBlocks:
         spell = {}
         html = "<b>Success</b> You resist<br/><b>Failure</b> You take damage"
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(spell, bs)
+        extract_result_blocks(spell, bs)
         assert "critical_success" not in spell
         assert spell["success"] == "You resist"
         assert spell["failure"] == "You take damage"
@@ -291,7 +290,7 @@ class TestExtractResultBlocks:
         spell = {}
         html = "<b>Other Label</b> Some text<br/><b>Success</b> You win"
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(spell, bs)
+        extract_result_blocks(spell, bs)
         assert spell["success"] == "You win"
         assert "other_label" not in spell
         # Non-result bold should still be in the soup

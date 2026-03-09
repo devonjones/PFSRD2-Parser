@@ -13,7 +13,6 @@ from pfsrd2.feat import (
     _extract_bold_fields,
     _extract_bold_fields_from_bs,
     _extract_called_actions_from_section,
-    _extract_result_blocks,
     _extract_trailing_sections,
     _parse_called_action,
     _promote_feat_fields,
@@ -22,7 +21,7 @@ from pfsrd2.feat import (
     find_feat,
     restructure_feat_pass,
 )
-from universal.universal import build_object, extract_source_from_bs
+from universal.universal import build_object, extract_result_blocks, extract_source_from_bs
 
 
 # --- find_feat ---
@@ -228,7 +227,7 @@ class TestExtractBoldFieldsFromBs:
         assert "<b>Note</b>" in str(bs)
 
 
-# --- _extract_result_blocks ---
+# --- extract_result_blocks ---
 
 
 class TestExtractResultBlocks:
@@ -241,7 +240,7 @@ class TestExtractResultBlocks:
         )
         section = {}
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["critical_success"] == "You heal 4d8 damage."
         assert section["success"] == "You heal 2d8 damage."
         assert section["failure"] == "No effect."
@@ -251,7 +250,7 @@ class TestExtractResultBlocks:
         html = "<b>Success</b> You succeed.<b>Failure</b> You fail."
         section = {}
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["success"] == "You succeed."
         assert section["failure"] == "You fail."
         assert "critical_success" not in section
@@ -260,7 +259,7 @@ class TestExtractResultBlocks:
         html = "<b>Note</b> some text<b>Success</b> You win."
         section = {}
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["success"] == "You win."
         assert "note" not in section
 
@@ -844,7 +843,7 @@ class TestAttachArchetypeNote:
             assert "note" in arch
 
 
-# --- _extract_result_blocks (break on non-result bold) ---
+# --- extract_result_blocks (break on non-result bold) ---
 
 
 class TestExtractResultBlocksBreakOnBold:
@@ -856,7 +855,7 @@ class TestExtractResultBlocksBreakOnBold:
         )
         bs = BeautifulSoup(html, "html.parser")
         section = {}
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["success"] == "You succeed at the check."
         # Special should remain in BS for bold field extraction
         assert "Special" in str(bs)
@@ -872,7 +871,7 @@ class TestExtractResultBlocksBreakOnBold:
         )
         bs = BeautifulSoup(html, "html.parser")
         section = {}
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["critical_success"] == "Great."
         assert section["success"] == "Good."
         assert section["failure"] == "Bad."

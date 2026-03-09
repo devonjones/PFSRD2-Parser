@@ -18,6 +18,7 @@ from universal.universal import (
     entity_pass,
     extract_link,
     extract_source,
+    extract_result_blocks,
     extract_source_from_bs,
     game_id_pass,
     get_links,
@@ -191,12 +192,6 @@ _SPELL_STAT_LABELS = {
     "Cost",
 }
 
-_RESULT_LABELS = {
-    "Critical Success": "critical_success",
-    "Critical Failure": "critical_failure",
-    "Success": "success",
-    "Failure": "failure",
-}
 
 _HEIGHTENED_RE = re.compile(r"^Heightened\b")
 _AMP_HEIGHTENED_RE = re.compile(r"^Amp Heightened\b")
@@ -264,7 +259,7 @@ def spell_struct_pass(struct):
         _extract_heightened(spell, post_hr_text)
 
     # Extract result blocks from remaining body
-    _extract_result_blocks(spell, bs)
+    extract_result_blocks(spell, bs)
 
     # Extract deity form entries from <ul><li><b><a href="Deities...">
     _extract_deity_forms(spell, bs)
@@ -437,33 +432,6 @@ def _label_to_key(label):
     }
     assert label in mapping, f"No key mapping for label: {label!r}"
     return mapping[label]
-
-
-def _extract_result_blocks(spell, bs):
-    """Extract Critical Success/Success/Failure/Critical Failure from description."""
-    for bold in list(bs.find_all("b")):
-        label = get_text(bold).strip()
-        if label not in _RESULT_LABELS:
-            continue
-        key = _RESULT_LABELS[label]
-        parts = []
-        node = bold.next_sibling
-        while node:
-            if getattr(node, "name", None) == "b":
-                next_label = get_text(node).strip()
-                if next_label in _RESULT_LABELS:
-                    break
-            parts.append(str(node))
-            node = node.next_sibling
-        value = "".join(parts).strip()
-        value = re.sub(r"<br/?>[\s]*$", "", value)
-        spell[key] = value
-        # Remove from soup
-        for node in list(bold.next_siblings):
-            if getattr(node, "name", None) == "b" and get_text(node).strip() in _RESULT_LABELS:
-                break
-            node.extract()
-        bold.decompose()
 
 
 def _extract_deity_forms(spell, bs):

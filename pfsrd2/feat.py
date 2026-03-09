@@ -20,6 +20,7 @@ from universal.universal import (
     entity_pass,
     extract_link,
     extract_source,
+    extract_result_blocks,
     extract_source_from_bs,
     game_id_pass,
     get_links,
@@ -321,7 +322,7 @@ def feat_extract_pass(struct):
     _extract_trailing_sections(struct, bs)
 
     # 7. Extract result blocks from remaining text
-    _extract_result_blocks(feat, bs)
+    extract_result_blocks(feat, bs, break_on_any_bold=True)
 
     # 8. Extract bold fields from post-hr text (Special, Trigger, Requirement
     # can appear in the description after the <hr> divider)
@@ -577,36 +578,6 @@ def _extract_trailing_sections(struct, bs):
         div.extract()
 
 
-def _extract_result_blocks(section, bs):
-    """Extract Critical Success/Success/Failure/Critical Failure from description."""
-    result_labels = {
-        "Critical Success": "critical_success",
-        "Success": "success",
-        "Failure": "failure",
-        "Critical Failure": "critical_failure",
-    }
-    for bold in list(bs.find_all("b")):
-        label = get_text(bold).strip()
-        if label not in result_labels:
-            continue
-        key = result_labels[label]
-        nodes_to_remove = []
-        parts = []
-        node = bold.next_sibling
-        while node:
-            if getattr(node, "name", None) == "b":
-                break
-            parts.append(str(node))
-            nodes_to_remove.append(node)
-            node = node.next_sibling
-        value = "".join(parts).strip()
-        value = re.sub(r"<br/?>[\s]*$", "", value)
-        section[key] = value
-        for n in nodes_to_remove:
-            n.extract()
-        bold.decompose()
-
-
 def _extract_called_actions(struct):
     """Extract calledAction divs from section text into structured ability objects.
 
@@ -705,7 +676,7 @@ def _parse_called_action(div):
             break
 
     # Extract result blocks from post-hr content
-    _extract_result_blocks(ability, div)
+    extract_result_blocks(ability, div, break_on_any_bold=True)
 
     # Extract trailing h2 sections (e.g. "Spellstrike Specifics")
     for h2 in list(div.find_all("h2", class_="title")):

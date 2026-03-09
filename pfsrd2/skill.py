@@ -18,6 +18,7 @@ from universal.universal import (
     entity_pass,
     extract_link,
     extract_source,
+    extract_result_blocks,
     extract_source_from_bs,
     game_id_pass,
     get_links,
@@ -362,7 +363,7 @@ def _extract_action_text(section):
         _extract_bold_fields(section, pre_hr_text)
 
     # 5. Extract result blocks from remaining text (post-hr / description area)
-    _extract_result_blocks(section, bs)
+    extract_result_blocks(section, bs)
 
     # 6. Clean remaining text
     text = str(bs).strip()
@@ -393,40 +394,6 @@ def _extract_bold_fields(section, text):
         if key == "requirements":
             key = "requirement"
         section[key] = value
-
-
-def _extract_result_blocks(section, bs):
-    """Extract Critical Success/Success/Failure/Critical Failure from description."""
-    result_labels = {
-        "Critical Success": "critical_success",
-        "Success": "success",
-        "Failure": "failure",
-        "Critical Failure": "critical_failure",
-    }
-    for bold in list(bs.find_all("b")):
-        label = get_text(bold).strip()
-        if label not in result_labels:
-            continue
-        key = result_labels[label]
-        parts = []
-        node = bold.next_sibling
-        while node:
-            if getattr(node, "name", None) == "b":
-                # Check if next bold is also a result label
-                next_label = get_text(node).strip()
-                if next_label in result_labels:
-                    break
-            parts.append(str(node))
-            node = node.next_sibling
-        value = "".join(parts).strip()
-        value = re.sub(r"<br/?>[\s]*$", "", value)
-        section[key] = value
-        # Remove the bold tag and its text from the soup
-        for node in list(bold.next_siblings):
-            if getattr(node, "name", None) == "b" and get_text(node).strip() in result_labels:
-                break
-            node.extract()
-        bold.decompose()
 
 
 def skill_struct_pass(struct):

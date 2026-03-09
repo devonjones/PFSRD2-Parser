@@ -1,3 +1,4 @@
+import re
 import sys
 from hashlib import md5
 from pprint import pprint
@@ -568,6 +569,53 @@ def extract_source_from_bs(bs):
     if siblings and getattr(siblings[0], "name", None) == "br":
         siblings[0].decompose()
     return source
+
+
+RESULT_LABELS = {
+    "Critical Success": "critical_success",
+    "Success": "success",
+    "Failure": "failure",
+    "Critical Failure": "critical_failure",
+}
+
+
+def extract_result_blocks(section, bs, break_on_any_bold=False):
+    """Extract Critical Success/Success/Failure/Critical Failure from description.
+
+    Args:
+        section: dict to store result keys into (e.g. critical_success, failure)
+        bs: BeautifulSoup object to extract from (modified in place)
+        break_on_any_bold: If True, stop collecting at ANY <b> tag (feat behavior).
+            If False (default), only stop at <b> tags that are result labels
+            (skill/spell behavior - allows non-result bolds within result text).
+    """
+    for bold in list(bs.find_all("b")):
+        label = get_text(bold).strip()
+        if label not in RESULT_LABELS:
+            continue
+        key = RESULT_LABELS[label]
+        parts = []
+        node = bold.next_sibling
+        while node:
+            if getattr(node, "name", None) == "b":
+                if break_on_any_bold:
+                    break
+                next_label = get_text(node).strip()
+                if next_label in RESULT_LABELS:
+                    break
+            parts.append(str(node))
+            node = node.next_sibling
+        value = "".join(parts).strip()
+        value = re.sub(r"<br/?>[\s]*$", "", value)
+        section[key] = value
+        for node in list(bold.next_siblings):
+            if getattr(node, "name", None) == "b":
+                if break_on_any_bold:
+                    break
+                if get_text(node).strip() in RESULT_LABELS:
+                    break
+            node.extract()
+        bold.decompose()
 
 
 def aon_pass(struct, basename):
