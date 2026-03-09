@@ -13,8 +13,6 @@ from pfsrd2.feat import (
     _extract_bold_fields,
     _extract_bold_fields_from_bs,
     _extract_called_actions_from_section,
-    _extract_result_blocks,
-    _extract_source_from_bs,
     _extract_trailing_sections,
     _parse_called_action,
     _promote_feat_fields,
@@ -23,8 +21,7 @@ from pfsrd2.feat import (
     find_feat,
     restructure_feat_pass,
 )
-from universal.universal import build_object
-
+from universal.universal import extract_result_blocks, extract_source_from_bs
 
 # --- find_feat ---
 
@@ -97,14 +94,14 @@ class TestExtractActionType:
             _extract_action_type(feat)
 
 
-# --- _extract_source_from_bs ---
+# --- extract_source_from_bs ---
 
 
 class TestExtractSourceFromBs:
     def test_basic_source(self):
         html = '<b>Source</b> <a href="Sources.aspx?ID=1" game-obj="Sources" aonid="1"><i>Core Rulebook pg. 36</i></a><br/>'
         bs = BeautifulSoup(html, "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is not None
         assert source["name"] == "Core Rulebook"
         assert source["page"] == 36
@@ -113,24 +110,24 @@ class TestExtractSourceFromBs:
     def test_source_with_errata(self):
         html = (
             '<b>Source</b> <a href="Sources.aspx?ID=1" game-obj="Sources" aonid="1">'
-            '<i>Core Rulebook pg. 36</i></a> '
+            "<i>Core Rulebook pg. 36</i></a> "
             '<sup><a href="Sources.aspx?ID=1" game-obj="Sources" aonid="1">4.0</a></sup><br/>'
         )
         bs = BeautifulSoup(html, "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is not None
         assert "errata" in source
         assert source["errata"]["name"] == "4.0"
 
     def test_no_source_tag(self):
         bs = BeautifulSoup("<b>Prerequisites</b> trained in Nature", "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is None
 
     def test_removes_source_from_bs(self):
         html = '<b>Source</b> <a href="Sources.aspx?ID=1" game-obj="Sources" aonid="1"><i>Core Rulebook pg. 36</i></a><br/>remaining text'
         bs = BeautifulSoup(html, "html.parser")
-        _extract_source_from_bs(bs)
+        extract_source_from_bs(bs)
         assert "Source" not in str(bs)
         assert "remaining text" in str(bs)
 
@@ -229,7 +226,7 @@ class TestExtractBoldFieldsFromBs:
         assert "<b>Note</b>" in str(bs)
 
 
-# --- _extract_result_blocks ---
+# --- extract_result_blocks ---
 
 
 class TestExtractResultBlocks:
@@ -242,7 +239,7 @@ class TestExtractResultBlocks:
         )
         section = {}
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["critical_success"] == "You heal 4d8 damage."
         assert section["success"] == "You heal 2d8 damage."
         assert section["failure"] == "No effect."
@@ -252,7 +249,7 @@ class TestExtractResultBlocks:
         html = "<b>Success</b> You succeed.<b>Failure</b> You fail."
         section = {}
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["success"] == "You succeed."
         assert section["failure"] == "You fail."
         assert "critical_success" not in section
@@ -261,7 +258,7 @@ class TestExtractResultBlocks:
         html = "<b>Note</b> some text<b>Success</b> You win."
         section = {}
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["success"] == "You win."
         assert "note" not in section
 
@@ -353,7 +350,7 @@ class TestParseCalledAction:
 class TestExtractTrailingSections:
     def test_extracts_leads_to_section(self):
         html = (
-            'Description text.'
+            "Description text."
             '<h2 class="title">Test Feat Leads To...</h2>'
             '<u><a href="Feats.aspx?ID=100">Other Feat</a></u>'
         )
@@ -369,7 +366,7 @@ class TestExtractTrailingSections:
     def test_extracts_traits_section_and_drops_it(self):
         """Traits h2 sections are extracted but dropped (name == 'Traits')."""
         html = (
-            'Description.'
+            "Description."
             '<h2 class="title">Traits</h2>'
             '<div class="trait-entry"><b>Archetype:</b> <p>This feat belongs to an archetype.</p></div>'
         )
@@ -384,7 +381,7 @@ class TestExtractTrailingSections:
     def test_extracts_multiple_h2_sections(self):
         """Leads To is kept, Traits is dropped."""
         html = (
-            'Desc.'
+            "Desc."
             '<h2 class="title">Leads To...</h2>links'
             '<h2 class="title">Traits</h2>'
             '<div class="trait-entry"><b>X:</b> <p>Y</p></div>'
@@ -716,7 +713,7 @@ class TestExtractArchetypes:
 
     def test_multiple_archetypes(self):
         html = (
-            '<b>Archetypes</b> '
+            "<b>Archetypes</b> "
             '<u><a href="Archetypes.aspx?ID=238" game-obj="Archetypes" aonid="238">Archer</a></u>, '
             '<u><a href="Archetypes.aspx?ID=121" game-obj="Archetypes" aonid="121">Sniping Duo</a></u><br/>'
         )
@@ -736,9 +733,9 @@ class TestExtractArchetypes:
 
     def test_star_with_inline_note(self):
         html = (
-            '<b>Archetype</b> '
+            "<b>Archetype</b> "
             '<u><a href="Archetypes.aspx?ID=47" game-obj="Archetypes" aonid="47">Archer</a></u>*'
-            '<br/>* This archetype offers Assisting Shot at a different level than displayed here.'
+            "<br/>* This archetype offers Assisting Shot at a different level than displayed here."
         )
         bs = BeautifulSoup(html, "html.parser")
         section = {}
@@ -752,10 +749,10 @@ class TestExtractArchetypes:
 
     def test_multiple_starred_with_note(self):
         html = (
-            '<b>Archetypes</b> '
+            "<b>Archetypes</b> "
             '<u><a href="Archetypes.aspx?ID=238" game-obj="Archetypes" aonid="238">Archer</a></u>*, '
             '<u><a href="Archetypes.aspx?ID=121" game-obj="Archetypes" aonid="121">Sniping Duo</a></u>*'
-            '<br/>* This archetype offers Assisting Shot at a different level than displayed here.'
+            "<br/>* This archetype offers Assisting Shot at a different level than displayed here."
         )
         bs = BeautifulSoup(html, "html.parser")
         section = {}
@@ -774,9 +771,9 @@ class TestExtractArchetypes:
 
     def test_removes_nodes_from_bs(self):
         html = (
-            'Before.<b>Archetype</b> '
+            "Before.<b>Archetype</b> "
             '<u><a href="Archetypes.aspx?ID=47" game-obj="Archetypes" aonid="47">Archer</a></u><br/>'
-            'After.'
+            "After."
         )
         bs = BeautifulSoup(html, "html.parser")
         section = {}
@@ -845,7 +842,7 @@ class TestAttachArchetypeNote:
             assert "note" in arch
 
 
-# --- _extract_result_blocks (break on non-result bold) ---
+# --- extract_result_blocks (break on non-result bold) ---
 
 
 class TestExtractResultBlocksBreakOnBold:
@@ -857,7 +854,7 @@ class TestExtractResultBlocksBreakOnBold:
         )
         bs = BeautifulSoup(html, "html.parser")
         section = {}
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["success"] == "You succeed at the check."
         # Special should remain in BS for bold field extraction
         assert "Special" in str(bs)
@@ -873,7 +870,7 @@ class TestExtractResultBlocksBreakOnBold:
         )
         bs = BeautifulSoup(html, "html.parser")
         section = {}
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["critical_success"] == "Great."
         assert section["success"] == "Good."
         assert section["failure"] == "Bad."
@@ -1083,11 +1080,7 @@ class TestPromoteFeatFields:
 
 class TestCleanHtmlFields:
     def test_renames_html_to_text(self):
-        struct = {
-            "sections": [
-                {"name": "Desc", "html": "<p>Content</p>", "sections": []}
-            ]
-        }
+        struct = {"sections": [{"name": "Desc", "html": "<p>Content</p>", "sections": []}]}
         _clean_html_fields(struct)
         assert struct["sections"][0]["text"] == "<p>Content</p>"
         assert "html" not in struct["sections"][0]
@@ -1098,9 +1091,7 @@ class TestCleanHtmlFields:
                 {
                     "name": "Outer",
                     "html": "outer html",
-                    "sections": [
-                        {"name": "Inner", "html": "inner html", "sections": []}
-                    ],
+                    "sections": [{"name": "Inner", "html": "inner html", "sections": []}],
                 }
             ]
         }

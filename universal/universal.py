@@ -1,3 +1,4 @@
+import re
 import sys
 from hashlib import md5
 from pprint import pprint
@@ -527,6 +528,141 @@ def extract_source(obj):
         page = int(parts.pop(0))
         source["page"] = page
     return source
+
+
+def extract_source_from_bs(bs):
+    """Extract source from a BeautifulSoup object, modifying it in place.
+
+    Finds <b>Source</b> followed by a book link (and optional errata sup),
+    removes those elements from the soup, and returns the source dict.
+    Returns None if no source found. Handles trailing comma between
+    multiple sources and trailing <br> tags.
+    """
+
+    def _strip_whitespace(nodes):
+        while nodes and isinstance(nodes[0], str) and not nodes[0].strip():
+            nodes[0].extract()
+            nodes.pop(0)
+
+    source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
+    if not source_tag:
+        return None
+    siblings = list(source_tag.next_siblings)
+    _strip_whitespace(siblings)
+    if not siblings or getattr(siblings[0], "name", None) not in ("a", "i"):
+        return None
+    source_tag.decompose()
+    book = siblings.pop(0)
+    source = extract_source(book)
+    book.decompose()
+    _strip_whitespace(siblings)
+    if siblings and getattr(siblings[0], "name", None) == "sup":
+        assert "errata" not in source, "Should be no more than one errata."
+        sup = siblings.pop(0)
+        _, source["errata"] = extract_link(sup.find("a"))
+        sup.decompose()
+    # Strip trailing comma or whitespace between multiple sources
+    _strip_whitespace(siblings)
+    if siblings and isinstance(siblings[0], str) and siblings[0].strip() == ",":
+        siblings[0].extract()
+        siblings.pop(0)
+    if siblings and getattr(siblings[0], "name", None) == "br":
+        siblings[0].decompose()
+    return source
+
+
+RESULT_LABELS = {
+    "Critical Success": "critical_success",
+    "Success": "success",
+    "Failure": "failure",
+    "Critical Failure": "critical_failure",
+}
+
+
+def extract_result_blocks(section, bs, break_on_any_bold=False):
+    """Extract Critical Success/Success/Failure/Critical Failure from description.
+
+    Args:
+        section: dict to store result keys into (e.g. critical_success, failure)
+        bs: BeautifulSoup object to extract from (modified in place)
+        break_on_any_bold: If True, stop collecting at ANY <b> tag (feat behavior).
+            If False (default), only stop at <b> tags that are result labels
+            (skill/spell behavior - allows non-result bolds within result text).
+    """
+    for bold in list(bs.find_all("b")):
+        label = get_text(bold).strip()
+        if label not in RESULT_LABELS:
+            continue
+        key = RESULT_LABELS[label]
+        parts = []
+        node = bold.next_sibling
+        while node:
+            if getattr(node, "name", None) == "b":
+                if break_on_any_bold:
+                    break
+                next_label = get_text(node).strip()
+                if next_label in RESULT_LABELS:
+                    break
+            parts.append(str(node))
+            node = node.next_sibling
+        value = "".join(parts).strip()
+        value = re.sub(r"<br/?>[\s]*$", "", value)
+        section[key] = value
+        for node in list(bold.next_siblings):
+            if getattr(node, "name", None) == "b":
+                if break_on_any_bold:
+                    break
+                if get_text(node).strip() in RESULT_LABELS:
+                    break
+            node.extract()
+        bold.decompose()
+
+
+_KEY_OVERRIDES = {
+    "requirements": "requirement",
+    "prerequisites": "prerequisite",
+}
+
+
+def extract_bold_fields(section, bs, labels, decompose=False):
+    """Extract bold-labeled fields from a BeautifulSoup object.
+
+    Finds <b>Label</b> followed by value text, extracts each recognized
+    label into section[key] = value. Keys are derived from labels via
+    lowercase + underscore conversion, with standard plural normalization.
+
+    Args:
+        section: dict to store extracted key/value pairs into
+        bs: BeautifulSoup object to search
+        labels: set of recognized bold label strings
+        decompose: If True, remove extracted nodes from the BS tree.
+            Use when operating on a live BS object that will be processed
+            further (e.g. feat's _extract_bold_fields_from_bs).
+    """
+    for bold in list(bs.find_all("b")):
+        label = get_text(bold).strip()
+        if label not in labels:
+            continue
+        nodes_to_remove = []
+        parts = []
+        node = bold.next_sibling
+        while node:
+            if getattr(node, "name", None) == "b":
+                break
+            parts.append(str(node))
+            nodes_to_remove.append(node)
+            node = node.next_sibling
+        value = "".join(parts).strip()
+        value = re.sub(r"<br/?>[\s]*$", "", value)
+        if value.endswith(";"):
+            value = value[:-1].strip()
+        key = label.lower().replace(" ", "_")
+        key = _KEY_OVERRIDES.get(key, key)
+        section[key] = value
+        if decompose:
+            for n in nodes_to_remove:
+                n.extract()
+            bold.decompose()
 
 
 def aon_pass(struct, basename):

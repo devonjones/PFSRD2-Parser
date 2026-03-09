@@ -18,8 +18,10 @@ from universal.universal import (
     edition_from_alternate_link,
     edition_pass,
     entity_pass,
+    extract_bold_fields,
     extract_link,
-    extract_source,
+    extract_result_blocks,
+    extract_source_from_bs,
     game_id_pass,
     get_links,
     handle_alternate_link,
@@ -63,8 +65,7 @@ def parse_feat(filename, options):
     restructure_pass(struct, "feat", find_feat)
     struct["edition"] = edition_from_alternate_link(struct) or edition_pass(struct["sections"])
     struct["sections"] = [
-        s for s in struct["sections"]
-        if s.get("name") not in ("Legacy Content", "Traits")
+        s for s in struct["sections"] if s.get("name") not in ("Legacy Content", "Traits")
     ]
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
@@ -98,9 +99,7 @@ def _content_filter(soup):
     for h1 in main.find_all("h1", class_="title"):
         spans_to_move = []
         for span in h1.find_all("span"):
-            if "action" in span.get("class", []):
-                spans_to_move.append(span)
-            elif "margin-left" in (span.get("style") or ""):
+            if "action" in span.get("class", []) or "margin-left" in (span.get("style") or ""):
                 spans_to_move.append(span)
         for span in spans_to_move:
             span.extract()
@@ -138,7 +137,9 @@ def restructure_feat_pass(details):
             feat_name = get_text(name_link).strip()
             action_text = str(bs)
             break
-    assert feat_name, f"Could not extract feat name from sections: {[s.get('name') for s in first.get('sections', [])]}"
+    assert (
+        feat_name
+    ), f"Could not extract feat name from sections: {[s.get('name') for s in first.get('sections', [])]}"
 
     # Scan all sections recursively to find feat level and content
     feat_level = None
@@ -227,9 +228,7 @@ def restructure_feat_pass(details):
 
     top = {"name": feat_name, "type": "feat", "sections": [sb]}
     if is_legacy:
-        top["sections"].append(
-            {"name": "Legacy Content", "type": "section", "sections": []}
-        )
+        top["sections"].append({"name": "Legacy Content", "type": "section", "sections": []})
     top["sections"].extend(extra_sections)
     top["sections"].extend(rest)
 
@@ -270,7 +269,9 @@ def feat_extract_pass(struct):
         a = span.find("a")
         if a:
             name, trait_link = extract_link(a)
-            trait_obj = build_object("stat_block_section", "trait", name.strip(), {"link": trait_link})
+            trait_obj = build_object(
+                "stat_block_section", "trait", name.strip(), {"link": trait_link}
+            )
             # Split valued traits like "Additive 1" into name="Additive" + value="1"
             value_match = re.match(r"^(.+?)\s+(\d+)$", trait_obj["name"])
             if value_match:
@@ -288,7 +289,7 @@ def feat_extract_pass(struct):
     # 3. Extract source(s)
     sources = []
     while True:
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         if source:
             sources.append(source)
         else:
@@ -320,7 +321,7 @@ def feat_extract_pass(struct):
     _extract_trailing_sections(struct, bs)
 
     # 7. Extract result blocks from remaining text
-    _extract_result_blocks(feat, bs)
+    extract_result_blocks(feat, bs, break_on_any_bold=True)
 
     # 8. Extract bold fields from post-hr text (Special, Trigger, Requirement
     # can appear in the description after the <hr> divider)
@@ -361,41 +362,6 @@ def _extract_action_type(feat):
         )
 
 
-def _extract_source_from_bs(bs):
-    """Extract source from a BeautifulSoup object, modifying it in place."""
-
-    def _strip_whitespace(nodes):
-        while nodes and isinstance(nodes[0], str) and not nodes[0].strip():
-            nodes[0].extract()
-            nodes.pop(0)
-
-    source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
-    if not source_tag:
-        return None
-    siblings = list(source_tag.next_siblings)
-    _strip_whitespace(siblings)
-    if not siblings or getattr(siblings[0], "name", None) not in ("a", "i"):
-        return None
-    source_tag.decompose()
-    book = siblings.pop(0)
-    source = extract_source(book)
-    book.decompose()
-    _strip_whitespace(siblings)
-    if siblings and getattr(siblings[0], "name", None) == "sup":
-        assert "errata" not in source, "Should be no more than one errata."
-        sup = siblings.pop(0)
-        _, source["errata"] = extract_link(sup.find("a"))
-        sup.decompose()
-    # Strip trailing comma or whitespace between multiple sources
-    _strip_whitespace(siblings)
-    if siblings and isinstance(siblings[0], str) and siblings[0].strip() == ",":
-        siblings[0].extract()
-        siblings.pop(0)
-    if siblings and getattr(siblings[0], "name", None) == "br":
-        siblings[0].decompose()
-    return source
-
-
 def _extract_bold_fields(section, text):
     """Extract Prerequisites, Archetype, Requirements, Trigger, etc. from text string."""
     bs = BeautifulSoup(text, "html.parser")
@@ -428,11 +394,7 @@ def _extract_archetypes(section, bs):
         if getattr(node, "name", None) == "b":
             break
         # Detect "* This archetype/version..." note (not a bare "*" star marker)
-        if (
-            not in_note
-            and isinstance(node, str)
-            and re.match(r"^\*\s+\w", node.lstrip())
-        ):
+        if not in_note and isinstance(node, str) and re.match(r"^\*\s+\w", node.lstrip()):
             in_note = True
         if in_note:
             note_nodes.append(node)
@@ -500,8 +462,15 @@ def _attach_archetype_note(section):
 
     # Only scan bold-extracted fields, not description text or name
     _note_scan_fields = {
-        "requirement", "prerequisite", "trigger", "frequency", "cost",
-        "duration", "access", "special", "effect",
+        "requirement",
+        "prerequisite",
+        "trigger",
+        "frequency",
+        "cost",
+        "duration",
+        "access",
+        "special",
+        "effect",
     }
     note_re = re.compile(r"\s*\*\s+(This (?:archetype|version)\b.+)")
     for key in _note_scan_fields:
@@ -525,53 +494,25 @@ def _attach_archetype_note(section):
             return
 
 
+_FEAT_BOLD_LABELS = {
+    "Prerequisites",
+    "Prerequisite",
+    "Requirements",
+    "Requirement",
+    "Trigger",
+    "Frequency",
+    "Cost",
+    "Duration",
+    "Access",
+    "Special",
+    "Effect",
+}
+
+
 def _extract_bold_fields_from_bs(section, bs):
     """Extract bold-labeled fields from a BS object, removing them in place."""
-    known_labels = {
-        "Prerequisites",
-        "Prerequisite",
-        "Requirements",
-        "Requirement",
-        "Trigger",
-        "Frequency",
-        "Cost",
-        "Duration",
-        "Access",
-        "Special",
-        "Effect",
-    }
-
-    # Handle Archetype/Archetypes separately with structured extraction
     _extract_archetypes(section, bs)
-
-    for bold in list(bs.find_all("b")):
-        label = get_text(bold).strip()
-        if label not in known_labels:
-            continue
-        # Collect value nodes between this bold and the next bold
-        nodes_to_remove = []
-        node = bold.next_sibling
-        parts = []
-        while node:
-            if getattr(node, "name", None) == "b":
-                break
-            parts.append(str(node))
-            nodes_to_remove.append(node)
-            node = node.next_sibling
-        value = "".join(parts).strip()
-        value = re.sub(r"<br/?>[\s]*$", "", value)
-        if value.endswith(";"):
-            value = value[:-1].strip()
-        key = label.lower().replace(" ", "_")
-        if key == "requirements":
-            key = "requirement"
-        if key == "prerequisites":
-            key = "prerequisite"
-        section[key] = value
-        # Remove extracted nodes from BS
-        for n in nodes_to_remove:
-            n.extract()
-        bold.decompose()
+    extract_bold_fields(section, bs, _FEAT_BOLD_LABELS, decompose=True)
 
 
 def _extract_trailing_sections(struct, bs):
@@ -609,36 +550,6 @@ def _extract_trailing_sections(struct, bs):
     # Remove any remaining trait-entry divs
     for div in list(bs.find_all("div", {"class": "trait-entry"})):
         div.extract()
-
-
-def _extract_result_blocks(section, bs):
-    """Extract Critical Success/Success/Failure/Critical Failure from description."""
-    result_labels = {
-        "Critical Success": "critical_success",
-        "Success": "success",
-        "Failure": "failure",
-        "Critical Failure": "critical_failure",
-    }
-    for bold in list(bs.find_all("b")):
-        label = get_text(bold).strip()
-        if label not in result_labels:
-            continue
-        key = result_labels[label]
-        nodes_to_remove = []
-        parts = []
-        node = bold.next_sibling
-        while node:
-            if getattr(node, "name", None) == "b":
-                break
-            parts.append(str(node))
-            nodes_to_remove.append(node)
-            node = node.next_sibling
-        value = "".join(parts).strip()
-        value = re.sub(r"<br/?>[\s]*$", "", value)
-        section[key] = value
-        for n in nodes_to_remove:
-            n.extract()
-        bold.decompose()
 
 
 def _extract_called_actions(struct):
@@ -713,7 +624,7 @@ def _parse_called_action(div):
         span.decompose()
 
     # Extract source
-    source = _extract_source_from_bs(div)
+    source = extract_source_from_bs(div)
     if source:
         ability["sources"] = [source]
 
@@ -739,7 +650,7 @@ def _parse_called_action(div):
             break
 
     # Extract result blocks from post-hr content
-    _extract_result_blocks(ability, div)
+    extract_result_blocks(ability, div, break_on_any_bold=True)
 
     # Extract trailing h2 sections (e.g. "Spellstrike Specifics")
     for h2 in list(div.find_all("h2", class_="title")):

@@ -16,8 +16,10 @@ from universal.universal import (
     aon_pass,
     build_object,
     entity_pass,
+    extract_bold_fields,
     extract_link,
-    extract_source,
+    extract_result_blocks,
+    extract_source_from_bs,
     game_id_pass,
     get_links,
     handle_alternate_link,
@@ -320,41 +322,6 @@ def _extract_action_type_from_name(section):
         )
 
 
-def _extract_source_from_bs(bs):
-    """Extract source from a BeautifulSoup object, modifying it in place.
-
-    Finds <b>Source</b> followed by a book link (and optional errata sup),
-    removes those elements from the soup, and returns the source dict.
-    Returns None if no source found.
-    """
-
-    def _strip_whitespace(nodes):
-        while nodes and isinstance(nodes[0], str) and not nodes[0].strip():
-            nodes[0].extract()
-            nodes.pop(0)
-
-    source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
-    if not source_tag:
-        return None
-    siblings = list(source_tag.next_siblings)
-    source_tag.decompose()
-    _strip_whitespace(siblings)
-    if not siblings or getattr(siblings[0], "name", None) not in ("a", "i"):
-        return None
-    book = siblings.pop(0)
-    source = extract_source(book)
-    book.decompose()
-    _strip_whitespace(siblings)
-    if siblings and getattr(siblings[0], "name", None) == "sup":
-        assert "errata" not in source, "Should be no more than one errata."
-        sup = siblings.pop(0)
-        _, source["errata"] = extract_link(sup.find("a"))
-        sup.decompose()
-    if siblings and getattr(siblings[0], "name", None) == "br":
-        siblings[0].decompose()
-    return source
-
-
 def _extract_action_text(section):
     """Extract traits, source, requirements, and result blocks from action text."""
     bs = BeautifulSoup(section["text"], "html.parser")
@@ -377,7 +344,7 @@ def _extract_action_text(section):
         span.decompose()
 
     # 3. Extract source
-    source = _extract_source_from_bs(bs)
+    source = extract_source_from_bs(bs)
     if source:
         section["source"] = source
 
@@ -396,7 +363,7 @@ def _extract_action_text(section):
         _extract_bold_fields(section, pre_hr_text)
 
     # 5. Extract result blocks from remaining text (post-hr / description area)
-    _extract_result_blocks(section, bs)
+    extract_result_blocks(section, bs)
 
     # 6. Clean remaining text
     text = str(bs).strip()
@@ -405,62 +372,20 @@ def _extract_action_text(section):
     section["text"] = text.strip()
 
 
+_SKILL_BOLD_LABELS = {
+    "Requirements",
+    "Requirement",
+    "Trigger",
+    "Frequency",
+    "Cost",
+    "Duration",
+}
+
+
 def _extract_bold_fields(section, text):
     """Extract Requirements, Trigger, Frequency, Cost from pre-hr text."""
     bs = BeautifulSoup(text, "html.parser")
-    for bold in bs.find_all("b"):
-        label = get_text(bold).strip()
-        if label not in ("Requirements", "Requirement", "Trigger", "Frequency", "Cost", "Duration"):
-            continue
-        parts = []
-        node = bold.next_sibling
-        while node:
-            if getattr(node, "name", None) == "b":
-                break
-            parts.append(str(node))
-            node = node.next_sibling
-        value = "".join(parts).strip()
-        value = re.sub(r"<br/?>[\s]*$", "", value)
-        if value.endswith(";"):
-            value = value[:-1].strip()
-        key = label.lower().replace(" ", "_")
-        if key == "requirements":
-            key = "requirement"
-        section[key] = value
-
-
-def _extract_result_blocks(section, bs):
-    """Extract Critical Success/Success/Failure/Critical Failure from description."""
-    result_labels = {
-        "Critical Success": "critical_success",
-        "Success": "success",
-        "Failure": "failure",
-        "Critical Failure": "critical_failure",
-    }
-    for bold in list(bs.find_all("b")):
-        label = get_text(bold).strip()
-        if label not in result_labels:
-            continue
-        key = result_labels[label]
-        parts = []
-        node = bold.next_sibling
-        while node:
-            if getattr(node, "name", None) == "b":
-                # Check if next bold is also a result label
-                next_label = get_text(node).strip()
-                if next_label in result_labels:
-                    break
-            parts.append(str(node))
-            node = node.next_sibling
-        value = "".join(parts).strip()
-        value = re.sub(r"<br/?>[\s]*$", "", value)
-        section[key] = value
-        # Remove the bold tag and its text from the soup
-        for node in list(bold.next_siblings):
-            if getattr(node, "name", None) == "b" and get_text(node).strip() in result_labels:
-                break
-            node.extract()
-        bold.decompose()
+    extract_bold_fields(section, bs, _SKILL_BOLD_LABELS)
 
 
 def skill_struct_pass(struct):
@@ -468,7 +393,7 @@ def skill_struct_pass(struct):
         if "text" not in section:
             return None
         bs = BeautifulSoup(section["text"], "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         if not source:
             return None
         section["text"] = str(bs).strip()

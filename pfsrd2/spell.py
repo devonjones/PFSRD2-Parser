@@ -17,7 +17,8 @@ from universal.universal import (
     edition_pass,
     entity_pass,
     extract_link,
-    extract_source,
+    extract_result_blocks,
+    extract_source_from_bs,
     game_id_pass,
     get_links,
     handle_alternate_link,
@@ -158,36 +159,6 @@ def find_spell(struct):
             return section
 
 
-def _extract_source_from_bs(bs):
-    """Extract source from a BeautifulSoup object, modifying it in place."""
-
-    def _strip_whitespace(nodes):
-        while nodes and isinstance(nodes[0], str) and not nodes[0].strip():
-            nodes[0].extract()
-            nodes.pop(0)
-
-    source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
-    if not source_tag:
-        return None
-    siblings = list(source_tag.next_siblings)
-    source_tag.decompose()
-    _strip_whitespace(siblings)
-    if not siblings or getattr(siblings[0], "name", None) not in ("a", "i"):
-        return None
-    book = siblings.pop(0)
-    source = extract_source(book)
-    book.decompose()
-    _strip_whitespace(siblings)
-    if siblings and getattr(siblings[0], "name", None) == "sup":
-        assert "errata" not in source, "Should be no more than one errata."
-        sup = siblings.pop(0)
-        _, source["errata"] = extract_link(sup.find("a"))
-        sup.decompose()
-    if siblings and getattr(siblings[0], "name", None) == "br":
-        siblings[0].decompose()
-    return source
-
-
 # Bold labels that appear in the spell stat block header area.
 # These are extracted as structured fields.
 _SPELL_STAT_LABELS = {
@@ -220,12 +191,6 @@ _SPELL_STAT_LABELS = {
     "Cost",
 }
 
-_RESULT_LABELS = {
-    "Critical Success": "critical_success",
-    "Critical Failure": "critical_failure",
-    "Success": "success",
-    "Failure": "failure",
-}
 
 _HEIGHTENED_RE = re.compile(r"^Heightened\b")
 _AMP_HEIGHTENED_RE = re.compile(r"^Amp Heightened\b")
@@ -275,7 +240,7 @@ def spell_struct_pass(struct):
     _extract_legacy_marker(bs, struct)
 
     # Extract source
-    source = _extract_source_from_bs(bs)
+    source = extract_source_from_bs(bs)
     if source:
         spell["sources"] = [source]
     else:
@@ -293,7 +258,7 @@ def spell_struct_pass(struct):
         _extract_heightened(spell, post_hr_text)
 
     # Extract result blocks from remaining body
-    _extract_result_blocks(spell, bs)
+    extract_result_blocks(spell, bs)
 
     # Extract deity form entries from <ul><li><b><a href="Deities...">
     _extract_deity_forms(spell, bs)
@@ -466,33 +431,6 @@ def _label_to_key(label):
     }
     assert label in mapping, f"No key mapping for label: {label!r}"
     return mapping[label]
-
-
-def _extract_result_blocks(spell, bs):
-    """Extract Critical Success/Success/Failure/Critical Failure from description."""
-    for bold in list(bs.find_all("b")):
-        label = get_text(bold).strip()
-        if label not in _RESULT_LABELS:
-            continue
-        key = _RESULT_LABELS[label]
-        parts = []
-        node = bold.next_sibling
-        while node:
-            if getattr(node, "name", None) == "b":
-                next_label = get_text(node).strip()
-                if next_label in _RESULT_LABELS:
-                    break
-            parts.append(str(node))
-            node = node.next_sibling
-        value = "".join(parts).strip()
-        value = re.sub(r"<br/?>[\s]*$", "", value)
-        spell[key] = value
-        # Remove from soup
-        for node in list(bold.next_siblings):
-            if getattr(node, "name", None) == "b" and get_text(node).strip() in _RESULT_LABELS:
-                break
-            node.extract()
-        bold.decompose()
 
 
 def _extract_deity_forms(spell, bs):

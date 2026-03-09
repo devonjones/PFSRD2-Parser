@@ -13,13 +13,12 @@ from pfsrd2.skill import (
     _extract_action_type_from_name,
     _extract_bold_fields,
     _extract_key_ability,
-    _extract_result_blocks,
     _extract_sample_tasks,
-    _extract_source_from_bs,
     _promote_skill_fields,
     action_extract_pass,
     find_skill,
 )
+from universal.universal import extract_result_blocks, extract_source_from_bs
 from universal.utils import is_empty, remove_empty_fields, strip_block_tags
 
 
@@ -273,7 +272,7 @@ class TestExtractResultBlocks:
             "<b>Critical Failure</b> You fail badly."
         )
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs)
         assert section["critical_success"] == "You do great."
         assert section["success"] == "You do OK."
         assert section["failure"] == "You fail."
@@ -283,7 +282,7 @@ class TestExtractResultBlocks:
         section = {}
         html = "<b>Success</b> You succeed.<b>Failure</b> You fail."
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs)
         assert section["success"] == "You succeed."
         assert section["failure"] == "You fail."
         assert "critical_success" not in section
@@ -293,7 +292,7 @@ class TestExtractResultBlocks:
         section = {}
         html = "<b>Note</b> This is important.<b>Success</b> You succeed."
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs)
         assert section["success"] == "You succeed."
         # The non-result bold should still be in the soup
         remaining = str(bs)
@@ -303,7 +302,7 @@ class TestExtractResultBlocks:
         section = {}
         html = "Some text.<b>Success</b> You succeed.<b>Failure</b> You fail."
         bs = BeautifulSoup(html, "html.parser")
-        _extract_result_blocks(section, bs)
+        extract_result_blocks(section, bs)
         remaining = str(bs)
         assert "Success" not in remaining
         assert "Failure" not in remaining
@@ -634,13 +633,13 @@ class TestExtractSourceFromBs:
     def test_extracts_source_with_link(self):
         html = '<b>Source</b> <a href="/Sources.aspx?ID=1">Core Rulebook pg. 240</a>'
         bs = BeautifulSoup(html, "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is not None
         assert "name" in source
 
     def test_returns_none_when_no_source(self):
         bs = BeautifulSoup("Just some text", "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is None
 
     def test_extracts_errata(self):
@@ -649,14 +648,14 @@ class TestExtractSourceFromBs:
             '<sup><a href="/Errata.aspx?ID=1">Errata</a></sup>'
         )
         bs = BeautifulSoup(html, "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is not None
         assert "errata" in source
 
     def test_removes_source_from_soup(self):
         html = '<b>Source</b> <a href="/Sources.aspx?ID=1">Book</a> Remaining text'
         bs = BeautifulSoup(html, "html.parser")
-        _extract_source_from_bs(bs)
+        extract_source_from_bs(bs)
         remaining = str(bs)
         assert "Source" not in remaining
         assert "Remaining text" in remaining
@@ -664,7 +663,7 @@ class TestExtractSourceFromBs:
     def test_removes_trailing_br(self):
         html = '<b>Source</b> <a href="/Sources.aspx?ID=1">Book</a><br/>Text'
         bs = BeautifulSoup(html, "html.parser")
-        _extract_source_from_bs(bs)
+        extract_source_from_bs(bs)
         assert "<br" not in str(bs).split("Text")[0]
 
 
