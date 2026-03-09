@@ -618,6 +618,53 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
         bold.decompose()
 
 
+_KEY_OVERRIDES = {
+    "requirements": "requirement",
+    "prerequisites": "prerequisite",
+}
+
+
+def extract_bold_fields(section, bs, labels, decompose=False):
+    """Extract bold-labeled fields from a BeautifulSoup object.
+
+    Finds <b>Label</b> followed by value text, extracts each recognized
+    label into section[key] = value. Keys are derived from labels via
+    lowercase + underscore conversion, with standard plural normalization.
+
+    Args:
+        section: dict to store extracted key/value pairs into
+        bs: BeautifulSoup object to search
+        labels: set of recognized bold label strings
+        decompose: If True, remove extracted nodes from the BS tree.
+            Use when operating on a live BS object that will be processed
+            further (e.g. feat's _extract_bold_fields_from_bs).
+    """
+    for bold in list(bs.find_all("b")):
+        label = get_text(bold).strip()
+        if label not in labels:
+            continue
+        nodes_to_remove = []
+        parts = []
+        node = bold.next_sibling
+        while node:
+            if getattr(node, "name", None) == "b":
+                break
+            parts.append(str(node))
+            nodes_to_remove.append(node)
+            node = node.next_sibling
+        value = "".join(parts).strip()
+        value = re.sub(r"<br/?>[\s]*$", "", value)
+        if value.endswith(";"):
+            value = value[:-1].strip()
+        key = label.lower().replace(" ", "_")
+        key = _KEY_OVERRIDES.get(key, key)
+        section[key] = value
+        if decompose:
+            for n in nodes_to_remove:
+                n.extract()
+            bold.decompose()
+
+
 def aon_pass(struct, basename):
     parts = basename.split("_")
     assert len(parts) == 2

@@ -18,6 +18,7 @@ from universal.universal import (
     edition_from_alternate_link,
     edition_pass,
     entity_pass,
+    extract_bold_fields,
     extract_link,
     extract_source,
     extract_result_blocks,
@@ -492,53 +493,25 @@ def _attach_archetype_note(section):
             return
 
 
+_FEAT_BOLD_LABELS = {
+    "Prerequisites",
+    "Prerequisite",
+    "Requirements",
+    "Requirement",
+    "Trigger",
+    "Frequency",
+    "Cost",
+    "Duration",
+    "Access",
+    "Special",
+    "Effect",
+}
+
+
 def _extract_bold_fields_from_bs(section, bs):
     """Extract bold-labeled fields from a BS object, removing them in place."""
-    known_labels = {
-        "Prerequisites",
-        "Prerequisite",
-        "Requirements",
-        "Requirement",
-        "Trigger",
-        "Frequency",
-        "Cost",
-        "Duration",
-        "Access",
-        "Special",
-        "Effect",
-    }
-
-    # Handle Archetype/Archetypes separately with structured extraction
     _extract_archetypes(section, bs)
-
-    for bold in list(bs.find_all("b")):
-        label = get_text(bold).strip()
-        if label not in known_labels:
-            continue
-        # Collect value nodes between this bold and the next bold
-        nodes_to_remove = []
-        node = bold.next_sibling
-        parts = []
-        while node:
-            if getattr(node, "name", None) == "b":
-                break
-            parts.append(str(node))
-            nodes_to_remove.append(node)
-            node = node.next_sibling
-        value = "".join(parts).strip()
-        value = re.sub(r"<br/?>[\s]*$", "", value)
-        if value.endswith(";"):
-            value = value[:-1].strip()
-        key = label.lower().replace(" ", "_")
-        if key == "requirements":
-            key = "requirement"
-        if key == "prerequisites":
-            key = "prerequisite"
-        section[key] = value
-        # Remove extracted nodes from BS
-        for n in nodes_to_remove:
-            n.extract()
-        bold.decompose()
+    extract_bold_fields(section, bs, _FEAT_BOLD_LABELS, decompose=True)
 
 
 def _extract_trailing_sections(struct, bs):

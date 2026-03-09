@@ -18,6 +18,7 @@ from universal.universal import (
     entity_pass,
     extract_link,
     extract_source,
+    extract_bold_fields,
     extract_result_blocks,
     extract_source_from_bs,
     game_id_pass,
@@ -372,28 +373,20 @@ def _extract_action_text(section):
     section["text"] = text.strip()
 
 
+_SKILL_BOLD_LABELS = {
+    "Requirements",
+    "Requirement",
+    "Trigger",
+    "Frequency",
+    "Cost",
+    "Duration",
+}
+
+
 def _extract_bold_fields(section, text):
     """Extract Requirements, Trigger, Frequency, Cost from pre-hr text."""
     bs = BeautifulSoup(text, "html.parser")
-    for bold in bs.find_all("b"):
-        label = get_text(bold).strip()
-        if label not in ("Requirements", "Requirement", "Trigger", "Frequency", "Cost", "Duration"):
-            continue
-        parts = []
-        node = bold.next_sibling
-        while node:
-            if getattr(node, "name", None) == "b":
-                break
-            parts.append(str(node))
-            node = node.next_sibling
-        value = "".join(parts).strip()
-        value = re.sub(r"<br/?>[\s]*$", "", value)
-        if value.endswith(";"):
-            value = value[:-1].strip()
-        key = label.lower().replace(" ", "_")
-        if key == "requirements":
-            key = "requirement"
-        section[key] = value
+    extract_bold_fields(section, bs, _SKILL_BOLD_LABELS)
 
 
 def skill_struct_pass(struct):
