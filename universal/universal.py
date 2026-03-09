@@ -529,6 +529,47 @@ def extract_source(obj):
     return source
 
 
+def extract_source_from_bs(bs):
+    """Extract source from a BeautifulSoup object, modifying it in place.
+
+    Finds <b>Source</b> followed by a book link (and optional errata sup),
+    removes those elements from the soup, and returns the source dict.
+    Returns None if no source found. Handles trailing comma between
+    multiple sources and trailing <br> tags.
+    """
+
+    def _strip_whitespace(nodes):
+        while nodes and isinstance(nodes[0], str) and not nodes[0].strip():
+            nodes[0].extract()
+            nodes.pop(0)
+
+    source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
+    if not source_tag:
+        return None
+    siblings = list(source_tag.next_siblings)
+    _strip_whitespace(siblings)
+    if not siblings or getattr(siblings[0], "name", None) not in ("a", "i"):
+        return None
+    source_tag.decompose()
+    book = siblings.pop(0)
+    source = extract_source(book)
+    book.decompose()
+    _strip_whitespace(siblings)
+    if siblings and getattr(siblings[0], "name", None) == "sup":
+        assert "errata" not in source, "Should be no more than one errata."
+        sup = siblings.pop(0)
+        _, source["errata"] = extract_link(sup.find("a"))
+        sup.decompose()
+    # Strip trailing comma or whitespace between multiple sources
+    _strip_whitespace(siblings)
+    if siblings and isinstance(siblings[0], str) and siblings[0].strip() == ",":
+        siblings[0].extract()
+        siblings.pop(0)
+    if siblings and getattr(siblings[0], "name", None) == "br":
+        siblings[0].decompose()
+    return source
+
+
 def aon_pass(struct, basename):
     parts = basename.split("_")
     assert len(parts) == 2

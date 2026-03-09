@@ -18,6 +18,7 @@ from universal.universal import (
     entity_pass,
     extract_link,
     extract_source,
+    extract_source_from_bs,
     game_id_pass,
     get_links,
     handle_alternate_link,
@@ -158,36 +159,6 @@ def find_spell(struct):
             return section
 
 
-def _extract_source_from_bs(bs):
-    """Extract source from a BeautifulSoup object, modifying it in place."""
-
-    def _strip_whitespace(nodes):
-        while nodes and isinstance(nodes[0], str) and not nodes[0].strip():
-            nodes[0].extract()
-            nodes.pop(0)
-
-    source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
-    if not source_tag:
-        return None
-    siblings = list(source_tag.next_siblings)
-    source_tag.decompose()
-    _strip_whitespace(siblings)
-    if not siblings or getattr(siblings[0], "name", None) not in ("a", "i"):
-        return None
-    book = siblings.pop(0)
-    source = extract_source(book)
-    book.decompose()
-    _strip_whitespace(siblings)
-    if siblings and getattr(siblings[0], "name", None) == "sup":
-        assert "errata" not in source, "Should be no more than one errata."
-        sup = siblings.pop(0)
-        _, source["errata"] = extract_link(sup.find("a"))
-        sup.decompose()
-    if siblings and getattr(siblings[0], "name", None) == "br":
-        siblings[0].decompose()
-    return source
-
-
 # Bold labels that appear in the spell stat block header area.
 # These are extracted as structured fields.
 _SPELL_STAT_LABELS = {
@@ -275,7 +246,7 @@ def spell_struct_pass(struct):
     _extract_legacy_marker(bs, struct)
 
     # Extract source
-    source = _extract_source_from_bs(bs)
+    source = extract_source_from_bs(bs)
     if source:
         spell["sources"] = [source]
     else:

@@ -15,11 +15,11 @@ from pfsrd2.skill import (
     _extract_key_ability,
     _extract_result_blocks,
     _extract_sample_tasks,
-    _extract_source_from_bs,
     _promote_skill_fields,
     action_extract_pass,
     find_skill,
 )
+from universal.universal import extract_source_from_bs
 from universal.utils import is_empty, remove_empty_fields, strip_block_tags
 
 
@@ -634,13 +634,13 @@ class TestExtractSourceFromBs:
     def test_extracts_source_with_link(self):
         html = '<b>Source</b> <a href="/Sources.aspx?ID=1">Core Rulebook pg. 240</a>'
         bs = BeautifulSoup(html, "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is not None
         assert "name" in source
 
     def test_returns_none_when_no_source(self):
         bs = BeautifulSoup("Just some text", "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is None
 
     def test_extracts_errata(self):
@@ -649,14 +649,14 @@ class TestExtractSourceFromBs:
             '<sup><a href="/Errata.aspx?ID=1">Errata</a></sup>'
         )
         bs = BeautifulSoup(html, "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is not None
         assert "errata" in source
 
     def test_removes_source_from_soup(self):
         html = '<b>Source</b> <a href="/Sources.aspx?ID=1">Book</a> Remaining text'
         bs = BeautifulSoup(html, "html.parser")
-        _extract_source_from_bs(bs)
+        extract_source_from_bs(bs)
         remaining = str(bs)
         assert "Source" not in remaining
         assert "Remaining text" in remaining
@@ -664,7 +664,7 @@ class TestExtractSourceFromBs:
     def test_removes_trailing_br(self):
         html = '<b>Source</b> <a href="/Sources.aspx?ID=1">Book</a><br/>Text'
         bs = BeautifulSoup(html, "html.parser")
-        _extract_source_from_bs(bs)
+        extract_source_from_bs(bs)
         assert "<br" not in str(bs).split("Text")[0]
 
 

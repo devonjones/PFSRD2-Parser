@@ -14,7 +14,6 @@ from pfsrd2.feat import (
     _extract_bold_fields_from_bs,
     _extract_called_actions_from_section,
     _extract_result_blocks,
-    _extract_source_from_bs,
     _extract_trailing_sections,
     _parse_called_action,
     _promote_feat_fields,
@@ -23,7 +22,7 @@ from pfsrd2.feat import (
     find_feat,
     restructure_feat_pass,
 )
-from universal.universal import build_object
+from universal.universal import build_object, extract_source_from_bs
 
 
 # --- find_feat ---
@@ -97,14 +96,14 @@ class TestExtractActionType:
             _extract_action_type(feat)
 
 
-# --- _extract_source_from_bs ---
+# --- extract_source_from_bs ---
 
 
 class TestExtractSourceFromBs:
     def test_basic_source(self):
         html = '<b>Source</b> <a href="Sources.aspx?ID=1" game-obj="Sources" aonid="1"><i>Core Rulebook pg. 36</i></a><br/>'
         bs = BeautifulSoup(html, "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is not None
         assert source["name"] == "Core Rulebook"
         assert source["page"] == 36
@@ -117,20 +116,20 @@ class TestExtractSourceFromBs:
             '<sup><a href="Sources.aspx?ID=1" game-obj="Sources" aonid="1">4.0</a></sup><br/>'
         )
         bs = BeautifulSoup(html, "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is not None
         assert "errata" in source
         assert source["errata"]["name"] == "4.0"
 
     def test_no_source_tag(self):
         bs = BeautifulSoup("<b>Prerequisites</b> trained in Nature", "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         assert source is None
 
     def test_removes_source_from_bs(self):
         html = '<b>Source</b> <a href="Sources.aspx?ID=1" game-obj="Sources" aonid="1"><i>Core Rulebook pg. 36</i></a><br/>remaining text'
         bs = BeautifulSoup(html, "html.parser")
-        _extract_source_from_bs(bs)
+        extract_source_from_bs(bs)
         assert "Source" not in str(bs)
         assert "remaining text" in str(bs)
 

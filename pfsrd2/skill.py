@@ -18,6 +18,7 @@ from universal.universal import (
     entity_pass,
     extract_link,
     extract_source,
+    extract_source_from_bs,
     game_id_pass,
     get_links,
     handle_alternate_link,
@@ -320,41 +321,6 @@ def _extract_action_type_from_name(section):
         )
 
 
-def _extract_source_from_bs(bs):
-    """Extract source from a BeautifulSoup object, modifying it in place.
-
-    Finds <b>Source</b> followed by a book link (and optional errata sup),
-    removes those elements from the soup, and returns the source dict.
-    Returns None if no source found.
-    """
-
-    def _strip_whitespace(nodes):
-        while nodes and isinstance(nodes[0], str) and not nodes[0].strip():
-            nodes[0].extract()
-            nodes.pop(0)
-
-    source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
-    if not source_tag:
-        return None
-    siblings = list(source_tag.next_siblings)
-    source_tag.decompose()
-    _strip_whitespace(siblings)
-    if not siblings or getattr(siblings[0], "name", None) not in ("a", "i"):
-        return None
-    book = siblings.pop(0)
-    source = extract_source(book)
-    book.decompose()
-    _strip_whitespace(siblings)
-    if siblings and getattr(siblings[0], "name", None) == "sup":
-        assert "errata" not in source, "Should be no more than one errata."
-        sup = siblings.pop(0)
-        _, source["errata"] = extract_link(sup.find("a"))
-        sup.decompose()
-    if siblings and getattr(siblings[0], "name", None) == "br":
-        siblings[0].decompose()
-    return source
-
-
 def _extract_action_text(section):
     """Extract traits, source, requirements, and result blocks from action text."""
     bs = BeautifulSoup(section["text"], "html.parser")
@@ -377,7 +343,7 @@ def _extract_action_text(section):
         span.decompose()
 
     # 3. Extract source
-    source = _extract_source_from_bs(bs)
+    source = extract_source_from_bs(bs)
     if source:
         section["source"] = source
 
@@ -468,7 +434,7 @@ def skill_struct_pass(struct):
         if "text" not in section:
             return None
         bs = BeautifulSoup(section["text"], "html.parser")
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         if not source:
             return None
         section["text"] = str(bs).strip()

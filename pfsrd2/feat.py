@@ -20,6 +20,7 @@ from universal.universal import (
     entity_pass,
     extract_link,
     extract_source,
+    extract_source_from_bs,
     game_id_pass,
     get_links,
     handle_alternate_link,
@@ -288,7 +289,7 @@ def feat_extract_pass(struct):
     # 3. Extract source(s)
     sources = []
     while True:
-        source = _extract_source_from_bs(bs)
+        source = extract_source_from_bs(bs)
         if source:
             sources.append(source)
         else:
@@ -359,41 +360,6 @@ def _extract_action_type(feat):
         feat["action_type"] = build_object(
             "stat_block_section", "action_type", _ACTION_TITLE_MAP[title]
         )
-
-
-def _extract_source_from_bs(bs):
-    """Extract source from a BeautifulSoup object, modifying it in place."""
-
-    def _strip_whitespace(nodes):
-        while nodes and isinstance(nodes[0], str) and not nodes[0].strip():
-            nodes[0].extract()
-            nodes.pop(0)
-
-    source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
-    if not source_tag:
-        return None
-    siblings = list(source_tag.next_siblings)
-    _strip_whitespace(siblings)
-    if not siblings or getattr(siblings[0], "name", None) not in ("a", "i"):
-        return None
-    source_tag.decompose()
-    book = siblings.pop(0)
-    source = extract_source(book)
-    book.decompose()
-    _strip_whitespace(siblings)
-    if siblings and getattr(siblings[0], "name", None) == "sup":
-        assert "errata" not in source, "Should be no more than one errata."
-        sup = siblings.pop(0)
-        _, source["errata"] = extract_link(sup.find("a"))
-        sup.decompose()
-    # Strip trailing comma or whitespace between multiple sources
-    _strip_whitespace(siblings)
-    if siblings and isinstance(siblings[0], str) and siblings[0].strip() == ",":
-        siblings[0].extract()
-        siblings.pop(0)
-    if siblings and getattr(siblings[0], "name", None) == "br":
-        siblings[0].decompose()
-    return source
 
 
 def _extract_bold_fields(section, text):
@@ -713,7 +679,7 @@ def _parse_called_action(div):
         span.decompose()
 
     # Extract source
-    source = _extract_source_from_bs(div)
+    source = extract_source_from_bs(div)
     if source:
         ability["sources"] = [source]
 
