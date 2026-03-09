@@ -245,29 +245,31 @@ Create `bin/pf2_run_<type>s.sh` - the pipeline script that processes all files.
 
 ```bash
 #!/bin/bash
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$BIN_DIR/dir.conf"
 
-source dir.conf
+rm -f "$BIN_DIR/errors.pf2.<type>.log"
 
-rm errors.pf2.<type>.log
-
-if test -f "errors.pf2.<type>"; then
-	cat errors.pf2.<type> | while read i
+if test -f "$BIN_DIR/errors.pf2.<type>"; then
+	cat "$BIN_DIR/errors.pf2.<type>" | while read i
 	do
 		if [[ "$i" == "done" ]]; then
 			exit
 		fi
-		if ! ./pf2_<type>_parse -o $PF2_DATA_DIR $i ; then
-			echo $i >> errors.pf2.<type>.log
+		if ! "$BIN_DIR/pf2_<type>_parse" -o "$PF2_DATA_DIR" "$i" ; then
+			echo "$i" >> "$BIN_DIR/errors.pf2.<type>.log"
 		fi
 	done
 else
 	for i in `ls $PF2_WEB_DIR/<ContentDir>/<Pattern> | msort -j -q -l -n 1 -c hybrid`
 	do
-		if ! ./pf2_<type>_parse -o $PF2_DATA_DIR $i ; then
-			echo $i >> errors.pf2.<type>.log
+		if ! "$BIN_DIR/pf2_<type>_parse" -o "$PF2_DATA_DIR" "$i" ; then
+			echo "$i" >> "$BIN_DIR/errors.pf2.<type>.log"
 		fi
 	done
 fi
+
+"$BIN_DIR/copy_schema.sh" <type>
 ```
 
 **Replace:**
@@ -282,26 +284,27 @@ chmod +x bin/pf2_run_<type>s.sh
 
 ### How the Runner Works
 
-1. **Sources dir.conf** - Loads `$PF2_DATA_DIR` and `$PF2_WEB_DIR` environment variables
-2. **Clears old error log** - Removes `errors.pf2.<type>.log`
-3. **Checks for error file** - If `errors.pf2.<type>` exists (no .log), only process those files
-4. **Otherwise processes all files** - Matches pattern and processes each file
-5. **Logs failures** - Any failed file gets written to `errors.pf2.<type>.log`
+1. **Resolves BIN_DIR** - Uses `BASH_SOURCE` to find its own directory, so it works from any CWD
+2. **Sources dir.conf** - Loads `$PF2_DATA_DIR` and `$PF2_WEB_DIR` environment variables
+3. **Clears old error log** - Removes `errors.pf2.<type>.log`
+4. **Checks for error file** - If `errors.pf2.<type>` exists (no .log), only process those files
+5. **Otherwise processes all files** - Matches pattern and processes each file
+6. **Logs failures** - Any failed file gets written to `errors.pf2.<type>.log`
 
 ## Step 5: Test the Parser
 
-```bash
-cd PFSRD2-Parser/bin
-source dir.conf
+Scripts can be run from any directory:
 
-# Test on a single file
-./pf2_<type>_parse -o $PF2_DATA_DIR $PF2_WEB_DIR/<ContentDir>/<specific_file>
+```bash
+# Test on a single file (source dir.conf for the env vars)
+source PFSRD2-Parser/bin/dir.conf
+PFSRD2-Parser/bin/pf2_<type>_parse -o $PF2_DATA_DIR $PF2_WEB_DIR/<ContentDir>/<specific_file>
 
 # Run the full pipeline
-./pf2_run_<type>s.sh
+PFSRD2-Parser/bin/pf2_run_<type>s.sh
 
 # Check for errors
-cat errors.pf2.<type>.log
+cat PFSRD2-Parser/bin/errors.pf2.<type>.log
 ```
 
 ## Step 6: Iterate on Structured Extraction

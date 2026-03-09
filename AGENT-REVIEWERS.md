@@ -334,7 +334,7 @@ If there are outstanding changes, **WARN the user** - uncommitted changes make i
 
 1. **Run the parser**:
    ```bash
-   cd bin && ./pf2_run_<type>.sh <type>
+   bin/pf2_run_<type>.sh <type>
    ```
 
    Parser script mapping:

@@ -3,6 +3,8 @@
 # Usage: copy_schema.sh <schema_name>
 # Example: copy_schema.sh spell
 #   Copies pfsrd2/schema/spell.schema.json -> $PF2_DATA_DIR/spell.schema.2.0.json
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$BIN_DIR/dir.conf"
 
 if [ $# -ne 1 ]; then
 	echo "Usage: $0 <schema_name>"
@@ -10,7 +12,7 @@ if [ $# -ne 1 ]; then
 fi
 
 SCHEMA_NAME=$1
-SCHEMA_DIR=$(dirname "$0")/../pfsrd2/schema
+SCHEMA_DIR="$BIN_DIR/../pfsrd2/schema"
 SCHEMA_FILE="${SCHEMA_DIR}/${SCHEMA_NAME}.schema.json"
 
 if [ ! -f "$SCHEMA_FILE" ]; then

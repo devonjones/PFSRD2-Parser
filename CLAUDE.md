@@ -209,19 +209,16 @@ This document covers:
 
 ## Running the Code
 
-All parser scripts must be run from inside the `bin/` directory:
+Parser scripts can be run from any directory — they resolve their own paths via `BASH_SOURCE`:
 
 ```bash
-cd PFSRD2-Parser/bin
+# All of these work:
+./bin/pf2_run_creatures.sh
+PFSRD2-Parser/bin/pf2_run_creatures.sh
+/home/user/pfsrd2/PFSRD2-Parser/bin/pf2_run_creatures.sh
 ```
 
-Before running any parser, you must source the configuration:
-
-```bash
-source dir.conf
-```
-
-The `dir.conf` file sets up necessary environment variables that point to the web and data directories.
+Each script sources `dir.conf` automatically using its own location. You do NOT need to `cd bin/` or manually `source dir.conf` first.
 
 ### Output Directory Handling
 
@@ -987,28 +984,22 @@ PFSRD2-Parser/
 Typical workflow when fixing a parser bug:
 
 ```bash
-# 1. Navigate to bin directory
-cd PFSRD2-Parser/bin
+# 1. Run the pipeline (from any directory)
+PFSRD2-Parser/bin/pf2_run_creatures.sh
 
-# 2. Source configuration
-source dir.conf
+# 2. Check for errors
+cat PFSRD2-Parser/bin/errors.pf2.monsters.log
 
-# 3. Run the pipeline
-./pf2_run_creatures.sh
-
-# 4. Check for errors
-cat errors.pf2.monsters.log
-
-# 5. If there are errors, investigate the first one
+# 3. If there are errors, investigate the first one
 # Edit the parser code to fix the issue
 
-# 6. Reprocess only failed files
-mv errors.pf2.monsters.log errors.pf2.monsters
-./pf2_run_creatures.sh
+# 4. Reprocess only failed files
+mv PFSRD2-Parser/bin/errors.pf2.monsters.log PFSRD2-Parser/bin/errors.pf2.monsters
+PFSRD2-Parser/bin/pf2_run_creatures.sh
 
-# 7. Verify the fix worked
-git status ../pfsrd2-data/
-git diff ../pfsrd2-data/monsters/[affected-file].json
+# 5. Verify the fix worked
+git -C pfsrd2-data status
+git -C pfsrd2-data diff monsters/[affected-file].json
 ```
 
 ## Parser Module Structure
@@ -1081,8 +1072,8 @@ The iterative approach means we chip away at this over time, progressively expos
 15. **Be skeptical, not dismissive** - Evaluate whether a suggestion actually improves the code. Skip suggestions that are pedantic, platform-inappropriate, or add unnecessary complexity. But when a suggestion is valid, act on it.
 
 ### Operations
-12. **Run from bin/** - Always execute scripts from the bin directory
-13. **Source dir.conf** - Configuration must be loaded first
+12. **Run from anywhere** - Scripts resolve their own paths via BASH_SOURCE
+13. **dir.conf auto-sourced** - Scripts load configuration automatically
 14. **Test incrementally** - Single file → full pipeline → check errors
 15. **Error log reprocessing** - Use the `.log` rename trick for targeted reruns
 
