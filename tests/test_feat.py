@@ -21,8 +21,7 @@ from pfsrd2.feat import (
     find_feat,
     restructure_feat_pass,
 )
-from universal.universal import build_object, extract_result_blocks, extract_source_from_bs
-
+from universal.universal import extract_result_blocks, extract_source_from_bs
 
 # --- find_feat ---
 
@@ -111,7 +110,7 @@ class TestExtractSourceFromBs:
     def test_source_with_errata(self):
         html = (
             '<b>Source</b> <a href="Sources.aspx?ID=1" game-obj="Sources" aonid="1">'
-            '<i>Core Rulebook pg. 36</i></a> '
+            "<i>Core Rulebook pg. 36</i></a> "
             '<sup><a href="Sources.aspx?ID=1" game-obj="Sources" aonid="1">4.0</a></sup><br/>'
         )
         bs = BeautifulSoup(html, "html.parser")
@@ -351,7 +350,7 @@ class TestParseCalledAction:
 class TestExtractTrailingSections:
     def test_extracts_leads_to_section(self):
         html = (
-            'Description text.'
+            "Description text."
             '<h2 class="title">Test Feat Leads To...</h2>'
             '<u><a href="Feats.aspx?ID=100">Other Feat</a></u>'
         )
@@ -367,7 +366,7 @@ class TestExtractTrailingSections:
     def test_extracts_traits_section_and_drops_it(self):
         """Traits h2 sections are extracted but dropped (name == 'Traits')."""
         html = (
-            'Description.'
+            "Description."
             '<h2 class="title">Traits</h2>'
             '<div class="trait-entry"><b>Archetype:</b> <p>This feat belongs to an archetype.</p></div>'
         )
@@ -382,7 +381,7 @@ class TestExtractTrailingSections:
     def test_extracts_multiple_h2_sections(self):
         """Leads To is kept, Traits is dropped."""
         html = (
-            'Desc.'
+            "Desc."
             '<h2 class="title">Leads To...</h2>links'
             '<h2 class="title">Traits</h2>'
             '<div class="trait-entry"><b>X:</b> <p>Y</p></div>'
@@ -714,7 +713,7 @@ class TestExtractArchetypes:
 
     def test_multiple_archetypes(self):
         html = (
-            '<b>Archetypes</b> '
+            "<b>Archetypes</b> "
             '<u><a href="Archetypes.aspx?ID=238" game-obj="Archetypes" aonid="238">Archer</a></u>, '
             '<u><a href="Archetypes.aspx?ID=121" game-obj="Archetypes" aonid="121">Sniping Duo</a></u><br/>'
         )
@@ -734,9 +733,9 @@ class TestExtractArchetypes:
 
     def test_star_with_inline_note(self):
         html = (
-            '<b>Archetype</b> '
+            "<b>Archetype</b> "
             '<u><a href="Archetypes.aspx?ID=47" game-obj="Archetypes" aonid="47">Archer</a></u>*'
-            '<br/>* This archetype offers Assisting Shot at a different level than displayed here.'
+            "<br/>* This archetype offers Assisting Shot at a different level than displayed here."
         )
         bs = BeautifulSoup(html, "html.parser")
         section = {}
@@ -750,10 +749,10 @@ class TestExtractArchetypes:
 
     def test_multiple_starred_with_note(self):
         html = (
-            '<b>Archetypes</b> '
+            "<b>Archetypes</b> "
             '<u><a href="Archetypes.aspx?ID=238" game-obj="Archetypes" aonid="238">Archer</a></u>*, '
             '<u><a href="Archetypes.aspx?ID=121" game-obj="Archetypes" aonid="121">Sniping Duo</a></u>*'
-            '<br/>* This archetype offers Assisting Shot at a different level than displayed here.'
+            "<br/>* This archetype offers Assisting Shot at a different level than displayed here."
         )
         bs = BeautifulSoup(html, "html.parser")
         section = {}
@@ -772,9 +771,9 @@ class TestExtractArchetypes:
 
     def test_removes_nodes_from_bs(self):
         html = (
-            'Before.<b>Archetype</b> '
+            "Before.<b>Archetype</b> "
             '<u><a href="Archetypes.aspx?ID=47" game-obj="Archetypes" aonid="47">Archer</a></u><br/>'
-            'After.'
+            "After."
         )
         bs = BeautifulSoup(html, "html.parser")
         section = {}
@@ -1081,11 +1080,7 @@ class TestPromoteFeatFields:
 
 class TestCleanHtmlFields:
     def test_renames_html_to_text(self):
-        struct = {
-            "sections": [
-                {"name": "Desc", "html": "<p>Content</p>", "sections": []}
-            ]
-        }
+        struct = {"sections": [{"name": "Desc", "html": "<p>Content</p>", "sections": []}]}
         _clean_html_fields(struct)
         assert struct["sections"][0]["text"] == "<p>Content</p>"
         assert "html" not in struct["sections"][0]
@@ -1096,9 +1091,7 @@ class TestCleanHtmlFields:
                 {
                     "name": "Outer",
                     "html": "outer html",
-                    "sections": [
-                        {"name": "Inner", "html": "inner html", "sections": []}
-                    ],
+                    "sections": [{"name": "Inner", "html": "inner html", "sections": []}],
                 }
             ]
         }

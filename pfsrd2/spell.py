@@ -17,7 +17,6 @@ from universal.universal import (
     edition_pass,
     entity_pass,
     extract_link,
-    extract_source,
     extract_result_blocks,
     extract_source_from_bs,
     game_id_pass,

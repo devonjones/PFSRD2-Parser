@@ -20,7 +20,6 @@ from universal.universal import (
     entity_pass,
     extract_bold_fields,
     extract_link,
-    extract_source,
     extract_result_blocks,
     extract_source_from_bs,
     game_id_pass,
@@ -66,8 +65,7 @@ def parse_feat(filename, options):
     restructure_pass(struct, "feat", find_feat)
     struct["edition"] = edition_from_alternate_link(struct) or edition_pass(struct["sections"])
     struct["sections"] = [
-        s for s in struct["sections"]
-        if s.get("name") not in ("Legacy Content", "Traits")
+        s for s in struct["sections"] if s.get("name") not in ("Legacy Content", "Traits")
     ]
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
@@ -101,9 +99,7 @@ def _content_filter(soup):
     for h1 in main.find_all("h1", class_="title"):
         spans_to_move = []
         for span in h1.find_all("span"):
-            if "action" in span.get("class", []):
-                spans_to_move.append(span)
-            elif "margin-left" in (span.get("style") or ""):
+            if "action" in span.get("class", []) or "margin-left" in (span.get("style") or ""):
                 spans_to_move.append(span)
         for span in spans_to_move:
             span.extract()
@@ -141,7 +137,9 @@ def restructure_feat_pass(details):
             feat_name = get_text(name_link).strip()
             action_text = str(bs)
             break
-    assert feat_name, f"Could not extract feat name from sections: {[s.get('name') for s in first.get('sections', [])]}"
+    assert (
+        feat_name
+    ), f"Could not extract feat name from sections: {[s.get('name') for s in first.get('sections', [])]}"
 
     # Scan all sections recursively to find feat level and content
     feat_level = None
@@ -230,9 +228,7 @@ def restructure_feat_pass(details):
 
     top = {"name": feat_name, "type": "feat", "sections": [sb]}
     if is_legacy:
-        top["sections"].append(
-            {"name": "Legacy Content", "type": "section", "sections": []}
-        )
+        top["sections"].append({"name": "Legacy Content", "type": "section", "sections": []})
     top["sections"].extend(extra_sections)
     top["sections"].extend(rest)
 
@@ -273,7 +269,9 @@ def feat_extract_pass(struct):
         a = span.find("a")
         if a:
             name, trait_link = extract_link(a)
-            trait_obj = build_object("stat_block_section", "trait", name.strip(), {"link": trait_link})
+            trait_obj = build_object(
+                "stat_block_section", "trait", name.strip(), {"link": trait_link}
+            )
             # Split valued traits like "Additive 1" into name="Additive" + value="1"
             value_match = re.match(r"^(.+?)\s+(\d+)$", trait_obj["name"])
             if value_match:
@@ -396,11 +394,7 @@ def _extract_archetypes(section, bs):
         if getattr(node, "name", None) == "b":
             break
         # Detect "* This archetype/version..." note (not a bare "*" star marker)
-        if (
-            not in_note
-            and isinstance(node, str)
-            and re.match(r"^\*\s+\w", node.lstrip())
-        ):
+        if not in_note and isinstance(node, str) and re.match(r"^\*\s+\w", node.lstrip()):
             in_note = True
         if in_note:
             note_nodes.append(node)
@@ -468,8 +462,15 @@ def _attach_archetype_note(section):
 
     # Only scan bold-extracted fields, not description text or name
     _note_scan_fields = {
-        "requirement", "prerequisite", "trigger", "frequency", "cost",
-        "duration", "access", "special", "effect",
+        "requirement",
+        "prerequisite",
+        "trigger",
+        "frequency",
+        "cost",
+        "duration",
+        "access",
+        "special",
+        "effect",
     }
     note_re = re.compile(r"\s*\*\s+(This (?:archetype|version)\b.+)")
     for key in _note_scan_fields:
