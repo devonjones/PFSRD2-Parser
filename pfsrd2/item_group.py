@@ -88,7 +88,7 @@ def parse_item_group(filename, options):
     # Both armor_group and weapon_group use the same schema
     if not options.skip_schema:
         struct["schema_version"] = 1.0
-        validate_against_schema(struct, "armor_group.schema.json")
+        validate_against_schema(struct, "item_group.schema.json")
     if not options.dryrun:
         output = options.output
         # Output directory is based on subtype (armor_groups or weapon_groups)

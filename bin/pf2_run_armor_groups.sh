@@ -23,4 +23,4 @@ else
 	done
 fi
 
-./copy_schema.sh armor_group
+./copy_schema.sh item_group
