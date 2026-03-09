@@ -1,4 +1,5 @@
 #!/bin/bash
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ $# -ne 1 ]; then
 	echo "Usage: $0 <equipment_type>"
@@ -41,27 +42,27 @@ case "$EQUIPMENT_TYPE" in
 		;;
 esac
 
-source dir.conf
+source "$BIN_DIR/dir.conf"
 
-rm -f errors.pf2.${ERROR_SUFFIX}.log
+rm -f "$BIN_DIR/errors.pf2.${ERROR_SUFFIX}.log"
 
-if test -f "errors.pf2.${ERROR_SUFFIX}"; then
-	cat errors.pf2.${ERROR_SUFFIX} | while read i
+if test -f "$BIN_DIR/errors.pf2.${ERROR_SUFFIX}"; then
+	cat "$BIN_DIR/errors.pf2.${ERROR_SUFFIX}" | while read i
 	do
 		if [[ "$i" == "done" ]]; then
 			exit
 		fi
-		if ! ./pf2_equipment_parse "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
-			echo "$i" >> errors.pf2.${ERROR_SUFFIX}.log
+		if ! "$BIN_DIR/pf2_equipment_parse" "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
+			echo "$i" >> "$BIN_DIR/errors.pf2.${ERROR_SUFFIX}.log"
 		fi
 	done
 else
 	for i in `ls $PF2_WEB_DIR/$PLURAL/$PLURAL.aspx.ID_*.html | msort -j -q -l -n 1 -c hybrid`
 	do
-		if ! ./pf2_equipment_parse "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
-			echo "$i" >> errors.pf2.${ERROR_SUFFIX}.log
+		if ! "$BIN_DIR/pf2_equipment_parse" "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
+			echo "$i" >> "$BIN_DIR/errors.pf2.${ERROR_SUFFIX}.log"
 		fi
 	done
 fi
 
-./copy_schema.sh equipment
+"$BIN_DIR/copy_schema.sh" equipment

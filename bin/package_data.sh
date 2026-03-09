@@ -4,9 +4,8 @@
 # Output goes to the parent directory of pfsrd2-data.
 #
 # Usage: ./package_data.sh
-#   Requires: dir.conf sourced (for PF2_DATA_DIR)
-
-source dir.conf
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$BIN_DIR/dir.conf"
 
 DATA_DIR="$PF2_DATA_DIR"
 OUT_DIR="$(dirname "$DATA_DIR")"
