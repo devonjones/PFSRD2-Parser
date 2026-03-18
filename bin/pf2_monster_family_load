@@ -81,8 +81,10 @@ def main():
         parser.error("-o/--output is required")
     db_path = get_db_path("pfsrd2.db")
     conn = create_db(db_path)
-    load_monster_families(conn, options)
-    conn.close()
+    try:
+        load_monster_families(conn, options)
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
