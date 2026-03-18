@@ -933,19 +933,6 @@ def _build_combat_stat_effects(text):
     # "Increase/Decrease the creature's AC, attack bonuses, DCs... by N"
     m = re.search(r"(increase|decrease).+?by (\d+)", t)
     if not m:
-        # "Decrease the creature's Will by 1"
-        m = re.search(r"(increase|decrease).+?(will|fort|ref).+?by (\d+)", t)
-        if m:
-            direction = 1 if m.group(1) == "increase" else -1
-            val = int(m.group(3)) * direction
-            save = m.group(2)
-            return [
-                {
-                    "target": f"$.defense.saves.{save}.value",
-                    "operation": "adjustment",
-                    "value": val,
-                }
-            ]
         return []
 
     direction = 1 if m.group(1) == "increase" else -1
@@ -1271,10 +1258,10 @@ def _build_skill_effects(text):
         return effects
 
     # "Add Diplomacy and Labor Lore with a modifier..."
-    m = re.search(r"add ([\w\s]+(?:\s+and\s+[\w\s]+)+) with a modifier", t)
+    m = re.search(r"add (.+?) with a modifier", t)
     if m:
         skill_text = m.group(1)
-        skills = re.split(r"\s+and\s+", skill_text)
+        skills = re.split(r",\s*(?:and\s+)?|\s+and\s+", skill_text)
         for skill in skills:
             effects.append(
                 {
@@ -1413,18 +1400,27 @@ def _build_strike_effects(text):
     # "Replace any fist attacks with claw attacks. They deal slashing damage"
     m = re.search(r"replace.+?(\w+) attacks? with (\w+) attacks?", t)
     if m:
+        old_weapon = m.group(1)
+        new_weapon = m.group(2)
         effects.append(
             {
-                "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{m.group(1)}')]",
+                "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.weapon",
                 "operation": "replace",
-                "value": {"weapon": m.group(2), "name": m.group(2).title()},
+                "value": new_weapon,
+            }
+        )
+        effects.append(
+            {
+                "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.name",
+                "operation": "replace",
+                "value": new_weapon.title(),
             }
         )
         m2 = re.search(r"deal (\w+) damage instead of (\w+)", t)
         if m2:
             effects.append(
                 {
-                    "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{m.group(2)}')].attack.damage[*].damage_type",
+                    "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{new_weapon}')].attack.damage[*].damage_type",
                     "operation": "replace",
                     "value": m2.group(1),
                 }
