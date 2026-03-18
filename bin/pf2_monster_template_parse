@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+import sys
+
+from pfsrd2.monster_template import parse_monster_template
+from universal.options import exec_main, option_parser
+
+
+def main():
+    usage = "usage: %prog [options] [filenames]\nParses monster templates from pfsrd2 html to json and writes them to the specified directory"
+    parser = option_parser(usage)
+    (options, args) = parser.parse_args()
+    options.subtype = "monster_template"
+    exec_main(options, args, parse_monster_template, "monster_templates")
+
+
+if __name__ == "__main__":
+    sys.exit(main())
