@@ -373,7 +373,6 @@
 						"add_items",
 						"add_modifier",
 						"replace",
-						"replace_one_die",
 						"remove_item",
 						"replace_highest_with",
 						"replace_one_die",
