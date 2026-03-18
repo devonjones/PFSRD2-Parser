@@ -175,74 +175,6 @@
 			},
 			"additionalProperties": false
 		},
-		"section": {
-			"type": "object",
-			"properties": {
-				"name": {
-					"type": "string"
-				},
-				"type": {
-					"enum": [
-						"section"
-					]
-				},
-				"text": {
-					"type": "string"
-				},
-				"sections": {
-					"$ref": "#/definitions/sections"
-				},
-				"sources": {
-					"$ref": "#/definitions/sources"
-				},
-				"abilities": {
-					"$ref": "#/definitions/abilities"
-				},
-				"subtype": {
-					"enum": [
-						"sidebar",
-						"index"
-					]
-				},
-				"sidebar_type": {
-					"enum": [
-						"treasure_and_rewards",
-						"related_creatures",
-						"locations",
-						"additional_lore",
-						"advice_and_rules",
-						"geb"
-					]
-				},
-				"sidebar_heading": {
-					"type": "string"
-				},
-				"image": {
-					"$ref": "#/definitions/image"
-				},
-				"action_type": {
-					"$ref": "#/definitions/action_type"
-				},
-				"traits": {
-					"$ref": "#/definitions/traits"
-				},
-				"links": {
-					"type": "array",
-					"items": {
-						"$ref": "#/definitions/link"
-					},
-					"additionalItems": false
-				}
-			},
-			"additionalProperties": false
-		},
-		"sections": {
-			"type": "array",
-			"items": {
-				"$ref": "#/definitions/section"
-			},
-			"additionalItems": false
-		},
 		"source": {
 			"type": "object",
 			"properties": {
@@ -311,46 +243,6 @@
 						"Two to Three Actions",
 						"Reaction or One Action"
 					]
-				}
-			},
-			"required": [
-				"name",
-				"type",
-				"subtype"
-			],
-			"additionalProperties": false
-		},
-		"ability": {
-			"type": "object",
-			"properties": {
-				"type": {
-					"enum": [
-						"stat_block_section"
-					]
-				},
-				"subtype": {
-					"enum": [
-						"ability"
-					]
-				},
-				"name": {
-					"type": "string"
-				},
-				"text": {
-					"type": "string"
-				},
-				"action_type": {
-					"$ref": "#/definitions/action_type"
-				},
-				"link": {
-					"$ref": "#/definitions/link"
-				},
-				"links": {
-					"type": "array",
-					"items": {
-						"$ref": "#/definitions/link"
-					},
-					"additionalItems": false
 				}
 			},
 			"required": [
@@ -486,7 +378,7 @@
 			],
 			"additionalProperties": false
 		},
-		"adjustment": {
+		"ability": {
 			"type": "object",
 			"properties": {
 				"type": {
@@ -496,13 +388,85 @@
 				},
 				"subtype": {
 					"enum": [
-						"adjustment"
+						"ability"
 					]
+				},
+				"name": {
+					"type": "string"
+				},
+				"text": {
+					"type": "string"
+				},
+				"action_type": {
+					"$ref": "#/definitions/action_type"
+				},
+				"link": {
+					"$ref": "#/definitions/link"
+				},
+				"links": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/link"
+					},
+					"additionalItems": false
 				}
 			},
-			"additionalProperties": true
+			"required": [
+				"name",
+				"type",
+				"subtype"
+			],
+			"additionalProperties": false
 		},
-		"monster_template": {
+		"section": {
+			"type": "object",
+			"properties": {
+				"name": {
+					"type": "string"
+				},
+				"type": {
+					"enum": [
+						"section"
+					]
+				},
+				"text": {
+					"type": "string"
+				},
+				"sources": {
+					"$ref": "#/definitions/sources"
+				},
+				"links": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/link"
+					},
+					"additionalItems": false
+				},
+				"abilities": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/ability"
+					},
+					"additionalItems": false
+				},
+				"sections": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/section"
+					},
+					"additionalItems": false
+				}
+			},
+			"additionalProperties": false
+		},
+		"sections": {
+			"type": "array",
+			"items": {
+				"$ref": "#/definitions/section"
+			},
+			"additionalItems": false
+		},
+		"monster_family": {
 			"type": "object",
 			"properties": {
 				"name": {
@@ -515,8 +479,11 @@
 				},
 				"subtype": {
 					"enum": [
-						"monster_template"
+						"monster_family"
 					]
+				},
+				"text": {
+					"type": "string"
 				},
 				"changes": {
 					"type": "array",
@@ -532,10 +499,10 @@
 					},
 					"additionalItems": false
 				},
-				"adjustments": {
+				"subtypes": {
 					"type": "array",
 					"items": {
-						"$ref": "#/definitions/adjustment"
+						"$ref": "#/definitions/monster_family"
 					},
 					"additionalItems": false
 				}
@@ -555,7 +522,7 @@
 		},
 		"type": {
 			"enum": [
-				"monster_template"
+				"monster_family"
 			]
 		},
 		"aonid": {
@@ -563,7 +530,7 @@
 		},
 		"game-obj": {
 			"enum": [
-				"MonsterTemplates"
+				"MonsterFamilies"
 			]
 		},
 		"game-id": {
@@ -575,11 +542,11 @@
 		"text": {
 			"type": "string"
 		},
+		"monster_family": {
+			"$ref": "#/definitions/monster_family"
+		},
 		"sections": {
 			"$ref": "#/definitions/sections"
-		},
-		"monster_template": {
-			"$ref": "#/definitions/monster_template"
 		},
 		"links": {
 			"type": "array",

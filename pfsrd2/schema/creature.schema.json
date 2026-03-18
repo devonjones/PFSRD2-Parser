@@ -313,15 +313,80 @@
 			"required": ["type", "subtype", "ac", "saves", "hitpoints"],
 			"additionalProperties": false
 		},
-		"family": {
+		"monster_family_change": {
 			"type": "object",
 			"properties": {
 				"type": {"enum": ["stat_block_section"]},
-				"subtype": {"enum": ["family"]},
-				"name": {"type": "string"},
-				"link": {"$ref": "#/definitions/link"}
+				"subtype": {"enum": ["change"]},
+				"text": {"type": "string"},
+				"change_category": {"enum": [
+					"abilities", "attributes", "combat_stats", "damage", "gear",
+					"hit_points", "immunities", "languages", "level", "resistances",
+					"senses", "size", "skills", "speed", "spells", "strikes",
+					"traits", "weaknesses", "unknown"
+				]},
+				"effects": {
+					"type": "array",
+					"items": {"type": "object"},
+					"additionalItems": false
+				},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				}
 			},
-			"required": ["name", "type", "subtype"],
+			"required": ["type", "subtype", "text", "change_category"],
+			"additionalProperties": false
+		},
+		"family": {
+			"type": "object",
+			"properties": {
+				"name": {"type": "string"},
+				"type": {"enum": ["monster_family"]},
+				"aonid": {"type": "integer"},
+				"game-obj": {"enum": ["MonsterFamilies"]},
+				"game-id": {"type": "string"},
+				"link": {"$ref": "#/definitions/link"},
+				"sources": {"$ref": "#/definitions/sources"},
+				"text": {"type": "string"},
+				"monster_family": {
+					"type": "object",
+					"properties": {
+						"name": {"type": "string"},
+						"type": {"enum": ["stat_block_section"]},
+						"subtype": {"enum": ["monster_family"]},
+						"text": {"type": "string"},
+						"changes": {
+							"type": "array",
+							"items": {"$ref": "#/definitions/monster_family_change"},
+							"additionalItems": false
+						},
+						"abilities": {
+							"type": "array",
+							"items": {"type": "object"},
+							"additionalItems": false
+						},
+						"subtypes": {
+							"type": "array",
+							"items": {"type": "object"},
+							"additionalItems": false
+						}
+					},
+					"required": ["name", "type", "subtype"],
+					"additionalProperties": false
+				},
+				"sections": {"$ref": "#/definitions/sections"},
+				"links": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/link"},
+					"additionalItems": false
+				},
+				"alternate_link": {"$ref": "#/definitions/alternate_link"},
+				"edition": {"enum": ["legacy", "remastered"]},
+				"license": {"$ref": "#/definitions/license"}
+			},
+			"required": ["name", "type", "aonid", "game-obj", "sources"],
 			"additionalProperties": false
 		},
 		"graft": {
@@ -1045,7 +1110,7 @@
 		"stat_block": {"$ref": "#/definitions/stat_block"},
 		"sources": {"$ref": "#/definitions/sources"},
 		"sections": {"$ref": "#/definitions/sections"},
-		"schema_version": {"enum": [1.3]},
+		"schema_version": {"enum": [1.4]},
 		"edition": {"enum": ["legacy", "remastered"]},
 		"alternate_link": {"$ref": "#/definitions/alternate_link"},
 		"license": {"$ref": "#/definitions/license"}
