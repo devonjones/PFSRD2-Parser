@@ -9,6 +9,8 @@ from pfsrd2.monster_template import (
     _build_generic_effects,
     _categorize_change_text,
     _extract_inline_abilities,
+    _hp_effects_from_adjustments,
+    _parse_adjustments_table,
     _parse_change,
 )
 from pfsrd2.schema import validate_against_schema
@@ -86,8 +88,7 @@ def _content_filter(soup):
     <hr> tags and content wrapped in <span> elements.
     """
     main = soup.find(id="main")
-    if not main:
-        return
+    assert main, "No #main div found in HTML"
     # Strip nav before first top-level <hr>
     hr = main.find("hr", recursive=False)
     if hr:
@@ -241,10 +242,6 @@ def _extract_creation_changes(struct):
 
 def _extract_changes_from_section(section, all_sections=None):
     """Extract <ul><li> changes from a creation section's text."""
-    from pfsrd2.monster_template import (
-        _hp_effects_from_adjustments,
-        _parse_adjustments_table,
-    )
 
     text = section.get("text", "")
     bs = BeautifulSoup(text, "html.parser")
@@ -312,8 +309,7 @@ def _consolidate_creation_changes(struct):
     is itself a monster_family object with name, text, and abilities.
     """
     mf = struct.get("monster_family")
-    if not mf:
-        return
+    assert mf is not None, f"No monster_family in struct: {struct.get('name')}"
     all_changes = []
     subtypes = []
     remaining = []
