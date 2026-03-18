@@ -938,8 +938,7 @@ def _build_combat_stat_effects(text):
         if m:
             direction = 1 if m.group(1) == "increase" else -1
             val = int(m.group(3)) * direction
-            save_map = {"will": "will", "fort": "fort", "ref": "ref"}
-            save = save_map.get(m.group(2), m.group(2))
+            save = m.group(2)
             return [
                 {
                     "target": f"$.defense.saves.{save}.value",
@@ -1831,7 +1830,7 @@ def _clean_html_fields(struct):
 
 
 def write_monster_template(jsondir, struct, source):
-    print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
+    print(f"{struct['game-obj']} ({source}): {struct['name']}")
     filename = create_monster_template_filename(jsondir, struct)
     fp = open(filename, "w")
     json.dump(struct, fp, indent=4)
