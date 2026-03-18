@@ -12,6 +12,10 @@ from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
+from pfsrd2.sql.monster_families import (
+    fetch_monster_family_by_aonid,
+    fetch_monster_family_by_link,
+)
 from pfsrd2.sql.traits import (
     EXPECTED_TRAIT_SCHEMA_VERSION,
     fetch_trait_by_name,
@@ -142,15 +146,19 @@ def parse_creature(filename, options):
     recall_knowledge_pass(struct)
     trait_pass(struct)
     section_pass(struct)
+    monster_family_db_pass(struct)
     universal_trait_db_pass(struct, pre_process=_creature_trait_pre_process)
+
     monster_ability_db_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
     markdown_pass(struct, struct["name"], "", fxn_valid_tags=markdown_valid_set)
     remove_empty_sections_pass(struct)
+    if "sections" not in struct:
+        struct["sections"] = []
     basename.split("_")
     if not options.skip_schema:
-        struct["schema_version"] = 1.3
+        struct["schema_version"] = 1.4
         validate_against_schema(struct, "creature.schema.json")
     if not options.dryrun:
         output = options.output
@@ -405,6 +413,81 @@ def _creature_trait_pre_process(trait, parent, curs):
         _creature_handle_alignment(trait, parent, curs)
         return True
     return False
+
+
+def monster_family_db_pass(struct):
+    """Replace minimal family reference with full DB-loaded family object.
+
+    The creature_type.family field already has the family name + link with
+    aonid (set by creature_stat_block_pass). We use that aonid to look up
+    the full family from the DB, replace the minimal reference, and drop
+    the inline family sections from struct["sections"].
+
+    Edition matching: prefers the family edition that matches the creature's
+    edition, falling back to the other edition if not available.
+    """
+    sb = struct.get("stat_block")
+    if not sb:
+        return
+    ct = sb.get("creature_type")
+    if not ct or "family" not in ct:
+        return
+    family_ref = ct["family"]
+    link = family_ref.get("link", {})
+    aonid = link.get("aonid")
+    if not aonid:
+        return
+    family = _fetch_edition_matched_family(struct, aonid)
+    if not family:
+        return
+    family.pop("schema_version", None)
+    # Ensure the link is on the family object for easy reference
+    if "link" not in family:
+        family["link"] = link
+    ct["family"] = family
+    # Drop inline family sections (h1 headings with family content)
+    sections = struct.get("sections") or []
+    struct["sections"] = [
+        s for s in sections
+        if not _is_family_section(s, family_ref.get("name", ""))
+    ]
+
+
+def _is_family_section(section, family_name):
+    """Check if a section is the inline family content to be dropped."""
+    name = section.get("name", "")
+    return name == family_name
+
+
+def _fetch_edition_matched_family(struct, aonid):
+    """Fetch family from DB, preferring edition match with fallback."""
+    db_path = get_db_path("pfsrd2.db")
+    conn = get_db_connection(db_path)
+    curs = conn.cursor()
+    try:
+        row = fetch_monster_family_by_aonid(curs, aonid)
+        if not row:
+            return None
+        family = json.loads(row["monster_family"])
+        creature_edition = struct.get("edition")
+        family_edition = family.get("edition")
+        # If editions match or creature has no edition, use as-is
+        if not creature_edition or family_edition == creature_edition:
+            return family
+        # Try to find the edition-matched version via links
+        family_id = row["monster_family_id"]
+        kwargs = {}
+        if family_edition == "legacy":
+            kwargs["legacy_monster_family_id"] = family_id
+        else:
+            kwargs["remastered_monster_family_id"] = family_id
+        linked_row = fetch_monster_family_by_link(curs, **kwargs)
+        if linked_row:
+            return json.loads(linked_row["monster_family"])
+        # Fallback to the original (wrong edition but better than nothing)
+        return family
+    finally:
+        conn.close()
 
 
 def monster_ability_db_pass(struct):

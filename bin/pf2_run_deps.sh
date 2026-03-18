@@ -16,3 +16,5 @@ rm -f ~/.pfsrd2/pfsrd2.db
 "$BIN_DIR/pf2_armor_group_load" -o "$PF2_DATA_DIR"
 "$BIN_DIR/pf2_run_weapon_groups.sh"
 "$BIN_DIR/pf2_weapon_group_load" -o "$PF2_DATA_DIR"
+"$BIN_DIR/pf2_run_monster_families.sh"
+"$BIN_DIR/pf2_monster_family_load" -o "$PF2_DATA_DIR"

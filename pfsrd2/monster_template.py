@@ -68,7 +68,7 @@ def parse_monster_template(filename, options):
         output = options.output
         for source in struct["sources"]:
             name = char_replace(source["name"])
-            jsondir = makedirs(output, struct["game-obj"], name)
+            jsondir = makedirs(output, "monster_templates", name)
             write_monster_template(jsondir, struct, name)
     elif options.stdout:
         print(json.dumps(struct, indent=2))
@@ -473,6 +473,7 @@ def _categorize_change_text(text):
         "add the" in t
         or "replace the" in t
         or "gains the" in t
+        or "gain the" in t
         or "and plant trait" in t
         or "loses the" in t
         or "rarity" in t
@@ -486,6 +487,11 @@ def _categorize_change_text(text):
         return "resistances"
     if "language" in t:
         return "languages"
+    # Check combat_stats before hit_points since some changes mention both
+    if ("ac" in t or "attack" in t or "saving throw" in t) and (
+        "increase" in t or "decrease" in t
+    ) and ("hp" in t or "hit point" in t):
+        return "combat_stats"
     if "hit point" in t or " hp " in t or "\u2019s hp" in t or "'s hp" in t or t.endswith("hp"):
         return "hit_points"
     if "speed" in t and (
@@ -498,6 +504,7 @@ def _categorize_change_text(text):
         or "gains" in t
         or "increase" in t
         or "decrease" in t
+        or "reduce" in t
     ):
         return "speed"
     if ("ac" in t and ("increase" in t or "decrease" in t)) or (
@@ -517,7 +524,8 @@ def _categorize_change_text(text):
         or "smaller" in t
     ):
         return "size"
-    if "level" in t and ("increase" in t or "decrease" in t):
+    if ("creature's level" in t or "creature\u2019s level" in t or "spellcaster's level" in t
+            or "spellcaster\u2019s level" in t) and ("increase" in t or "decrease" in t):
         return "level"
     if (
         "perception" in t or "saving throw" in t or "fortitude" in t or "reflex" in t or "will" in t
@@ -735,6 +743,23 @@ def _build_trait_effects(text):
                     }
                 )
 
+    # "gains the undead and vampire traits" / "gain the construct trait"
+    if not effects:
+        m = re.search(r"gains? the (.+?) traits?[,.\s]", t)
+        if m:
+            trait_text = m.group(1)
+            traits = re.split(r",\s*(?:and\s+)?|\s+and\s+", trait_text)
+            for trait in traits:
+                trait = trait.strip()
+                if trait and "usually" not in trait:
+                    effects.append(
+                        {
+                            "target": "$.creature_type.creature_types",
+                            "operation": "add_item",
+                            "name": trait.title(),
+                        }
+                    )
+
     # "Add the rare trait"
     if not effects:
         m = re.search(r"add the (\w+) trait", t)
@@ -834,6 +859,15 @@ def _build_size_effects(text):
                 "value": m.group(1).title(),
             }
         ]
+    # "Increase its size by one category"
+    if "increase" in t and "size" in t and "one" in t:
+        return [
+            {
+                "target": "$.creature_type.size",
+                "operation": "size_increment",
+                "value": 1,
+            }
+        ]
     return []
 
 
@@ -890,6 +924,7 @@ def _build_sense_effects(text):
 
 def _build_attribute_effects(text):
     t = text.lower()
+    effects = []
     # "If the creature's Intelligence modifier is –4 or lower, increase it to –3."
     m = re.search(
         r"(\w+) modifier is [–-]?(\d+) or lower.+?(?:increase|set) it to [–-]?(\d+)",
@@ -907,12 +942,27 @@ def _build_attribute_effects(text):
                 "value": new_val,
             }
         ]
-    return []
+    # "has a Strength modifier of –5 and a Constitution modifier of +0"
+    for m in re.finditer(r"(\w+) modifier of [+–-]?(\d+)", t):
+        attr = m.group(1).lower()
+        # Determine sign
+        prefix = t[max(0, m.start() - 3) : m.start() + len(m.group(0))]
+        val = int(m.group(2))
+        if "–" in prefix or "-" in prefix[: prefix.find(m.group(2))]:
+            val = -val
+        effects.append(
+            {
+                "target": f"$.statistics.{attr[:3]}",
+                "operation": "replace",
+                "value": val,
+            }
+        )
+    return effects
 
 
 def _build_level_effects(text):
     t = text.lower()
-    m = re.search(r"(increase|decrease) the creature['\u2019]s level by (\d+)", t)
+    m = re.search(r"(increase|decrease) the (?:creature|spellcaster)['\u2019]s level by (\d+)", t)
     if m:
         direction = 1 if m.group(1) == "increase" else -1
         value = int(m.group(2)) * direction
@@ -989,8 +1039,8 @@ def _build_damage_effects(text):
     t = text.lower()
     effects = []
 
-    # "Increase/Decrease the damage of Strikes... by N"
-    m = re.search(r"(increase|decrease) the damage.+?by (\d+)", t)
+    # "Increase/Decrease the/its damage of Strikes... by N"
+    m = re.search(r"(increase|decrease) (?:the|its) damage.+?by (\d+)", t)
     if m:
         direction = 1 if m.group(1) == "increase" else -1
         base_val = int(m.group(2)) * direction
@@ -1050,8 +1100,8 @@ def _build_damage_effects(text):
         )
         return effects
 
-    # "Add a jaws/fangs Strike. It deals damage equal to..."
-    m = re.search(r"add a (\w[\w\s]*?) strike", t)
+    # "gains a splinter ranged Strike" / "Add a jaws/fangs Strike"
+    m = re.search(r"(?:add|gains?) a (\w[\w\s]*?) (?:ranged |melee )?strike", t)
     if m:
         effects.append(
             {
@@ -1078,6 +1128,23 @@ def _build_damage_effects(text):
                     "type": "stat_block_section",
                     "subtype": "modifier",
                     "name": f"-{m.group(1)} damage",
+                },
+            }
+        )
+        return effects
+
+    # "deal an additional 2d6 negative damage"
+    m = re.search(r"deal an additional (\d+d\d+) (\w+) damage", t)
+    if m:
+        effects.append(
+            {
+                "target": "$.offense.offensive_actions[*].attack.damage",
+                "operation": "add_item",
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "attack_damage",
+                    "formula": m.group(1),
+                    "damage_type": m.group(2),
                 },
             }
         )
@@ -1217,6 +1284,35 @@ def _build_speed_effects(text):
         )
         return effects
 
+    # "Increase Speed by 10 feet or to 40 feet, whichever results in higher"
+    m = re.search(r"increase speed by (\d+) feet or to (\d+) feet", t)
+    if m:
+        effects.append(
+            {
+                "target": "$.offense.speed.movement[?(@.movement_type=='land')].value",
+                "operation": "adjustment",
+                "value": int(m.group(1)),
+                "minimum": int(m.group(2)),
+            }
+        )
+        return effects
+
+    # "Reduce the creature's Speed by N feet"
+    m = re.search(r"reduce.+?speed by (\d+) feet", t)
+    if m:
+        effects.append(
+            {
+                "target": "$.offense.speed.movement[?(@.movement_type=='land')].value",
+                "operation": "adjustment",
+                "value": -int(m.group(1)),
+            }
+        )
+        if "minimum" in t:
+            m2 = re.search(r"minimum (?:of )?(\d+) feet", t)
+            if m2:
+                effects[-1]["minimum"] = int(m2.group(1))
+        return effects
+
     # Level-conditional: "If the creature is 8th level or higher, give it a fly Speed of 25 feet"
     m = re.search(r"(\d+)\w* level or higher.+?(\w+) speed of (\d+) feet", t)
     if m:
@@ -1285,6 +1381,17 @@ def _build_skill_effects(text):
                 "target": f"$.skills[?(@.name=='{m.group(1).title()}')].value",
                 "operation": "adjustment",
                 "value": -int(m.group(2)),
+            }
+        )
+
+    # "Increase the creature's Thievery modifier to a high skill bonus"
+    m = re.search(r"(?:increase|set) the creature.s (\w+) modifier to.+?high skill", t)
+    if m and not effects:
+        effects.append(
+            {
+                "target": f"$.skills[?(@.name=='{m.group(1).title()}')].value",
+                "operation": "replace",
+                "value_from": "$.skills | high_for_level",
             }
         )
 
@@ -1368,6 +1475,20 @@ def _build_spell_effects(text):
                     "subtype": "offensive_action",
                     "name": m.group(1).strip().title(),
                     "offensive_action_type": "spells",
+                },
+            }
+        )
+        return effects
+
+    # "Swap out the domain spell" / "Swap the defiled religious symbol"
+    if "swap" in t:
+        effects.append(
+            {
+                "target": "$.offense.offensive_actions[*].spells",
+                "operation": "select",
+                "selection": {
+                    "type": "replace_n",
+                    "description": text,
                 },
             }
         )
@@ -1494,6 +1615,11 @@ def _build_weakness_effects(text, mt):
         if m:
             names = [m.group(1).strip()]
 
+    # "gain weakness to X damage and more HP"
+    m = re.search(r"weakness to (\w+) damage", t)
+    if m and not names:
+        names = [m.group(1).strip()]
+
     # Level-based values from adjustments table
     if "value based on" in t or "depending on" in t or "value dependent" in t:
         if "adjustments" in mt:
@@ -1592,6 +1718,43 @@ def _build_resistance_effects(text, mt):
                     },
                 }
             )
+
+    # "gains resistance to physical damage (except X)"
+    m = re.search(r"resistance to (?:all )?physical damage (?:\()?except (?:from )?(\w[\w\s]*?)[\),]", t)
+    if m and not effects:
+        bypass = m.group(1).strip()
+        effects.append(
+            {
+                "target": "$.defense.hitpoints[*].resistances",
+                "operation": "add_item",
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "resistance",
+                    "name": "physical",
+                    "modifiers": [
+                        {
+                            "type": "stat_block_section",
+                            "subtype": "modifier",
+                            "name": f"except {bypass}",
+                        }
+                    ],
+                },
+            }
+        )
+    # "fast healing" in same text
+    if "fast healing" in t and not effects:
+        effects.append(
+            {
+                "target": "$.defense.hitpoints[*].automatic_abilities",
+                "operation": "add_item",
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "ability",
+                    "name": "Fast Healing",
+                    "ability_type": "automatic",
+                },
+            }
+        )
 
     # "Add resistance to physical damage... Choose one type of material"
     if "choose" in t and not effects:

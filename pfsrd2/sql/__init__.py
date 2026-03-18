@@ -6,6 +6,13 @@ from pfsrd2.sql.monster_abilities import (
     create_monster_abilities_index,
     create_monster_abilities_table,
 )
+from pfsrd2.sql.monster_families import (
+    create_monster_families_aonid_index,
+    create_monster_families_index,
+    create_monster_families_table,
+    create_monster_family_link_index,
+    create_monster_family_link_table,
+)
 from pfsrd2.sql.sources import create_sources_index, create_sources_table
 from pfsrd2.sql.traits import (
     create_trait_link_index,
@@ -135,6 +142,29 @@ def create_db_v_8(conn, curs, ver, source=None):
     return ver
 
 
+def create_db_v_9(conn, curs, ver, source=None):
+    if ver >= 9:
+        return ver
+    ver = 9
+    create_monster_families_table(curs)
+    create_monster_families_index(curs)
+    create_monster_families_aonid_index(curs)
+    set_version(curs, ver)
+    conn.commit()
+    return ver
+
+
+def create_db_v_10(conn, curs, ver, source=None):
+    if ver >= 10:
+        return ver
+    ver = 10
+    create_monster_family_link_table(curs)
+    create_monster_family_link_index(curs)
+    set_version(curs, ver)
+    conn.commit()
+    return ver
+
+
 def dict_factory(cursor, row):
     d = {}
     for idx, col in enumerate(cursor.description):
@@ -154,6 +184,8 @@ def get_db_connection(db, source=None):
         ver = create_db_v_6(conn, curs, ver, source)
         ver = create_db_v_7(conn, curs, ver, source)
         ver = create_db_v_8(conn, curs, ver, source)
+        ver = create_db_v_9(conn, curs, ver, source)
+        ver = create_db_v_10(conn, curs, ver, source)
     finally:
         curs.close()
     conn.row_factory = dict_factory

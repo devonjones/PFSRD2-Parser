@@ -365,7 +365,7 @@ PFSRD2-Parser/bin/pf2_monster_template_parse -d --stdout \
   $PF2_WEB_DIR/MonsterTemplates/MonsterTemplates.aspx.ID_22.html
 ```
 
-Output goes to `pfsrd2-data/monstertemplates/<source_name>/`.
+Output goes to `pfsrd2-data/monster_templates/<source_name>/`.
 
 ## Downstream Patch Generation (Planned)
 
