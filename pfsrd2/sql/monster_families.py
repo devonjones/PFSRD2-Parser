@@ -18,16 +18,12 @@ def create_monster_families_table(curs):
 
 
 def create_monster_families_index(curs):
-    sql = "\n".join(
-        ["CREATE INDEX monster_families_game_id", " ON monster_families (game_id)"]
-    )
+    sql = "\n".join(["CREATE INDEX monster_families_game_id", " ON monster_families (game_id)"])
     curs.execute(sql)
 
 
 def create_monster_families_aonid_index(curs):
-    sql = "\n".join(
-        ["CREATE INDEX monster_families_aonid", " ON monster_families (aonid)"]
-    )
+    sql = "\n".join(["CREATE INDEX monster_families_aonid", " ON monster_families (aonid)"])
     curs.execute(sql)
 
 
@@ -98,9 +94,7 @@ def fetch_monster_family_by_name(curs, name):
 
 
 def fetch_monster_family_by_id(curs, monster_family_id):
-    sql = "\n".join(
-        ["SELECT *", " FROM monster_families", " WHERE monster_family_id = ?"]
-    )
+    sql = "\n".join(["SELECT *", " FROM monster_families", " WHERE monster_family_id = ?"])
     curs.execute(sql, (monster_family_id,))
     return curs.fetchone()
 
@@ -143,9 +137,7 @@ def fetch_monster_family_by_link(
     return curs.fetchone()
 
 
-def insert_monster_family_link(
-    curs, legacy_monster_family_id, remastered_monster_family_id
-):
+def insert_monster_family_link(curs, legacy_monster_family_id, remastered_monster_family_id):
     sql = "\n".join(
         [
             "INSERT OR IGNORE INTO monster_family_links",

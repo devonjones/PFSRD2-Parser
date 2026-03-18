@@ -2,16 +2,16 @@ import json
 import os
 import sys
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from pfsrd2.license import license_consolidation_pass, license_pass
-from pfsrd2.schema import validate_against_schema
 from pfsrd2.monster_template import (
     _build_generic_effects,
     _categorize_change_text,
     _extract_inline_abilities,
     _parse_change,
 )
+from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
@@ -27,7 +27,6 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.universal import build_object
 from universal.utils import get_text, remove_empty_fields, strip_block_tags
 
 
@@ -123,8 +122,6 @@ def _content_filter(soup):
     # Fix h3.title tags that contain body content (abilities, descriptions)
     # These are not real headings — the content is inside the h3 tag.
     # Split them: extract title text as a real h3, unwrap the rest.
-    from bs4 import NavigableString, Tag
-
     for h3 in list(main.find_all("h3", {"class": "title"})):
         # A real heading has only text/link children. If it has <b>, <br>,
         # <ul> etc., it's a fake heading with inline content.
@@ -133,18 +130,14 @@ def _content_filter(soup):
             continue
         # Extract the title — text before the first <br> or <b>
         title_parts = []
-        body_start = None
         for child in list(h3.children):
             if isinstance(child, Tag) and child.name in ("br", "b", "ul"):
-                body_start = child
                 break
             title_parts.append(child.extract())
         # Create a clean h3 with just the title
-        from bs4 import BeautifulSoup as BS
-
         title_text = "".join(str(p) for p in title_parts).strip()
         if title_text:
-            new_h3 = BS(f'<h3 class="title">{title_text}</h3>', "html.parser").h3
+            new_h3 = BeautifulSoup(f'<h3 class="title">{title_text}</h3>', "html.parser").h3
             h3.insert_before(new_h3)
         h3.unwrap()
     # Remove the "Members" heading and its creature list.
@@ -418,9 +411,7 @@ def _strip_image_links(struct):
     def _filter_links(obj):
         if isinstance(obj, dict):
             if "links" in obj:
-                obj["links"] = [
-                    l for l in obj["links"] if "name" in l or "game-obj" in l
-                ]
+                obj["links"] = [l for l in obj["links"] if "name" in l or "game-obj" in l]
                 if not obj["links"]:
                     del obj["links"]
             for v in obj.values():
@@ -458,9 +449,7 @@ def _extract_section_abilities(struct):
             if "<b>" in text or "<b " in text:
                 bs = BeautifulSoup(text, "html.parser")
                 # Don't extract from text that's purely in tables
-                if bs.find("b") and not (
-                    bs.find("table") and not bs.find("b", recursive=False)
-                ):
+                if bs.find("b") and not (bs.find("table") and not bs.find("b", recursive=False)):
                     abilities = _extract_inline_abilities(bs)
                     if abilities:
                         section["text"] = str(bs).strip()

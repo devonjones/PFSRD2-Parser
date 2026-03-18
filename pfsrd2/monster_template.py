@@ -488,9 +488,11 @@ def _categorize_change_text(text):
     if "language" in t:
         return "languages"
     # Check combat_stats before hit_points since some changes mention both
-    if ("ac" in t or "attack" in t or "saving throw" in t) and (
-        "increase" in t or "decrease" in t
-    ) and ("hp" in t or "hit point" in t):
+    if (
+        ("ac" in t or "attack" in t or "saving throw" in t)
+        and ("increase" in t or "decrease" in t)
+        and ("hp" in t or "hit point" in t)
+    ):
         return "combat_stats"
     if "hit point" in t or " hp " in t or "\u2019s hp" in t or "'s hp" in t or t.endswith("hp"):
         return "hit_points"
@@ -524,8 +526,12 @@ def _categorize_change_text(text):
         or "smaller" in t
     ):
         return "size"
-    if ("creature's level" in t or "creature\u2019s level" in t or "spellcaster's level" in t
-            or "spellcaster\u2019s level" in t) and ("increase" in t or "decrease" in t):
+    if (
+        "creature's level" in t
+        or "creature\u2019s level" in t
+        or "spellcaster's level" in t
+        or "spellcaster\u2019s level" in t
+    ) and ("increase" in t or "decrease" in t):
         return "level"
     if (
         "perception" in t or "saving throw" in t or "fortitude" in t or "reflex" in t or "will" in t
@@ -1720,7 +1726,9 @@ def _build_resistance_effects(text, mt):
             )
 
     # "gains resistance to physical damage (except X)"
-    m = re.search(r"resistance to (?:all )?physical damage (?:\()?except (?:from )?(\w[\w\s]*?)[\),]", t)
+    m = re.search(
+        r"resistance to (?:all )?physical damage (?:\()?except (?:from )?(\w[\w\s]*?)[\),]", t
+    )
     if m and not effects:
         bypass = m.group(1).strip()
         effects.append(

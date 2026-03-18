@@ -437,19 +437,23 @@ def monster_family_db_pass(struct):
     aonid = link.get("aonid")
     if not aonid:
         return
-    family = _fetch_edition_matched_family(struct, aonid)
+    db_path = get_db_path("pfsrd2.db")
+    conn = get_db_connection(db_path)
+    try:
+        curs = conn.cursor()
+        family = _fetch_edition_matched_family(curs, struct, aonid)
+    finally:
+        conn.close()
     if not family:
         return
     family.pop("schema_version", None)
-    # Ensure the link is on the family object for easy reference
     if "link" not in family:
         family["link"] = link
     ct["family"] = family
     # Drop inline family sections (h1 headings with family content)
     sections = struct.get("sections") or []
     struct["sections"] = [
-        s for s in sections
-        if not _is_family_section(s, family_ref.get("name", ""))
+        s for s in sections if not _is_family_section(s, family_ref.get("name", ""))
     ]
 
 
@@ -459,35 +463,26 @@ def _is_family_section(section, family_name):
     return name == family_name
 
 
-def _fetch_edition_matched_family(struct, aonid):
+def _fetch_edition_matched_family(curs, struct, aonid):
     """Fetch family from DB, preferring edition match with fallback."""
-    db_path = get_db_path("pfsrd2.db")
-    conn = get_db_connection(db_path)
-    curs = conn.cursor()
-    try:
-        row = fetch_monster_family_by_aonid(curs, aonid)
-        if not row:
-            return None
-        family = json.loads(row["monster_family"])
-        creature_edition = struct.get("edition")
-        family_edition = family.get("edition")
-        # If editions match or creature has no edition, use as-is
-        if not creature_edition or family_edition == creature_edition:
-            return family
-        # Try to find the edition-matched version via links
-        family_id = row["monster_family_id"]
-        kwargs = {}
-        if family_edition == "legacy":
-            kwargs["legacy_monster_family_id"] = family_id
-        else:
-            kwargs["remastered_monster_family_id"] = family_id
-        linked_row = fetch_monster_family_by_link(curs, **kwargs)
-        if linked_row:
-            return json.loads(linked_row["monster_family"])
-        # Fallback to the original (wrong edition but better than nothing)
+    row = fetch_monster_family_by_aonid(curs, aonid)
+    if not row:
+        return None
+    family = json.loads(row["monster_family"])
+    creature_edition = struct.get("edition")
+    family_edition = family.get("edition")
+    if not creature_edition or family_edition == creature_edition:
         return family
-    finally:
-        conn.close()
+    family_id = row["monster_family_id"]
+    kwargs = {}
+    if family_edition == "legacy":
+        kwargs["legacy_monster_family_id"] = family_id
+    else:
+        kwargs["remastered_monster_family_id"] = family_id
+    linked_row = fetch_monster_family_by_link(curs, **kwargs)
+    if linked_row:
+        return json.loads(linked_row["monster_family"])
+    return family
 
 
 def monster_ability_db_pass(struct):
