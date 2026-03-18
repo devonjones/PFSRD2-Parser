@@ -77,6 +77,8 @@ def main():
     usage = "usage: %prog [options]\nReads monster family json and inserts them into the db"
     parser = option_parser(usage)
     (options, args) = parser.parse_args()
+    if not options.output:
+        parser.error("-o/--output is required")
     db_path = get_db_path("pfsrd2.db")
     conn = create_db(db_path)
     load_monster_families(conn, options)

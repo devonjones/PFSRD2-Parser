@@ -383,9 +383,13 @@ def _consolidate_creation_changes(struct):
             else:
                 # Abilities are in subsections only (e.g., "Creating a Vampire"
                 # has "Basic Vampire Abilities" as a child)
+                kept_subs = []
                 for sub in section.get("sections", []):
                     if _has_abilities_anywhere(sub):
                         subtypes.append(_build_subtype(sub))
+                    else:
+                        kept_subs.append(sub)
+                section["sections"] = kept_subs
                 remaining.append(section)
         else:
             remaining.append(section)

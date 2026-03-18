@@ -9,6 +9,7 @@ from pfsrd2.sql.monster_abilities import (
 from pfsrd2.sql.monster_families import (
     create_monster_families_aonid_index,
     create_monster_families_index,
+    create_monster_families_name_index,
     create_monster_families_table,
     create_monster_family_link_index,
     create_monster_family_link_table,
@@ -149,6 +150,7 @@ def create_db_v_9(conn, curs, ver, source=None):
     create_monster_families_table(curs)
     create_monster_families_index(curs)
     create_monster_families_aonid_index(curs)
+    create_monster_families_name_index(curs)
     set_version(curs, ver)
     conn.commit()
     return ver

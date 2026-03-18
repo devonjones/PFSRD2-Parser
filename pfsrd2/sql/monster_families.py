@@ -27,6 +27,11 @@ def create_monster_families_aonid_index(curs):
     curs.execute(sql)
 
 
+def create_monster_families_name_index(curs):
+    sql = "\n".join(["CREATE INDEX monster_families_name", " ON monster_families (name)"])
+    curs.execute(sql)
+
+
 def create_monster_family_link_table(curs):
     sql = "\n".join(
         [
