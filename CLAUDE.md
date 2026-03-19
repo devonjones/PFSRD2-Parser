@@ -276,21 +276,46 @@ errors.pf2.npcs.log
 errors.pf2.conditions.log
 ```
 
-### Reprocessing Failed Files
+### Error Seed Iteration Workflow
 
-To reprocess only the files that failed:
+**ALWAYS use this workflow when fixing parser errors.** It avoids re-running thousands of files on every iteration.
 
-1. Remove the `.log` extension from the error file:
-   ```bash
-   mv errors.pf2.monsters.log errors.pf2.monsters
-   ```
+The runner scripts have a two-file error system:
+- `errors.pf2.<type>.log` — **Output**: failures from the last run (written by the script)
+- `errors.pf2.<type>` — **Input**: if this file exists, the script ONLY processes files listed in it
 
-2. Run the pipeline again:
-   ```bash
-   ./pf2_run_creatures.sh
-   ```
+**Iteration steps:**
 
-The pipeline will now only process the files listed in the error file.
+```bash
+# 1. After a run produces errors, seed the error file from the log
+mv bin/errors.pf2.creatures.log bin/errors.pf2.creatures
+
+# 2. Run the parser — it now only processes the failing files
+bin/pf2_run_creatures.sh
+
+# 3. Check results
+wc -l bin/errors.pf2.creatures.log  # How many still failing?
+
+# 4. If still failing, fix code and repeat from step 2
+#    (the .log from step 2 becomes the new seed)
+mv bin/errors.pf2.creatures.log bin/errors.pf2.creatures
+bin/pf2_run_creatures.sh
+
+# 5. When all pass (no .log file produced), remove the seed and do a full run
+rm bin/errors.pf2.creatures
+bin/pf2_run_creatures.sh
+
+# 6. If the full run is clean, you're done
+```
+
+**Why this matters:** A full creature run processes 4000+ files and takes minutes. The seed file lets you iterate on just the failing files in seconds.
+
+**Tip:** You can also add `done` as the last line in the seed file to stop early — useful for testing on a subset:
+```bash
+head -5 bin/errors.pf2.creatures.log > bin/errors.pf2.creatures
+echo "done" >> bin/errors.pf2.creatures
+bin/pf2_run_creatures.sh  # Only processes first 5 files
+```
 
 ## Exception Handling Philosophy
 

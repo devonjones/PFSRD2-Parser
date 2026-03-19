@@ -376,7 +376,7 @@
 					"required": ["name", "type", "subtype"],
 					"additionalProperties": false
 				},
-				"sections": {"$ref": "#/definitions/sections"},
+				"sections": {"type": "array"},
 				"links": {
 					"type": "array",
 					"items": {"$ref": "#/definitions/link"},
