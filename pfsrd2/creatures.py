@@ -64,12 +64,16 @@ from universal.universal import (
 )
 from universal.utils import (
     clear_garbage,
+    extract_modifier,
     get_text,
     get_unique_tag_set,
     is_tag_named,
     log_element,
+    parse_section_modifiers,
+    rebuilt_split_modifiers,
     split_maintain_parens,
     split_on_tag,
+    split_stat_block_line,
 )
 
 # TODO: Greater barghest (43), deal with mutations
@@ -2529,15 +2533,6 @@ def process_offensive_action(section):
     return section
 
 
-def split_stat_block_line(line):
-    line = line.strip()
-    parts = split_maintain_parens(line, ";")
-    newparts = []
-    for part in parts:
-        newparts.extend(split_maintain_parens(part, ","))
-    return [p.strip() for p in newparts]
-
-
 def get_attacks(sb):
     def is_attack(section):
         if "text" not in section:
@@ -2584,18 +2579,6 @@ def get_attacks(sb):
     return attacks
 
 
-def parse_section_modifiers(section, key):
-    text = section[key]
-    text, modifier = extract_modifier(text)
-    if modifier:
-        # TODO: fix []
-        section["modifiers"] = link_modifiers(
-            build_objects("stat_block_section", "modifier", [modifier])
-        )
-    section[key] = text
-    return section
-
-
 def parse_section_value(section, key):
     text = section[key]
     m = re.search(r"(.*) (\d*)$", text)
@@ -2606,33 +2589,6 @@ def parse_section_value(section, key):
         section["value"] = int(value)
     section[key] = text
     return section
-
-
-def extract_modifier(text):
-    if text.find("(") > -1:
-        parts = text.split("(", 1)
-        assert len(parts) == 2
-        base = [parts.pop(0)]
-        newparts = parts.pop(0).split(")", 1)
-        modifier = newparts.pop(0).strip()
-        base.extend(newparts)
-        return " ".join([b.strip() for b in base]).strip(), modifier
-    else:
-        return text, None
-
-
-def rebuilt_split_modifiers(parts):
-    newparts = []
-    while len(parts) > 0:
-        part = parts.pop(0)
-        if part.find("(") > 0:
-            newpart = part
-            while newpart.find(")") == -1:
-                newpart = newpart + ", " + parts.pop(0)
-            newparts.append(newpart)
-        else:
-            newparts.append(part)
-    return newparts
 
 
 def link_abilities(abilities):

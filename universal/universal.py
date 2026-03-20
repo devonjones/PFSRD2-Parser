@@ -932,6 +932,12 @@ def edition_from_alternate_link(struct):
     alt = struct.get("alternate_link")
     if not alt:
         return None
+    if isinstance(alt, list):
+        # Assert all entries agree on alternate_type (items split into multiple
+        # remastered versions should all have the same type)
+        alt_types = {a.get("alternate_type") for a in alt}
+        assert len(alt_types) == 1, f"Conflicting alternate_type values in list: {alt_types}"
+        alt = alt[0]
     alt_type = alt.get("alternate_type")
     if alt_type == "remastered":
         return "legacy"

@@ -1,13 +1,12 @@
 """Tests for equipment.py HTML5 migration functions.
 
 Covers _remove_empty_values_pass, _extract_intelligent_item_section,
-_count_links_in_html (HTML5-specific exclusions), and _extract_h3_abilities.
+and _extract_h3_abilities.
 """
 
 from bs4 import BeautifulSoup
 
 from pfsrd2.equipment import (
-    _count_links_in_html,
     _extract_h3_abilities,
     _extract_intelligent_item_section,
     _remove_empty_values_pass,
@@ -151,98 +150,6 @@ class TestExtractIntelligentItemSection:
         # Intelligent item content and first hr should be gone
         assert "Perception" not in text
         assert soup.find("hr") is not None  # second hr remains
-
-
-# ---------------------------------------------------------------------------
-# _count_links_in_html — HTML5-specific exclusion patterns
-# (Basic exclusions already tested in test_equipment_helpers.py)
-# ---------------------------------------------------------------------------
-class TestCountLinksInHtmlHtml5Exclusions:
-    """Tests for HTML5-specific link exclusion patterns in _count_links_in_html."""
-
-    def test_excludes_alternate_edition_link(self):
-        """Links inside siderbarlook div with Legacy/Remastered version text excluded."""
-        html = (
-            '<div class="siderbarlook">'
-            'There is a <a game-obj="Equipment" aonid="99">Legacy version</a> of this item.'
-            "</div>"
-            '<a game-obj="Spells" aonid="1">fireball</a>'
-        )
-        assert _count_links_in_html(html) == 1
-
-    def test_keeps_siderbarlook_without_version_text(self):
-        """Links in siderbarlook div without version text are NOT excluded."""
-        html = (
-            '<div class="siderbarlook">'
-            '<a game-obj="Equipment" aonid="99">Some other thing</a>'
-            "</div>"
-        )
-        assert _count_links_in_html(html) == 1
-
-    def test_excludes_sidebar_links(self):
-        """Links inside <div class='sidebar'> excluded."""
-        html = (
-            '<div class="sidebar">'
-            '<a game-obj="Rules" aonid="5">Sidebar Rule</a>'
-            "</div>"
-            '<a game-obj="Spells" aonid="1">spell</a>'
-        )
-        assert _count_links_in_html(html) == 1
-
-    def test_excludes_combination_weapon_trait_entry_links(self):
-        """Links inside trait-entry divs excluded when combination weapon detected."""
-        html = (
-            '<h2 class="title">Melee</h2>'
-            "<p>melee stats</p>"
-            '<h2 class="title">Ranged</h2>'
-            "<p>ranged stats</p>"
-            '<h2 class="title">Traits</h2>'
-            '<div class="trait-entry">'
-            '<a game-obj="Traits" aonid="10">Deadly</a>'
-            "</div>"
-        )
-        # "Deadly" is inside trait-entry → excluded. No other countable links.
-        assert _count_links_in_html(html) == 0
-
-    def test_trait_entry_not_excluded_without_combination(self):
-        """Without Melee/Ranged h2s, trait-entry links are NOT excluded."""
-        html = '<div class="trait-entry">' '<a game-obj="Traits" aonid="10">Deadly</a>' "</div>"
-        assert _count_links_in_html(html) == 1
-
-    def test_mixed_html5_exclusions(self):
-        """Multiple HTML5 exclusion types in one block."""
-        html = (
-            # sidebar link — excluded
-            '<div class="sidebar"><a game-obj="Rules" aonid="1">rule</a></div>'
-            # alternate edition link — excluded
-            '<div class="siderbarlook">There is a '
-            '<a game-obj="Equipment" aonid="2">Remastered version</a></div>'
-            # PFS link — excluded
-            '<a href="PFS.aspx?ID=1">PFS</a>'
-            # real content links — counted
-            '<a game-obj="Spells" aonid="3">spell1</a>'
-            '<a game-obj="Spells" aonid="4">spell2</a>'
-        )
-        assert _count_links_in_html(html) == 2
-
-    def test_self_reference_requires_both_name_and_game_obj(self):
-        """Self-reference exclusion with game-obj requires BOTH to match."""
-        html = (
-            '<a game-obj="Equipment" aonid="1">Flaming Sword</a>'
-            '<a game-obj="Spells" aonid="2">Flaming Sword</a>'
-        )
-        # Only Equipment/Flaming Sword excluded, Spells/Flaming Sword kept
-        count = _count_links_in_html(
-            html, exclude_name="Flaming Sword", exclude_game_obj="Equipment"
-        )
-        assert count == 1
-
-    def test_trait_span_with_list_classes(self):
-        """Trait span with multiple CSS classes (list format) still excluded."""
-        html = (
-            '<span class="trait trait-uncommon"><a game-obj="Traits" aonid="1">Uncommon</a></span>'
-        )
-        assert _count_links_in_html(html) == 0
 
 
 # ---------------------------------------------------------------------------
