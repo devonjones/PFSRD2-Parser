@@ -7,20 +7,26 @@ from pfsrd2.equipment import (
     DEFAULT_FIELD_DESTINATIONS,
     EQUIPMENT_TYPES,
     _clean_activation_cruft_from_text,
+    _clean_description_newlines,
+    _collapse_br_runs,
     _collect_bold_field_values,
     _collect_equipment_ability_content,
     _collect_front_matter_action_spans,
+    _collect_siblings_until,
     _deduplicate_links_across_abilities,
+    _detect_and_remove_actions,
     _equipment_handle_value,
     _extract_ability_fields,
     _extract_action_type_from_spans,
     _extract_activation_traits_from_parens,
     _extract_affliction,
     _extract_inline_intelligent_item,
+    _extract_save_outcomes,
     _extract_traits_from_time_part,
     _extract_usage_modifiers,
     _find_ability_bolds,
     _has_affliction_pattern,
+    _merge_links_dedup,
     _normalize_activate_to_ability,
     _normalize_bulk,
     _parse_activation_content,
@@ -2163,6 +2169,222 @@ class TestEquipmentHandleValue:
         _equipment_handle_value(trait)
         assert trait["name"] == "Potency"
         assert trait["value"] == "+1"
+
+
+class TestCollectSiblingsUntil:
+    """Tests for _collect_siblings_until helper."""
+
+    def test_stops_at_bold_by_default(self):
+        soup = BeautifulSoup("hello <b>stop</b> after", "html.parser")
+        start = soup.contents[0]  # "hello "
+        parts, nodes = _collect_siblings_until(start)
+        assert "".join(parts) == "hello "
+        assert len(nodes) == 1
+
+    def test_stops_at_custom_tags(self):
+        soup = BeautifulSoup("value<br/>more<b>end</b>", "html.parser")
+        start = soup.contents[0]  # "value"
+        parts, nodes = _collect_siblings_until(start, stop_tags=("br", "b"))
+        assert "".join(parts) == "value"
+
+    def test_stops_at_hr(self):
+        soup = BeautifulSoup("text<hr/>after", "html.parser")
+        start = soup.contents[0]
+        parts, nodes = _collect_siblings_until(start, stop_tags=("b", "hr", "br"))
+        assert "".join(parts) == "text"
+
+    def test_collects_all_when_no_stop_tag(self):
+        soup = BeautifulSoup("hello <i>world</i> end", "html.parser")
+        start = soup.contents[0]
+        parts, nodes = _collect_siblings_until(start)
+        assert len(nodes) == 3  # text, <i>, text
+
+    def test_empty_start(self):
+        parts, nodes = _collect_siblings_until(None)
+        assert parts == []
+        assert nodes == []
+
+
+class TestMergeLinksDedup:
+    """Tests for _merge_links_dedup helper."""
+
+    def _link(self, name, game_obj="Traits"):
+        return {"name": name, "type": "link", "alt": name, "game-obj": game_obj}
+
+    def test_basic_merge(self):
+        existing = [self._link("A")]
+        new = [self._link("B")]
+        deduped = _merge_links_dedup(existing, new)
+        assert len(existing) == 2
+        assert existing[1]["name"] == "B"
+        assert deduped == 0
+
+    def test_duplicate_skipped(self):
+        existing = [self._link("A")]
+        new = [self._link("A")]
+        deduped = _merge_links_dedup(existing, new)
+        assert len(existing) == 1
+        assert deduped == 1
+
+    def test_skip_names(self):
+        existing = []
+        new = [self._link("Self"), self._link("Other")]
+        _merge_links_dedup(existing, new, skip_names={"Self"})
+        assert len(existing) == 1
+        assert existing[0]["name"] == "Other"
+
+    def test_different_game_obj_not_duplicate(self):
+        existing = [self._link("Fire", "Traits")]
+        new = [self._link("Fire", "Spells")]
+        deduped = _merge_links_dedup(existing, new)
+        assert len(existing) == 2
+        assert deduped == 0
+
+    def test_empty_inputs(self):
+        existing = []
+        deduped = _merge_links_dedup(existing, [])
+        assert existing == []
+        assert deduped == 0
+
+
+class TestDetectAndRemoveActions:
+    """Tests for _detect_and_remove_actions helper."""
+
+    def test_removes_activate_and_after(self):
+        html = "Description text.<br/><b>Activate</b> command; <b>Effect</b> something"
+        soup = BeautifulSoup(html, "html.parser")
+        _detect_and_remove_actions(soup)
+        text = soup.get_text().strip()
+        assert "Description text." in text
+        assert "Activate" not in text
+
+    def test_removes_effect_action(self):
+        html = "Some text<br/><b>Effect</b> does a thing"
+        soup = BeautifulSoup(html, "html.parser")
+        _detect_and_remove_actions(soup)
+        assert "Effect" not in soup.get_text()
+
+    def test_no_actions_leaves_soup_unchanged(self):
+        html = "Just plain description text with <i>italics</i>."
+        soup = BeautifulSoup(html, "html.parser")
+        original_text = soup.get_text()
+        _detect_and_remove_actions(soup)
+        assert soup.get_text() == original_text
+
+    def test_earliest_action_wins(self):
+        html = "Text<br/><b>Effect</b> first<br/><b>Activate</b> second"
+        soup = BeautifulSoup(html, "html.parser")
+        _detect_and_remove_actions(soup)
+        # Effect comes first in document order, so everything from Effect onward removed
+        assert "Effect" not in soup.get_text()
+        assert "Activate" not in soup.get_text()
+
+
+class TestExtractSaveOutcomes:
+    """Tests for _extract_save_outcomes helper."""
+
+    def test_extracts_all_outcomes(self):
+        html = (
+            "<b>Critical Success</b> Great result<br/>"
+            "<b>Success</b> Good result<br/>"
+            "<b>Failure</b> Bad result<br/>"
+            "<b>Critical Failure</b> Terrible result"
+        )
+        soup = BeautifulSoup(html, "html.parser")
+        outcomes, links = _extract_save_outcomes(soup)
+        assert outcomes["critical_success"] == "Great result"
+        assert outcomes["success"] == "Good result"
+        assert outcomes["failure"] == "Bad result"
+        assert outcomes["critical_failure"] == "Terrible result"
+
+    def test_removes_extracted_elements(self):
+        html = "<b>Success</b> Good result<br/>remaining text"
+        soup = BeautifulSoup(html, "html.parser")
+        _extract_save_outcomes(soup)
+        text = soup.get_text().strip()
+        assert "Success" not in text
+        assert "Good result" not in text
+
+    def test_no_outcomes_returns_empty(self):
+        html = "<b>Price</b> 10 gp"
+        soup = BeautifulSoup(html, "html.parser")
+        outcomes, links = _extract_save_outcomes(soup)
+        assert outcomes == {}
+        assert links == []
+
+    def test_extracts_links_from_outcomes(self):
+        html = '<b>Success</b> The <a game-obj="Conditions" aonid="1">stunned</a> condition ends'
+        soup = BeautifulSoup(html, "html.parser")
+        outcomes, links = _extract_save_outcomes(soup)
+        assert outcomes["success"] == "The stunned condition ends"
+        assert len(links) == 1
+
+
+class TestCollapseBrRuns:
+    """Tests for _collapse_br_runs helper."""
+
+    def test_three_brs_collapsed_to_two(self):
+        html = "text<br/><br/><br/>more"
+        soup = BeautifulSoup(html, "html.parser")
+        _collapse_br_runs(soup)
+        assert len(soup.find_all("br")) == 2
+
+    def test_four_brs_collapsed_to_two(self):
+        html = "text<br/><br/><br/><br/>more"
+        soup = BeautifulSoup(html, "html.parser")
+        _collapse_br_runs(soup)
+        assert len(soup.find_all("br")) == 2
+
+    def test_two_brs_unchanged(self):
+        html = "text<br/><br/>more"
+        soup = BeautifulSoup(html, "html.parser")
+        _collapse_br_runs(soup)
+        assert len(soup.find_all("br")) == 2
+
+    def test_single_br_unchanged(self):
+        html = "text<br/>more"
+        soup = BeautifulSoup(html, "html.parser")
+        _collapse_br_runs(soup)
+        assert len(soup.find_all("br")) == 1
+
+    def test_no_brs(self):
+        html = "just text"
+        soup = BeautifulSoup(html, "html.parser")
+        _collapse_br_runs(soup)
+        assert len(soup.find_all("br")) == 0
+
+
+class TestCleanDescriptionNewlines:
+    """Tests for _clean_description_newlines helper."""
+
+    def test_removes_newlines_from_content(self):
+        html = "\n.\n"
+        soup = BeautifulSoup(html, "html.parser")
+        _clean_description_newlines(soup)
+        assert "\n" not in soup.get_text()
+        assert "." in soup.get_text()
+
+    def test_whitespace_between_tags_becomes_space(self):
+        html = "<a>first</a>\n<a>second</a>"
+        soup = BeautifulSoup(html, "html.parser")
+        _clean_description_newlines(soup)
+        text = soup.get_text()
+        assert "first" in text
+        assert "second" in text
+        # Should have space between, not newline
+        assert "\n" not in text
+
+    def test_trailing_whitespace_removed(self):
+        html = "<b>bold</b>\n"
+        soup = BeautifulSoup(html, "html.parser")
+        _clean_description_newlines(soup)
+        assert "\n" not in str(soup)
+
+    def test_no_newlines_unchanged(self):
+        html = "plain text"
+        soup = BeautifulSoup(html, "html.parser")
+        _clean_description_newlines(soup)
+        assert soup.get_text() == "plain text"
 
 
 if __name__ == "__main__":
