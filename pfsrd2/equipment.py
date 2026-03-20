@@ -3917,8 +3917,9 @@ def _extract_description(bs, struct, debug=False):
             if sec0_remaining_links:
                 sb = find_stat_block(struct)
                 existing_links = sb.setdefault("links", [])
-                item_name = struct.get("name", "")
-                _merge_links_dedup(existing_links, sec0_remaining_links, skip_names={item_name})
+                _merge_links_dedup(
+                    existing_links, sec0_remaining_links, skip_names={struct["name"]}
+                )
 
         # Note: h2.title headings in content sections (e.g., "Deck Of Illusions Cards",
         # "Dragon") are processed by _extract_sections_from_headings later.
@@ -3935,7 +3936,7 @@ def _extract_description(bs, struct, debug=False):
     affliction_links = []
     has_saving_throw = desc_soup.find("b", string=lambda s: s and s.strip() == "Saving Throw")
     if not has_saving_throw and _has_affliction_pattern(desc_soup):
-        affliction, affliction_links = _extract_affliction(desc_soup, struct.get("name", ""))
+        affliction, affliction_links = _extract_affliction(desc_soup, struct["name"])
 
     # Extract abilities (Activate, etc.) from desc_soup BEFORE action detection.
     # This properly handles combined sections: abilities are extracted with their links,
@@ -3981,7 +3982,7 @@ def _extract_description(bs, struct, debug=False):
 
     # Extract normal afflictions (with Saving Throw) AFTER action detection
     if not affliction and _has_affliction_pattern(desc_soup):
-        affliction, affliction_links = _extract_affliction(desc_soup, struct.get("name", ""))
+        affliction, affliction_links = _extract_affliction(desc_soup, struct["name"])
 
     save_outcomes, save_outcome_links = _extract_save_outcomes(desc_soup)
     _collapse_br_runs(desc_soup)
@@ -4012,7 +4013,7 @@ def _extract_description(bs, struct, debug=False):
     # Check if desc_text is actual descriptive content or just remnant HTML
     # Items without descriptions may have name + item level left over
     # Skip if it only contains the item name or only has short text with no sentences
-    item_name = struct.get("name", "")
+    item_name = struct["name"]
     is_valid_description = False
     if desc_text:
         # Get plain text without HTML tags for validation
