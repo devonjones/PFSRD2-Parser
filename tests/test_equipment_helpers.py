@@ -10,7 +10,6 @@ from pfsrd2.equipment import (
     _collect_bold_field_values,
     _collect_equipment_ability_content,
     _collect_front_matter_action_spans,
-    _count_links_in_html,
     _deduplicate_links_across_abilities,
     _equipment_handle_value,
     _extract_ability_fields,
@@ -1499,62 +1498,6 @@ class TestDefaultFieldDestinations:
             assert (
                 "field_destinations" not in EQUIPMENT_TYPES[eq_type]
             ), f"{eq_type} should use shared_fields/nested_fields, not field_destinations"
-
-
-class TestCountLinksInHtml:
-    """Tests for _count_links_in_html - counts all <a> tags with exclusions."""
-
-    def test_counts_game_obj_links(self):
-        """Should count links with game-obj attribute."""
-        html = '<a href="Spells.aspx?ID=1" game-obj="Spells">fireball</a>'
-        assert _count_links_in_html(html) == 1
-
-    def test_counts_non_game_obj_links(self):
-        """Should count links WITHOUT game-obj attribute (new behavior)."""
-        html = '<a href="Rules.aspx?ID=123">some rule</a>'
-        assert _count_links_in_html(html) == 1
-
-    def test_excludes_pfs_links(self):
-        """Should exclude PFS icon links from count."""
-        html = (
-            '<a href="PFS.aspx?ID=1">PFS Standard</a>'
-            '<a href="Spells.aspx?ID=1" game-obj="Spells">fireball</a>'
-        )
-        assert _count_links_in_html(html) == 1
-
-    def test_excludes_self_references(self):
-        """Should exclude self-reference links matching name and game-obj."""
-        html = '<a href="Equipment.aspx?ID=1" game-obj="Equipment">My Item</a>'
-        assert _count_links_in_html(html, exclude_name="My Item", exclude_game_obj="Equipment") == 0
-
-    def test_excludes_trait_links_in_trait_spans(self):
-        """Should exclude trait links inside <span class='trait*'> tags."""
-        html = '<span class="trait"><a href="Traits.aspx?ID=1" game-obj="Traits">magical</a></span>'
-        assert _count_links_in_html(html) == 0
-
-    def test_keeps_trait_links_outside_trait_spans(self):
-        """Should keep trait links that are NOT inside <span class='trait*'> tags."""
-        html = '<a href="Traits.aspx?ID=1" game-obj="Traits">magical</a>'
-        assert _count_links_in_html(html) == 1
-
-    def test_excludes_version_links(self):
-        """Should exclude 'more recent version' navigation links."""
-        html = '<a href="Equipment.aspx?ID=2">There is a more recent version of this item.</a>'
-        assert _count_links_in_html(html) == 0
-
-    def test_excludes_group_links(self):
-        """Should exclude weapon/armor group links in stat line context."""
-        html = '<b>Group</b> <u><a href="Groups.aspx?ID=1" game-obj="WeaponGroups">Sword</a></u>'
-        assert _count_links_in_html(html) == 0
-
-    def test_mixed_links_counted_correctly(self):
-        """Should count a mix of game-obj and non-game-obj links, excluding PFS."""
-        html = (
-            '<a href="Spells.aspx?ID=1" game-obj="Spells">fireball</a>'
-            '<a href="Rules.aspx?ID=5">rule page</a>'
-            '<a href="PFS.aspx?ID=1">PFS</a>'
-        )
-        assert _count_links_in_html(html) == 2
 
 
 class TestShouldExcludeLink:

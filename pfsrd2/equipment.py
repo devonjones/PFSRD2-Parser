@@ -568,7 +568,9 @@ def restructure_equipment_v2_pass(details, equipment_type):
         Top-level struct dict ready for the standard pipeline
     """
     # With max_title=1, we get one section per h1 title
-    assert len(details) >= 1, f"Expected at least 1 section from parse_universal, got {len(details)}"
+    assert (
+        len(details) >= 1
+    ), f"Expected at least 1 section from parse_universal, got {len(details)}"
 
     first = details[0]
     assert isinstance(first, dict), f"Expected dict, got {type(first)}"
@@ -588,7 +590,9 @@ def restructure_equipment_v2_pass(details, equipment_type):
     name = re.sub(r"\s*Item\s+\d+\+?\s*$", "", name).strip()
 
     if not name:
-        raise AssertionError(f"Could not extract equipment name from parse_universal output. Raw: '{raw_name}'")
+        raise AssertionError(
+            f"Could not extract equipment name from parse_universal output. Raw: '{raw_name}'"
+        )
 
     # Extract text content (everything below the h1)
     text = first.get("text", "")
@@ -623,9 +627,7 @@ def restructure_equipment_v2_pass(details, equipment_type):
         text = str(text_soup)
 
     # Remove Legacy Content h3 if present (converted to edition field, not a section)
-    legacy_h3 = text_soup.find(
-        "h3", class_="title", string=lambda s: s and "Legacy Content" in s
-    )
+    legacy_h3 = text_soup.find("h3", class_="title", string=lambda s: s and "Legacy Content" in s)
     if legacy_h3:
         legacy_h3.decompose()
         text = str(text_soup)
@@ -850,7 +852,9 @@ def section_pass(struct, config, debug=False):
     else:
         # Default: generic stat extraction with field_destinations routing
         stats = {}
-        group_subtype = config.get("group_subtype") if "Group" in config["recognized_stats"] else None
+        group_subtype = (
+            config.get("group_subtype") if "Group" in config["recognized_stats"] else None
+        )
         _extract_stats_to_dict(
             main_bs, stats, config["recognized_stats"], struct["type"], group_subtype
         )
@@ -874,8 +878,12 @@ def section_pass(struct, config, debug=False):
         variants = []
         for h2 in variant_h2s:
             variant_sb, _ = _parse_variant_section(
-                h2, config, struct.get("name", ""),
-                equipment_type=equipment_type, parent_level=sb.get("level"), debug=debug
+                h2,
+                config,
+                struct.get("name", ""),
+                equipment_type=equipment_type,
+                parent_level=sb.get("level"),
+                debug=debug,
             )
             if variant_sb:
                 variants.append(variant_sb)
@@ -988,15 +996,18 @@ def _parse_variant_section(
             if source_text:
                 # Parse "Book Name pg. NNN" format
                 import re as _re
+
                 page_match = _re.match(r"(.+?)\s+pg\.\s+(\d+)", source_text)
                 if page_match:
                     source_name = page_match.group(1).strip()
                     source_page = int(page_match.group(2))
-                    variant_struct["sources"] = [{
-                        "type": "source",
-                        "name": source_name,
-                        "page": source_page,
-                    }]
+                    variant_struct["sources"] = [
+                        {
+                            "type": "source",
+                            "name": source_name,
+                            "page": source_page,
+                        }
+                    ]
                 else:
                     variant_struct["sources"] = [{"type": "source", "name": source_text}]
             for elem in elements_to_remove:
