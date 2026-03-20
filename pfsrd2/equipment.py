@@ -418,7 +418,9 @@ def _restructure_h1_title(main, h1):
     if level_span:
         level_text = get_text(level_span).strip()
         level_match = re.match(r"(?:Item|Vehicle)\s+(-?\d+)", level_text, re.IGNORECASE)
-        assert level_match, f"Level span found but text doesn't match 'Item/Vehicle N': '{level_text}'"
+        assert (
+            level_match
+        ), f"Level span found but text doesn't match 'Item/Vehicle N': '{level_text}'"
         level = int(level_match.group(1))
         level_span.decompose()
 
@@ -582,8 +584,8 @@ def restructure_equipment_v2_pass(details, equipment_type):
         raise AssertionError(f"Missing __EQ_META__ prefix in section name. Raw: '{raw_name}'")
 
     name = meta_match.group(3).strip()
-    # Remove trailing "Item N" if level span leaked into title
-    name = re.sub(r"\s*Item\s+\d+\+?\s*$", "", name).strip()
+    # Remove trailing "Item N" or "Vehicle N" if level span leaked into title
+    name = re.sub(r"\s*(?:Item|Vehicle)\s+-?\d+\+?\s*$", "", name).strip()
 
     if not name:
         raise AssertionError(
