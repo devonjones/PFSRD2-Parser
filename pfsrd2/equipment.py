@@ -417,8 +417,10 @@ def _restructure_h1_title(main, h1):
         level_span = main.find("span", style=lambda s: s and "margin-left:auto" in s)
     if level_span:
         level_text = get_text(level_span).strip()
-        level_match = re.match(r"Item\s+(\d+)", level_text, re.IGNORECASE)
-        assert level_match, f"Level span found but text doesn't match 'Item N': '{level_text}'"
+        level_match = re.match(r"(?:Item|Vehicle)\s+(-?\d+)", level_text, re.IGNORECASE)
+        assert (
+            level_match
+        ), f"Level span found but text doesn't match 'Item/Vehicle N': '{level_text}'"
         level = int(level_match.group(1))
         level_span.decompose()
 
@@ -577,13 +579,13 @@ def restructure_equipment_v2_pass(details, equipment_type):
     raw_name = first.get("name", "")
 
     # Parse metadata prefix
-    meta_match = re.match(r"__EQ_META:(\w+):(\d+)__\s*(.*)", raw_name)
+    meta_match = re.match(r"__EQ_META:(\w+):(-?\d+)__\s*(.*)", raw_name)
     if not meta_match:
         raise AssertionError(f"Missing __EQ_META__ prefix in section name. Raw: '{raw_name}'")
 
     name = meta_match.group(3).strip()
-    # Remove trailing "Item N" if level span leaked into title
-    name = re.sub(r"\s*Item\s+\d+\+?\s*$", "", name).strip()
+    # Remove trailing "Item N" or "Vehicle N" if level span leaked into title
+    name = re.sub(r"\s*(?:Item|Vehicle)\s+-?\d+\+?\s*$", "", name).strip()
 
     if not name:
         raise AssertionError(
@@ -823,7 +825,9 @@ def section_pass(struct, config, debug=False):
     # --- Variant detection (generic/equipment only) ---
     h2_tags = bs.find_all("h2", class_="title")
     variant_h2s = [
-        h2 for h2 in h2_tags if re.search(r"Item\s+\d+|Sharpness\s+Points?", get_text(h2))
+        h2
+        for h2 in h2_tags
+        if re.search(r"(?:Item|Vehicle)\s+-?\d+|Sharpness\s+Points?", get_text(h2))
     ]
     if variant_h2s:
         first_h2 = variant_h2s[0]
@@ -910,9 +914,9 @@ def _parse_variant_name_and_level(h2_tag):
         Tuple of (name, level) where level is an int
     """
     h2_text = get_text(h2_tag).strip()
-    level_match = re.search(r"Item\s+(\d+)", h2_text)
+    level_match = re.search(r"(?:Item|Vehicle)\s+(-?\d+)", h2_text)
     level = int(level_match.group(1)) if level_match else None
-    name = re.sub(r"\s*Item\s+\d+\+?\s*$", "", h2_text).strip()
+    name = re.sub(r"\s*(?:Item|Vehicle)\s+-?\d+\+?\s*$", "", h2_text).strip()
     return name, level
 
 
@@ -3228,8 +3232,8 @@ def _is_variant_marker_heading(tag):
     pfs_link = tag.find("a", href=lambda h: h and "PFS.aspx" in h)
     if pfs_link:
         return True
-    # Check for "Item X" level indicator
-    return bool(re.search(r"Item\s+\d+", tag.get_text()))
+    # Check for "Item X" or "Vehicle X" level indicator
+    return bool(re.search(r"(?:Item|Vehicle)\s+-?\d+", tag.get_text()))
 
 
 def _get_heading_level(tag):
@@ -4002,8 +4006,8 @@ def _extract_description(bs, struct, debug=False):
         # 2. Contain at least one sentence (ends with period or has significant content)
         # 3. Not be just "Item X" level text
         text_without_name = plain_text.replace(item_name, "").strip()
-        # Remove "Item X" patterns
-        text_without_name = re.sub(r"Item\s+\d+\+?", "", text_without_name).strip()
+        # Remove "Item X" / "Vehicle X" patterns
+        text_without_name = re.sub(r"(?:Item|Vehicle)\s+-?\d+\+?", "", text_without_name).strip()
         # Check if there's meaningful content left
         is_valid_description = len(text_without_name) > 10 and not text_without_name.isdigit()
 

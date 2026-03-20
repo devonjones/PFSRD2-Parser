@@ -2,5 +2,6 @@
   "database": "dolt",
   "backend": "dolt",
   "dolt_mode": "server",
-  "dolt_database": "beads_PFSRD2-Parser"
+  "dolt_database": "beads_PFSRD2-Parser",
+  "project_id": "a04fadf3-9eac-4b2e-aeff-6c0efda8132e"
 }
