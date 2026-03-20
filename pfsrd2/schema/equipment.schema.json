@@ -414,7 +414,7 @@
 				"movement_type": {"type": "string"},
 				"modifiers": {
 					"type": "array",
-					"items": {"type": "object"},
+					"items": {"$ref": "#/definitions/modifier"},
 					"additionalItems": false
 				}
 			},
@@ -433,7 +433,7 @@
 				},
 				"modifiers": {
 					"type": "array",
-					"items": {"type": "object"},
+					"items": {"$ref": "#/definitions/modifier"},
 					"additionalItems": false
 				}
 			},
@@ -775,7 +775,7 @@
 					"Languages", "MonsterAbilities", "MonsterFamilies",
 					"Monsters", "NPCs", "Planes", "Rituals", "Rules",
 					"Shields", "SiegeWeapons", "Skills", "Sources",
-					"Spells", "Traits", "WeaponGroups", "WeatherHazards", "Weapons"
+					"Spells", "Traits", "Vehicles", "WeaponGroups", "WeatherHazards", "Weapons"
 				]},
 				"game-id": {"type": "string"},
 				"alternate_type": {"enum": ["legacy", "remastered"]},

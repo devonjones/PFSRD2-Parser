@@ -50,6 +50,7 @@ from universal.universal import (
 from universal.utils import (
     clear_garbage,
     clear_tags,
+    content_filter,
     extract_pfs_note,
     get_text,
     parse_section_modifiers,
@@ -385,23 +386,19 @@ def equipment_markdown_valid_set(struct, name, path, validset):
 # ============================================================================
 
 
-def _strip_equipment_nav(main):
+def _strip_equipment_nav(soup):
     """Strip navigation elements from equipment HTML.
 
     Equipment has TWO nav levels in <span> tags before a direct-child <hr>.
-    Uses recursive=False to find the correct hr (not one inside a nav span).
+    Delegates to content_filter with hr_recursive=False.
     """
-    hr = main.find("hr", recursive=False)
-    if hr:
-        for sibling in list(hr.previous_siblings):
-            sibling.extract()
-        hr.extract()
-
-    # Unwrap the content span that contains h1
-    for span in main.find_all("span", recursive=False):
-        if span.find("h1"):
-            span.unwrap()
-            break
+    main = soup.find(id="main")
+    assert main, "No #main div found in equipment HTML"
+    # Assert hr exists before content_filter silently skips
+    assert main.find(
+        "hr", recursive=False
+    ), "No direct-child <hr> found in main — equipment HTML structure is malformed"
+    content_filter(soup, hr_recursive=False)
 
 
 def _restructure_h1_title(main, h1):
@@ -421,8 +418,8 @@ def _restructure_h1_title(main, h1):
     if level_span:
         level_text = get_text(level_span).strip()
         level_match = re.match(r"Item\s+(\d+)", level_text, re.IGNORECASE)
-        if level_match:
-            level = int(level_match.group(1))
+        assert level_match, f"Level span found but text doesn't match 'Item N': '{level_text}'"
+        level = int(level_match.group(1))
         level_span.decompose()
 
     # Extract PFS status from img alt text
@@ -434,6 +431,25 @@ def _restructure_h1_title(main, h1):
         assert match, f"PFS img found but alt text doesn't match expected format: '{pfs_alt}'"
         pfs_status = match.group(1).capitalize()
 
+    # Resolve the item name and set it as h1 text
+    name = _resolve_item_name(h1)
+    h1.clear()
+    h1.append(NavigableString(name))
+
+    # Embed metadata prefix for restructure_equipment_v2_pass
+    h1.insert(0, NavigableString(f"__EQ_META:{pfs_status}:{level}__ "))
+
+
+def _resolve_item_name(h1):
+    """Resolve the item name from three possible h1 structures.
+
+    After PFS/level extraction, the h1 may contain:
+    A) Only PFS cruft — name is a sibling <a> or text node after h1
+    B) A name link (non-PFS <a> tag)
+    C) Plain text (legacy items with no link wrapper)
+
+    Removes PFS cruft from h1 and returns the name string.
+    """
     # Remove PFS links/imgs/floating spans from h1
     for a in list(h1.find_all("a")):
         if "PFS" in a.get("href", ""):
@@ -443,29 +459,25 @@ def _restructure_h1_title(main, h1):
     for span in list(h1.find_all("span", style=lambda s: s and "float" in s)):
         span.decompose()
 
-    # Three name structures: (A) sibling link, (B) link in h1, (C) plain text in h1
+    # Case B or C: name already in h1 after PFS removal
     remaining_text = get_text(h1).strip()
     if remaining_text:
-        h1.clear()
-        h1.append(NavigableString(remaining_text))
-    else:
-        h1.clear()
-        for sibling in list(h1.next_siblings):
-            if hasattr(sibling, "name") and sibling.name == "a":
-                if "PFS" not in sibling.get("href", ""):
-                    h1.append(NavigableString(get_text(sibling).strip()))
-                    break
-            if hasattr(sibling, "name") and sibling.name in ("h2", "h3", "b", "br"):
-                break
-            if isinstance(sibling, NavigableString):
-                text = str(sibling).strip()
-                if text and not text.startswith("Item"):
-                    h1.append(NavigableString(text))
-                    sibling.extract()
-                    break
+        return remaining_text
 
-    # Embed metadata prefix for restructure_equipment_v2_pass
-    h1.insert(0, NavigableString(f"__EQ_META:{pfs_status}:{level}__ "))
+    # Case A: name follows h1 as a sibling
+    for sibling in list(h1.next_siblings):
+        if hasattr(sibling, "name") and sibling.name == "a":
+            if "PFS" not in sibling.get("href", ""):
+                return get_text(sibling).strip()
+        if hasattr(sibling, "name") and sibling.name in ("h2", "h3", "b", "br"):
+            break
+        if isinstance(sibling, NavigableString):
+            text = str(sibling).strip()
+            if text and not text.startswith("Item"):
+                sibling.extract()
+                return text
+
+    raise AssertionError("No item name found in or after h1")
 
 
 # Supplementary h2 section titles added by AoN after item content.
@@ -522,7 +534,7 @@ def _content_filter_v2(soup):
     if not main:
         return
 
-    _strip_equipment_nav(main)
+    _strip_equipment_nav(soup)
 
     h1 = main.find("h1", class_="title")
     if h1:
@@ -2994,8 +3006,6 @@ def _should_exclude_link(link):
     """
     from bs4 import NavigableString, Tag
 
-    from universal.utils import get_text
-
     # PFS icon links are decorative navigation elements, not content links.
     # Deliberately excluded from both counting and extraction.
     href = link.get("href", "")
@@ -3077,7 +3087,6 @@ def _remove_h2_section(bs, match_func, debug=False, exclude_name=None):
     all_links = section_soup.find_all("a")
 
     # Filter out excluded links (using same logic as _count_links_in_html)
-    from universal.utils import get_text
 
     links_to_count = []
     for link in all_links:

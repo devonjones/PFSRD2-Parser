@@ -103,18 +103,17 @@ class TestStripEquipmentNav:
         <h1 class="title">Content</h1>
         </div>"""
         soup = BeautifulSoup(html, "html.parser")
+        _strip_equipment_nav(soup)
         main = soup.find(id="main")
-        _strip_equipment_nav(main)
         assert "Nav" not in main.get_text()
         assert "Sub Nav" not in main.get_text()
         assert "Content" in main.get_text()
 
-    def test_no_hr_does_not_crash(self):
+    def test_no_hr_asserts(self):
         html = '<div id="main"><h1 class="title">Content</h1></div>'
         soup = BeautifulSoup(html, "html.parser")
-        main = soup.find(id="main")
-        _strip_equipment_nav(main)
-        assert "Content" in main.get_text()
+        with pytest.raises(AssertionError, match="No direct-child"):
+            _strip_equipment_nav(soup)
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +223,35 @@ class TestSidebarFilter:
 
 
 # ---------------------------------------------------------------------------
+# _remove_empty_links
+# ---------------------------------------------------------------------------
+class TestRemoveEmptyLinks:
+    def test_removes_empty_anchors(self):
+        from pfsrd2.equipment import _remove_empty_links
+
+        html = '<div id="main"><a></a><a>  </a><a><img src="x"/></a><a href="x">Real</a></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        main = soup.find(id="main")
+        _remove_empty_links(main)
+        anchors = main.find_all("a")
+        assert len(anchors) == 2
+        texts = [a.get_text(strip=True) for a in anchors]
+        assert "Real" in texts
+
+    def test_removes_empty_pfs_links(self):
+        from pfsrd2.equipment import _remove_empty_links
+
+        html = '<div id="main"><a href="PFS.aspx"></a><a href="PFS.aspx">PFS Note</a></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        main = soup.find(id="main")
+        _remove_empty_links(main)
+        anchors = main.find_all("a")
+        # Empty PFS link removed, PFS Note link kept
+        assert len(anchors) == 1
+        assert "PFS Note" in anchors[0].get_text()
+
+
+# ---------------------------------------------------------------------------
 # extract_pfs_note
 # ---------------------------------------------------------------------------
 class TestExtractPfsNote:
@@ -235,6 +263,8 @@ class TestExtractPfsNote:
         assert isinstance(struct["pfs"], dict)
         assert struct["pfs"]["availability"] == "Standard"
         assert struct["pfs"]["note"] == "All Pathfinders have access."
+        # NavigableString note text should be removed from soup
+        assert "All Pathfinders" not in bs.get_text()
 
     def test_no_pfs_note(self):
         html = "<b>Source</b> Core Rulebook<br><b>Price</b> 5 gp"

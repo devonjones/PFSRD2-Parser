@@ -186,16 +186,22 @@ def clear_garbage(text):
     return str(bs)
 
 
-def content_filter(soup):
+def content_filter(soup, hr_recursive=True):
     """Remove navigation elements before <hr> and unwrap the content span.
 
     Standard pre-filter for HTML5 AoN pages. Strips nav before first <hr>,
     then unwraps the content span that contains the h1 title.
+
+    Args:
+        soup: BeautifulSoup object to filter
+        hr_recursive: If True (default), find any <hr> in main. If False,
+            only find direct-child <hr> tags (needed for equipment HTML
+            where nav spans contain nested <hr> tags).
     """
     main = soup.find(id="main")
     if not main:
         return
-    hr = main.find("hr")
+    hr = main.find("hr", recursive=hr_recursive)
     if hr:
         for sibling in list(hr.previous_siblings):
             sibling.extract()
@@ -335,35 +341,16 @@ def parse_section_modifiers(section, key):
     return section
 
 
-def extract_pfs_note(bs, struct):
-    """Extract PFS Note from HTML and convert pfs field to structured object.
+def _collect_pfs_note_text(u_tag):
+    """Traverse siblings after a PFS Note <u> wrapper to collect note text.
 
-    PFS Notes appear as: <u><a href="PFS.aspx"><b><i>PFS Note</i></b></a></u> note text<br>
+    Stops at <br><br>, <hr>, or next <b> tag.
 
-    Converts struct["pfs"] from a string to:
-        {"type": "stat_block_section", "subtype": "pfs", "availability": "Standard", "note": "..."}
-
-    If no PFS Note is found, leaves struct["pfs"] unchanged.
-    Removes extracted elements from the soup.
+    Returns:
+        Tuple of (note_text, elements_to_remove) where note_text is the
+        cleaned text string and elements_to_remove includes the u_tag
+        and all consumed sibling nodes.
     """
-    import re
-
-    pfs_note_bold = None
-    for b in bs.find_all("b"):
-        if "PFS Note" in b.get_text():
-            pfs_note_bold = b
-            break
-
-    if not pfs_note_bold:
-        return
-
-    u_tag = pfs_note_bold.find_parent("u")
-    assert u_tag, (
-        "PFS Note <b> tag found without expected <u> wrapper. "
-        "Expected structure: <u><a><b><i>PFS Note</i></b></a></u>"
-    )
-
-    # Collect note text after </u> until <br><br>, <hr>, or next <b>
     note_parts = []
     elements_to_remove = [u_tag]
     current = u_tag.next_sibling
@@ -389,9 +376,40 @@ def extract_pfs_note(bs, struct):
     note_html = "".join(note_parts).strip()
     if note_html:
         note_soup = BeautifulSoup(note_html, "html.parser")
-        note_text = re.sub(r"\s+", " ", note_soup.get_text()).strip()
+        note_text = filter_entities(note_soup.get_text())
     else:
         note_text = None
+
+    return note_text, elements_to_remove
+
+
+def extract_pfs_note(bs, struct):
+    """Extract PFS Note from HTML and convert pfs field to structured object.
+
+    PFS Notes appear as: <u><a href="PFS.aspx"><b><i>PFS Note</i></b></a></u> note text<br>
+
+    Converts struct["pfs"] from a string to:
+        {"type": "stat_block_section", "subtype": "pfs", "availability": "Standard", "note": "..."}
+
+    If no PFS Note is found, leaves struct["pfs"] unchanged.
+    Removes extracted elements from the soup.
+    """
+    pfs_note_bold = None
+    for b in bs.find_all("b"):
+        if "PFS Note" in b.get_text():
+            pfs_note_bold = b
+            break
+
+    if not pfs_note_bold:
+        return
+
+    u_tag = pfs_note_bold.find_parent("u")
+    assert u_tag, (
+        "PFS Note <b> tag found without expected <u> wrapper. "
+        "Expected structure: <u><a><b><i>PFS Note</i></b></a></u>"
+    )
+
+    note_text, elements_to_remove = _collect_pfs_note_text(u_tag)
 
     for elem in elements_to_remove:
         if isinstance(elem, Tag):
@@ -399,15 +417,15 @@ def extract_pfs_note(bs, struct):
         elif isinstance(elem, NavigableString):
             elem.extract()
 
-    # Convert struct["pfs"] to object form and add note
+    assert note_text, "PFS Note tag found and removed from HTML but yielded no text"
+
     pfs_availability = struct["pfs"]
-    if isinstance(pfs_availability, dict):
-        pfs_availability = pfs_availability["availability"]
-    pfs_obj = {
+    assert isinstance(
+        pfs_availability, str
+    ), f"Expected pfs to be a string at this point, got {type(pfs_availability)}"
+    struct["pfs"] = {
         "type": "stat_block_section",
         "subtype": "pfs",
         "availability": pfs_availability,
+        "note": note_text,
     }
-    if note_text:
-        pfs_obj["note"] = note_text
-    struct["pfs"] = pfs_obj
