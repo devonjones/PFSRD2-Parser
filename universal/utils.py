@@ -1,3 +1,4 @@
+import re
 import warnings
 
 from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning, NavigableString, Tag
@@ -352,8 +353,6 @@ def extract_pfs_availability(bs):
 
     Returns the availability string, or "Standard" if no PFS img found.
     """
-    import re
-
     pfs_img = bs.find("img", alt=lambda s: s and s.startswith("PFS"))
     if not pfs_img:
         return "Standard"

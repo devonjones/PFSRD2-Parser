@@ -601,23 +601,19 @@ def restructure_creature_pass(details, subtype, edition):
     sb["type"] = "stat_block"
     del sb["subname"]
 
-    # Extract PFS availability from img in section text, store at top level
+    # Extract PFS availability and note from section text, store at top level
     pfs = "Standard"
     for obj in rest:
         if "text" in obj:
             bs = BeautifulSoup(obj["text"], "html.parser")
-            pfs = extract_pfs_availability(bs)
-            obj["text"] = str(bs)
-    top["pfs"] = pfs
-
-    # Extract PFS Note if present
-    for obj in rest:
-        if "text" in obj:
-            bs = BeautifulSoup(obj["text"], "html.parser")
+            availability = extract_pfs_availability(bs)
+            if availability != "Standard":
+                pfs = availability
+            top["pfs"] = pfs
             extract_pfs_note(bs, top)
             obj["text"] = str(bs)
-
-    # Normalize pfs to object form
+    if "pfs" not in top:
+        top["pfs"] = pfs
     normalize_pfs_to_object(top)
 
     top["sections"].extend(rest)

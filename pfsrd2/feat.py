@@ -61,13 +61,10 @@ def parse_feat(filename, options):
     if "text" in feat:
         bs = BeautifulSoup(feat["text"], "html.parser")
         struct["pfs"] = extract_pfs_availability(bs)
+        extract_pfs_note(bs, struct)
         feat["text"] = str(bs)
     else:
         struct["pfs"] = "Standard"
-    if "text" in feat:
-        bs = BeautifulSoup(feat["text"], "html.parser")
-        extract_pfs_note(bs, struct)
-        feat["text"] = str(bs)
     normalize_pfs_to_object(struct)
 
     if alternate_link:

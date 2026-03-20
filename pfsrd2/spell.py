@@ -60,14 +60,10 @@ def parse_spell(filename, options):
     if "text" in spell:
         bs = BeautifulSoup(spell["text"], "html.parser")
         struct["pfs"] = extract_pfs_availability(bs)
+        extract_pfs_note(bs, struct)
         spell["text"] = str(bs)
     else:
         struct["pfs"] = "Standard"
-    # Extract PFS Note from the text (removes the <u><a>PFS Note</a></u> structure)
-    if "text" in spell:
-        bs = BeautifulSoup(spell["text"], "html.parser")
-        extract_pfs_note(bs, struct)
-        spell["text"] = str(bs)
     normalize_pfs_to_object(struct)
 
     spell_struct_pass(struct)
