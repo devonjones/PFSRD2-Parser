@@ -321,6 +321,7 @@ def rebuilt_split_modifiers(parts):
 
 def parse_section_modifiers(section, key):
     """Extract parenthesized modifier from a section field and build modifier objects."""
+    # Deferred import to avoid circular dependency: universal.universal imports from utils
     from universal.universal import build_objects, link_modifiers
 
     text = section[key]

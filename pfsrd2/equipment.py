@@ -445,8 +445,8 @@ def _content_filter_v2(soup):
         if pfs_img:
             pfs_alt = pfs_img.get("alt", "")
             match = re.match(r"PFS\s+(\w+)", pfs_alt, re.IGNORECASE)
-            if match:
-                pfs_status = match.group(1).capitalize()
+            assert match, f"PFS img found but alt text doesn't match expected format: '{pfs_alt}'"
+            pfs_status = match.group(1).capitalize()
 
         # Three HTML structures exist for the name:
         # A) h1 has PFS icon only, name link follows as sibling (most common for HTML5)
@@ -995,9 +995,7 @@ def _parse_variant_section(
             source_text = "".join(source_parts).strip()
             if source_text:
                 # Parse "Book Name pg. NNN" format
-                import re as _re
-
-                page_match = _re.match(r"(.+?)\s+pg\.\s+(\d+)", source_text)
+                page_match = re.match(r"(.+?)\s+pg\.\s+(\d+)", source_text)
                 if page_match:
                     source_name = page_match.group(1).strip()
                     source_page = int(page_match.group(2))
@@ -1446,6 +1444,8 @@ def _extract_vehicle_stats_hook(bs, sb, struct, config):
 
 def _extract_abilities_hook(bs, sb, struct, config):
     """Hook: extract action abilities (siege weapons, vehicles)."""
+    # _extract_abilities returns (abilities, trait_links_converted_count).
+    # The count was used by the removed link accounting system; v2 does not use it.
     abilities, _ = _extract_abilities(bs, struct["type"], config["recognized_stats"])
     if abilities:
         sb["abilities"] = abilities
@@ -2546,9 +2546,10 @@ def _extract_pfs_note(bs, struct):
 
     # Navigate up to find the <u> wrapper (structure: <u><a><b><i>PFS Note</i></b></a></u>)
     u_tag = pfs_note_bold.find_parent("u")
-    if not u_tag:
-        # No <u> wrapper - might be a different structure, skip
-        return
+    assert u_tag, (
+        "PFS Note <b> tag found without expected <u> wrapper. "
+        "Expected structure: <u><a><b><i>PFS Note</i></b></a></u>"
+    )
 
     # Collect note text after </u> until <br><br>, <hr>, or next <b>
     note_parts = []
@@ -2590,9 +2591,9 @@ def _extract_pfs_note(bs, struct):
             elem.extract()
 
     # Convert struct["pfs"] to object form and add note
-    pfs_availability = struct.get("pfs", "Standard")
+    pfs_availability = struct["pfs"]  # Must exist — set by restructure_equipment_v2_pass
     if isinstance(pfs_availability, dict):
-        pfs_availability = pfs_availability.get("availability", "Standard")
+        pfs_availability = pfs_availability["availability"]
     pfs_obj = {
         "type": "stat_block_section",
         "subtype": "pfs",
