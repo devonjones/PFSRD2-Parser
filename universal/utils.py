@@ -341,6 +341,61 @@ def parse_section_modifiers(section, key):
     return section
 
 
+def extract_pfs_availability(bs):
+    """Extract PFS availability from an img tag in the content.
+
+    PFS availability appears as: <img alt="PFS Standard" ...>
+    Valid values: Standard, Limited, Restricted.
+
+    Removes the img (and its parent PFS link/span if empty after removal)
+    from the soup.
+
+    Returns the availability string, or "Standard" if no PFS img found.
+    """
+    import re
+
+    pfs_img = bs.find("img", alt=lambda s: s and s.startswith("PFS"))
+    if not pfs_img:
+        return "Standard"
+
+    pfs_alt = pfs_img.get("alt", "")
+    match = re.match(r"PFS\s+(\w+)", pfs_alt, re.IGNORECASE)
+    assert match, f"PFS img found but alt text doesn't match expected format: '{pfs_alt}'"
+    availability = match.group(1).capitalize()
+
+    # Remove the img and clean up empty parent wrappers
+    parent = pfs_img.parent
+    pfs_img.decompose()
+    # If parent is now empty (span or a wrapping just the icon), remove it too
+    while parent and parent.name in ("span", "a") and not parent.get_text(strip=True):
+        next_parent = parent.parent
+        parent.decompose()
+        parent = next_parent
+
+    return availability
+
+
+def normalize_pfs_to_object(struct):
+    """Ensure struct['pfs'] is a structured object, not a string.
+
+    Converts string pfs values to the standard object form.
+    No-op if already an object.
+    """
+    pfs = struct.get("pfs")
+    if pfs is None:
+        struct["pfs"] = {
+            "type": "stat_block_section",
+            "subtype": "pfs",
+            "availability": "Standard",
+        }
+    elif isinstance(pfs, str):
+        struct["pfs"] = {
+            "type": "stat_block_section",
+            "subtype": "pfs",
+            "availability": pfs,
+        }
+
+
 def _collect_pfs_note_text(u_tag):
     """Traverse siblings after a PFS Note <u> wrapper to collect note text.
 
@@ -377,6 +432,8 @@ def _collect_pfs_note_text(u_tag):
     if note_html:
         note_soup = BeautifulSoup(note_html, "html.parser")
         note_text = filter_entities(note_soup.get_text())
+        # Strip leading colons (HTML artifact in some files)
+        note_text = note_text.lstrip(":").strip()
     else:
         note_text = None
 

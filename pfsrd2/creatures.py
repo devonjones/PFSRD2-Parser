@@ -65,10 +65,13 @@ from universal.universal import (
 from universal.utils import (
     clear_garbage,
     extract_modifier,
+    extract_pfs_availability,
+    extract_pfs_note,
     get_text,
     get_unique_tag_set,
     is_tag_named,
     log_element,
+    normalize_pfs_to_object,
     parse_section_modifiers,
     rebuilt_split_modifiers,
     split_maintain_parens,
@@ -574,19 +577,6 @@ def monster_ability_db_pass(struct):
 
 
 def restructure_creature_pass(details, subtype, edition):
-    def _handle_sanctioning(rest):
-        for obj in rest:
-            if "text" in obj:
-                bs = BeautifulSoup(obj["text"], "html.parser")
-                imgs = bs.findAll("img")
-                for img in imgs:
-                    if img["alt"].startswith("PFS"):
-                        _, pfs = img["alt"].split(" ")
-                        assert pfs in ["Standard", "Limited", "Restricted"], f"Bad PFS: {pfs}"
-                        sb["creature_type"]["pfs"] = pfs
-                        img.extract()
-                obj["text"] = str(bs)
-
     def _fix_name(sb):
         bs = BeautifulSoup(str(sb["name"]), "html.parser")
         sb["name"] = get_text(bs).strip()
@@ -610,7 +600,26 @@ def restructure_creature_pass(details, subtype, edition):
     }
     sb["type"] = "stat_block"
     del sb["subname"]
-    _handle_sanctioning(rest)
+
+    # Extract PFS availability from img in section text, store at top level
+    pfs = "Standard"
+    for obj in rest:
+        if "text" in obj:
+            bs = BeautifulSoup(obj["text"], "html.parser")
+            pfs = extract_pfs_availability(bs)
+            obj["text"] = str(bs)
+    top["pfs"] = pfs
+
+    # Extract PFS Note if present
+    for obj in rest:
+        if "text" in obj:
+            bs = BeautifulSoup(obj["text"], "html.parser")
+            extract_pfs_note(bs, top)
+            obj["text"] = str(bs)
+
+    # Normalize pfs to object form
+    normalize_pfs_to_object(top)
+
     top["sections"].extend(rest)
     top["edition"] = edition
     return top

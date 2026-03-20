@@ -30,7 +30,15 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.utils import content_filter, get_text, remove_empty_fields, strip_block_tags
+from universal.utils import (
+    content_filter,
+    extract_pfs_availability,
+    extract_pfs_note,
+    get_text,
+    normalize_pfs_to_object,
+    remove_empty_fields,
+    strip_block_tags,
+)
 
 
 def parse_feat(filename, options):
@@ -47,6 +55,21 @@ def parse_feat(filename, options):
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
     alternate_link = handle_alternate_link(details, allow_multiple=True)
     struct = restructure_feat_pass(details)
+
+    # Extract PFS availability from img + PFS Note from HTML
+    feat = find_feat(struct)
+    if "text" in feat:
+        bs = BeautifulSoup(feat["text"], "html.parser")
+        struct["pfs"] = extract_pfs_availability(bs)
+        feat["text"] = str(bs)
+    else:
+        struct["pfs"] = "Standard"
+    if "text" in feat:
+        bs = BeautifulSoup(feat["text"], "html.parser")
+        extract_pfs_note(bs, struct)
+        feat["text"] = str(bs)
+    normalize_pfs_to_object(struct)
+
     if alternate_link:
         if isinstance(alternate_link, list):
             struct["alternate_link"] = alternate_link[0]

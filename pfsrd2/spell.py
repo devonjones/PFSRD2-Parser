@@ -29,7 +29,10 @@ from universal.universal import (
 )
 from universal.utils import (
     content_filter,
+    extract_pfs_availability,
+    extract_pfs_note,
     get_text,
+    normalize_pfs_to_object,
     remove_empty_fields,
     strip_block_tags,
 )
@@ -51,7 +54,29 @@ def parse_spell(filename, options):
     struct = restructure_spell_pass(details)
     if alternate_links:
         struct["alternate_link"] = alternate_links
+    # Extract PFS before spell_struct_pass so the PFS Note HTML is removed
+    # before bold-label extraction sees it
+    spell = find_spell(struct)
+    if "text" in spell:
+        bs = BeautifulSoup(spell["text"], "html.parser")
+        struct["pfs"] = extract_pfs_availability(bs)
+        spell["text"] = str(bs)
+    else:
+        struct["pfs"] = "Standard"
+    # Extract PFS Note from the text (removes the <u><a>PFS Note</a></u> structure)
+    if "text" in spell:
+        bs = BeautifulSoup(spell["text"], "html.parser")
+        extract_pfs_note(bs, struct)
+        spell["text"] = str(bs)
+    normalize_pfs_to_object(struct)
+
     spell_struct_pass(struct)
+
+    # Remove pfs_note from spell if spell_struct_pass still extracted it (shouldn't happen
+    # since we removed the HTML above, but be safe)
+    spell = find_spell(struct)
+    spell.pop("pfs_note", None)
+
     # Promote sources to top level early (needed by game_id_pass)
     spell = find_spell(struct)
     struct["sources"] = spell["sources"]
