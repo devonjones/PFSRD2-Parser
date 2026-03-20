@@ -1529,12 +1529,8 @@ def _extract_vehicle_stats(bs, stats_dict, recognized_stats, equipment_type):
 
         # Mark bold tag and its value siblings for removal
         elements_to_remove.append(bold_tag)
-        current = bold_tag.next_sibling
-        while current:
-            if isinstance(current, Tag) and current.name in ("b", "hr", "br"):
-                break
-            elements_to_remove.append(current)
-            current = current.next_sibling
+        _, nodes = _collect_siblings_until(bold_tag.next_sibling, stop_tags=("b", "hr", "br"))
+        elements_to_remove.extend(nodes)
 
     # Remove extracted stat elements from soup
     for elem in elements_to_remove:
@@ -1602,14 +1598,10 @@ def _extract_siege_weapon_stats(bs, stats_dict, recognized_stats, equipment_type
         if value:
             stats_dict[field_name] = value
 
-        # Mark elements for removal: the bold tag and content until next <b>, <br>, or <hr>
+        # Mark bold tag and its value siblings for removal
         elements_to_remove.append(bold_tag)
-        current = bold_tag.next_sibling
-        while current:
-            if isinstance(current, Tag) and current.name in ("b", "hr", "br"):
-                break
-            elements_to_remove.append(current)
-            current = current.next_sibling
+        _, nodes = _collect_siblings_until(bold_tag.next_sibling, stop_tags=("b", "hr", "br"))
+        elements_to_remove.extend(nodes)
 
     # Remove extracted stat elements from soup
     for elem in elements_to_remove:
@@ -2308,14 +2300,10 @@ def _extract_combination_weapon(bs, sb, struct, config):
             if value:
                 all_weapon_stats[field_name] = value
 
-        # Mark elements for removal: the bold tag and content until next <b>, <br>, or <hr>
+        # Mark tag and its value siblings for removal
         elements_to_remove.append(tag)
-        current = tag.next_sibling
-        while current:
-            if isinstance(current, Tag) and current.name in ("b", "hr", "br"):
-                break
-            elements_to_remove.append(current)
-            current = current.next_sibling
+        _, nodes = _collect_siblings_until(tag.next_sibling, stop_tags=("b", "hr", "br"))
+        elements_to_remove.extend(nodes)
 
     # Remove extracted stat elements from soup
     for elem in elements_to_remove:
@@ -2419,14 +2407,10 @@ def _extract_combination_weapon(bs, sb, struct, config):
             if value:
                 mode_stats[field_name] = value
 
-            # Mark elements for removal: the bold tag and content until next <b>, <br>, or <hr>
+            # Mark tag and its value siblings for removal
             elements_to_remove.append(tag)
-            current = tag.next_sibling
-            while current:
-                if isinstance(current, Tag) and current.name in ("b", "hr", "br"):
-                    break
-                elements_to_remove.append(current)
-                current = current.next_sibling
+            _, nodes = _collect_siblings_until(tag.next_sibling, stop_tags=("b", "hr", "br"))
+            elements_to_remove.extend(nodes)
 
         # Remove extracted stat elements from soup
         for elem in elements_to_remove:
@@ -2505,14 +2489,10 @@ def _extract_weapon_stats(bs, stats, config):
         if value:
             stats[field_name] = value
 
-        # Mark elements for removal: the bold tag and content until next <b>, <br>, or <hr>
+        # Mark bold tag and its value siblings for removal
         elements_to_remove.append(bold_tag)
-        current = bold_tag.next_sibling
-        while current:
-            if isinstance(current, Tag) and current.name in ("b", "hr", "br"):
-                break
-            elements_to_remove.append(current)
-            current = current.next_sibling
+        _, nodes = _collect_siblings_until(bold_tag.next_sibling, stop_tags=("b", "hr", "br"))
+        elements_to_remove.extend(nodes)
 
     # Remove extracted stat elements from soup
     for elem in elements_to_remove:
@@ -2776,14 +2756,10 @@ def _extract_stats_to_dict(bs, stats_dict, recognized_stats, equipment_type, gro
         if value:
             stats_dict[field_name] = value
 
-        # Mark elements for removal: the bold tag and content until next <b>, <br>, or <hr>
+        # Mark bold tag and its value siblings for removal
         elements_to_remove.append(bold_tag)
-        current = bold_tag.next_sibling
-        while current:
-            if isinstance(current, Tag) and current.name in ("b", "hr", "br"):
-                break
-            elements_to_remove.append(current)
-            current = current.next_sibling
+        _, nodes = _collect_siblings_until(bold_tag.next_sibling, stop_tags=("b", "hr", "br"))
+        elements_to_remove.extend(nodes)
 
     # Remove extracted stat elements from soup
     for elem in elements_to_remove:
@@ -3585,6 +3561,214 @@ def _extract_affliction(desc_soup, item_name):
     return section, affliction_links
 
 
+def _merge_links_dedup(existing_links, new_links, skip_names=None):
+    """Merge new_links into existing_links, deduplicating by (name, game-obj/href).
+
+    Args:
+        existing_links: List to append to (modified in place)
+        new_links: Links to merge in
+        skip_names: Optional set of names to skip (e.g., self-references)
+
+    Returns:
+        int: Number of links that were duplicates (skipped)
+    """
+    existing_keys = {
+        (l.get("name"), l.get("game-obj", l.get("href", ""))) for l in existing_links
+    }
+    deduped = 0
+    for link in new_links:
+        if skip_names and link.get("name") in skip_names:
+            continue
+        key = (link.get("name"), link.get("game-obj", link.get("href", "")))
+        if key not in existing_keys:
+            existing_links.append(link)
+            existing_keys.add(key)
+        else:
+            deduped += 1
+    return deduped
+
+
+def _detect_and_remove_actions(desc_soup, debug=False):
+    """Find the first action element in desc_soup and remove it and everything after.
+
+    Actions are identified by bold tags with known action names or action icon spans.
+    If the first action is a span, also removes preceding action name text and <br>.
+
+    Args:
+        desc_soup: BeautifulSoup object to modify in place
+        debug: Enable debug output
+    """
+    known_actions = [
+        "Activate", "Aim", "Load", "Launch", "Ram", "Effect", "Requirements",
+    ]
+    candidates = []
+
+    # 1. Bold tags with action names or followed by action icons
+    for bold in desc_soup.find_all("b"):
+        bold_text = get_text(bold).strip()
+        is_known_action = bold_text in known_actions
+
+        next_sib = bold.next_sibling
+        while next_sib and isinstance(next_sib, NavigableString) and next_sib.strip() == "":
+            next_sib = next_sib.next_sibling
+        has_action_icon = (
+            isinstance(next_sib, Tag)
+            and next_sib.name == "span"
+            and "action" in next_sib.get("class", [])
+        )
+
+        if is_known_action or has_action_icon:
+            candidates.append(bold)
+
+    # 2. Action icon spans (for actions without bold tags)
+    candidates.extend(desc_soup.find_all("span", class_="action"))
+
+    if not candidates:
+        return
+
+    # Find earliest candidate in document order
+    def get_element_index(elem):
+        for idx, descendant in enumerate(desc_soup.descendants):
+            if descendant is elem:
+                return idx
+        return float("inf")
+
+    first_action_element = min(candidates, key=get_element_index)
+
+    if debug:
+        sys.stderr.write(
+            f"DEBUG: Action detection found: {first_action_element.name} "
+            f"text='{first_action_element.get_text(strip=True)[:30]}'\n"
+        )
+
+    # If it's an action icon span, also remove preceding action name and <br> tag
+    if isinstance(first_action_element, Tag) and first_action_element.name == "span":
+        prev = first_action_element.previous_sibling
+        if isinstance(prev, Tag) and prev.name == "br":
+            prev.extract()
+            prev = prev.previous_sibling if prev else None
+        if prev and isinstance(prev, NavigableString):
+            text = prev.strip()
+            if any(action in text for action in known_actions):
+                prev.extract()
+
+    # Remove the action element and everything after it
+    current = first_action_element
+    while current:
+        next_node = current.next_sibling
+        if isinstance(current, Tag):
+            current.decompose()
+        elif isinstance(current, NavigableString):
+            current.extract()
+        current = next_node
+
+
+def _extract_save_outcomes(desc_soup):
+    """Extract save outcome labels (Success, Failure, etc.) from description soup.
+
+    Finds bold labels for Critical Success/Success/Failure/Critical Failure,
+    extracts their text content and links, and removes them from the soup.
+
+    Args:
+        desc_soup: BeautifulSoup object to modify in place
+
+    Returns:
+        Tuple of (save_outcomes dict, save_outcome_links list)
+    """
+    label_map = {
+        "Critical Success": "critical_success",
+        "Critical Failure": "critical_failure",
+        "Success": "success",
+        "Failure": "failure",
+    }
+    save_outcomes = {}
+    save_outcome_links = []
+    for bold in list(desc_soup.find_all("b")):
+        bold_text = get_text(bold).strip()
+        if bold_text not in label_map:
+            continue
+        field_name = label_map[bold_text]
+        # Collect HTML content after the bold until the next <b> or <br> tag
+        value_parts, nodes_to_remove = _collect_siblings_until(
+            bold.next_sibling, stop_tags=("b", "br")
+        )
+        outcome_html = "".join(value_parts).strip()
+        if outcome_html:
+            outcome_soup = BeautifulSoup(outcome_html, "html.parser")
+            outcome_links = get_links(outcome_soup, unwrap=True)
+            save_outcome_links.extend(outcome_links)
+            outcome_text = get_text(outcome_soup).strip()
+            if outcome_text:
+                save_outcomes[field_name] = outcome_text
+        # Remove the bold and its content from the soup
+        for elem in nodes_to_remove:
+            if isinstance(elem, Tag):
+                elem.decompose()
+            else:
+                elem.extract()
+        bold.decompose()
+
+    return save_outcomes, save_outcome_links
+
+
+def _collapse_br_runs(soup):
+    """Collapse runs of 3+ consecutive <br> tags down to 2 (paragraph break).
+
+    After extracting labels, surrounding <br> separators pile up.
+    Two <br> tags = paragraph break (normal), 3+ = artifact of extraction.
+
+    Args:
+        soup: BeautifulSoup object to modify in place
+    """
+    for br in list(soup.find_all("br")):
+        if br.parent is None:
+            continue
+        br_run = [br]
+        sibling = br.next_sibling
+        while sibling:
+            if isinstance(sibling, NavigableString) and sibling.strip() == "":
+                sibling = sibling.next_sibling
+            elif isinstance(sibling, Tag) and sibling.name == "br":
+                br_run.append(sibling)
+                sibling = sibling.next_sibling
+            else:
+                break
+        if len(br_run) >= 3:
+            for extra_br in br_run[2:]:
+                extra_br.decompose()
+
+
+def _clean_description_newlines(soup):
+    """Clean newline characters from text nodes in description soup.
+
+    For text nodes with content, removes newlines. For whitespace-only nodes
+    between sibling tags, replaces with space to preserve word boundaries.
+    For whitespace-only nodes in other positions, removes entirely.
+
+    Args:
+        soup: BeautifulSoup object to modify in place
+    """
+    for text_node in list(soup.find_all(string=True)):
+        if "\n" not in text_node:
+            continue
+        text = str(text_node)
+        cleaned = text.replace("\n", "")
+        if cleaned.strip():
+            text_node.replace_with(cleaned)
+        else:
+            prev_sib = text_node.previous_sibling
+            next_sib = text_node.next_sibling
+            if (
+                prev_sib is not None
+                and next_sib is not None
+                and isinstance(prev_sib, Tag)
+                and isinstance(next_sib, Tag)
+            ):
+                text_node.replace_with(" ")
+            else:
+                text_node.extract()
+
+
 def _extract_description(bs, struct, debug=False):
     """Extract description text and links, adding them to the stat_block.
 
@@ -3701,27 +3885,17 @@ def _extract_description(bs, struct, debug=False):
         # into stat_block.links so they aren't lost.
         if sections[0].strip():
             sec0_soup = BeautifulSoup(sections[0], "html.parser")
-            # Remove sidebar divs (their links were already excluded from HTML count)
             for sidebar in sec0_soup.find_all("div", class_="sidebar"):
                 sidebar.decompose()
             sec0_remaining_links = get_links(sec0_soup, unwrap=True)
             if sec0_remaining_links:
                 sb = find_stat_block(struct)
                 existing_links = sb.setdefault("links", [])
-                existing_keys = {
-                    (l.get("name"), l.get("game-obj", l.get("href", ""))) for l in existing_links
-                }
                 item_name = struct.get("name", "")
-                for link in sec0_remaining_links:
-                    # Skip self-references (excluded from HTML count)
-                    if link.get("name") == item_name:
-                        continue
-                    # Skip links already in stat_block from stat extraction
-                    # (e.g., relic aspect links). Don't skip sec0 duplicates
-                    # though — HTML may have multiple <a> tags with same text.
-                    key = (link.get("name"), link.get("game-obj", link.get("href", "")))
-                    if key not in existing_keys:
-                        existing_links.append(link)
+                _merge_links_dedup(
+                    existing_links, sec0_remaining_links,
+                    skip_names={item_name}
+                )
 
         # Note: h2.title headings in content sections (e.g., "Deck Of Illusions Cards",
         # "Dragon") are processed by _extract_sections_from_headings later.
@@ -3780,196 +3954,15 @@ def _extract_description(bs, struct, debug=False):
         for rl in remaining_links:
             sys.stderr.write(f"  - {rl.get('href', '')[:60]} text={rl.get_text(strip=True)[:30]}\n")
 
-    # Find the first action - either a bold tag with action name, or an action icon span
-    # We need to find the EARLIEST action in document order, not just the first one we encounter
-    known_actions = [
-        "Activate",
-        "Aim",
-        "Load",
-        "Launch",
-        "Ram",
-        "Effect",
-        "Requirements",
-    ]
-    first_action_element = None
-    candidates = []
-
-    # Collect all potential action elements
-    # 1. Bold tags with action names
-    for bold in desc_soup.find_all("b"):
-        bold_text = get_text(bold).strip()
-        is_known_action = bold_text in known_actions
-
-        # Check if followed by action icon
-        next_sib = bold.next_sibling
-        while next_sib and isinstance(next_sib, NavigableString) and next_sib.strip() == "":
-            next_sib = next_sib.next_sibling
-        has_action_icon = (
-            isinstance(next_sib, Tag)
-            and next_sib.name == "span"
-            and "action" in next_sib.get("class", [])
-        )
-
-        if is_known_action or has_action_icon:
-            candidates.append(bold)
-
-    # 2. Action icon spans (for actions without bold tags)
-    action_spans = desc_soup.find_all("span", class_="action")
-    candidates.extend(action_spans)
-
-    # Find the earliest candidate in document order
-    if candidates:
-        # Get the position of each candidate by walking through all descendants
-        def get_element_index(elem):
-            for idx, descendant in enumerate(desc_soup.descendants):
-                if descendant is elem:
-                    return idx
-            return float("inf")
-
-        first_action_element = min(candidates, key=get_element_index)
-
-    # Extract only the content before the first action
-    if debug and first_action_element:
-        sys.stderr.write(
-            f"DEBUG: Action detection found: {first_action_element.name} text='{first_action_element.get_text(strip=True)[:30]}'\n"
-        )
-        remaining_after = []
-        n = first_action_element.next_sibling
-        while n:
-            if isinstance(n, Tag) and n.name == "a":
-                remaining_after.append(n.get("href", "")[:40])
-            n = n.next_sibling
-        sys.stderr.write(f"DEBUG: Will remove {len(remaining_after)} links after action element\n")
-
-    if first_action_element:
-        # Remove everything from the action element onwards
-        current = first_action_element
-
-        # If it's an action icon span, also remove preceding action name and <br> tag
-        if isinstance(first_action_element, Tag) and first_action_element.name == "span":
-            # Action icons follow action names. Remove span, preceding action name text, and br.
-            prev = first_action_element.previous_sibling
-            # Remove preceding br tag
-            if isinstance(prev, Tag) and prev.name == "br":
-                prev.extract()
-                prev = prev.previous_sibling if prev else None
-            # Remove preceding action name text (if it's a NavigableString with an action name)
-            if prev and isinstance(prev, NavigableString):
-                text = prev.strip()
-                if any(action in text for action in known_actions):
-                    prev.extract()
-
-        # Remove the action element and everything after it
-        while current:
-            next_node = current.next_sibling
-            if isinstance(current, Tag):
-                current.decompose()
-            elif isinstance(current, NavigableString):
-                current.extract()
-            current = next_node
+    _detect_and_remove_actions(desc_soup, debug=debug)
 
     # Extract normal afflictions (with Saving Throw) AFTER action detection
     if not affliction and _has_affliction_pattern(desc_soup):
         affliction, affliction_links = _extract_affliction(desc_soup, struct.get("name", ""))
 
-    # Extract save outcome labels (Success, Failure, Critical Success, Critical Failure)
-    # These are bold labels followed by outcome text, separated by <br> tags.
-    # Extract them from the soup and store as structured data on stat_block.
-    save_outcome_labels = {
-        "Critical Success": "critical_success",
-        "Critical Failure": "critical_failure",
-        "Success": "success",
-        "Failure": "failure",
-    }
-    save_outcomes = {}
-    save_outcome_links = []
-    for bold in list(desc_soup.find_all("b")):
-        bold_text = get_text(bold).strip()
-        if bold_text not in save_outcome_labels:
-            continue
-        field_name = save_outcome_labels[bold_text]
-        # Collect HTML content after the bold until the next <b> or <br> tag
-        outcome_parts = []
-        current = bold.next_sibling
-        while current:
-            if isinstance(current, Tag) and current.name in ("b", "br"):
-                break
-            outcome_parts.append(str(current))
-            current = current.next_sibling
-        # Parse the collected HTML to extract links before getting text
-        outcome_html = "".join(outcome_parts).strip()
-        if outcome_html:
-            outcome_soup = BeautifulSoup(outcome_html, "html.parser")
-            outcome_links = get_links(outcome_soup, unwrap=True)
-            save_outcome_links.extend(outcome_links)
-            outcome_text = get_text(outcome_soup).strip()
-            if outcome_text:
-                save_outcomes[field_name] = outcome_text
-        # Remove the bold and its text content from the soup
-        to_remove = []
-        current = bold.next_sibling
-        while current:
-            if isinstance(current, Tag) and current.name in ("b", "br"):
-                break
-            to_remove.append(current)
-            current = current.next_sibling
-        for elem in to_remove:
-            if isinstance(elem, Tag):
-                elem.decompose()
-            else:
-                elem.extract()
-        bold.decompose()
-
-    # Collapse runs of 3+ consecutive <br> tags down to 2 (a paragraph break).
-    # After extracting save outcome labels, the surrounding <br> separators pile up.
-    # Two <br> tags = paragraph break (normal), 3+ = artifact of extraction.
-    for br in list(desc_soup.find_all("br")):
-        if br.parent is None:
-            continue  # Already removed
-        # Count consecutive <br> tags (skipping whitespace-only text nodes)
-        br_run = [br]
-        sibling = br.next_sibling
-        while sibling:
-            if isinstance(sibling, NavigableString) and sibling.strip() == "":
-                sibling = sibling.next_sibling
-            elif isinstance(sibling, Tag) and sibling.name == "br":
-                br_run.append(sibling)
-                sibling = sibling.next_sibling
-            else:
-                break
-        # Only collapse if 3+ <br> tags in a row
-        if len(br_run) >= 3:
-            # Remove extras, keeping first 2
-            for extra_br in br_run[2:]:
-                extra_br.decompose()
-
-    # Clean \n from text nodes added by web folder preprocessing (adds \n after
-    # every tag). For text nodes with content (e.g., "\n.\n"), remove \n to
-    # prevent " ." artifacts. For whitespace-only nodes between sibling tags
-    # (e.g., "\n" between </a> and <a>), replace with space to preserve word
-    # boundaries. For whitespace-only nodes in other positions (e.g., between
-    # a child tag and parent closing tag), remove entirely.
-    for text_node in list(desc_soup.find_all(string=True)):
-        if "\n" not in text_node:
-            continue
-        text = str(text_node)
-        cleaned = text.replace("\n", "")
-        if cleaned.strip():
-            # Has real content - keep with \n removed
-            text_node.replace_with(cleaned)
-        else:
-            # Whitespace-only: check if between two sibling tags (word boundary)
-            prev_sib = text_node.previous_sibling
-            next_sib = text_node.next_sibling
-            if (
-                prev_sib is not None
-                and next_sib is not None
-                and isinstance(prev_sib, Tag)
-                and isinstance(next_sib, Tag)
-            ):
-                text_node.replace_with(" ")
-            else:
-                text_node.extract()
+    save_outcomes, save_outcome_links = _extract_save_outcomes(desc_soup)
+    _collapse_br_runs(desc_soup)
+    _clean_description_newlines(desc_soup)
 
     # Extract sections from headings (h2, h3, etc.) before processing links
     # This separates main description from structured section content
@@ -4031,22 +4024,11 @@ def _extract_description(bs, struct, debug=False):
         if save_outcome_links:
             sb["save_results"]["links"] = save_outcome_links
 
-    # Store extracted links if any exist (excluding trait links)
-    # Merge with any existing links (e.g., from unrecognized stat fields like Aspects)
-    # avoiding duplicates by checking (name, game-obj/href)
+    # Store extracted links, merging with existing and deduplicating
     links_deduped = 0
     if non_trait_links:
         existing_links = sb.setdefault("links", [])
-        existing_keys = {
-            (l.get("name"), l.get("game-obj", l.get("href", ""))) for l in existing_links
-        }
-        for l in non_trait_links:
-            key = (l.get("name"), l.get("game-obj", l.get("href", "")))
-            if key not in existing_keys:
-                existing_links.append(l)
-                existing_keys.add(key)
-            else:
-                links_deduped += 1
+        links_deduped = _merge_links_dedup(existing_links, non_trait_links)
 
     # Add sections if any were extracted from headings
     if sections:
@@ -4092,11 +4074,12 @@ def _parse_activation_types(activation_string):
     return result
 
 
-def _collect_siblings_until_bold(start_node):
-    """Collect sibling nodes starting from start_node until a <b> tag or end.
+def _collect_siblings_until(start_node, stop_tags=("b",)):
+    """Collect sibling nodes starting from start_node until a stop tag or end.
 
     Args:
         start_node: The first sibling to examine
+        stop_tags: Tuple of tag names to stop at (default: just <b>)
 
     Returns:
         Tuple of (value_parts, nodes_to_remove) where value_parts is list of
@@ -4106,7 +4089,7 @@ def _collect_siblings_until_bold(start_node):
     nodes_to_remove = []
     current = start_node
     while current:
-        if isinstance(current, Tag) and current.name == "b":
+        if isinstance(current, Tag) and current.name in stop_tags:
             break
         value_parts.append(str(current))
         nodes_to_remove.append(current)
@@ -4174,7 +4157,7 @@ def _extract_ability_fields(ability_soup, ability):
         if not field_bold:
             continue
 
-        value_parts, nodes_to_remove = _collect_siblings_until_bold(field_bold.next_sibling)
+        value_parts, nodes_to_remove = _collect_siblings_until(field_bold.next_sibling)
         value_html = _clean_field_value_html("".join(value_parts))
 
         if value_html:
@@ -4555,18 +4538,13 @@ def _extract_h3_abilities(desc_soup, sb, debug=False):
         # Handle Source field — extract its link but don't add as a field
         source_bold = field_soup.find("b", string=lambda s: s and s.strip() == "Source")
         if source_bold:
-            src_parts = []
-            src_current = source_bold.next_sibling
-            while src_current:
-                if isinstance(src_current, Tag) and src_current.name in ("b", "br"):
-                    break
-                src_parts.append(str(src_current))
-                src_current = src_current.next_sibling
+            src_parts, _ = _collect_siblings_until(
+                source_bold.next_sibling, stop_tags=("b", "br")
+            )
             src_html = "".join(src_parts)
             if src_html:
                 src_soup = BeautifulSoup(src_html, "html.parser")
-                src_links = get_links(src_soup, unwrap=True)
-                ability_links.extend(src_links)
+                ability_links.extend(get_links(src_soup, unwrap=True))
 
         # Extract standard ability fields (Frequency, Requirements, etc.)
         for field in ABILITY_FIELD_NAMES:
@@ -4574,17 +4552,9 @@ def _extract_h3_abilities(desc_soup, sb, debug=False):
             if not field_bold:
                 continue
 
-            value_parts = []
-            val_current = field_bold.next_sibling
-            while val_current:
-                if isinstance(val_current, Tag) and val_current.name in (
-                    "b",
-                    "br",
-                    "hr",
-                ):
-                    break
-                value_parts.append(str(val_current))
-                val_current = val_current.next_sibling
+            value_parts, _ = _collect_siblings_until(
+                field_bold.next_sibling, stop_tags=("b", "br", "hr")
+            )
             value_html = "".join(value_parts).strip()
 
             if value_html:
