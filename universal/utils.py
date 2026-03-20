@@ -333,3 +333,86 @@ def parse_section_modifiers(section, key):
         )
     section[key] = text
     return section
+
+
+def extract_pfs_note(bs, struct):
+    """Extract PFS Note from HTML and convert pfs field to structured object.
+
+    PFS Notes appear as: <u><a href="PFS.aspx"><b><i>PFS Note</i></b></a></u> note text<br>
+
+    Converts struct["pfs"] from a string to:
+        {"type": "stat_block_section", "subtype": "pfs", "availability": "Standard", "note": "..."}
+
+    If no PFS Note is found, leaves struct["pfs"] unchanged.
+    Removes extracted elements from the soup.
+    """
+    import re
+
+    pfs_note_bold = None
+    for b in bs.find_all("b"):
+        if "PFS Note" in b.get_text():
+            pfs_note_bold = b
+            break
+
+    if not pfs_note_bold:
+        return
+
+    u_tag = pfs_note_bold.find_parent("u")
+    assert u_tag, (
+        "PFS Note <b> tag found without expected <u> wrapper. "
+        "Expected structure: <u><a><b><i>PFS Note</i></b></a></u>"
+    )
+
+    # Collect note text after </u> until <br><br>, <hr>, or next <b>
+    note_parts = []
+    elements_to_remove = [u_tag]
+    current = u_tag.next_sibling
+    while current:
+        if isinstance(current, Tag) and current.name == "b":
+            break
+        if isinstance(current, Tag) and current.name == "hr":
+            break
+        if isinstance(current, Tag) and current.name == "br":
+            next_sib = current.next_sibling
+            if isinstance(next_sib, Tag) and next_sib.name in ("br", "hr"):
+                elements_to_remove.append(current)
+                if next_sib.name == "br":
+                    elements_to_remove.append(next_sib)
+                break
+            elements_to_remove.append(current)
+            current = current.next_sibling
+            continue
+        note_parts.append(str(current))
+        elements_to_remove.append(current)
+        current = current.next_sibling
+
+    note_html = "".join(note_parts).strip()
+    if note_html:
+        note_soup = BeautifulSoup(note_html, "html.parser")
+        note_text = re.sub(r"\s+", " ", note_soup.get_text()).strip()
+    else:
+        note_text = None
+
+    for elem in elements_to_remove:
+        if isinstance(elem, Tag):
+            elem.decompose()
+        elif isinstance(elem, (str,)):
+            pass  # NavigableString — handled below
+        else:
+            try:
+                elem.extract()
+            except Exception:
+                pass
+
+    # Convert struct["pfs"] to object form and add note
+    pfs_availability = struct["pfs"]
+    if isinstance(pfs_availability, dict):
+        pfs_availability = pfs_availability["availability"]
+    pfs_obj = {
+        "type": "stat_block_section",
+        "subtype": "pfs",
+        "availability": pfs_availability,
+    }
+    if note_text:
+        pfs_obj["note"] = note_text
+    struct["pfs"] = pfs_obj

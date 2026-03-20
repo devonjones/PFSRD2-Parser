@@ -50,6 +50,7 @@ from universal.universal import (
 from universal.utils import (
     clear_garbage,
     clear_tags,
+    extract_pfs_note,
     get_text,
     parse_section_modifiers,
     rebuilt_split_modifiers,
@@ -694,7 +695,7 @@ def parse_equipment_v2(filename, options):
     section_pass(struct, config)
 
     # Normalize pfs to object form (section_pass may have already converted it
-    # via _extract_pfs_note; ensure consistency for items without PFS Notes)
+    # via extract_pfs_note; ensure consistency for items without PFS Notes)
     if isinstance(struct.get("pfs"), str):
         struct["pfs"] = {
             "type": "stat_block_section",
@@ -826,7 +827,7 @@ def section_pass(struct, config, debug=False):
     # --- Shared extraction (all non-weapon types) ---
     _extract_traits(main_bs, sb)
     _extract_source(main_bs, struct)
-    _extract_pfs_note(main_bs, struct)
+    extract_pfs_note(main_bs, struct)
 
     # --- Type-specific stat extraction via hook ---
     extract_stats_fxn = config.get("extract_stats_fxn")
@@ -1003,7 +1004,7 @@ def _parse_variant_section(
     # Extract PFS Note from variant (some variants have their own PFS Notes)
     # Use variant_sb as the target since variants don't have a top-level pfs field
     variant_pfs_holder = {"pfs": "Standard"}
-    _extract_pfs_note(bs, variant_pfs_holder)
+    extract_pfs_note(bs, variant_pfs_holder)
     if isinstance(variant_pfs_holder["pfs"], dict) and "note" in variant_pfs_holder["pfs"]:
         variant_sb["pfs"] = variant_pfs_holder["pfs"]
 
@@ -2163,7 +2164,7 @@ def _extract_single_mode_weapon(bs, sb, struct, config):
     # Extract shared fields (traits, source, PFS note)
     _extract_traits(bs, sb)
     _extract_source(bs, struct)
-    _extract_pfs_note(bs, struct)
+    extract_pfs_note(bs, struct)
 
     # Extract all stats
     stats = {}
@@ -2244,7 +2245,7 @@ def _extract_combination_weapon(bs, sb, struct, config):
             span.decompose()
 
     _extract_source(bs, struct)
-    _extract_pfs_note(bs, struct)
+    extract_pfs_note(bs, struct)
 
     # Extract fields before first h2 (both shared and weapon-level)
     shared_fields = config.get("shared_fields", [])
@@ -2503,88 +2504,6 @@ def _extract_weapon_stats(bs, stats, config):
             elem.decompose()
         elif isinstance(elem, NavigableString):
             elem.extract()
-
-
-def _extract_pfs_note(bs, struct):
-    """Extract PFS Note from stat block HTML.
-
-    PFS Notes appear as: <u><a href="PFS.aspx"><b><i>PFS Note</i></b></a></u> note text<br>
-    The note text may be wrapped in <i> or be plain text after the </u>.
-
-    Extracts the note text and converts struct["pfs"] from a string to an object:
-        {"type": "stat_block_section", "subtype": "pfs", "availability": "Standard", "note": "..."}
-
-    If no PFS Note is found, converts pfs to object form without a note field.
-    Removes extracted elements from the soup.
-    """
-    # Find the PFS Note bold tag
-    pfs_note_bold = None
-    for b in bs.find_all("b"):
-        if "PFS Note" in b.get_text():
-            pfs_note_bold = b
-            break
-
-    if not pfs_note_bold:
-        return
-
-    # Navigate up to find the <u> wrapper (structure: <u><a><b><i>PFS Note</i></b></a></u>)
-    u_tag = pfs_note_bold.find_parent("u")
-    assert u_tag, (
-        "PFS Note <b> tag found without expected <u> wrapper. "
-        "Expected structure: <u><a><b><i>PFS Note</i></b></a></u>"
-    )
-
-    # Collect note text after </u> until <br><br>, <hr>, or next <b>
-    note_parts = []
-    elements_to_remove = [u_tag]
-    current = u_tag.next_sibling
-    while current:
-        if isinstance(current, Tag) and current.name == "b":
-            break
-        if isinstance(current, Tag) and current.name == "hr":
-            break
-        if isinstance(current, Tag) and current.name == "br":
-            # Check if next is also <br> (double break = end of note)
-            next_sib = current.next_sibling
-            if isinstance(next_sib, Tag) and next_sib.name in ("br", "hr"):
-                elements_to_remove.append(current)
-                if next_sib.name == "br":
-                    elements_to_remove.append(next_sib)
-                break
-            elements_to_remove.append(current)
-            current = current.next_sibling
-            continue
-        note_parts.append(str(current))
-        elements_to_remove.append(current)
-        current = current.next_sibling
-
-    # Clean up the note text
-    note_html = "".join(note_parts).strip()
-    if note_html:
-        note_soup = BeautifulSoup(note_html, "html.parser")
-        note_text = _normalize_whitespace(note_soup.get_text()).strip()
-    else:
-        note_text = None
-
-    # Remove extracted elements from soup
-    for elem in elements_to_remove:
-        if isinstance(elem, Tag):
-            elem.decompose()
-        elif isinstance(elem, NavigableString):
-            elem.extract()
-
-    # Convert struct["pfs"] to object form and add note
-    pfs_availability = struct["pfs"]  # Must exist — set by restructure_equipment_v2_pass
-    if isinstance(pfs_availability, dict):
-        pfs_availability = pfs_availability["availability"]
-    pfs_obj = {
-        "type": "stat_block_section",
-        "subtype": "pfs",
-        "availability": pfs_availability,
-    }
-    if note_text:
-        pfs_obj["note"] = note_text
-    struct["pfs"] = pfs_obj
 
 
 def _extract_traits(bs, sb):

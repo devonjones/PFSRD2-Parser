@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup, NavigableString
 
 from pfsrd2.equipment import (
     _content_filter_v2,
-    _extract_pfs_note,
     _remove_empty_links,
     _remove_supplementary_sections,
     _restructure_h1_title,
@@ -16,6 +15,7 @@ from pfsrd2.equipment import (
 from universal.universal import edition_from_alternate_link
 from universal.utils import (
     extract_modifier,
+    extract_pfs_note,
     parse_section_modifiers,
     rebuilt_split_modifiers,
     split_stat_block_line,
@@ -226,14 +226,14 @@ class TestSidebarFilter:
 
 
 # ---------------------------------------------------------------------------
-# _extract_pfs_note
+# extract_pfs_note
 # ---------------------------------------------------------------------------
 class TestExtractPfsNote:
     def test_extracts_note(self):
         html = '<u><a href="PFS.aspx"><b><i>PFS Note</i></b></a></u> All Pathfinders have access.<br><br><b>Price</b>'
         bs = BeautifulSoup(html, "html.parser")
         struct = {"pfs": "Standard"}
-        _extract_pfs_note(bs, struct)
+        extract_pfs_note(bs, struct)
         assert isinstance(struct["pfs"], dict)
         assert struct["pfs"]["availability"] == "Standard"
         assert struct["pfs"]["note"] == "All Pathfinders have access."
@@ -242,7 +242,7 @@ class TestExtractPfsNote:
         html = "<b>Source</b> Core Rulebook<br><b>Price</b> 5 gp"
         bs = BeautifulSoup(html, "html.parser")
         struct = {"pfs": "Standard"}
-        _extract_pfs_note(bs, struct)
+        extract_pfs_note(bs, struct)
         # pfs stays as string when no note found
         assert struct["pfs"] == "Standard"
 
@@ -250,7 +250,7 @@ class TestExtractPfsNote:
         html = '<u><a href="PFS.aspx"><b><i>PFS Note</i></b></a></u> Note text.<br><hr>Description here.'
         bs = BeautifulSoup(html, "html.parser")
         struct = {"pfs": "Limited"}
-        _extract_pfs_note(bs, struct)
+        extract_pfs_note(bs, struct)
         assert struct["pfs"]["note"] == "Note text."
         assert struct["pfs"]["availability"] == "Limited"
         # Description should remain in soup
@@ -260,7 +260,7 @@ class TestExtractPfsNote:
         html = '<u><a href="PFS.aspx"><b><i>PFS Note</i></b></a></u> Restricted note<br><br>'
         bs = BeautifulSoup(html, "html.parser")
         struct = {"pfs": "Restricted"}
-        _extract_pfs_note(bs, struct)
+        extract_pfs_note(bs, struct)
         assert struct["pfs"]["availability"] == "Restricted"
 
     def test_asserts_on_missing_u_wrapper(self):
@@ -268,7 +268,7 @@ class TestExtractPfsNote:
         bs = BeautifulSoup(html, "html.parser")
         struct = {"pfs": "Standard"}
         with pytest.raises(AssertionError, match="expected <u> wrapper"):
-            _extract_pfs_note(bs, struct)
+            extract_pfs_note(bs, struct)
 
 
 # ---------------------------------------------------------------------------
