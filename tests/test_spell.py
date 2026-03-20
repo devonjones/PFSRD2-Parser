@@ -135,8 +135,7 @@ class TestLabelToKey:
     def test_cast(self):
         assert _label_to_key("Cast") == "cast"
 
-    def test_pfs_note(self):
-        assert _label_to_key("PFS Note") == "pfs_note"
+    # PFS Note removed from label mapping — now handled by extract_pfs_note in utils
 
 
 # --- _parse_heightened_label ---

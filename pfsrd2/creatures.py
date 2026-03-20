@@ -65,10 +65,13 @@ from universal.universal import (
 from universal.utils import (
     clear_garbage,
     extract_modifier,
+    extract_pfs_availability,
+    extract_pfs_note,
     get_text,
     get_unique_tag_set,
     is_tag_named,
     log_element,
+    normalize_pfs_to_object,
     parse_section_modifiers,
     rebuilt_split_modifiers,
     split_maintain_parens,
@@ -574,19 +577,6 @@ def monster_ability_db_pass(struct):
 
 
 def restructure_creature_pass(details, subtype, edition):
-    def _handle_sanctioning(rest):
-        for obj in rest:
-            if "text" in obj:
-                bs = BeautifulSoup(obj["text"], "html.parser")
-                imgs = bs.findAll("img")
-                for img in imgs:
-                    if img["alt"].startswith("PFS"):
-                        _, pfs = img["alt"].split(" ")
-                        assert pfs in ["Standard", "Limited", "Restricted"], f"Bad PFS: {pfs}"
-                        sb["creature_type"]["pfs"] = pfs
-                        img.extract()
-                obj["text"] = str(bs)
-
     def _fix_name(sb):
         bs = BeautifulSoup(str(sb["name"]), "html.parser")
         sb["name"] = get_text(bs).strip()
@@ -610,7 +600,30 @@ def restructure_creature_pass(details, subtype, edition):
     }
     sb["type"] = "stat_block"
     del sb["subname"]
-    _handle_sanctioning(rest)
+
+    # Extract PFS availability from img in section text
+    # Collect availability across all sections (first non-Standard wins)
+    pfs = "Standard"
+    for obj in rest:
+        if "text" in obj:
+            bs = BeautifulSoup(obj["text"], "html.parser")
+            availability = extract_pfs_availability(bs)
+            if availability != "Standard":
+                pfs = availability
+            obj["text"] = str(bs)
+    top["pfs"] = pfs
+
+    # Extract PFS Note (only one section should have it)
+    for obj in rest:
+        if "text" in obj:
+            bs = BeautifulSoup(obj["text"], "html.parser")
+            extract_pfs_note(bs, top)
+            obj["text"] = str(bs)
+            if isinstance(top["pfs"], dict):
+                break  # Note found and extracted, stop looking
+
+    normalize_pfs_to_object(top)
+
     top["sections"].extend(rest)
     top["edition"] = edition
     return top

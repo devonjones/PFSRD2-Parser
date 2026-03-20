@@ -13,7 +13,9 @@ from pfsrd2.equipment import (
 from universal.universal import edition_from_alternate_link
 from universal.utils import (
     extract_modifier,
+    extract_pfs_availability,
     extract_pfs_note,
+    normalize_pfs_to_object,
     parse_section_modifiers,
     rebuilt_split_modifiers,
     split_stat_block_line,
@@ -273,6 +275,63 @@ class TestRemoveEmptyLinks:
 
 
 # ---------------------------------------------------------------------------
+# extract_pfs_availability
+# ---------------------------------------------------------------------------
+class TestExtractPfsAvailability:
+    def test_no_img_returns_standard(self):
+        bs = BeautifulSoup("<b>Source</b> Core", "html.parser")
+        assert extract_pfs_availability(bs) == "Standard"
+
+    def test_extracts_standard(self):
+        bs = BeautifulSoup('<img alt="PFS Standard" src="x.png"/>', "html.parser")
+        assert extract_pfs_availability(bs) == "Standard"
+        assert bs.find("img") is None  # img removed
+
+    def test_extracts_limited(self):
+        bs = BeautifulSoup('<img alt="PFS Limited" src="x.png"/>', "html.parser")
+        assert extract_pfs_availability(bs) == "Limited"
+
+    def test_extracts_restricted(self):
+        bs = BeautifulSoup('<img alt="PFS Restricted" src="x.png"/>', "html.parser")
+        assert extract_pfs_availability(bs) == "Restricted"
+
+    def test_cleans_empty_parent_wrapper(self):
+        bs = BeautifulSoup(
+            '<a href="PFS.aspx"><span><img alt="PFS Standard"/></span></a>', "html.parser"
+        )
+        extract_pfs_availability(bs)
+        assert bs.find("a") is None  # empty wrapper removed
+        assert bs.find("span") is None
+
+    def test_asserts_on_invalid_availability(self):
+        bs = BeautifulSoup('<img alt="PFS Exclusive" src="x.png"/>', "html.parser")
+        with pytest.raises(AssertionError, match="Unknown PFS availability"):
+            extract_pfs_availability(bs)
+
+
+# ---------------------------------------------------------------------------
+# normalize_pfs_to_object
+# ---------------------------------------------------------------------------
+class TestNormalizePfsToObject:
+    def test_converts_string(self):
+        struct = {"pfs": "Limited"}
+        normalize_pfs_to_object(struct)
+        assert struct["pfs"]["availability"] == "Limited"
+        assert struct["pfs"]["type"] == "stat_block_section"
+
+    def test_noop_on_dict(self):
+        obj = {"type": "stat_block_section", "subtype": "pfs", "availability": "Standard"}
+        struct = {"pfs": obj}
+        normalize_pfs_to_object(struct)
+        assert struct["pfs"] is obj  # same object, not replaced
+
+    def test_asserts_on_none(self):
+        struct = {}
+        with pytest.raises(AssertionError, match="must be set"):
+            normalize_pfs_to_object(struct)
+
+
+# ---------------------------------------------------------------------------
 # extract_pfs_note
 # ---------------------------------------------------------------------------
 class TestExtractPfsNote:
@@ -304,6 +363,13 @@ class TestExtractPfsNote:
         assert struct["pfs"]["availability"] == "Limited"
         # Description should remain in soup
         assert "Description here" in bs.get_text()
+
+    def test_strips_leading_colon(self):
+        html = '<u><a href="PFS.aspx"><b><i>PFS Note</i></b></a></u>: Note with colon.<br><br>'
+        bs = BeautifulSoup(html, "html.parser")
+        struct = {"pfs": "Standard"}
+        extract_pfs_note(bs, struct)
+        assert struct["pfs"]["note"] == "Note with colon."
 
     def test_preserves_pfs_availability(self):
         html = '<u><a href="PFS.aspx"><b><i>PFS Note</i></b></a></u> Restricted note<br><br>'
