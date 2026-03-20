@@ -384,142 +384,111 @@ def equipment_markdown_valid_set(struct, name, path, validset):
 # ============================================================================
 
 
-def _content_filter_v2(soup):
-    """Pre-filter for parse_universal: equipment-specific nav stripping.
+def _strip_equipment_nav(main):
+    """Strip navigation elements from equipment HTML.
 
-    Equipment HTML has TWO levels of navigation wrapped in <span> tags:
-    1. <span><h1>All Equipment | ...</h1><hr/></span>
-    2. <span><h2>Base Armor | ...</h2></span>
-    3. <hr/>  (direct child of main - this is the real nav/content divider)
-    4. Actual content follows
-
-    Equipment h1.title contains ONLY the PFS icon link - the item name follows
-    as a sibling of the h1, not inside it. This filter restructures the HTML
-    so the name is inside the h1 (which parse_universal expects).
+    Equipment has TWO nav levels in <span> tags before a direct-child <hr>.
+    Uses recursive=False to find the correct hr (not one inside a nav span).
     """
-    main = soup.find(id="main")
-    if not main:
-        return
-
-    # Strip navigation: everything before the first DIRECT-CHILD <hr> (inclusive)
-    # recursive=False ensures we find the hr between nav and content, not the one
-    # inside a navigation span
     hr = main.find("hr", recursive=False)
     if hr:
         for sibling in list(hr.previous_siblings):
             sibling.extract()
         hr.extract()
 
-    # Unwrap the content span that contains h1 (standard HTML5 pattern)
+    # Unwrap the content span that contains h1
     for span in main.find_all("span", recursive=False):
         if span.find("h1"):
             span.unwrap()
             break
 
-    # Equipment-specific: restructure h1.title
-    # The h1 contains only the PFS icon link. The item name follows as a sibling.
-    # We need to:
-    # 1. Extract PFS status from the img alt text
-    # 2. Remove the PFS link/img from h1
-    # 3. Move the item name INTO the h1
-    # 4. Insert a PFS marker span into the content for restructure to find
-    h1 = main.find("h1", class_="title")
-    if h1:
-        # Extract level span FIRST (before clearing h1, since it may be inside h1)
-        # Level appears as: <span style="margin-left:auto">Item 13</span>
-        # Can be inside h1 (siege weapons) or a sibling of h1 (other types)
-        level = 0
-        level_span = h1.find("span", style=lambda s: s and "margin-left:auto" in s)
-        if not level_span:
-            level_span = main.find("span", style=lambda s: s and "margin-left:auto" in s)
-        if level_span:
-            level_text = get_text(level_span).strip()
-            level_match = re.match(r"Item\s+(\d+)", level_text, re.IGNORECASE)
-            if level_match:
-                level = int(level_match.group(1))
-            level_span.decompose()
 
-        # Extract PFS status from img alt text
-        pfs_img = h1.find("img", alt=lambda s: s and s.startswith("PFS "))
-        pfs_status = "Standard"
-        if pfs_img:
-            pfs_alt = pfs_img.get("alt", "")
-            match = re.match(r"PFS\s+(\w+)", pfs_alt, re.IGNORECASE)
-            assert match, f"PFS img found but alt text doesn't match expected format: '{pfs_alt}'"
-            pfs_status = match.group(1).capitalize()
+def _restructure_h1_title(main, h1):
+    """Restructure h1.title to contain the item name with metadata prefix.
 
-        # Three HTML structures exist for the name:
-        # A) h1 has PFS icon only, name link follows as sibling (most common for HTML5)
-        # B) h1 contains the name link directly (no PFS icon)
-        # C) h1 contains the name as plain text (no link, legacy equipment items)
-        #
-        # After level span extraction, remove PFS links/imgs, then check what remains.
-        # Remove PFS link/img from h1
-        for a in list(h1.find_all("a")):
-            href = a.get("href", "")
-            if "PFS" in href:
-                a.decompose()
-        # Remove remaining img tags (PFS icons without link wrapper)
-        for img in list(h1.find_all("img")):
-            img.decompose()
-        # Remove floating spans (PFS icon containers)
-        for span in list(h1.find_all("span", style=lambda s: s and "float" in s)):
-            span.decompose()
+    Equipment h1 contains only the PFS icon; the item name follows as a sibling.
+    Extracts level, PFS status, and name, then rebuilds h1 as:
+        __EQ_META:{pfs}:{level}__ {name}
 
-        # Now check what text content remains in h1
-        remaining_text = get_text(h1).strip()
+    Returns (pfs_status, level) or ("Standard", 0) if no h1.
+    """
+    # Extract level span FIRST (may be inside h1 or a sibling)
+    level = 0
+    level_span = h1.find("span", style=lambda s: s and "margin-left:auto" in s)
+    if not level_span:
+        level_span = main.find("span", style=lambda s: s and "margin-left:auto" in s)
+    if level_span:
+        level_text = get_text(level_span).strip()
+        level_match = re.match(r"Item\s+(\d+)", level_text, re.IGNORECASE)
+        if level_match:
+            level = int(level_match.group(1))
+        level_span.decompose()
 
-        if remaining_text:
-            # Case B or C: h1 already contains the name (as link or plain text)
-            h1.clear()
-            h1.append(NavigableString(remaining_text))
-        else:
-            # Case A: name follows h1 as a sibling
-            h1.clear()
-            for sibling in list(h1.next_siblings):
-                if hasattr(sibling, "name") and sibling.name == "a":
-                    href = sibling.get("href", "")
-                    if "PFS" not in href:
-                        name_text = get_text(sibling).strip()
-                        h1.append(NavigableString(name_text))
-                        break
-                if hasattr(sibling, "name") and sibling.name in ("h2", "h3", "b", "br"):
+    # Extract PFS status from img alt text
+    pfs_img = h1.find("img", alt=lambda s: s and s.startswith("PFS "))
+    pfs_status = "Standard"
+    if pfs_img:
+        pfs_alt = pfs_img.get("alt", "")
+        match = re.match(r"PFS\s+(\w+)", pfs_alt, re.IGNORECASE)
+        assert match, f"PFS img found but alt text doesn't match expected format: '{pfs_alt}'"
+        pfs_status = match.group(1).capitalize()
+
+    # Remove PFS links/imgs/floating spans from h1
+    for a in list(h1.find_all("a")):
+        if "PFS" in a.get("href", ""):
+            a.decompose()
+    for img in list(h1.find_all("img")):
+        img.decompose()
+    for span in list(h1.find_all("span", style=lambda s: s and "float" in s)):
+        span.decompose()
+
+    # Three name structures: (A) sibling link, (B) link in h1, (C) plain text in h1
+    remaining_text = get_text(h1).strip()
+    if remaining_text:
+        h1.clear()
+        h1.append(NavigableString(remaining_text))
+    else:
+        h1.clear()
+        for sibling in list(h1.next_siblings):
+            if hasattr(sibling, "name") and sibling.name == "a":
+                if "PFS" not in sibling.get("href", ""):
+                    h1.append(NavigableString(get_text(sibling).strip()))
                     break
-                if isinstance(sibling, NavigableString):
-                    text = str(sibling).strip()
-                    if text and not text.startswith("Item"):
-                        h1.append(NavigableString(text))
-                        sibling.extract()
-                        break
+            if hasattr(sibling, "name") and sibling.name in ("h2", "h3", "b", "br"):
+                break
+            if isinstance(sibling, NavigableString):
+                text = str(sibling).strip()
+                if text and not text.startswith("Item"):
+                    h1.append(NavigableString(text))
+                    sibling.extract()
+                    break
 
-        # Embed PFS and level as a prefix in the h1 text.
-        # parse_universal uses h1 text as section name. We prefix it with
-        # metadata that restructure_equipment_v2_pass will parse and strip.
-        # This survives all parse_universal passes (title_pass, subtitle_pass, etc.)
-        h1.insert(0, NavigableString(f"__EQ_META:{pfs_status}:{level}__ "))
+    # Embed metadata prefix for restructure_equipment_v2_pass
+    h1.insert(0, NavigableString(f"__EQ_META:{pfs_status}:{level}__ "))
 
-    # Remove supplementary sections that appear after the item content.
-    # In the original HTML, these are after <div class="clear"> which lxml
-    # puts outside main. They include: trait descriptions, armor/weapon
-    # specialization effects, category listings, etc.
-    # Use a known set of supplementary section titles to identify them.
-    _SUPPLEMENTARY_H2_TITLES = {
-        "Traits",
-        "Armor Specialization Effects",
-        "Critical Specialization Effects",
-        "Specific Magic Armor",
-        "Basic Magic Armor",
-        "Consumables",
-        "Other Consumables",
-        "Precious Material Armor",
-        "Precious Material Weapons",
-        "Specific Magic Weapons",
-        "Basic Magic Weapons",
-    }
+
+# Supplementary h2 section titles added by AoN after item content.
+# In the original HTML these are after <div class="clear"> which lxml
+# places outside main.
+_SUPPLEMENTARY_H2_TITLES = {
+    "Traits",
+    "Armor Specialization Effects",
+    "Critical Specialization Effects",
+    "Specific Magic Armor",
+    "Basic Magic Armor",
+    "Consumables",
+    "Other Consumables",
+    "Precious Material Armor",
+    "Precious Material Weapons",
+    "Specific Magic Weapons",
+    "Basic Magic Weapons",
+}
+
+
+def _remove_supplementary_sections(main):
+    """Remove supplementary h2 sections and trait-entry divs from main."""
     for h2 in main.find_all("h2", class_="title"):
-        h2_text = get_text(h2).strip()
-        if h2_text in _SUPPLEMENTARY_H2_TITLES:
-            # This is a supplementary section - remove it and everything after it
+        if get_text(h2).strip() in _SUPPLEMENTARY_H2_TITLES:
             to_remove = []
             current = h2
             while current:
@@ -530,22 +499,36 @@ def _content_filter_v2(soup):
                     node.decompose()
                 elif hasattr(node, "extract"):
                     node.extract()
-            break  # Only need to find the first supplementary h2
+            break
 
-    # Remove <div class="trait-entry"> blocks (trait descriptions)
     for div in main.find_all("div", class_="trait-entry"):
         div.decompose()
 
-    # Remove empty <a> tags (HTML5 artifacts)
+
+def _remove_empty_links(main):
+    """Remove empty <a> tags and PFS icon links (but keep PFS Note links)."""
     for a in main.find_all("a"):
         if not a.get_text(strip=True) and not a.find("img"):
             a.decompose()
-
-    # Remove PFS icon links (empty after img removal), but keep PFS Note links
-    # which contain text like "PFS Note" that belongs in the content
     for a in main.find_all("a", href=lambda h: h and "PFS.aspx" in h):
         if not a.get_text(strip=True):
             a.decompose()
+
+
+def _content_filter_v2(soup):
+    """Pre-filter for parse_universal: equipment-specific HTML restructuring."""
+    main = soup.find(id="main")
+    if not main:
+        return
+
+    _strip_equipment_nav(main)
+
+    h1 = main.find("h1", class_="title")
+    if h1:
+        _restructure_h1_title(main, h1)
+
+    _remove_supplementary_sections(main)
+    _remove_empty_links(main)
 
 
 def _sidebar_filter(soup):
