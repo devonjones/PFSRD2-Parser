@@ -1,6 +1,6 @@
 import warnings
 
-from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning, Tag
+from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning, NavigableString, Tag
 
 warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
 
@@ -396,7 +396,7 @@ def extract_pfs_note(bs, struct):
     for elem in elements_to_remove:
         if isinstance(elem, Tag):
             elem.decompose()
-        elif hasattr(elem, "extract"):
+        elif isinstance(elem, NavigableString):
             elem.extract()
 
     # Convert struct["pfs"] to object form and add note

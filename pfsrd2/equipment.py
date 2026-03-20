@@ -411,7 +411,7 @@ def _restructure_h1_title(main, h1):
     Extracts level, PFS status, and name, then rebuilds h1 as:
         __EQ_META:{pfs}:{level}__ {name}
 
-    Returns (pfs_status, level) or ("Standard", 0) if no h1.
+    Modifies h1 in place. The h1 check is done by the caller.
     """
     # Extract level span FIRST (may be inside h1 or a sibling)
     level = 0
