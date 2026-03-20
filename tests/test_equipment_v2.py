@@ -164,6 +164,27 @@ class TestRestructureH1Title:
         _restructure_h1_title(main, h1)
         assert "__EQ_META:Standard:8__" in h1.get_text()
 
+    def test_vehicle_level_span(self):
+        html = """<div id="main">
+        <h1 class="title">Raft<span style="margin-left:auto; margin-right:0">Vehicle 12</span></h1>
+        </div>"""
+        soup = BeautifulSoup(html, "html.parser")
+        main = soup.find(id="main")
+        h1 = main.find("h1", class_="title")
+        _restructure_h1_title(main, h1)
+        assert "Raft" in h1.get_text()
+        assert "__EQ_META:Standard:12__" in h1.get_text()
+
+    def test_negative_level(self):
+        html = """<div id="main">
+        <h1 class="title">Raft<span style="margin-left:auto; margin-right:0">Vehicle -1</span></h1>
+        </div>"""
+        soup = BeautifulSoup(html, "html.parser")
+        main = soup.find(id="main")
+        h1 = main.find("h1", class_="title")
+        _restructure_h1_title(main, h1)
+        assert "__EQ_META:Standard:-1__" in h1.get_text()
+
     def test_pfs_limited(self):
         html = """<div id="main">
         <h1 class="title"><a href="PFS.aspx"><img alt="PFS Limited"/></a></h1>
@@ -351,6 +372,20 @@ class TestRestructureEquipmentV2Pass:
         assert sb["level"] == 5
         assert sb["type"] == "stat_block"
         assert sb["subtype"] == "weapon"
+
+    def test_negative_level(self):
+        details = [
+            {
+                "type": "section",
+                "name": "__EQ_META:Standard:-1__ Raft",
+                "text": '<a aonid="77" game-obj="Vehicles">Raft</a><b>Source</b> GM Core',
+                "sections": [],
+            }
+        ]
+        struct = restructure_equipment_v2_pass(details, "vehicle")
+        assert struct["name"] == "Raft"
+        sb = struct["sections"][0]
+        assert sb["level"] == -1
 
     def test_missing_meta_prefix_asserts(self):
         details = [{"type": "section", "name": "No Prefix", "text": "", "sections": []}]
