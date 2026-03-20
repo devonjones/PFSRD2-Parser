@@ -1,11 +1,9 @@
 """Tests for equipment.py parse_universal rebuild functions."""
 
 import pytest
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup
 
 from pfsrd2.equipment import (
-    _content_filter_v2,
-    _remove_empty_links,
     _remove_supplementary_sections,
     _restructure_h1_title,
     _sidebar_filter,

@@ -396,13 +396,8 @@ def extract_pfs_note(bs, struct):
     for elem in elements_to_remove:
         if isinstance(elem, Tag):
             elem.decompose()
-        elif isinstance(elem, (str,)):
-            pass  # NavigableString — handled below
-        else:
-            try:
-                elem.extract()
-            except Exception:
-                pass
+        elif hasattr(elem, "extract"):
+            elem.extract()
 
     # Convert struct["pfs"] to object form and add note
     pfs_availability = struct["pfs"]
