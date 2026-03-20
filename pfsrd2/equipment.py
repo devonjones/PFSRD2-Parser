@@ -3572,9 +3572,7 @@ def _merge_links_dedup(existing_links, new_links, skip_names=None):
     Returns:
         int: Number of links that were duplicates (skipped)
     """
-    existing_keys = {
-        (l.get("name"), l.get("game-obj", l.get("href", ""))) for l in existing_links
-    }
+    existing_keys = {(l.get("name"), l.get("game-obj", l.get("href", ""))) for l in existing_links}
     deduped = 0
     for link in new_links:
         if skip_names and link.get("name") in skip_names:
@@ -3588,6 +3586,35 @@ def _merge_links_dedup(existing_links, new_links, skip_names=None):
     return deduped
 
 
+def _remove_preceding_action_context(span_elem, known_actions):
+    """Remove action name text and <br> that precede an action icon span.
+
+    Walks backwards from the span, skipping whitespace-only text nodes,
+    removing a <br> tag if found, then removing the action name text node.
+
+    Args:
+        span_elem: The action icon <span> Tag element
+        known_actions: List of known action name strings
+    """
+    prev = span_elem.previous_sibling
+    while prev and isinstance(prev, NavigableString) and not prev.strip():
+        ws_node = prev
+        prev = prev.previous_sibling
+        ws_node.extract()
+    if isinstance(prev, Tag) and prev.name == "br":
+        br_node = prev
+        prev = prev.previous_sibling
+        br_node.extract()
+        while prev and isinstance(prev, NavigableString) and not prev.strip():
+            ws_node = prev
+            prev = prev.previous_sibling
+            ws_node.extract()
+    if prev and isinstance(prev, NavigableString):
+        text = prev.strip()
+        if any(action in text for action in known_actions):
+            prev.extract()
+
+
 def _detect_and_remove_actions(desc_soup, debug=False):
     """Find the first action element in desc_soup and remove it and everything after.
 
@@ -3599,7 +3626,13 @@ def _detect_and_remove_actions(desc_soup, debug=False):
         debug: Enable debug output
     """
     known_actions = [
-        "Activate", "Aim", "Load", "Launch", "Ram", "Effect", "Requirements",
+        "Activate",
+        "Aim",
+        "Load",
+        "Launch",
+        "Ram",
+        "Effect",
+        "Requirements",
     ]
     candidates = []
 
@@ -3631,7 +3664,7 @@ def _detect_and_remove_actions(desc_soup, debug=False):
         for idx, descendant in enumerate(desc_soup.descendants):
             if descendant is elem:
                 return idx
-        return float("inf")
+        raise AssertionError(f"Action candidate {elem!r} not found in desc_soup — DOM mutated?")
 
     first_action_element = min(candidates, key=get_element_index)
 
@@ -3643,14 +3676,7 @@ def _detect_and_remove_actions(desc_soup, debug=False):
 
     # If it's an action icon span, also remove preceding action name and <br> tag
     if isinstance(first_action_element, Tag) and first_action_element.name == "span":
-        prev = first_action_element.previous_sibling
-        if isinstance(prev, Tag) and prev.name == "br":
-            prev.extract()
-            prev = prev.previous_sibling if prev else None
-        if prev and isinstance(prev, NavigableString):
-            text = prev.strip()
-            if any(action in text for action in known_actions):
-                prev.extract()
+        _remove_preceding_action_context(first_action_element, known_actions)
 
     # Remove the action element and everything after it
     current = first_action_element
@@ -3892,10 +3918,7 @@ def _extract_description(bs, struct, debug=False):
                 sb = find_stat_block(struct)
                 existing_links = sb.setdefault("links", [])
                 item_name = struct.get("name", "")
-                _merge_links_dedup(
-                    existing_links, sec0_remaining_links,
-                    skip_names={item_name}
-                )
+                _merge_links_dedup(existing_links, sec0_remaining_links, skip_names={item_name})
 
         # Note: h2.title headings in content sections (e.g., "Deck Of Illusions Cards",
         # "Dragon") are processed by _extract_sections_from_headings later.
@@ -4538,9 +4561,7 @@ def _extract_h3_abilities(desc_soup, sb, debug=False):
         # Handle Source field — extract its link but don't add as a field
         source_bold = field_soup.find("b", string=lambda s: s and s.strip() == "Source")
         if source_bold:
-            src_parts, _ = _collect_siblings_until(
-                source_bold.next_sibling, stop_tags=("b", "br")
-            )
+            src_parts, _ = _collect_siblings_until(source_bold.next_sibling, stop_tags=("b", "br"))
             src_html = "".join(src_parts)
             if src_html:
                 src_soup = BeautifulSoup(src_html, "html.parser")
