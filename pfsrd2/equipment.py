@@ -8,13 +8,6 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 
 import pfsrd2.constants as constants
 from pfsrd2.action import extract_action_type
-
-# Import stat block parsing utilities from creatures.py
-from pfsrd2.creatures import (
-    parse_section_modifiers,
-    rebuilt_split_modifiers,
-    split_stat_block_line,
-)
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
@@ -24,8 +17,6 @@ from pfsrd2.sql.traits import (
 from pfsrd2.sql.traits import (
     trait_db_pass as universal_trait_db_pass,
 )
-
-# Import DC/save parsing from universal
 from universal.creatures import (
     universal_handle_alignment,
     universal_handle_range,
@@ -40,14 +31,16 @@ from universal.universal import (
     build_objects,
     edition_from_alternate_link,
     edition_pass,
+    entity_pass,
     extract_link,
     extract_links,
     extract_source,
     game_id_pass,
     get_links,
-    href_filter,
+    handle_alternate_link,
     link_modifiers,
     modifiers_from_string_list,
+    parse_universal,
     remove_empty_sections_pass,
     restructure_pass,
     source_edition_override_pass,
@@ -58,10 +51,13 @@ from universal.utils import (
     clear_garbage,
     clear_tags,
     get_text,
+    parse_section_modifiers,
+    rebuilt_split_modifiers,
     recursive_filter_entities,
     split_comma_and_semicolon,
     split_maintain_parens,
     split_on_tag,
+    split_stat_block_line,
 )
 
 
@@ -91,314 +87,6 @@ def _trait_class_matcher(c):
         return c.startswith("trait")
     else:  # list of classes
         return any(cls.startswith("trait") for cls in c)
-
-
-def _count_links_in_html(html_text, exclude_name=None, exclude_game_obj=None, debug=False):
-    """Count all <a> tags in HTML that need to be extracted into structured link objects.
-
-    Excludes:
-    - Self-references (links whose text AND game-obj match exclude_name/exclude_game_obj)
-    - Trait name links (links inside <span class="trait*"> tags, replaced by database)
-    - Equipment group links (WeaponGroups/ArmorGroups in stat lines, replaced by database)
-    - PFS icon links (href contains "PFS.aspx")
-
-    Args:
-        html_text: HTML text to count links in
-        exclude_name: If provided, exclude links whose text matches this name (for self-references)
-        exclude_game_obj: If provided, also require game-obj to match for self-reference exclusion
-        debug: If True, print debug info about found links
-    """
-    soup = BeautifulSoup(html_text, "html.parser")
-    all_links = soup.find_all("a")
-
-    if debug:
-        import sys
-
-        sys.stderr.write(f"DEBUG: Found {len(all_links)} total <a> tags\n")
-        for link in all_links:
-            sys.stderr.write(
-                f"  - {link.get_text().strip()} ({link.get('game-obj')}) href={link.get('href', '')}\n"
-            )
-
-    links = all_links
-
-    # Exclude self-references if exclude_name is provided
-    # When exclude_game_obj is also provided, both name AND game-obj must match
-    # (prevents excluding links to other game objects that share the item's name)
-    if exclude_name:
-        before = len(links)
-        if exclude_game_obj:
-            links = [
-                l
-                for l in links
-                if not (
-                    l.get_text().strip() == exclude_name and l.get("game-obj") == exclude_game_obj
-                )
-            ]
-        else:
-            links = [l for l in links if l.get_text().strip() != exclude_name]
-        if debug and len(links) < before:
-            sys.stderr.write(
-                f"DEBUG: Excluded {before - len(links)} self-references to '{exclude_name}'\n"
-            )
-
-    # Exclude trait links ONLY if inside <span class="trait*"> tags (stat block traits)
-    # Regular trait links in text (like description text or ability body text) should
-    # remain as link objects, NOT be converted to traits. Only trait links in:
-    # 1. <span class="trait*"> tags (main stat block traits at top)
-    # 2. Opening parentheses of abilities (handled separately in _extract_abilities)
-    # should be converted to trait objects.
-    def is_trait_link(link):
-        # Check if inside <span class="trait*"> tags (stat block trait)
-        parent = link.parent
-        if parent and parent.name == "span":
-            parent_classes = parent.get("class", [])
-            if isinstance(parent_classes, str):
-                return parent_classes.startswith("trait")
-            else:  # list of classes
-                return any(cls.startswith("trait") for cls in parent_classes)
-        # Regular trait links in text are NOT excluded - they should be link objects
-        return False
-
-    before = len(links)
-    links = [l for l in links if not is_trait_link(l)]
-    if debug and len(links) < before:
-        sys.stderr.write(f"DEBUG: Excluded {before - len(links)} trait links\n")
-
-    # Exclude "more recent version" navigation links (not extracted to JSON)
-    # These appear as: <strong><u><a>There is a more recent version...</a></u></strong>
-    def is_version_link(link):
-        from universal.utils import get_text
-
-        link_text = get_text(link).strip().lower()
-        return "more recent version" in link_text or "newer version" in link_text
-
-    # Exclude equipment group links (weapon groups, armor groups)
-    # These links are replaced by database group data during equipment_group_pass enrichment
-    # Group links appear as: <b>Group</b> <u><a game-obj="WeaponGroups">Brawling</a></u>
-    # The <u> parent with a preceding <b>Group</b> sibling indicates this is a stat line group link
-    def is_group_link(link):
-        # Check if link is to a group object type
-        game_obj = link.get("game-obj", "")
-        if game_obj not in ["WeaponGroups", "ArmorGroups"]:
-            return False
-
-        # Check if it's in a stat line context (parent is <u> with preceding <b> sibling)
-        from bs4 import NavigableString, Tag
-
-        parent = link.parent
-        if parent and parent.name == "u":
-            # Look for a preceding <b> sibling with text "Group" or "Armor Group"
-            prev_sibling = parent.previous_sibling
-            # Skip whitespace text nodes
-            while prev_sibling:
-                if isinstance(prev_sibling, NavigableString):
-                    if prev_sibling.strip():
-                        break  # Non-whitespace text, stop looking
-                    prev_sibling = prev_sibling.previous_sibling
-                else:
-                    break  # Found a tag, stop looking
-
-            if prev_sibling and isinstance(prev_sibling, Tag) and prev_sibling.name == "b":
-                from universal.utils import get_text
-
-                label_text = get_text(prev_sibling).strip()
-                if label_text in ["Group", "Armor Group"]:
-                    return True
-        return False
-
-    # Exclude alternate edition links (legacy/remastered version links)
-    # These are extracted as separate alternate_link objects during parsing
-    # They appear inside <div class="siderbarlook"> with text like "There is a Legacy version here"
-    def is_alternate_link(link):
-        # Look for ancestor div with class="siderbarlook"
-        parent = link.parent
-        while parent:
-            if isinstance(parent, Tag) and parent.name == "div":
-                div_classes = parent.get("class", [])
-                if "siderbarlook" in div_classes:
-                    div_text = get_text(parent).strip()
-                    return bool("Legacy version" in div_text or "Remastered version" in div_text)
-            parent = parent.parent
-        return False
-
-    # Exclude PFS icon links (not content links)
-    def is_pfs_link(link):
-        href = link.get("href", "")
-        return "PFS.aspx" in href
-
-    # Exclude sidebar links (supplementary info boxes added in HTML5 update)
-    # These contain tables, lists, and cross-references that the parser doesn't extract.
-    # Different from "siderbarlook" (alternate edition markers) which are handled above.
-    def is_sidebar_link(link):
-        parent = link.parent
-        while parent:
-            if isinstance(parent, Tag) and parent.name == "div":
-                div_classes = parent.get("class", [])
-                if "sidebar" in div_classes:
-                    return True
-            parent = parent.parent
-        return False
-
-    # Exclude links inside HTML5 combination weapon appendix sections:
-    # - <div class="trait-entry"> blocks (trait descriptions after <h2>Traits</h2>)
-    # - Content after non-mode <h2 class="title"> (e.g., "Traits", "Critical Specialization Effects")
-    # These sections are removed by _extract_combination_weapon and not extracted to JSON.
-    # ONLY applies to combination weapons (which have Melee/Ranged h2 mode headers).
-    is_combination = any(
-        h2.get_text(strip=True).lower() in ("melee", "ranged")
-        for h2 in soup.find_all("h2", class_="title")
-    )
-
-    def _find_nonmode_h2_ranges(soup_obj):
-        """Find source line ranges of non-mode h2 sections to exclude."""
-        ranges = []
-        all_h2s = soup_obj.find_all("h2", class_="title")
-        for h2 in all_h2s:
-            h2_text = h2.get_text(strip=True).lower()
-            if h2_text not in ("melee", "ranged"):
-                start = h2.sourceline
-                next_h2 = h2.find_next_sibling("h2", class_="title")
-                end = next_h2.sourceline if next_h2 and next_h2.sourceline else float("inf")
-                if start:
-                    ranges.append((start, end))
-        return ranges
-
-    nonmode_ranges = _find_nonmode_h2_ranges(soup) if is_combination else []
-
-    def is_combination_appendix_link(link):
-        if not is_combination:
-            return False
-
-        # Check if inside <div class="trait-entry">
-        parent = link.parent
-        while parent:
-            if isinstance(parent, Tag) and parent.name == "div":
-                div_classes = parent.get("class", [])
-                if "trait-entry" in div_classes:
-                    return True
-            parent = parent.parent
-        # Check if in a non-mode h2 section by source line
-        if link.sourceline and nonmode_ranges:
-            for start, end in nonmode_ranges:
-                if start <= link.sourceline < end:
-                    return True
-        return False
-
-    before = len(links)
-    links = [l for l in links if not is_pfs_link(l)]
-    if debug and len(links) < before:
-        sys.stderr.write(f"DEBUG: Excluded {before - len(links)} PFS icon links\n")
-
-    before = len(links)
-    links = [l for l in links if not is_version_link(l)]
-    if debug and len(links) < before:
-        sys.stderr.write(f"DEBUG: Excluded {before - len(links)} version navigation links\n")
-
-    before = len(links)
-    links = [l for l in links if not is_group_link(l)]
-    if debug and len(links) < before:
-        sys.stderr.write(f"DEBUG: Excluded {before - len(links)} equipment group links\n")
-
-    before = len(links)
-    links = [l for l in links if not is_alternate_link(l)]
-    if debug and len(links) < before:
-        sys.stderr.write(f"DEBUG: Excluded {before - len(links)} alternate edition links\n")
-
-    before = len(links)
-    links = [l for l in links if not is_sidebar_link(l)]
-    if debug and len(links) < before:
-        sys.stderr.write(f"DEBUG: Excluded {before - len(links)} sidebar links\n")
-
-    before = len(links)
-    links = [l for l in links if not is_combination_appendix_link(l)]
-    if debug and len(links) < before:
-        sys.stderr.write(
-            f"DEBUG: Excluded {before - len(links)} combination weapon appendix links\n"
-        )
-
-    if debug:
-        sys.stderr.write(f"DEBUG: Final count after exclusions: {len(links)}\n")
-
-    return len(links)
-
-
-def _count_links_in_json(obj, debug=False, _links_found=None, _is_top_level=False, _path=""):
-    """Recursively count all link objects in a JSON structure.
-
-    Counts objects with type='link' or type='alternate_link'.
-    Excludes links inside trait objects (added by database enrichment).
-    """
-    if _links_found is None and debug:
-        _links_found = []
-        _is_top_level = True
-
-    count = 0
-
-    if isinstance(obj, dict):
-        # Skip counting links inside trait objects (database enrichment adds these)
-        if obj.get("subtype") == "trait":
-            return 0
-
-        # Skip counting links inside weapon/armor group objects (database enrichment adds these)
-        # Group subtypes: 'weapon_group', 'armor_group', 'siege_weapon_group'
-        subtype = obj.get("subtype", "")
-        if "group" in subtype and subtype != "item_group":  # item_group is different
-            return 0
-
-        # Skip counting links inside base_material objects (link count already subtracted from initial)
-        if subtype == "base_material":
-            return 0
-
-        # Check if this is a link object (regular link only, not alternate_link)
-        # alternate_link objects are excluded from counting because they're extracted from
-        # a special siderbarlook div and already excluded from the initial HTML count
-        obj_type = obj.get("type")
-        if obj_type == "link":
-            count += 1
-            if debug and _links_found is not None:
-                name = obj.get("name", f"<{obj_type}>")
-                _links_found.append(f"{name} ({obj.get('game-obj', '?')}) @ {_path}")
-        elif obj_type == "alternate_link":
-            # Skip counting alternate_link objects
-            if debug and _links_found is not None:
-                name = obj.get("name", f"<{obj_type}>")
-                _links_found.append(
-                    f"{name} ({obj.get('game-obj', '?')}) [SKIPPED - alternate_link]"
-                )
-            pass  # Don't count alternate_link objects
-        else:
-            # Only recurse if this is NOT a link object (to avoid double-counting)
-            for key, value in obj.items():
-                if isinstance(value, dict | list):
-                    count += _count_links_in_json(
-                        value,
-                        debug=debug,
-                        _links_found=_links_found,
-                        _is_top_level=False,
-                        _path=f"{_path}.{key}" if _path else key,
-                    )
-
-    elif isinstance(obj, list):
-        for i, item in enumerate(obj):
-            if isinstance(item, dict | list):
-                count += _count_links_in_json(
-                    item,
-                    debug=debug,
-                    _links_found=_links_found,
-                    _is_top_level=False,
-                    _path=f"{_path}[{i}]",
-                )
-
-    if debug and _is_top_level and _links_found is not None:
-        # Top-level call, print results
-        import sys
-
-        sys.stderr.write(f"DEBUG: Links found in JSON ({len(_links_found)} total):\n")
-        for link in _links_found:
-            sys.stderr.write(f"  - {link}\n")
-
-    return count
 
 
 # Default field destinations shared across armor, shield, and equipment types.
@@ -691,10 +379,300 @@ def equipment_markdown_valid_set(struct, name, path, validset):
         validset.add("span")
 
 
-def parse_equipment(filename, options):
-    """Universal equipment parser - supports armor, weapons, and future equipment types."""
-    import sys
+# ============================================================================
+# V2 ENTRY POINT - uses parse_universal instead of parse_equipment_html
+# ============================================================================
 
+
+def _content_filter_v2(soup):
+    """Pre-filter for parse_universal: equipment-specific nav stripping.
+
+    Equipment HTML has TWO levels of navigation wrapped in <span> tags:
+    1. <span><h1>All Equipment | ...</h1><hr/></span>
+    2. <span><h2>Base Armor | ...</h2></span>
+    3. <hr/>  (direct child of main - this is the real nav/content divider)
+    4. Actual content follows
+
+    Equipment h1.title contains ONLY the PFS icon link - the item name follows
+    as a sibling of the h1, not inside it. This filter restructures the HTML
+    so the name is inside the h1 (which parse_universal expects).
+    """
+    main = soup.find(id="main")
+    if not main:
+        return
+
+    # Strip navigation: everything before the first DIRECT-CHILD <hr> (inclusive)
+    # recursive=False ensures we find the hr between nav and content, not the one
+    # inside a navigation span
+    hr = main.find("hr", recursive=False)
+    if hr:
+        for sibling in list(hr.previous_siblings):
+            sibling.extract()
+        hr.extract()
+
+    # Unwrap the content span that contains h1 (standard HTML5 pattern)
+    for span in main.find_all("span", recursive=False):
+        if span.find("h1"):
+            span.unwrap()
+            break
+
+    # Equipment-specific: restructure h1.title
+    # The h1 contains only the PFS icon link. The item name follows as a sibling.
+    # We need to:
+    # 1. Extract PFS status from the img alt text
+    # 2. Remove the PFS link/img from h1
+    # 3. Move the item name INTO the h1
+    # 4. Insert a PFS marker span into the content for restructure to find
+    h1 = main.find("h1", class_="title")
+    if h1:
+        # Extract level span FIRST (before clearing h1, since it may be inside h1)
+        # Level appears as: <span style="margin-left:auto">Item 13</span>
+        # Can be inside h1 (siege weapons) or a sibling of h1 (other types)
+        level = 0
+        level_span = h1.find("span", style=lambda s: s and "margin-left:auto" in s)
+        if not level_span:
+            level_span = main.find("span", style=lambda s: s and "margin-left:auto" in s)
+        if level_span:
+            level_text = get_text(level_span).strip()
+            level_match = re.match(r"Item\s+(\d+)", level_text, re.IGNORECASE)
+            if level_match:
+                level = int(level_match.group(1))
+            level_span.decompose()
+
+        # Extract PFS status from img alt text
+        pfs_img = h1.find("img", alt=lambda s: s and s.startswith("PFS "))
+        pfs_status = "Standard"
+        if pfs_img:
+            pfs_alt = pfs_img.get("alt", "")
+            match = re.match(r"PFS\s+(\w+)", pfs_alt, re.IGNORECASE)
+            if match:
+                pfs_status = match.group(1).capitalize()
+
+        # Three HTML structures exist for the name:
+        # A) h1 has PFS icon only, name link follows as sibling (most common for HTML5)
+        # B) h1 contains the name link directly (no PFS icon)
+        # C) h1 contains the name as plain text (no link, legacy equipment items)
+        #
+        # After level span extraction, remove PFS links/imgs, then check what remains.
+        # Remove PFS link/img from h1
+        for a in list(h1.find_all("a")):
+            href = a.get("href", "")
+            if "PFS" in href:
+                a.decompose()
+        # Remove remaining img tags (PFS icons without link wrapper)
+        for img in list(h1.find_all("img")):
+            img.decompose()
+        # Remove floating spans (PFS icon containers)
+        for span in list(h1.find_all("span", style=lambda s: s and "float" in s)):
+            span.decompose()
+
+        # Now check what text content remains in h1
+        remaining_text = get_text(h1).strip()
+
+        if remaining_text:
+            # Case B or C: h1 already contains the name (as link or plain text)
+            h1.clear()
+            h1.append(NavigableString(remaining_text))
+        else:
+            # Case A: name follows h1 as a sibling
+            h1.clear()
+            for sibling in list(h1.next_siblings):
+                if hasattr(sibling, "name") and sibling.name == "a":
+                    href = sibling.get("href", "")
+                    if "PFS" not in href:
+                        name_text = get_text(sibling).strip()
+                        h1.append(NavigableString(name_text))
+                        break
+                if hasattr(sibling, "name") and sibling.name in ("h2", "h3", "b", "br"):
+                    break
+                if isinstance(sibling, NavigableString):
+                    text = str(sibling).strip()
+                    if text and not text.startswith("Item"):
+                        h1.append(NavigableString(text))
+                        sibling.extract()
+                        break
+
+        # Embed PFS and level as a prefix in the h1 text.
+        # parse_universal uses h1 text as section name. We prefix it with
+        # metadata that restructure_equipment_v2_pass will parse and strip.
+        # This survives all parse_universal passes (title_pass, subtitle_pass, etc.)
+        h1.insert(0, NavigableString(f"__EQ_META:{pfs_status}:{level}__ "))
+
+    # Remove supplementary sections that appear after the item content.
+    # In the original HTML, these are after <div class="clear"> which lxml
+    # puts outside main. They include: trait descriptions, armor/weapon
+    # specialization effects, category listings, etc.
+    # Use a known set of supplementary section titles to identify them.
+    _SUPPLEMENTARY_H2_TITLES = {
+        "Traits",
+        "Armor Specialization Effects",
+        "Critical Specialization Effects",
+        "Specific Magic Armor",
+        "Basic Magic Armor",
+        "Consumables",
+        "Other Consumables",
+        "Precious Material Armor",
+        "Precious Material Weapons",
+        "Specific Magic Weapons",
+        "Basic Magic Weapons",
+    }
+    for h2 in main.find_all("h2", class_="title"):
+        h2_text = get_text(h2).strip()
+        if h2_text in _SUPPLEMENTARY_H2_TITLES:
+            # This is a supplementary section - remove it and everything after it
+            to_remove = []
+            current = h2
+            while current:
+                to_remove.append(current)
+                current = current.next_sibling
+            for node in to_remove:
+                if hasattr(node, "decompose"):
+                    node.decompose()
+                elif hasattr(node, "extract"):
+                    node.extract()
+            break  # Only need to find the first supplementary h2
+
+    # Remove <div class="trait-entry"> blocks (trait descriptions)
+    for div in main.find_all("div", class_="trait-entry"):
+        div.decompose()
+
+    # Remove empty <a> tags (HTML5 artifacts)
+    for a in main.find_all("a"):
+        if not a.get_text(strip=True) and not a.find("img"):
+            a.decompose()
+
+    # Remove PFS icon links (empty after img removal), but keep PFS Note links
+    # which contain text like "PFS Note" that belongs in the content
+    for a in main.find_all("a", href=lambda h: h and "PFS.aspx" in h):
+        if not a.get_text(strip=True):
+            a.decompose()
+
+
+def _sidebar_filter(soup):
+    """Pre-filter for parse_universal: remove sidebar divs (supplementary info)."""
+    for div in soup.find_all("div", class_="sidebar"):
+        div.decompose()
+
+
+def restructure_equipment_v2_pass(details, equipment_type):
+    """Build the standard equipment structure from parse_universal output.
+
+    parse_universal with max_title=1 returns a list with one section dict
+    containing the title (h1 text) and all content as 'text'.
+
+    Args:
+        details: List of section dicts from parse_universal + entity_pass
+        equipment_type: Type of equipment (armor, weapon, etc.)
+
+    Returns:
+        Top-level struct dict ready for the standard pipeline
+    """
+    # With max_title=1, we get one section per h1 title
+    assert len(details) >= 1, f"Expected at least 1 section from parse_universal, got {len(details)}"
+
+    first = details[0]
+    assert isinstance(first, dict), f"Expected dict, got {type(first)}"
+
+    # Extract name from the section title
+    # _content_filter_v2 embedded metadata as a prefix in the h1 text:
+    # "__EQ_META:PFS_STATUS:LEVEL__ ActualName"
+    raw_name = first.get("name", "")
+
+    # Parse metadata prefix
+    meta_match = re.match(r"__EQ_META:(\w+):(\d+)__\s*(.*)", raw_name)
+    if not meta_match:
+        raise AssertionError(f"Missing __EQ_META__ prefix in section name. Raw: '{raw_name}'")
+
+    name = meta_match.group(3).strip()
+    # Remove trailing "Item N" if level span leaked into title
+    name = re.sub(r"\s*Item\s+\d+\+?\s*$", "", name).strip()
+
+    if not name:
+        raise AssertionError(f"Could not extract equipment name from parse_universal output. Raw: '{raw_name}'")
+
+    # Extract text content (everything below the h1)
+    text = first.get("text", "")
+
+    # Also collect text from any additional sections (shouldn't normally happen with max_title=1)
+    for detail in details[1:]:
+        if isinstance(detail, dict) and "text" in detail:
+            text += detail["text"]
+        elif isinstance(detail, str):
+            text += detail
+
+    # PFS and level were extracted from the __EQ_META__ prefix above
+    pfs = meta_match.group(1)
+    level = int(meta_match.group(2))
+
+    # Extract image if present (same pattern as creatures: <a href="Images\...">)
+    image = None
+    text_soup = BeautifulSoup(text, "html.parser")
+    for a_tag in text_soup.find_all("a"):
+        href = a_tag.get("href", "")
+        if "Images" not in href:
+            continue
+        if not image and href:
+            image_filename = href.split("\\").pop().split("%5C").pop()
+            image = {
+                "type": "image",
+                "name": name,
+                "image": image_filename,
+            }
+        a_tag.decompose()
+    if image:
+        text = str(text_soup)
+
+    # Remove Legacy Content h3 if present (converted to edition field, not a section)
+    legacy_h3 = text_soup.find(
+        "h3", class_="title", string=lambda s: s and "Legacy Content" in s
+    )
+    if legacy_h3:
+        legacy_h3.decompose()
+        text = str(text_soup)
+
+    # Re-insert newlines before structural HTML tags.
+    # parse_universal removes all newlines, collapsing everything to one line.
+    # section_pass uses BeautifulSoup's sourceline to distinguish stat labels
+    # (before <hr>) from description content (after <hr>). Without newlines,
+    # all sourceline values are 1 and the position check fails.
+    text = (
+        text.replace("<hr", "\n<hr")
+        .replace("<hr/>", "<hr/>\n")
+        .replace("<hr>", "<hr>\n")
+        .replace("<h2", "\n<h2")
+        .replace("</h2>", "</h2>\n")
+        .replace("<h3", "\n<h3")
+    )
+
+    # Build stat block section
+    sb = {
+        "type": "stat_block",
+        "subtype": equipment_type,
+        "text": text,
+        "sections": [],
+        "level": level,
+    }
+    if image:
+        sb["image"] = image
+
+    # Build top-level structure
+    top = {
+        "name": name,
+        "type": equipment_type,
+        "sources": [],
+        "sections": [sb],
+        "pfs": pfs,
+    }
+
+    return top
+
+
+def parse_equipment_v2(filename, options):
+    """V2 equipment parser - uses parse_universal instead of parse_equipment_html.
+
+    Produces identical output to parse_equipment but uses the standard
+    parse_universal entry point like every other parser.
+    """
     equipment_type = options.equipment_type
     config = EQUIPMENT_TYPES[equipment_type]
 
@@ -702,50 +680,47 @@ def parse_equipment(filename, options):
     if not options.stdout:
         sys.stderr.write(f"{basename}\n")
 
-    # Equipment HTML has flat structure - parse directly from HTML
-    details = parse_equipment_html(filename, equipment_type)
-
-    struct = restructure_equipment_pass(details, equipment_type)
-
-    # COUNT INITIAL LINKS: Count all <a> tags with game-obj in the content HTML
-    # Exclude self-references (links from item to itself, typically in title)
-    # Map equipment types to their game-obj values for self-reference detection
-    EQUIPMENT_TYPE_GAME_OBJ = {
-        "equipment": "Equipment",
-        "weapon": "Weapons",
-        "armor": "Armor",
-        "shield": "Shields",
-        "siege_weapon": "SiegeWeapons",
-        "vehicle": "Vehicles",
-    }
-    item_name = struct.get("name", "")
-    item_game_obj = EQUIPMENT_TYPE_GAME_OBJ.get(equipment_type)
-    debug_mode = False  # Set to basename == "Equipment.aspx.ID_XXX.html" for debugging
-    initial_link_count = _count_links_in_html(
-        details["text"], exclude_name=item_name, exclude_game_obj=item_game_obj, debug=debug_mode
+    # 1. Standard parse_universal entry point
+    details = parse_universal(
+        filename,
+        max_title=1,
+        cssclass="main",
+        pre_filters=[_content_filter_v2, _sidebar_filter],
     )
+    details = entity_pass(details)
+    details = [d for d in details if not (isinstance(d, str) and not d.strip())]
+
+    # 2. Handle alternate edition link
+    alternate_link = handle_alternate_link(details, allow_multiple=True)
+
+    # 3. Restructure (equipment-specific)
+    struct = restructure_equipment_v2_pass(details, equipment_type)
+    if alternate_link:
+        # Store single dict (schema expects object, not array).
+        # Items split into multiple remastered versions have multiple links;
+        # use the first one for compatibility with v1.
+        if isinstance(alternate_link, list):
+            struct["alternate_link"] = alternate_link[0]
+        else:
+            struct["alternate_link"] = alternate_link
+
+    # 4. Standard pass pipeline
     aon_pass(struct, basename)
-    links_removed = section_pass(struct, config, debug=debug_mode)
-    # Subtract links that were intentionally removed from redundant sections
-    if debug_mode:
-        import sys
+    section_pass(struct, config)
 
-        sys.stderr.write(f"DEBUG: links_removed from redundant sections: {links_removed}\n")
-        sys.stderr.write(f"DEBUG: initial_link_count before subtraction: {initial_link_count}\n")
-    initial_link_count -= links_removed
-    if debug_mode:
-        import sys
+    # Normalize pfs to object form (section_pass may have already converted it
+    # via _extract_pfs_note; ensure consistency for items without PFS Notes)
+    if isinstance(struct.get("pfs"), str):
+        struct["pfs"] = {
+            "type": "stat_block_section",
+            "subtype": "pfs",
+            "availability": struct["pfs"],
+        }
 
-        sys.stderr.write(f"DEBUG: initial_link_count after subtraction: {initial_link_count}\n")
     restructure_pass(struct, "stat_block", find_stat_block)
-    normalize_trait_links = normalize_numeric_fields_pass(struct, config)
-    # Subtract trait links converted during normalization pass (they become trait objects, not link objects)
-    initial_link_count -= normalize_trait_links
-    if debug_mode:
-        sys.stderr.write(f"DEBUG: normalize_trait_links: {normalize_trait_links}\n")
-        sys.stderr.write(f"DEBUG: initial_link_count after normalize: {initial_link_count}\n")
-    # Determine edition (legacy vs remastered) before game_id_pass
-    # so source_edition_override_pass can rename sources before game-id is computed
+    normalize_numeric_fields_pass(struct, config)
+
+    # Determine edition (legacy vs remastered) BEFORE cleanup
     edition = edition_from_alternate_link(struct) or edition_pass(struct["sections"])
     struct["edition"] = edition
     source_edition_override_pass(struct)
@@ -753,38 +728,23 @@ def parse_equipment(filename, options):
     license_pass(struct)
     markdown_pass(struct, struct["name"], "", fxn_valid_tags=equipment_markdown_valid_set)
 
-    # LINK ACCOUNTING: Verify all links were extracted into structured objects
-    # Must be done BEFORE trait_db_pass, which adds links from database that weren't in the HTML
-    final_link_count = _count_links_in_json(struct, debug=debug_mode)
-    if debug_mode:
-        sys.stderr.write(f"DEBUG: Final JSON link count: {final_link_count}\n")
-        sys.stderr.write(f"DEBUG: Initial HTML link count (after removals): {initial_link_count}\n")
-    if final_link_count != initial_link_count:
-        raise AssertionError(
-            f"Link accounting failed in {basename}: "
-            f"started with {initial_link_count} links in HTML, "
-            f"ended with {final_link_count} link objects in JSON. "
-            f"Links were lost during parsing - check that all <a> tags "
-            f"are being extracted into structured link objects."
-        )
-
     # Enrich traits with database data (must be after edition is set)
     universal_trait_db_pass(struct, pre_process=_equipment_trait_pre_process)
-    # Consolidate licenses after trait_db_pass (traits from DB carry license data
-    # that must be merged into the top-level license before schema validation)
     license_consolidation_pass(struct)
-    # Enrich equipment groups with database data (only for equipment types that have groups)
+
+    # Enrich equipment groups with database data (only for types that have groups)
     if "group_table" in config:
         equipment_group_pass(struct, config)
-    # Populate creature-style buckets (statistics, defense, offense) from old structure
-    # This maintains backward compatibility during migration
+
+    # Populate creature-style buckets (statistics, defense, offense)
     populate_equipment_buckets_pass(struct)
     remove_empty_sections_pass(struct)
     _remove_empty_values_pass(struct)
 
-    # Fix character encoding issues (UTF-8 interpreted as Latin-1)
+    # Fix character encoding issues
     recursive_filter_entities(struct)
 
+    # 5. Validate + write
     if not options.skip_schema:
         struct["schema_version"] = 1.0
         validate_against_schema(struct, config["schema_file"])
@@ -796,272 +756,6 @@ def parse_equipment(filename, options):
             write_creature(jsondir, struct, name)
     elif options.stdout:
         print(json.dumps(struct, indent=2))
-
-
-# Maintain backward compatibility - parse_armor is now an alias
-def parse_armor(filename, options):
-    """Backward compatibility wrapper for parse_equipment."""
-    options.equipment_type = "armor"
-    return parse_equipment(filename, options)
-
-
-def _content_filter(soup):
-    """Remove navigation elements before <hr> and unwrap the content span."""
-    main = soup.find(id="main")
-    if not main:
-        return
-    # Strip navigation: everything before the first <hr> (inclusive)
-    hr = main.find("hr", recursive=False)
-    if hr:
-        for sibling in list(hr.previous_siblings):
-            sibling.extract()
-        hr.extract()
-    # Note: do NOT remove remaining <hr> tags — equipment parser needs
-    # the stats/description <hr> divider
-    # Unwrap the content span that contains h1
-    for span in main.find_all("span", recursive=False):
-        if span.find("h1"):
-            span.unwrap()
-            break
-    # Remove empty <a> tags (HTML5 artifacts), including those with only whitespace
-    # but not tags containing images (PFS icons, thumbnails)
-    for a in main.find_all("a"):
-        if not a.get_text(strip=True) and not a.find("img"):
-            a.decompose()
-
-
-def parse_equipment_html(filename, equipment_type=None):
-    """
-    Parse equipment HTML which has a flat structure (no hierarchical headings).
-    Extract the name and content for further processing.
-
-    Args:
-        filename: Path to HTML file
-        equipment_type: Type of equipment ('armor', 'weapon', 'shield', 'siege_weapon', 'vehicle')
-    """
-    with open(filename) as fp:
-        html = fp.read()
-
-    soup = BeautifulSoup(html, "html.parser")
-
-    # Enrich href attributes with game-obj and aonid (same as parse_universal does)
-    href_filter(soup)
-
-    # Apply HTML5 content filter
-    _content_filter(soup)
-
-    # The content is inside the DetailedOutput span (old) or main div (HTML5)
-    detailed_output = soup.find(id="ctl00_RadDrawer1_Content_MainContent_DetailedOutput")
-    if not detailed_output:
-        detailed_output = soup.find(id="main")
-    assert detailed_output, "Could not find DetailedOutput span or main div"
-
-    # Find h1.title - this contains the PFS icon and the name link follows it
-    h1_title = detailed_output.find("h1", class_="title")
-    assert h1_title, "Could not find h1.title in DetailedOutput"
-
-    # Extract PFS status from h1 (img alt="PFS Standard/Limited/Restricted")
-    pfs = "Standard"
-    pfs_img = h1_title.find("img", alt=lambda s: s and s.startswith("PFS "))
-    if pfs_img:
-        pfs_alt = pfs_img.get("alt", "")
-        match = re.match(r"PFS\s+(\w+)", pfs_alt, re.IGNORECASE)
-        if match:
-            pfs = match.group(1).capitalize()
-
-    # Extract the equipment name from the link that follows DetailedOutput
-    # For general equipment, this may return a plain string instead of a tag
-    name_link = extract_name_link(detailed_output, equipment_type)
-    name = name_link if isinstance(name_link, str) else get_text(name_link).strip()
-
-    # Extract item level if present (for siege weapons, vehicles, etc.)
-    # Item level appears as: <span style="margin-left:auto; margin-right:0">Item 13</span>
-    level = 0
-    content_container = detailed_output.parent
-    level_span = content_container.find("span", style=lambda s: s and "margin-left:auto" in s)
-    if level_span:
-        level_text = get_text(level_span).strip()
-        match = re.match(r"Item\s+(\d+)", level_text, re.IGNORECASE)
-        if match:
-            level = int(match.group(1))
-
-    # Remove the h1.title now that we've extracted PFS from it
-    h1_title.decompose()
-
-    # Remove Legacy Content h3 if present (converted to edition field, not a section)
-    legacy_h3 = detailed_output.find(
-        "h3", class_="title", string=lambda s: s and "Legacy Content" in s
-    )
-    if legacy_h3:
-        legacy_h3.decompose()
-
-    # Collect content from DetailedOutput onwards
-    # Extract the CONTENTS of DetailedOutput (not the span itself to avoid wrapper tags)
-    content_parts = [str(child) for child in detailed_output.children]
-
-    # Also collect sibling elements after DetailedOutput
-    for sibling in detailed_output.next_siblings:
-        if hasattr(sibling, "name"):  # Only tags, not text nodes
-            content_parts.append(str(sibling))
-            if sibling.name == "div" and sibling.get("class") == ["clear"]:
-                break
-
-    combined_content = "".join(content_parts)
-
-    # Extract image if present (same pattern as creatures: <a href="Images\..."><img ...></a>)
-    # Some image links have <img> children, others are bare <a href="Images\..."></a>
-    image = None
-    content_soup = BeautifulSoup(combined_content, "html.parser")
-    image_link_count = 0
-    for a_tag in content_soup.find_all("a"):
-        href = a_tag.get("href", "")
-        if "Images" not in href:
-            continue
-        image_link_count += 1
-        if not image and href:
-            image_filename = href.split("\\").pop().split("%5C").pop()
-            image = {
-                "type": "image",
-                "name": name,
-                "image": image_filename,
-            }
-        a_tag.decompose()
-    # Some multi-variant items have multiple images; we take the first one
-    if image_link_count > 0:
-        combined_content = str(content_soup)
-
-    result = {
-        "name": name,
-        "text": combined_content,
-        "level": level,  # Always include level (0 if not specified)
-        "pfs": pfs,  # Always include PFS (Standard if not specified)
-    }
-    if image:
-        result["image"] = image
-
-    return result
-
-
-def extract_name_link(detailed_output, equipment_type=None):
-    """
-    Extract the equipment name link from the h1.title region.
-
-    Two HTML structures exist (after href_filter):
-
-    Structure A (most common):
-        <span id="DetailedOutput">
-            <h1 class="title">...PFS icon...</h1>
-        </span>
-        <span class="likeButton">...</span>
-        <a game-obj="Weapons" aonid="468">Breaching Pike</a>  <-- name link is sibling of DetailedOutput
-
-    Structure B (some older items):
-        <span id="DetailedOutput">
-            <h1 class="title">
-                <span class="likeButton">...</span>
-                <a game-obj="Weapons" aonid="113">Throwing Knife</a>  <-- name link is inside h1
-            </h1>
-        </span>
-
-    Args:
-        detailed_output: The DetailedOutput span BeautifulSoup element
-        equipment_type: Equipment type ('armor', 'weapon', 'shield', 'siege_weapon', 'vehicle')
-    """
-    # Map equipment_type to game-obj value (href_filter converts href to game-obj attribute)
-    type_to_gameobj = {
-        "armor": "Armor",
-        "weapon": "Weapons",
-        "shield": "Shields",
-        "siege_weapon": "SiegeWeapons",
-        "vehicle": "Vehicles",
-        "equipment": "Equipment",
-    }
-
-    # All valid game-obj values (for fallback if equipment_type not provided)
-    all_gameobjs = list(type_to_gameobj.values())
-
-    # Get the expected game-obj for this equipment type
-    expected_gameobj = type_to_gameobj.get(equipment_type)
-
-    def is_name_link(elem):
-        """Check if element is a valid name link."""
-        if not hasattr(elem, "name") or elem.name != "a":
-            return False
-        if elem.has_attr("noredirect"):
-            return False
-        game_obj = elem.get("game-obj", "")
-        if expected_gameobj and game_obj == expected_gameobj:
-            return True
-        return game_obj in all_gameobjs
-
-    # For general Equipment, name may be plain text (not a link)
-    # Check for text node FIRST before looking for links
-    if equipment_type == "equipment":
-        for sibling in detailed_output.next_siblings:
-            if isinstance(sibling, NavigableString):
-                text = str(sibling).strip()
-                if text and not text.startswith("Item"):  # Skip "Item X" level text
-                    # Return plain string - calling code handles this
-                    return text
-            elif hasattr(sibling, "name") and sibling.name == "span":
-                # Check if span contains item level - skip to next sibling
-                span_text = sibling.get_text().strip()
-                if span_text.startswith("Item"):
-                    continue
-            elif hasattr(sibling, "name") and sibling.name in ("h3", "b", "br"):
-                # Reached stat block content without finding name - stop looking
-                break
-
-    # Try Structure A: name link is a sibling of DetailedOutput
-    for sibling in detailed_output.next_siblings:
-        if is_name_link(sibling):
-            return sibling
-
-    # Try Structure B: name link is inside h1.title within DetailedOutput
-    h1_title = detailed_output.find("h1", class_="title")
-    if h1_title:
-        link = h1_title.find("a", attrs={"game-obj": expected_gameobj or True})
-        if link and is_name_link(link):
-            return link
-
-    # Try Structure B2 (HTML5): name link is a next sibling of h1.title
-    if h1_title:
-        for sibling in h1_title.next_siblings:
-            if is_name_link(sibling):
-                return sibling
-            if isinstance(sibling, NavigableString):
-                continue
-            if hasattr(sibling, "name") and sibling.name in ("h3", "b", "br"):
-                break
-
-    # Try Structure C: name is plain text inside h1.title (no link)
-    # e.g., <h1 class="title">Blackaxe<span>Item 25</span></h1>
-    if h1_title:
-        for child in h1_title.children:
-            if isinstance(child, NavigableString):
-                text = str(child).strip()
-                if text:
-                    return text
-            elif hasattr(child, "name") and child.name == "span":
-                # Skip item level spans like "Item 25"
-                continue
-            elif hasattr(child, "name") and child.name == "a":
-                # Skip PFS links without game-obj
-                href = child.get("href", "")
-                if "PFS" in href or not child.get("game-obj"):
-                    continue
-
-    # Try Structure C2 (HTML5): name is plain text sibling after h1.title
-    if h1_title:
-        for sibling in h1_title.next_siblings:
-            if isinstance(sibling, NavigableString):
-                text = str(sibling).strip()
-                if text and not text.startswith("Item"):
-                    return text
-            elif hasattr(sibling, "name") and sibling.name in ("h3", "b", "br", "span"):
-                break
-
-    raise AssertionError(f"Could not find equipment name link (type={equipment_type})")
 
 
 def restructure_equipment_pass(details, equipment_type):
@@ -1109,20 +803,94 @@ def find_stat_block(struct):
 def section_pass(struct, config, debug=False):
     """Extract equipment-specific fields from the stat block HTML.
 
-    Returns the number of links that were removed from redundant sections.
+    Unified section pass for all equipment types. Type-specific behavior is
+    driven by hook functions in the EQUIPMENT_TYPES config:
+        - extract_stats_fxn: extracts stats from HTML into a dict
+        - extract_abilities_fxn: extracts abilities (siege/vehicle only)
+    Weapons use a dedicated flow for single/combination mode handling.
     """
     equipment_type = struct["type"]
 
-    # Dispatch to equipment-specific handlers
+    # Weapons have a fundamentally different flow (single vs combination modes)
     if equipment_type == "weapon":
         return _weapon_section_pass(struct, config, debug=debug)
-    elif equipment_type == "siege_weapon":
-        return _siege_weapon_section_pass(struct, config, debug=debug)
-    elif equipment_type == "vehicle":
-        return _vehicle_section_pass(struct, config, debug=debug)
+
+    sb = find_stat_block(struct)
+    text = sb["text"]
+    if not text:
+        raise ValueError(f"Stat block text is empty for {struct.get('name', 'unknown')}")
+
+    bs = BeautifulSoup(text, "html.parser")
+
+    # --- Variant detection (generic/equipment only) ---
+    h2_tags = bs.find_all("h2", class_="title")
+    variant_h2s = [
+        h2 for h2 in h2_tags if re.search(r"Item\s+\d+|Sharpness\s+Points?", get_text(h2))
+    ]
+    if variant_h2s:
+        first_h2 = variant_h2s[0]
+        main_parts = []
+        for elem in bs.children:
+            if elem == first_h2:
+                break
+            main_parts.append(str(elem))
+        main_bs = BeautifulSoup("".join(main_parts), "html.parser")
     else:
-        # Generic equipment handling (armor, shields, etc.)
-        return _generic_section_pass(struct, config, debug=debug)
+        main_bs = bs
+
+    # --- Shared extraction (all non-weapon types) ---
+    _extract_traits(main_bs, sb)
+    _extract_source(main_bs, struct)
+    _extract_pfs_note(main_bs, struct)
+
+    # --- Type-specific stat extraction via hook ---
+    extract_stats_fxn = config.get("extract_stats_fxn")
+    if extract_stats_fxn:
+        extract_stats_fxn(main_bs, sb, struct, config)
+    else:
+        # Default: generic stat extraction with field_destinations routing
+        stats = {}
+        group_subtype = config.get("group_subtype") if "Group" in config["recognized_stats"] else None
+        _extract_stats_to_dict(
+            main_bs, stats, config["recognized_stats"], struct["type"], group_subtype
+        )
+        unrec_links = stats.pop("_unrecognized_links", None)
+        if unrec_links:
+            if "links" not in sb:
+                sb["links"] = []
+            sb["links"].extend(unrec_links)
+        _route_fields_to_destinations(sb, stats, config)
+
+    # --- Intelligent item extraction (generic/equipment only) ---
+    _extract_intelligent_item_section(main_bs, sb, debug=debug)
+
+    # --- Type-specific ability extraction via hook ---
+    extract_abilities_fxn = config.get("extract_abilities_fxn")
+    if extract_abilities_fxn:
+        extract_abilities_fxn(main_bs, sb, struct, config)
+
+    # --- Variant processing ---
+    if variant_h2s:
+        variants = []
+        for h2 in variant_h2s:
+            variant_sb, _ = _parse_variant_section(
+                h2, config, struct.get("name", ""),
+                equipment_type=equipment_type, parent_level=sb.get("level"), debug=debug
+            )
+            if variant_sb:
+                variants.append(variant_sb)
+            h2.decompose()
+        if variants:
+            sb["variants"] = variants
+
+    # --- Shared tail (all non-weapon types) ---
+    effective_bs = main_bs if variant_h2s else bs
+    _remove_redundant_sections(effective_bs, struct.get("name", ""), debug=debug)
+    _extract_alternate_link(effective_bs, struct)
+    _extract_legacy_content_section(effective_bs, struct)
+    _extract_base_material(effective_bs, sb, debug=debug)
+    _extract_description(effective_bs, struct, debug=debug)
+    _cleanup_stat_block(sb)
 
 
 def _parse_variant_name_and_level(h2_tag):
@@ -1163,13 +931,16 @@ def _collect_content_until_h2(start_tag):
     return BeautifulSoup("".join(content_parts), "html.parser")
 
 
-def _parse_variant_section(h2_tag, config, parent_name, parent_level=None, debug=False):
+def _parse_variant_section(
+    h2_tag, config, parent_name, equipment_type="equipment", parent_level=None, debug=False
+):
     """Parse a variant section (h2 and its content) into a variant stat block.
 
     Args:
         h2_tag: The h2 BeautifulSoup element marking the start of the variant
         config: Equipment type configuration
         parent_name: Name of the parent item (for debugging)
+        equipment_type: The equipment type (armor, weapon, etc.) for subtype
         debug: Enable debug output
 
     Returns:
@@ -1184,7 +955,7 @@ def _parse_variant_section(h2_tag, config, parent_name, parent_level=None, debug
     # Create variant stat block
     variant_sb = {
         "type": "stat_block",
-        "subtype": config.get("output_subdir", "equipment"),
+        "subtype": equipment_type,
         "name": name,
     }
     if level is not None:
@@ -1197,8 +968,52 @@ def _parse_variant_section(h2_tag, config, parent_name, parent_level=None, debug
     # Extract source from variant (has its own source links)
     _extract_source(bs, variant_struct)
 
+    # Fallback: some variant sources lack <a> links (just <b>Source</b> <i>text</i>).
+    # _extract_source won't find these. Extract the bare source text and remove it
+    # so it doesn't leak into the description.
+    if not variant_struct["sources"]:
+        source_tag = bs.find("b", string=lambda s: s and s.strip() == "Source")
+        if source_tag:
+            # Collect text until next <b> or <br>
+            source_parts = []
+            elements_to_remove = [source_tag]
+            current = source_tag.next_sibling
+            while current:
+                if isinstance(current, Tag) and current.name in ("b", "br", "hr"):
+                    break
+                source_parts.append(get_text(current) if isinstance(current, Tag) else str(current))
+                elements_to_remove.append(current)
+                current = current.next_sibling
+            source_text = "".join(source_parts).strip()
+            if source_text:
+                # Parse "Book Name pg. NNN" format
+                import re as _re
+                page_match = _re.match(r"(.+?)\s+pg\.\s+(\d+)", source_text)
+                if page_match:
+                    source_name = page_match.group(1).strip()
+                    source_page = int(page_match.group(2))
+                    variant_struct["sources"] = [{
+                        "type": "source",
+                        "name": source_name,
+                        "page": source_page,
+                    }]
+                else:
+                    variant_struct["sources"] = [{"type": "source", "name": source_text}]
+            for elem in elements_to_remove:
+                if isinstance(elem, Tag):
+                    elem.decompose()
+                elif isinstance(elem, NavigableString):
+                    elem.extract()
+
     # Extract traits from variant (some variants have their own traits like Uncommon)
     _extract_traits(bs, variant_sb)
+
+    # Extract PFS Note from variant (some variants have their own PFS Notes)
+    # Use variant_sb as the target since variants don't have a top-level pfs field
+    variant_pfs_holder = {"pfs": "Standard"}
+    _extract_pfs_note(bs, variant_pfs_holder)
+    if isinstance(variant_pfs_holder["pfs"], dict) and "note" in variant_pfs_holder["pfs"]:
+        variant_sb["pfs"] = variant_pfs_holder["pfs"]
 
     # Extract inline intelligent item stats BEFORE stats extraction
     # (stats extraction would consume Perception/Skills/etc. bolds)
@@ -1233,6 +1048,10 @@ def _parse_variant_section(h2_tag, config, parent_name, parent_level=None, debug
         affliction, affliction_links = _extract_affliction(bs, name)
     if affliction:
         variant_sb["affliction"] = affliction
+
+    # Remove <hr> tags from variant content (stat/description dividers)
+    for hr in bs.find_all("hr"):
+        hr.decompose()
 
     # Extract any remaining text as description (with links)
     # Get links from remaining content and unwrap them
@@ -1580,113 +1399,55 @@ def _extract_inline_intelligent_item(bs, sb):
             elem.extract()
 
 
-def _generic_section_pass(struct, config, debug=False):
-    """Generic section pass for non-weapon equipment (armor, etc.).
-
-    Returns the number of links removed from redundant sections.
-    """
-    sb = find_stat_block(struct)
-    text = sb["text"]  # Fail if missing
-    if not text:
-        raise ValueError(f"Stat block text is empty for {struct.get('name', 'unknown')}")
-
-    bs = BeautifulSoup(text, "html.parser")
-
-    # Check for variant h2 headers (not mode headers like Melee/Ranged)
-    h2_tags = bs.find_all("h2", class_="title")
-    # Filter out mode headers - variants have "Item N" or "Sharpness Point" in them
-    variant_h2s = [
-        h2 for h2 in h2_tags if re.search(r"Item\s+\d+|Sharpness\s+Points?", get_text(h2))
-    ]
-
-    # If we have variants, we need to extract main content (before first h2) separately
-    if variant_h2s:
-        # Find the first h2 and split content
-        first_h2 = variant_h2s[0]
-
-        # Build main content (everything before first h2)
-        main_parts = []
-        for elem in bs.children:
-            if elem == first_h2:
-                break
-            main_parts.append(str(elem))
-        main_html = "".join(main_parts)
-        main_bs = BeautifulSoup(main_html, "html.parser")
-    else:
-        main_bs = bs
-
-    _extract_traits(main_bs, sb)
-    _extract_source(main_bs, struct)
-
-    # Extract stats into a temporary dictionary (from main content only)
+def _extract_siege_weapon_stats_hook(bs, sb, struct, config):
+    """Hook: extract siege weapon stats and route to nested object."""
     stats = {}
-    # Fail fast if Group stat requires group_subtype but it's missing from config
-    group_subtype = config["group_subtype"] if "Group" in config["recognized_stats"] else None
-    _extract_stats_to_dict(
-        main_bs, stats, config["recognized_stats"], struct["type"], group_subtype
-    )
-    # Move unrecognized links from stats dict to stat block links
-    unrec_links = stats.pop("_unrecognized_links", None)
-    if unrec_links:
-        if "links" not in sb:
-            sb["links"] = []
-        sb["links"].extend(unrec_links)
+    _extract_siege_weapon_stats(bs, stats, config["recognized_stats"], struct["type"])
+    shared_fields = config.get("shared_fields", [])
+    nested_fields = config.get("nested_fields", [])
+    for field in shared_fields:
+        if field in stats:
+            sb[field] = stats[field]
+    nested_obj = {}
+    for field in nested_fields:
+        if field in stats:
+            nested_obj[field] = stats[field]
+    if nested_obj:
+        sb["siege_weapon"] = nested_obj
 
-    # Route fields to their destinations based on config
-    _route_fields_to_destinations(sb, stats, config)
 
-    # Extract intelligent item stat block if present (between first and second <hr>)
-    _extract_intelligent_item_section(main_bs, sb, debug=debug)
+def _extract_vehicle_stats_hook(bs, sb, struct, config):
+    """Hook: extract vehicle stats and route to nested object."""
+    stats = {}
+    _extract_vehicle_stats(bs, stats, config["recognized_stats"], struct["type"])
+    shared_fields = config.get("shared_fields", [])
+    nested_fields = config.get("nested_fields", [])
+    for field in shared_fields:
+        if field in stats:
+            sb[field] = stats[field]
+    nested_obj = {}
+    for field in nested_fields:
+        if field in stats:
+            nested_obj[field] = stats[field]
+    if nested_obj:
+        sb["vehicle"] = nested_obj
 
-    # Process variants if present
-    variant_trait_links = 0
-    if variant_h2s:
-        variants = []
-        for h2 in variant_h2s:
-            variant_sb, variant_links = _parse_variant_section(
-                h2, config, struct.get("name", ""), parent_level=sb.get("level"), debug=debug
-            )
-            if variant_sb:
-                variants.append(variant_sb)
-            variant_trait_links += variant_links
-            # Remove h2 and its content from main bs (so it doesn't affect description)
-            h2.decompose()
-        if variants:
-            sb["variants"] = variants
 
-    links_removed = _remove_redundant_sections(
-        bs if not variant_h2s else main_bs, struct.get("name", ""), debug=debug
-    )
-    _extract_alternate_link(bs if not variant_h2s else main_bs, struct)
-    _extract_legacy_content_section(bs if not variant_h2s else main_bs, struct)
-    base_material_links = _extract_base_material(
-        bs if not variant_h2s else main_bs, sb, debug=debug
-    )
-    trait_links_converted = _extract_description(
-        bs if not variant_h2s else main_bs, struct, debug=debug
-    )
-    _cleanup_stat_block(sb)
-
-    # Add trait links converted to traits to links_removed (they were counted initially but became traits)
-    # Also add base_material links which are stored in structured objects, not the links array
-    # Also add variant_trait_links for trait links converted in variant abilities
-    total_removed = (
-        links_removed + (trait_links_converted or 0) + base_material_links + variant_trait_links
-    )
-    if debug:
-        sys.stderr.write(
-            f"DEBUG _generic_section_pass: links_removed={links_removed}, trait_links_converted={trait_links_converted}, base_material_links={base_material_links}, variant_trait_links={variant_trait_links}, total={total_removed}\n"
-        )
-    return total_removed
+def _extract_abilities_hook(bs, sb, struct, config):
+    """Hook: extract action abilities (siege weapons, vehicles)."""
+    abilities, _ = _extract_abilities(bs, struct["type"], config["recognized_stats"])
+    if abilities:
+        sb["abilities"] = abilities
 
 
 def _weapon_section_pass(struct, config, debug=False):
     """Weapon-specific section pass that handles melee/ranged modes.
 
-    Returns the number of links removed from redundant sections.
+    Weapons have a fundamentally different flow from other equipment types
+    because of single vs. combination weapon mode handling.
     """
     sb = find_stat_block(struct)
-    text = sb["text"]  # Fail if missing
+    text = sb["text"]
     if not text:
         raise ValueError(f"Stat block text is empty for {struct.get('name', 'unknown')}")
 
@@ -1695,131 +1456,17 @@ def _weapon_section_pass(struct, config, debug=False):
     # Check if this is a combination weapon (has <h2> mode headers for Melee/Ranged)
     h2_tags = bs.find_all("h2", class_="title")
     mode_headers = [h2 for h2 in h2_tags if get_text(h2).strip().lower() in ["melee", "ranged"]]
-    is_combination = len(mode_headers) > 0
 
-    if is_combination:
+    if len(mode_headers) > 0:
         _extract_combination_weapon(bs, sb, struct, config)
     else:
         _extract_single_mode_weapon(bs, sb, struct, config)
 
-    links_removed = _remove_redundant_sections(bs, struct.get("name", ""), debug=debug)
+    _remove_redundant_sections(bs, struct.get("name", ""), debug=debug)
     _extract_alternate_link(bs, struct)
     _extract_legacy_content_section(bs, struct)
-    trait_links_converted = _extract_description(bs, struct)
+    _extract_description(bs, struct)
     _cleanup_stat_block(sb)
-
-    # Add trait links converted to traits to links_removed (they were counted initially but became traits)
-    return links_removed + (trait_links_converted or 0)
-
-
-def _siege_weapon_section_pass(struct, config, debug=False):
-    """Siege weapon-specific section pass that handles stats and action sections.
-
-    Returns the number of links removed from redundant sections.
-    """
-    sb = find_stat_block(struct)
-    text = sb["text"]  # Fail if missing
-    if not text:
-        raise ValueError(f"Stat block text is empty for {struct.get('name', 'unknown')}")
-
-    bs = BeautifulSoup(text, "html.parser")
-
-    _extract_traits(bs, sb)
-    _extract_source(bs, struct)
-
-    # Extract stats into a temporary dictionary
-    # For siege weapons, stats span multiple <hr> sections, so we need custom extraction
-    stats = {}
-    _extract_siege_weapon_stats(bs, stats, config["recognized_stats"], struct["type"])
-
-    # Separate shared vs nested fields
-    shared_fields = config.get("shared_fields", [])
-    nested_fields = config.get("nested_fields", [])
-
-    # Add shared fields to top level
-    for field in shared_fields:
-        if field in stats:
-            sb[field] = stats[field]
-
-    # Add nested fields to siege_weapon object
-    sw_obj = {}
-    for field in nested_fields:
-        if field in stats:
-            sw_obj[field] = stats[field]
-
-    if sw_obj:
-        sb["siege_weapon"] = sw_obj
-
-    # Extract action sections (Aim, Load, Launch, Ram, etc.) as abilities
-    abilities, trait_links_converted = _extract_abilities(
-        bs, struct["type"], config["recognized_stats"]
-    )
-    if abilities:
-        sb["abilities"] = abilities
-
-    links_removed = _remove_redundant_sections(bs, struct.get("name", ""), debug=debug)
-    _extract_alternate_link(bs, struct)
-    _extract_legacy_content_section(bs, struct)
-    desc_trait_links = _extract_description(bs, struct)
-    _cleanup_stat_block(sb)
-
-    # Add trait links converted to traits to links_removed (they were counted initially but became traits)
-    return links_removed + trait_links_converted + (desc_trait_links or 0)
-
-
-def _vehicle_section_pass(struct, config, debug=False):
-    """Vehicle-specific section pass that handles stats similar to siege weapons.
-
-    Returns the number of links removed from redundant sections.
-    """
-    sb = find_stat_block(struct)
-    text = sb["text"]  # Fail if missing
-    if not text:
-        raise ValueError(f"Stat block text is empty for {struct.get('name', 'unknown')}")
-
-    bs = BeautifulSoup(text, "html.parser")
-
-    _extract_traits(bs, sb)
-    _extract_source(bs, struct)
-
-    # Extract stats into a temporary dictionary
-    # Vehicles have stats similar to siege weapons
-    stats = {}
-    _extract_vehicle_stats(bs, stats, config["recognized_stats"], struct["type"])
-
-    # Separate shared vs nested fields
-    shared_fields = config.get("shared_fields", [])
-    nested_fields = config.get("nested_fields", [])
-
-    # Add shared fields to top level
-    for field in shared_fields:
-        if field in stats:
-            sb[field] = stats[field]
-
-    # Add nested fields to vehicle object
-    vehicle_obj = {}
-    for field in nested_fields:
-        if field in stats:
-            vehicle_obj[field] = stats[field]
-
-    if vehicle_obj:
-        sb["vehicle"] = vehicle_obj
-
-    # Extract action sections as abilities (if any)
-    abilities, trait_links_converted = _extract_abilities(
-        bs, struct["type"], config["recognized_stats"]
-    )
-    if abilities:
-        sb["abilities"] = abilities
-
-    links_removed = _remove_redundant_sections(bs, struct.get("name", ""), debug=debug)
-    _extract_alternate_link(bs, struct)
-    _extract_legacy_content_section(bs, struct)
-    desc_trait_links = _extract_description(bs, struct)  # Use generic description extraction
-    _cleanup_stat_block(sb)
-
-    # Add trait links converted to traits to links_removed (they were counted initially but became traits)
-    return links_removed + trait_links_converted + (desc_trait_links or 0)
 
 
 def _extract_vehicle_stats(bs, stats_dict, recognized_stats, equipment_type):
@@ -2519,9 +2166,10 @@ def _extract_abilities(bs, equipment_type="siege_weapon", recognized_stats=None)
 def _extract_single_mode_weapon(bs, sb, struct, config):
     """Extract stats for a regular (non-combination) weapon."""
 
-    # Extract shared fields (traits, source)
+    # Extract shared fields (traits, source, PFS note)
     _extract_traits(bs, sb)
     _extract_source(bs, struct)
+    _extract_pfs_note(bs, struct)
 
     # Extract all stats
     stats = {}
@@ -2602,6 +2250,7 @@ def _extract_combination_weapon(bs, sb, struct, config):
             span.decompose()
 
     _extract_source(bs, struct)
+    _extract_pfs_note(bs, struct)
 
     # Extract fields before first h2 (both shared and weapon-level)
     shared_fields = config.get("shared_fields", [])
@@ -2860,6 +2509,87 @@ def _extract_weapon_stats(bs, stats, config):
             elem.decompose()
         elif isinstance(elem, NavigableString):
             elem.extract()
+
+
+def _extract_pfs_note(bs, struct):
+    """Extract PFS Note from stat block HTML.
+
+    PFS Notes appear as: <u><a href="PFS.aspx"><b><i>PFS Note</i></b></a></u> note text<br>
+    The note text may be wrapped in <i> or be plain text after the </u>.
+
+    Extracts the note text and converts struct["pfs"] from a string to an object:
+        {"type": "stat_block_section", "subtype": "pfs", "availability": "Standard", "note": "..."}
+
+    If no PFS Note is found, converts pfs to object form without a note field.
+    Removes extracted elements from the soup.
+    """
+    # Find the PFS Note bold tag
+    pfs_note_bold = None
+    for b in bs.find_all("b"):
+        if "PFS Note" in b.get_text():
+            pfs_note_bold = b
+            break
+
+    if not pfs_note_bold:
+        return
+
+    # Navigate up to find the <u> wrapper (structure: <u><a><b><i>PFS Note</i></b></a></u>)
+    u_tag = pfs_note_bold.find_parent("u")
+    if not u_tag:
+        # No <u> wrapper - might be a different structure, skip
+        return
+
+    # Collect note text after </u> until <br><br>, <hr>, or next <b>
+    note_parts = []
+    elements_to_remove = [u_tag]
+    current = u_tag.next_sibling
+    while current:
+        if isinstance(current, Tag) and current.name == "b":
+            break
+        if isinstance(current, Tag) and current.name == "hr":
+            break
+        if isinstance(current, Tag) and current.name == "br":
+            # Check if next is also <br> (double break = end of note)
+            next_sib = current.next_sibling
+            if isinstance(next_sib, Tag) and next_sib.name in ("br", "hr"):
+                elements_to_remove.append(current)
+                if next_sib.name == "br":
+                    elements_to_remove.append(next_sib)
+                break
+            elements_to_remove.append(current)
+            current = current.next_sibling
+            continue
+        note_parts.append(str(current))
+        elements_to_remove.append(current)
+        current = current.next_sibling
+
+    # Clean up the note text
+    note_html = "".join(note_parts).strip()
+    if note_html:
+        note_soup = BeautifulSoup(note_html, "html.parser")
+        note_text = _normalize_whitespace(note_soup.get_text()).strip()
+    else:
+        note_text = None
+
+    # Remove extracted elements from soup
+    for elem in elements_to_remove:
+        if isinstance(elem, Tag):
+            elem.decompose()
+        elif isinstance(elem, NavigableString):
+            elem.extract()
+
+    # Convert struct["pfs"] to object form and add note
+    pfs_availability = struct.get("pfs", "Standard")
+    if isinstance(pfs_availability, dict):
+        pfs_availability = pfs_availability.get("availability", "Standard")
+    pfs_obj = {
+        "type": "stat_block_section",
+        "subtype": "pfs",
+        "availability": pfs_availability,
+    }
+    if note_text:
+        pfs_obj["note"] = note_text
+    struct["pfs"] = pfs_obj
 
 
 def _extract_traits(bs, sb):
@@ -6495,6 +6225,15 @@ def _normalize_activate_to_ability(statistics, sb):
 
 # Register normalizer in EQUIPMENT_TYPES config
 EQUIPMENT_TYPES["equipment"]["normalize_fields"] = normalize_equipment_fields
+
+# Register section_pass hook functions in EQUIPMENT_TYPES config.
+# Types without hooks use the default generic stat extraction path.
+# armor, shield, equipment: use default (no hooks needed)
+# siege_weapon, vehicle: custom stat extraction + abilities
+EQUIPMENT_TYPES["siege_weapon"]["extract_stats_fxn"] = _extract_siege_weapon_stats_hook
+EQUIPMENT_TYPES["siege_weapon"]["extract_abilities_fxn"] = _extract_abilities_hook
+EQUIPMENT_TYPES["vehicle"]["extract_stats_fxn"] = _extract_vehicle_stats_hook
+EQUIPMENT_TYPES["vehicle"]["extract_abilities_fxn"] = _extract_abilities_hook
 
 
 def _normalize_text_with_links(sb, field_name):

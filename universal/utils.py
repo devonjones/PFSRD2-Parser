@@ -275,3 +275,60 @@ def strip_block_tags(struct, extra_tags=None):
                         tag.unwrap()
             if changed:
                 struct[k] = str(bs)
+
+
+def extract_modifier(text):
+    """Extract parenthesized modifier from text.
+
+    Returns (text_without_parens, modifier_string) or (text, None) if no modifier.
+    """
+    if text.find("(") > -1:
+        parts = text.split("(", 1)
+        assert len(parts) == 2
+        base = [parts.pop(0)]
+        newparts = parts.pop(0).split(")", 1)
+        modifier = newparts.pop(0).strip()
+        base.extend(newparts)
+        return " ".join([b.strip() for b in base]).strip(), modifier
+    else:
+        return text, None
+
+
+def split_stat_block_line(line):
+    """Split a stat block line by semicolons and commas, respecting parentheses."""
+    line = line.strip()
+    parts = split_maintain_parens(line, ";")
+    newparts = []
+    for part in parts:
+        newparts.extend(split_maintain_parens(part, ","))
+    return [p.strip() for p in newparts]
+
+
+def rebuilt_split_modifiers(parts):
+    """Rejoin comma-split parts that were inside parentheses."""
+    newparts = []
+    while len(parts) > 0:
+        part = parts.pop(0)
+        if part.find("(") > 0:
+            newpart = part
+            while newpart.find(")") == -1:
+                newpart = newpart + ", " + parts.pop(0)
+            newparts.append(newpart)
+        else:
+            newparts.append(part)
+    return newparts
+
+
+def parse_section_modifiers(section, key):
+    """Extract parenthesized modifier from a section field and build modifier objects."""
+    from universal.universal import build_objects, link_modifiers
+
+    text = section[key]
+    text, modifier = extract_modifier(text)
+    if modifier:
+        # TODO: fix []
+        section["modifiers"] = link_modifiers(
+            build_objects("stat_block_section", "modifier", [modifier])
+        )
+    section[key] = text
+    return section

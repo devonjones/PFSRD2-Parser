@@ -932,6 +932,8 @@ def edition_from_alternate_link(struct):
     alt = struct.get("alternate_link")
     if not alt:
         return None
+    if isinstance(alt, list):
+        alt = alt[0]
     alt_type = alt.get("alternate_type")
     if alt_type == "remastered":
         return "legacy"
