@@ -1126,6 +1126,6 @@
 		"alternate_link": {"$ref": "#/definitions/alternate_link"},
 		"license": {"$ref": "#/definitions/license"}
 	},
-	"required": ["name", "type", "aonid", "game-obj", "sources", "sections", "license", "schema_version"],
+	"required": ["name", "type", "aonid", "game-obj", "sources", "sections", "pfs", "license", "schema_version"],
 	"additionalProperties": false
 }

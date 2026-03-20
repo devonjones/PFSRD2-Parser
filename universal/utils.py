@@ -361,6 +361,11 @@ def extract_pfs_availability(bs):
     match = re.match(r"PFS\s+(\w+)", pfs_alt, re.IGNORECASE)
     assert match, f"PFS img found but alt text doesn't match expected format: '{pfs_alt}'"
     availability = match.group(1).capitalize()
+    assert availability in (
+        "Standard",
+        "Limited",
+        "Restricted",
+    ), f"Unknown PFS availability: '{availability}' (from alt text: '{pfs_alt}')"
 
     # Remove the img and clean up empty parent wrappers
     parent = pfs_img.parent
@@ -378,16 +383,11 @@ def normalize_pfs_to_object(struct):
     """Ensure struct['pfs'] is a structured object, not a string.
 
     Converts string pfs values to the standard object form.
-    No-op if already an object.
+    No-op if already an object. Asserts if pfs key is missing.
     """
     pfs = struct.get("pfs")
-    if pfs is None:
-        struct["pfs"] = {
-            "type": "stat_block_section",
-            "subtype": "pfs",
-            "availability": "Standard",
-        }
-    elif isinstance(pfs, str):
+    assert pfs is not None, "struct['pfs'] must be set before calling normalize_pfs_to_object"
+    if isinstance(pfs, str):
         struct["pfs"] = {
             "type": "stat_block_section",
             "subtype": "pfs",

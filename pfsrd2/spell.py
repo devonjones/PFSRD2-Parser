@@ -68,13 +68,13 @@ def parse_spell(filename, options):
 
     spell_struct_pass(struct)
 
-    # Remove pfs_note from spell if spell_struct_pass still extracted it (shouldn't happen
-    # since we removed the HTML above, but be safe)
+    # PFS Note HTML was removed before spell_struct_pass — assert it wasn't re-extracted
     spell = find_spell(struct)
-    spell.pop("pfs_note", None)
+    assert (
+        "pfs_note" not in spell
+    ), "pfs_note unexpectedly extracted by spell_struct_pass after PFS Note HTML removal"
 
     # Promote sources to top level early (needed by game_id_pass)
-    spell = find_spell(struct)
     struct["sources"] = spell["sources"]
     source_pass(struct, find_spell)
     spell_structurize_pass(struct)
@@ -208,7 +208,6 @@ _SPELL_STAT_LABELS = {
     "Deity",
     "Deities",
     "Amp",
-    "PFS Note",
     "Cost",
 }
 
@@ -447,7 +446,6 @@ def _label_to_key(label):
         "Deity": "deity",
         "Deities": "deity",
         "Amp": "amp",
-        "PFS Note": "pfs_note",
         "Cost": "cost",
     }
     assert label in mapping, f"No key mapping for label: {label!r}"
@@ -769,7 +767,6 @@ def spell_link_pass(struct):
         "catalysts",
         "access",
         "amp",
-        "pfs_note",
         "range",
         "targets",
         "duration",
