@@ -125,6 +125,13 @@ def _build_save_dc(match_text, dc_val, save_type=None, is_basic=False):
     return result
 
 
+def _apply_trailing_modifier(result, text, match_end):
+    """Check for a parenthetical modifier after a match and add it to the result."""
+    modifiers, _ = _extract_trailing_modifier(text, match_end)
+    if modifiers:
+        result["modifiers"] = modifiers
+
+
 def extract_save_dc(text):
     """Extract all save DCs from ability text. Returns a list of save_dc objects."""
     if not text or "DC" not in text:
@@ -142,9 +149,7 @@ def extract_save_dc(text):
         if key not in seen_dcs:
             seen_dcs.add(key)
             result = _build_save_dc(m.group(0), dc_val, save_type, is_basic)
-            modifiers, _ = _extract_trailing_modifier(text, m.end())
-            if modifiers:
-                result["modifiers"] = modifiers
+            _apply_trailing_modifier(result, text, m.end())
             results.append(result)
 
     # Pass 2: <save_type> DC <num>
@@ -155,9 +160,7 @@ def extract_save_dc(text):
         if key not in seen_dcs:
             seen_dcs.add(key)
             result = _build_save_dc(m.group(0), dc_val, save_type)
-            modifiers, _ = _extract_trailing_modifier(text, m.end())
-            if modifiers:
-                result["modifiers"] = modifiers
+            _apply_trailing_modifier(result, text, m.end())
             results.append(result)
 
     # Pass 3: DC <num> flat check
@@ -167,9 +170,7 @@ def extract_save_dc(text):
         if key not in seen_dcs:
             seen_dcs.add(key)
             result = _build_save_dc(m.group(0), dc_val, "Flat Check")
-            modifiers, _ = _extract_trailing_modifier(text, m.end())
-            if modifiers:
-                result["modifiers"] = modifiers
+            _apply_trailing_modifier(result, text, m.end())
             results.append(result)
 
     # Pass 4: bare DC <num> — only if this DC wasn't already captured
@@ -178,9 +179,7 @@ def extract_save_dc(text):
         if not any(dc_val == dc for dc, _ in seen_dcs):
             seen_dcs.add((dc_val, None))
             result = _build_save_dc(m.group(0), dc_val)
-            modifiers, _ = _extract_trailing_modifier(text, m.end())
-            if modifiers:
-                result["modifiers"] = modifiers
+            _apply_trailing_modifier(result, text, m.end())
             results.append(result)
 
     return results

@@ -4,6 +4,7 @@ import sqlite3
 import pytest
 
 from pfsrd2.sql.enrichment import (
+    clear_needs_review,
     count_ability_records,
     fetch_abilities_by_name,
     fetch_abilities_for_creature,
@@ -11,14 +12,17 @@ from pfsrd2.sql.enrichment import (
     fetch_ability_by_id,
     fetch_creatures_for_ability,
     fetch_needing_enrichment,
+    fetch_needs_review,
     fetch_stale,
     fetch_unenriched,
     get_enrichment_db_connection,
     insert_ability_record,
     insert_creature_link,
     mark_human_verified,
+    mark_needs_review,
     mark_stale,
     update_enriched_json,
+    update_identity_hash,
 )
 
 
@@ -192,6 +196,92 @@ class TestCreatureLinkCRUD:
         assert len(abilities) == 2
         names = {a["name"] for a in abilities}
         assert names == {"Grab", "Push"}
+
+
+class TestNeedsReviewLifecycle:
+    def test_mark_needs_review(self, db):
+        curs = db.cursor()
+        aid = insert_ability_record(curs, "Grab", "hash1", '{"name": "Grab"}')
+        db.commit()
+        mark_needs_review(curs, aid, "unextracted: dc(1)")
+        db.commit()
+        row = fetch_ability_by_id(curs, aid)
+        assert row["needs_review"] == 1
+        assert row["review_reason"] == "unextracted: dc(1)"
+
+    def test_clear_needs_review(self, db):
+        curs = db.cursor()
+        aid = insert_ability_record(curs, "Grab", "hash1", '{"name": "Grab"}')
+        mark_needs_review(curs, aid, "unextracted: dc(1)")
+        db.commit()
+        clear_needs_review(curs, aid)
+        db.commit()
+        row = fetch_ability_by_id(curs, aid)
+        assert row["needs_review"] == 0
+        assert row["review_reason"] is None
+
+    def test_fetch_needs_review(self, db):
+        curs = db.cursor()
+        aid1 = insert_ability_record(curs, "Grab", "h1", "{}")
+        aid2 = insert_ability_record(curs, "Push", "h2", "{}")
+        insert_ability_record(curs, "Trip", "h3", "{}")
+        mark_needs_review(curs, aid1, "unextracted: dc(1)")
+        mark_needs_review(curs, aid2, "unextracted: damage(2)")
+        db.commit()
+        rows = fetch_needs_review(curs)
+        assert len(rows) == 2
+        names = {r["name"] for r in rows}
+        assert names == {"Grab", "Push"}
+
+    def test_fetch_needs_review_empty(self, db):
+        curs = db.cursor()
+        insert_ability_record(curs, "Grab", "h1", "{}")
+        db.commit()
+        rows = fetch_needs_review(curs)
+        assert len(rows) == 0
+
+    def test_update_reason_overwrites(self, db):
+        curs = db.cursor()
+        aid = insert_ability_record(curs, "Grab", "hash1", "{}")
+        mark_needs_review(curs, aid, "unextracted: dc(1), damage(2)")
+        db.commit()
+        mark_needs_review(curs, aid, "unextracted: damage(2)")
+        db.commit()
+        row = fetch_ability_by_id(curs, aid)
+        assert row["review_reason"] == "unextracted: damage(2)"
+
+    def test_needs_review_in_counts(self, db):
+        curs = db.cursor()
+        aid = insert_ability_record(curs, "Grab", "h1", "{}")
+        mark_needs_review(curs, aid, "unextracted: dc(1)")
+        db.commit()
+        counts = count_ability_records(curs)
+        assert counts["needs_review"] == 1
+
+
+class TestUpdateIdentityHash:
+    def test_update_hash_marks_stale(self, db):
+        curs = db.cursor()
+        aid = insert_ability_record(curs, "Grab", "hash1", '{"v": 1}')
+        update_enriched_json(curs, aid, '{"enriched": true}', 1, "regex")
+        db.commit()
+        update_identity_hash(curs, aid, "hash2", '{"v": 2}')
+        db.commit()
+        row = fetch_ability_by_id(curs, aid)
+        assert row["identity_hash"] == "hash2"
+        assert row["raw_json"] == '{"v": 2}'
+        assert row["stale"] == 1
+
+    def test_update_hash_preserves_enrichment(self, db):
+        curs = db.cursor()
+        aid = insert_ability_record(curs, "Grab", "hash1", '{"v": 1}')
+        update_enriched_json(curs, aid, '{"enriched": true}', 1, "regex")
+        db.commit()
+        update_identity_hash(curs, aid, "hash2", '{"v": 2}')
+        db.commit()
+        row = fetch_ability_by_id(curs, aid)
+        assert row["enriched_json"] == '{"enriched": true}'
+        assert row["enrichment_version"] == 1
 
 
 class TestCounts:

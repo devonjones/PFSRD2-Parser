@@ -1,6 +1,7 @@
 """Tests for the regex extraction tier."""
 
 from pfsrd2.enrichment.regex_extractor import (
+    _apply_trailing_modifier,
     detect_keywords,
     extract_all,
     extract_area,
@@ -447,3 +448,27 @@ class TestExtractAll:
         result, missed = extract_all(json.dumps(ability))
         assert result is not None
         assert result["saving_throw"][0]["dc"] == 20
+
+
+class TestApplyTrailingModifier:
+    def test_adds_modifier_when_present(self):
+        result = {"dc": 25}
+        text = "DC 25 (grabbed by claws only) and stuff"
+        # match_end points right after "DC 25"
+        _apply_trailing_modifier(result, text, 5)
+        assert "modifiers" in result
+        assert result["modifiers"][0]["name"] == "grabbed by claws only"
+
+    def test_no_modifier_when_absent(self):
+        result = {"dc": 30}
+        text = "DC 30 basic Reflex save"
+        _apply_trailing_modifier(result, text, 5)
+        assert "modifiers" not in result
+
+    def test_does_not_overwrite_existing_keys(self):
+        result = {"dc": 25, "save_type": "Ref"}
+        text = "DC 25 (with penalty)"
+        _apply_trailing_modifier(result, text, 5)
+        assert result["save_type"] == "Ref"
+        assert result["dc"] == 25
+        assert "modifiers" in result
