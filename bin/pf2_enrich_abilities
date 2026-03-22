@@ -1,0 +1,265 @@
+#!/usr/bin/env python
+"""Offline ability enrichment — regex and LLM extraction."""
+
+import argparse
+import json
+import re
+import sys
+
+from pfsrd2.enrichment.llm_extractor import (
+    DEFAULT_MODEL,
+    extract_area_llm,
+    extract_damage_llm,
+    extract_dc_llm,
+    extract_frequency_llm,
+)
+from pfsrd2.enrichment.regex_extractor import extract_all
+from pfsrd2.sql.enrichment import (
+    clear_needs_review,
+    count_ability_records,
+    fetch_needing_enrichment,
+    fetch_needs_review,
+    fetch_unenriched,
+    get_enrichment_db_connection,
+    mark_needs_review,
+    update_enriched_json,
+)
+
+ENRICHMENT_VERSION = 2
+
+
+def run_regex(conn, args):
+    """Run regex extraction on unenriched records."""
+    curs = conn.cursor()
+
+    if args.force_version:
+        records = fetch_needing_enrichment(curs, ENRICHMENT_VERSION)
+    else:
+        records = fetch_unenriched(curs)
+
+    enriched_count = 0
+    flagged_count = 0
+    clean_count = 0
+    total = len(records)
+
+    for record in records:
+        raw = record["raw_json"]
+        result, missed = extract_all(raw)
+
+        if result is not None:
+            enriched_json = json.dumps(result, sort_keys=True, ensure_ascii=False)
+            if args.dry_run:
+                ability = json.loads(raw)
+                new_fields = []
+                if "saving_throw" in result and "saving_throw" not in ability:
+                    for st in result["saving_throw"]:
+                        new_fields.append(f"DC {st['dc']}")
+                if "area" in result and "area" not in ability:
+                    areas = result["area"] if isinstance(result["area"], list) else [result["area"]]
+                    for a in areas:
+                        new_fields.append(f"{a['size']}-foot {a['shape']}")
+                if "damage" in result and "damage" not in ability:
+                    d = result["damage"]
+                    new_fields.append(
+                        ", ".join(f"{x['formula']} {x.get('damage_type', 'untyped')}" for x in d)
+                    )
+                if "frequency" in result and not ability.get("frequency"):
+                    new_fields.append(f"freq: {result['frequency']}")
+                if new_fields:
+                    print(f"  {record['name']}: {' | '.join(new_fields)}")
+            else:
+                update_enriched_json(
+                    curs, record["ability_id"], enriched_json, ENRICHMENT_VERSION, "regex"
+                )
+            enriched_count += 1
+
+        if missed:
+            parts = []
+            for kw in sorted(missed):
+                det, ext = missed[kw]
+                if ext == 0:
+                    parts.append(f"{kw}({det})")
+                else:
+                    parts.append(f"{kw}({ext}/{det})")
+            reason = "unextracted: " + ", ".join(parts)
+            if args.dry_run:
+                print(f"  [FLAG] {record['name']}: {reason}")
+            else:
+                mark_needs_review(curs, record["ability_id"], reason)
+            flagged_count += 1
+        elif result is None:
+            clean_count += 1
+
+    if not args.dry_run:
+        conn.commit()
+
+    print(f"\nRegex processed {total} records:")
+    print(f"  Enriched: {enriched_count}")
+    print(f"  Flagged for review: {flagged_count}")
+    print(f"  No mechanics detected: {clean_count}")
+
+
+def _update_review_flag(curs, record, resolved_type, was_enriched):
+    """Update review flag after LLM processes a type.
+
+    If the type was enriched or confirmed as not-extractable (LLM returned
+    none), remove that type from the review reason. If no types remain,
+    clear the flag entirely.
+    """
+    reason = record.get("review_reason", "")
+    if not reason:
+        return
+
+    # Parse "unextracted: dc(1), damage(2)" into individual types
+    type_pattern = re.compile(r"(dc|damage|area|frequency)\(\d+(?:/\d+)?\)")
+    types_in_reason = set(type_pattern.findall(reason))
+
+    # Remove the resolved type
+    types_in_reason.discard(resolved_type)
+
+    if not types_in_reason:
+        clear_needs_review(curs, record["ability_id"])
+    else:
+        # Rebuild reason with remaining types
+        remaining = []
+        for m in type_pattern.finditer(reason):
+            if m.group(1) != resolved_type:
+                remaining.append(m.group(0))
+        new_reason = "unextracted: " + ", ".join(remaining)
+        mark_needs_review(curs, record["ability_id"], new_reason)
+
+
+def run_llm(conn, args):
+    """Run LLM extraction on flagged records for a specific type."""
+    # Maps LLM type to (extractor_function, enriched_json_field_name)
+    extractors = {
+        "frequency": (extract_frequency_llm, "frequency"),
+        "area": (extract_area_llm, "area"),
+        "dc": (extract_dc_llm, "saving_throw"),
+        "damage": (extract_damage_llm, "damage"),
+    }
+
+    if args.llm_type not in extractors:
+        print(f"Unknown LLM type: {args.llm_type}")
+        print(f"Available: {', '.join(extractors.keys())}")
+        return
+
+    extractor_fn, field_name = extractors[args.llm_type]
+    curs = conn.cursor()
+
+    # Fetch flagged records that have this type unextracted
+    records = fetch_needs_review(curs)
+    targets = [r for r in records if args.llm_type in r.get("review_reason", "")]
+
+    if not targets:
+        print(f"No flagged records for type: {args.llm_type}")
+        return
+
+    enriched_count = 0
+    failed_count = 0
+    total = len(targets)
+
+    print(f"Processing {total} flagged {args.llm_type} records with LLM...")
+
+    for i, record in enumerate(targets):
+        ability = json.loads(record["raw_json"])
+        name = ability.get("name", "")
+        text = ability.get("text", "")
+        effect = ability.get("effect", "")
+        combined = f"{text} {effect}".strip()
+
+        if not combined:
+            failed_count += 1
+            continue
+
+        result = extractor_fn(name, combined, model=args.model)
+
+        if result:
+            # Merge into enriched_json
+            if record["enriched_json"]:
+                enriched = json.loads(record["enriched_json"])
+            else:
+                enriched = dict(ability)
+
+            if not enriched.get(field_name):
+                enriched[field_name] = result
+
+            enriched_json = json.dumps(enriched, sort_keys=True, ensure_ascii=False)
+
+            if args.dry_run:
+                display = result if isinstance(result, str) else json.dumps(result)
+                print(f"  [{record['ability_id']:5d}] {name}: {display}")
+            else:
+                update_enriched_json(
+                    curs,
+                    record["ability_id"],
+                    enriched_json,
+                    ENRICHMENT_VERSION,
+                    f"llm:{args.model or DEFAULT_MODEL}",
+                )
+            enriched_count += 1
+
+        # Update the review flag — remove the resolved type
+        if not args.dry_run:
+            _update_review_flag(curs, record, args.llm_type, result is not None)
+
+        if not result:
+            failed_count += 1
+
+        if (i + 1) % 10 == 0:
+            sys.stderr.write(f"  {i + 1}/{total}\r")
+
+    if not args.dry_run:
+        conn.commit()
+
+    print(f"\nLLM processed {total} {args.llm_type} records:")
+    print(f"  Enriched: {enriched_count}")
+    print(f"  No result: {failed_count}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Enrich ability records with structured mechanics")
+    parser.add_argument("--stats", action="store_true", help="Show enrichment statistics and exit")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be enriched without writing"
+    )
+    parser.add_argument(
+        "--force-version",
+        action="store_true",
+        help="Re-enrich records below current version (skips human_verified)",
+    )
+    parser.add_argument(
+        "--llm",
+        dest="llm_type",
+        metavar="TYPE",
+        help="Run LLM extraction for a specific type (frequency, etc.)",
+    )
+    parser.add_argument(
+        "--model", default=None, help="Ollama model to use for LLM extraction (default: qwen2.5:3b)"
+    )
+    args = parser.parse_args()
+
+    conn = get_enrichment_db_connection()
+
+    if args.stats:
+        curs = conn.cursor()
+        counts = count_ability_records(curs)
+        print(f"Total abilities:  {counts['total']}")
+        print(f"Enriched:         {counts['enriched']}")
+        print(f"Unenriched:       {counts['unenriched']}")
+        print(f"Stale:            {counts['stale']}")
+        print(f"Human verified:   {counts['verified']}")
+        print(f"Needs review:     {counts['needs_review']}")
+        conn.close()
+        return
+
+    if args.llm_type:
+        run_llm(conn, args)
+    else:
+        run_regex(conn, args)
+
+    conn.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
