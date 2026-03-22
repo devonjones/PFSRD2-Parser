@@ -79,6 +79,7 @@ def parse_spell(filename, options):
     source_pass(struct, find_spell)
     spell_structurize_pass(struct)
     spell_link_pass(struct)
+    spell_range_area_pass(struct)
     aon_pass(struct, basename)
     restructure_pass(struct, "spell", find_spell)
     struct["edition"] = edition_pass(struct["sections"])
@@ -810,6 +811,174 @@ def spell_link_pass(struct):
 
     for section in struct["sections"]:
         _process_section(section)
+
+
+def spell_range_area_pass(struct):
+    """Convert spell range and area from strings to structured objects."""
+    spell = find_spell(struct)
+
+    if "range" in spell and isinstance(spell["range"], str):
+        spell["range"] = _parse_spell_range(spell["range"])
+
+    if "area" in spell and isinstance(spell["area"], str):
+        spell["area"] = _parse_spell_area(spell["area"])
+
+
+def _parse_spell_range(text):
+    """Parse a spell range string into a structured range object."""
+    text = text.strip()
+    result = {
+        "type": "stat_block_section",
+        "subtype": "range",
+        "text": text,
+    }
+
+    lower = text.lower()
+
+    # Touch
+    if lower == "touch":
+        result["range"] = 0
+        result["unit"] = "feet"
+        result["touch"] = True
+        return result
+
+    # "touch or X feet"
+    if lower.startswith("touch or "):
+        result["touch"] = True
+        # Try to extract the numeric part
+        remainder = text[len("touch or ") :]
+        parsed = _parse_distance(remainder)
+        if parsed:
+            result["range"] = parsed[0]
+            result["unit"] = parsed[1]
+        return result
+
+    # Standard numeric: "X feet", "X miles"
+    parsed = _parse_distance(text)
+    if parsed:
+        result["range"] = parsed[0]
+        result["unit"] = parsed[1]
+        return result
+
+    # Area-like values in range field: "30-foot cone", "20-foot emanation"
+    area = _parse_single_area(text)
+    if area:
+        # These are areas misplaced in range — keep as range object but
+        # store the area size as the range. The text preserves what AoN said.
+        result["range"] = area["size"]
+        result["unit"] = area["unit"]
+        return result
+
+    # Unparseable ("varies", "planetary", "unlimited", "see text", etc.)
+    # Keep just the text
+    return result
+
+
+def _parse_spell_area(text):
+    """Parse a spell area string into a structured area object or list."""
+    text = text.strip()
+
+    # Try as a single area first
+    area = _parse_single_area(text)
+    if area:
+        return area
+
+    # Compound: "10-foot-radius burst, 30-foot cone, or 60-foot line"
+    # Split on ", or " and ", " and try each part
+    parts = re.split(r",\s*(?:or\s+)?|\s+or\s+", text)
+    areas = []
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        area = _parse_single_area(part)
+        if area:
+            areas.append(area)
+
+    if areas:
+        # For compound areas, return the first parsed area but keep full text
+        result = areas[0]
+        result["text"] = text
+        return result
+
+    # Unparseable — return as text-only object
+    return {
+        "type": "stat_block_section",
+        "subtype": "area",
+        "text": text,
+    }
+
+
+_DISTANCE_PATTERN = re.compile(r"^([\d,]+)\s*(feet|foot|ft|miles?|Feet)(?:\s|$)", re.I)
+
+_AREA_PATTERN_SPELL = re.compile(
+    r"(\d+)[- ](foot|mile)(?:[- ]radius)?\s*(line|cone|burst|emanation|wall|cylinder)",
+    re.I,
+)
+
+_AREA_CYLINDER = re.compile(
+    r"(\d+)[- ]foot[- ]radius,?\s*(\d+)[- ]foot[- ]tall\s*cylinder",
+    re.I,
+)
+
+_SHAPE_MAP_SPELL = {
+    "line": "line",
+    "cone": "cone",
+    "burst": "burst",
+    "emanation": "emanation",
+    "wall": "wall",
+    "cylinder": "cylinder",
+}
+
+
+def _parse_distance(text):
+    """Parse 'X feet' or 'X miles' from text. Returns (value, unit) or None."""
+    text = text.strip()
+    # Strip trailing parenthetical modifiers
+    if "(" in text:
+        text = text[: text.index("(")].strip()
+    m = _DISTANCE_PATTERN.match(text)
+    if m:
+        value = int(m.group(1).replace(",", ""))
+        raw_unit = m.group(2).lower()
+        unit = "miles" if raw_unit.startswith("mile") else "feet"
+        return (value, unit)
+    return None
+
+
+def _parse_single_area(text):
+    """Parse a single area string like '30-foot cone'. Returns area object or None."""
+    text = text.strip()
+
+    # Cylinder: "10-foot radius, 50-foot-tall cylinder"
+    m = _AREA_CYLINDER.search(text)
+    if m:
+        return {
+            "type": "stat_block_section",
+            "subtype": "area",
+            "text": text,
+            "shape": "cylinder",
+            "size": int(m.group(1)),
+            "unit": "feet",
+        }
+
+    # Standard shapes: "30-foot cone", "10-foot burst", "10-foot-radius emanation"
+    m = _AREA_PATTERN_SPELL.search(text)
+    if m:
+        size = int(m.group(1))
+        raw_unit = m.group(2).lower()
+        shape = _SHAPE_MAP_SPELL[m.group(3).lower()]
+        unit = "miles" if raw_unit == "mile" else "feet"
+        return {
+            "type": "stat_block_section",
+            "subtype": "area",
+            "text": text,
+            "shape": shape,
+            "size": size,
+            "unit": unit,
+        }
+
+    return None
 
 
 def spell_cleanup_pass(struct):
