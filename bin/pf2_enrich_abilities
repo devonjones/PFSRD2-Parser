@@ -39,9 +39,8 @@ def _format_regex_result(result, ability):
         for a in areas:
             new_fields.append(f"{a['size']}-foot {a['shape']}")
     if "damage" in result and "damage" not in ability:
-        d = result["damage"]
-        new_fields.append(
-            ", ".join(f"{x['formula']} {x.get('damage_type', 'untyped')}" for x in d)
+        new_fields.extend(
+            f"{x['formula']} {x.get('damage_type', 'untyped')}" for x in result["damage"]
         )
     if "frequency" in result and not ability.get("frequency"):
         new_fields.append(f"freq: {result['frequency']}")
