@@ -1,0 +1,539 @@
+#!/usr/bin/env python
+"""CLI for reviewing and managing ability enrichments."""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+
+from pfsrd2.sql.enrichment import (
+    count_ability_records,
+    fetch_abilities_by_name,
+    fetch_abilities_for_creature,
+    fetch_ability_by_id,
+    fetch_creatures_for_ability,
+    fetch_needs_review,
+    fetch_stale,
+    fetch_unenriched,
+    get_enrichment_db_connection,
+    mark_human_verified,
+    clear_needs_review,
+    update_enriched_json,
+)
+
+
+def cmd_stats(curs, args):
+    """Show enrichment statistics."""
+    counts = count_ability_records(curs)
+    print(f"Total abilities:  {counts['total']}")
+    print(f"Enriched:         {counts['enriched']}")
+    print(f"Unenriched:       {counts['unenriched']}")
+    print(f"Stale:            {counts['stale']}")
+    print(f"Human verified:   {counts['verified']}")
+    print(f"Needs review:     {counts['needs_review']}")
+
+    # Breakdown by extraction method
+    curs.execute(
+        "SELECT COALESCE(extraction_method, 'none') as method, COUNT(*)"
+        " FROM ability_records"
+        " GROUP BY extraction_method"
+        " ORDER BY COUNT(*) DESC"
+    )
+    print("\nBy extraction method:")
+    for row in curs.fetchall():
+        print(f"  {row['method']}: {row['COUNT(*)']}")
+
+    # Review reason breakdown
+    curs.execute(
+        "SELECT review_reason, COUNT(*) as cnt"
+        " FROM ability_records"
+        " WHERE needs_review = 1"
+        " GROUP BY review_reason"
+        " ORDER BY cnt DESC"
+        " LIMIT 10"
+    )
+    rows = curs.fetchall()
+    if rows:
+        print("\nTop review reasons:")
+        for row in rows:
+            print(f"  {row['review_reason']}: {row['cnt']}")
+
+
+def cmd_show(curs, args):
+    """Show details for an ability by name or ID."""
+    if args.identifier.isdigit():
+        records = [fetch_ability_by_id(curs, int(args.identifier))]
+        records = [r for r in records if r]
+    else:
+        records = fetch_abilities_by_name(curs, args.identifier)
+
+    if not records:
+        print(f"No ability found: {args.identifier}")
+        return
+
+    for record in records:
+        _print_record(curs, record)
+        print()
+
+
+def cmd_list(curs, args):
+    """List abilities with filters."""
+    if args.filter == "unenriched":
+        records = fetch_unenriched(curs)
+    elif args.filter == "stale":
+        records = fetch_stale(curs)
+    elif args.filter == "review":
+        records = fetch_needs_review(curs)
+    elif args.filter == "verified":
+        curs.execute(
+            "SELECT * FROM ability_records WHERE human_verified = 1"
+        )
+        records = curs.fetchall()
+    else:
+        curs.execute("SELECT * FROM ability_records ORDER BY name LIMIT ?",
+                     (args.limit,))
+        records = curs.fetchall()
+
+    for record in records[:args.limit]:
+        status = _status_str(record)
+        print(f"  [{record['ability_id']:5d}] {status} {record['name']}")
+        if record.get("review_reason"):
+            print(f"         {record['review_reason']}")
+
+
+def cmd_creatures(curs, args):
+    """List creatures that have a specific ability."""
+    if args.identifier.isdigit():
+        ability_id = int(args.identifier)
+    else:
+        records = fetch_abilities_by_name(curs, args.identifier)
+        if not records:
+            print(f"No ability found: {args.identifier}")
+            return
+        if len(records) > 1:
+            print(f"Multiple abilities named '{args.identifier}':")
+            for r in records:
+                print(f"  [{r['ability_id']}] {_status_str(r)}")
+            return
+        ability_id = records[0]["ability_id"]
+
+    links = fetch_creatures_for_ability(curs, ability_id)
+    if not links:
+        print("No creatures linked.")
+        return
+
+    for link in links:
+        traits = json.loads(link["creature_traits"]) if link["creature_traits"] else []
+        trait_str = ", ".join(traits) if traits else ""
+        print(f"  Lv{link['creature_level']:3d}  {link['creature_name']}"
+              f"  ({link['ability_category']})  [{trait_str}]"
+              f"  ({link['source_name']})")
+
+
+def cmd_verify(curs, args):
+    """Mark an ability as human-verified."""
+    ability_id = int(args.ability_id)
+    record = fetch_ability_by_id(curs, ability_id)
+    if not record:
+        print(f"No ability with ID {ability_id}")
+        return
+    mark_human_verified(curs, ability_id, True)
+    clear_needs_review(curs, ability_id)
+    print(f"Verified: [{ability_id}] {record['name']}")
+
+
+def cmd_edit(curs, args):
+    """Edit enriched JSON for an ability in $EDITOR."""
+    ability_id = int(args.ability_id)
+    record = fetch_ability_by_id(curs, ability_id)
+    if not record:
+        print(f"No ability with ID {ability_id}")
+        return
+
+    # Start from enriched if exists, otherwise raw
+    if record["enriched_json"]:
+        data = json.loads(record["enriched_json"])
+    else:
+        data = json.loads(record["raw_json"])
+
+    editor = os.environ.get("EDITOR", "vi")
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False
+    ) as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+        tmpfile = f.name
+
+    try:
+        subprocess.call([editor, tmpfile])
+        with open(tmpfile) as f:
+            edited = json.load(f)
+        enriched_json = json.dumps(edited, sort_keys=True, ensure_ascii=False)
+        update_enriched_json(curs, ability_id, enriched_json, None, "manual")
+        mark_human_verified(curs, ability_id, True)
+        clear_needs_review(curs, ability_id)
+        print(f"Updated and verified: [{ability_id}] {record['name']}")
+    except json.JSONDecodeError as e:
+        print(f"Invalid JSON: {e}")
+    finally:
+        os.unlink(tmpfile)
+
+
+def cmd_ability(curs, args):
+    """Show all abilities for a creature."""
+    creature_id = args.creature_id
+    records = fetch_abilities_for_creature(curs, creature_id)
+    if not records:
+        # Try by name
+        curs.execute(
+            "SELECT DISTINCT creature_game_id, creature_name"
+            " FROM ability_creature_links"
+            " WHERE creature_name LIKE ?"
+            " LIMIT 10",
+            (f"%{creature_id}%",)
+        )
+        matches = curs.fetchall()
+        if not matches:
+            print(f"No creature found: {creature_id}")
+            return
+        if len(matches) > 1:
+            print(f"Multiple creatures match '{creature_id}':")
+            for m in matches:
+                print(f"  [{m['creature_game_id']}] {m['creature_name']}")
+            return
+        creature_id = matches[0]["creature_game_id"]
+        records = fetch_abilities_for_creature(curs, creature_id)
+
+    # Get creature info from links
+    curs.execute(
+        "SELECT DISTINCT creature_name, creature_level"
+        " FROM ability_creature_links"
+        " WHERE creature_game_id = ?",
+        (creature_id,)
+    )
+    info = curs.fetchone()
+    if info:
+        print(f"{info['creature_name']} (Level {info['creature_level']})")
+        print("-" * 60)
+
+    for record in records:
+        # Get category from link
+        curs.execute(
+            "SELECT ability_category FROM ability_creature_links"
+            " WHERE ability_id = ? AND creature_game_id = ?",
+            (record["ability_id"], creature_id)
+        )
+        link = curs.fetchone()
+        cat = link["ability_category"] if link else "?"
+
+        status = _status_str(record)
+        print(f"  [{record['ability_id']:5d}] {status} ({cat:9s}) {record['name']}")
+
+        # Show enriched fields if present
+        if record["enriched_json"]:
+            enriched = json.loads(record["enriched_json"])
+            fields = []
+            if "saving_throw" in enriched:
+                for st in enriched["saving_throw"]:
+                    basic = "basic " if st.get("basic") else ""
+                    save = st.get("save_type", "")
+                    fields.append(f"DC {st['dc']} {basic}{save}")
+            if "area" in enriched:
+                areas = enriched["area"] if isinstance(enriched["area"], list) else [enriched["area"]]
+                for a in areas:
+                    unit = "foot" if a["unit"] == "feet" else "mile" if a["unit"] == "miles" else a["unit"]
+                    fields.append(f"{a['size']}-{unit} {a['shape']}")
+            if "range" in enriched:
+                r = enriched["range"]
+                fields.append(f"range {r['range']} {r['unit']}")
+            if "damage" in enriched:
+                d = enriched["damage"]
+                dmg_strs = []
+                for dd in d:
+                    p = "persistent " if dd.get("persistent") else ""
+                    dmg_strs.append(f"{dd['formula']} {p}{dd.get('damage_type', '?')}")
+                fields.append(" + ".join(dmg_strs))
+            if "frequency" in enriched:
+                raw = json.loads(record["raw_json"])
+                if not raw.get("frequency"):
+                    fields.append(f"freq: {enriched['frequency']}")
+            if fields:
+                print(f"           {' | '.join(fields)}")
+
+
+def cmd_reset(curs, args):
+    """Reset enrichment for a creature — delete its ability records and links."""
+    creature_id = _resolve_creature_id(curs, args.creature_id)
+    if not creature_id:
+        return
+
+    # Get creature info
+    curs.execute(
+        "SELECT DISTINCT creature_name FROM ability_creature_links"
+        " WHERE creature_game_id = ?",
+        (creature_id,)
+    )
+    info = curs.fetchone()
+    if not info:
+        print(f"No creature found: {creature_id}")
+        return
+
+    # Find abilities linked to this creature
+    curs.execute(
+        "SELECT ability_id FROM ability_creature_links"
+        " WHERE creature_game_id = ?",
+        (creature_id,)
+    )
+    ability_ids = [r["ability_id"] for r in curs.fetchall()]
+
+    # Delete creature links
+    curs.execute(
+        "DELETE FROM ability_creature_links WHERE creature_game_id = ?",
+        (creature_id,)
+    )
+
+    # Delete orphaned ability records (only linked to this creature)
+    orphaned = 0
+    for aid in ability_ids:
+        curs.execute(
+            "SELECT COUNT(*) FROM ability_creature_links WHERE ability_id = ?",
+            (aid,)
+        )
+        if curs.fetchone()["COUNT(*)"] == 0:
+            curs.execute(
+                "DELETE FROM ability_records WHERE ability_id = ?", (aid,)
+            )
+            orphaned += 1
+
+    print(f"Reset {info['creature_name']} ({creature_id}):")
+    print(f"  Removed {len(ability_ids)} creature links")
+    print(f"  Deleted {orphaned} orphaned ability records")
+
+
+def cmd_enrich(curs, args):
+    """Run enrichment (regex + LLM) for a single creature's abilities."""
+    from pfsrd2.enrichment.regex_extractor import extract_all
+    from pfsrd2.enrichment.llm_extractor import (
+        extract_area_llm,
+        extract_damage_llm,
+        extract_dc_llm,
+        extract_frequency_llm,
+    )
+
+    creature_id = _resolve_creature_id(curs, args.creature_id)
+    if not creature_id:
+        return
+
+    records = fetch_abilities_for_creature(curs, creature_id)
+    if not records:
+        print(f"No abilities found for creature {creature_id}")
+        return
+
+    print(f"Enriching {len(records)} abilities...")
+
+    for record in records:
+        raw = record["raw_json"]
+        ability = json.loads(raw)
+        name = ability.get("name", "")
+        text = ability.get("text", "")
+        effect = ability.get("effect", "")
+        combined = f"{text} {effect}".strip()
+
+        # Regex first
+        result, missed = extract_all(raw)
+        if result:
+            enriched_json = json.dumps(result, sort_keys=True, ensure_ascii=False)
+            update_enriched_json(curs, record["ability_id"], enriched_json, 2, "regex")
+            print(f"  [REGEX] {name}")
+
+        # LLM for missed types
+        if missed and combined:
+            if record["enriched_json"]:
+                enriched = json.loads(record["enriched_json"])
+            elif result:
+                enriched = result
+            else:
+                enriched = dict(ability)
+
+            llm_extractors = {
+                "frequency": (extract_frequency_llm, "frequency"),
+                "area": (extract_area_llm, "area"),
+                "dc": (extract_dc_llm, "saving_throw"),
+                "damage": (extract_damage_llm, "damage"),
+            }
+
+            for kw in missed:
+                if kw not in llm_extractors:
+                    continue
+                fn, field = llm_extractors[kw]
+                if enriched.get(field):
+                    continue
+                llm_result = fn(name, combined)
+                if llm_result:
+                    enriched[field] = llm_result
+                    print(f"  [LLM]   {name}: {kw}")
+
+            enriched_json = json.dumps(enriched, sort_keys=True, ensure_ascii=False)
+            update_enriched_json(
+                curs, record["ability_id"], enriched_json, 2, "llm:qwen2.5:7b"
+            )
+
+    print("Done.")
+
+
+def _resolve_creature_id(curs, creature_id):
+    """Resolve a creature name or aonid to a creature_game_id."""
+    # Try as aonid first
+    curs.execute(
+        "SELECT DISTINCT creature_game_id FROM ability_creature_links"
+        " WHERE creature_game_id = ?",
+        (creature_id,)
+    )
+    if curs.fetchone():
+        return creature_id
+
+    # Try by name
+    curs.execute(
+        "SELECT DISTINCT creature_game_id, creature_name"
+        " FROM ability_creature_links"
+        " WHERE creature_name LIKE ?"
+        " LIMIT 10",
+        (f"%{creature_id}%",)
+    )
+    matches = curs.fetchall()
+    if not matches:
+        print(f"No creature found: {creature_id}")
+        return None
+    if len(matches) > 1:
+        print(f"Multiple creatures match '{creature_id}':")
+        for m in matches:
+            print(f"  [{m['creature_game_id']}] {m['creature_name']}")
+        return None
+    return matches[0]["creature_game_id"]
+
+
+def _status_str(record):
+    """Return a short status string for a record."""
+    if record.get("human_verified"):
+        return "[VERIFIED]"
+    if record.get("stale"):
+        return "[STALE]   "
+    if record.get("needs_review"):
+        return "[REVIEW]  "
+    if record.get("enriched_json"):
+        return "[ENRICHED]"
+    return "[RAW]     "
+
+
+def _print_record(curs, record):
+    """Print detailed info for a single ability record."""
+    print(f"ID: {record['ability_id']}")
+    print(f"Name: {record['name']}")
+    print(f"Status: {_status_str(record).strip()}")
+    print(f"Hash: {record['identity_hash'][:16]}...")
+    if record.get("extraction_method"):
+        print(f"Method: {record['extraction_method']}")
+    if record.get("enrichment_version"):
+        print(f"Version: {record['enrichment_version']}")
+    if record.get("review_reason"):
+        print(f"Review: {record['review_reason']}")
+
+    raw = json.loads(record["raw_json"])
+    print(f"\n--- Raw ---")
+    for field in ("text", "effect", "frequency", "trigger", "requirement"):
+        if raw.get(field):
+            print(f"  {field}: {raw[field][:200]}")
+
+    if record["enriched_json"]:
+        enriched = json.loads(record["enriched_json"])
+        print(f"\n--- Enriched fields ---")
+        for field in ("saving_throw", "damage", "area", "range", "frequency"):
+            if field in enriched and field not in raw:
+                print(f"  {field}: {json.dumps(enriched[field], indent=4)}")
+
+    links = fetch_creatures_for_ability(curs, record["ability_id"])
+    if links:
+        print(f"\n--- Creatures ({len(links)}) ---")
+        for link in links[:10]:
+            print(f"  Lv{link['creature_level']:3d} {link['creature_name']}"
+                  f" ({link['ability_category']}, {link['source_name']})")
+        if len(links) > 10:
+            print(f"  ... and {len(links) - 10} more")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Review and manage ability enrichments"
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    sub.add_parser("stats", help="Show enrichment statistics")
+
+    p_show = sub.add_parser("show", help="Show ability details")
+    p_show.add_argument("identifier", help="Ability name or ID")
+
+    p_list = sub.add_parser("list", help="List abilities")
+    p_list.add_argument(
+        "filter", nargs="?", default="all",
+        choices=["all", "unenriched", "stale", "review", "verified"],
+    )
+    p_list.add_argument("--limit", type=int, default=50)
+
+    p_creatures = sub.add_parser(
+        "creatures", help="List creatures with a specific ability"
+    )
+    p_creatures.add_argument("identifier", help="Ability name or ID")
+
+    p_ability = sub.add_parser(
+        "ability", help="Show all abilities for a creature"
+    )
+    p_ability.add_argument("creature_id", help="Creature aonid or name")
+
+    p_verify = sub.add_parser("verify", help="Mark ability as human-verified")
+    p_verify.add_argument("ability_id", help="Ability ID")
+
+    p_edit = sub.add_parser("edit", help="Edit enriched JSON in $EDITOR")
+    p_edit.add_argument("ability_id", help="Ability ID")
+
+    p_reset = sub.add_parser(
+        "reset", help="Reset enrichment for a creature (delete records)"
+    )
+    p_reset.add_argument("creature_id", help="Creature aonid or name")
+
+    p_enrich = sub.add_parser(
+        "enrich", help="Run enrichment (regex + LLM) for a creature"
+    )
+    p_enrich.add_argument("creature_id", help="Creature aonid or name")
+
+    args = parser.parse_args()
+    if not args.command:
+        parser.print_help()
+        return
+
+    conn = get_enrichment_db_connection()
+    curs = conn.cursor()
+
+    try:
+        commands = {
+            "stats": cmd_stats,
+            "show": cmd_show,
+            "list": cmd_list,
+            "creatures": cmd_creatures,
+            "ability": cmd_ability,
+            "verify": cmd_verify,
+            "edit": cmd_edit,
+            "reset": cmd_reset,
+            "enrich": cmd_enrich,
+        }
+        commands[args.command](curs, args)
+
+        if args.command in ("verify", "edit", "reset", "enrich"):
+            conn.commit()
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

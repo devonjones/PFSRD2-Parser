@@ -7,6 +7,7 @@ from pprint import pprint
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 import pfsrd2.constants as constants
+from pfsrd2.ability_enrichment import ability_enrichment_pass
 from pfsrd2.action import build_action_type, extract_action_type
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
@@ -157,6 +158,7 @@ def parse_creature(filename, options):
     universal_trait_db_pass(struct, pre_process=_creature_trait_pre_process)
 
     monster_ability_db_pass(struct)
+    ability_enrichment_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
     markdown_pass(struct, struct["name"], "", fxn_valid_tags=markdown_valid_set)
@@ -1631,17 +1633,17 @@ def handle_aura(sb, ability):
                 m2 = re.search(r"(Fortitude|Fort|Reflex|Will|flat)\s+DC\s+(\d+)", text_stripped)
                 if m2:
                     save_text = f"DC {m2.group(2)} {m2.group(1)}"
-                    ability["saving_throw"] = universal_handle_save_dc(save_text)
+                    ability["saving_throw"] = [universal_handle_save_dc(save_text)]
                     return
                 # Standalone DC without explicit save type
                 m3 = re.search(r"DC (\d+)", text_stripped)
                 if m3:
                     save_text = f"DC {m3.group(1)}"
-                    ability["saving_throw"] = universal_handle_save_dc(save_text)
+                    ability["saving_throw"] = [universal_handle_save_dc(save_text)]
                     return
             if m:
                 save_text = f"DC {m.group(1)} {m.group(2)}"
-                ability["saving_throw"] = universal_handle_save_dc(save_text)
+                ability["saving_throw"] = [universal_handle_save_dc(save_text)]
                 return
             raise AssertionError(f"DC in text, but no save in aura: {ability}")
 
@@ -1667,10 +1669,7 @@ def handle_aura(sb, ability):
                     if "DC" in test_part:
                         save = universal_handle_save_dc(test_part.strip())
                         assert save, "Malformed range and DC: {}".format(ability["text"])
-                        assert (
-                            "saving_throw" not in ability
-                        ), f"Can't add a save_dc to an object that as a save_dc already: {ability}"
-                        ability["saving_throw"] = save
+                        ability.setdefault("saving_throw", []).append(save)
                     elif "feet" in test_part or "miles" in test_part or "mile" in test:
                         range = universal_handle_range(test_part.strip())
                         assert range, "Malformed range and DC: {}".format(ability["text"])

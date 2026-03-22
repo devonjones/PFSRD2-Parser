@@ -1062,13 +1062,25 @@ def _build_damage_effects(text):
                 },
             }
         )
+        effects.append(
+            {
+                "conditional": "$.offense.offensive_actions[*].ability.damage != null && $.offense.offensive_actions[*].ability.frequency == null",
+                "target": "$.offense.offensive_actions[*].ability.damage",
+                "operation": "add_modifier",
+                "modifier": {
+                    "type": "stat_block_section",
+                    "subtype": "modifier",
+                    "name": f"{base_val:+d} damage",
+                },
+            }
+        )
         # Check for limited-use higher value
         m2 = re.search(r"(?:increase|decrease) the damage by (\d+) instead", t)
         if m2:
             limited_val = int(m2.group(1)) * direction
             effects.append(
                 {
-                    "conditional": "$.offense.offensive_actions[*].ability.frequency != null",
+                    "conditional": "$.offense.offensive_actions[*].ability.damage != null && $.offense.offensive_actions[*].ability.frequency != null",
                     "target": "$.offense.offensive_actions[*].ability.damage",
                     "operation": "add_modifier",
                     "modifier": {
@@ -1871,7 +1883,17 @@ def _categorize_elite(mt, sign, template_name):
                     },
                 },
                 {
-                    "conditional": "$.offense.offensive_actions[*].ability.frequency != null",
+                    "conditional": "$.offense.offensive_actions[*].ability.damage != null && $.offense.offensive_actions[*].ability.frequency == null",
+                    "target": "$.offense.offensive_actions[*].ability.damage",
+                    "operation": "add_modifier",
+                    "modifier": {
+                        "type": "stat_block_section",
+                        "subtype": "modifier",
+                        "name": f"{sign * 2:+d} damage ({template_name})",
+                    },
+                },
+                {
+                    "conditional": "$.offense.offensive_actions[*].ability.damage != null && $.offense.offensive_actions[*].ability.frequency != null",
                     "target": "$.offense.offensive_actions[*].ability.damage",
                     "operation": "add_modifier",
                     "modifier": {
