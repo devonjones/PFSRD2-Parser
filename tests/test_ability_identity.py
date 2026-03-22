@@ -1,4 +1,3 @@
-import pytest
 from pfsrd2.ability_identity import compute_identity_hash, normalize_text
 
 

@@ -7,15 +7,9 @@ main DB rebuilds. It has its own migration chain.
 import os
 import sqlite3
 
-from pfsrd2.sql.enrichment.tables import (
-    create_ability_creature_links_index,
-    create_ability_creature_links_table,
-    create_ability_records_index,
-    create_ability_records_table,
-)
-
 # Re-export queries for convenient access
 from pfsrd2.sql.enrichment.queries import (  # noqa: F401
+    clear_needs_review,
     count_ability_records,
     fetch_abilities_by_name,
     fetch_abilities_for_creature,
@@ -23,19 +17,23 @@ from pfsrd2.sql.enrichment.queries import (  # noqa: F401
     fetch_ability_by_id,
     fetch_creatures_for_ability,
     fetch_needing_enrichment,
+    fetch_needs_review,
     fetch_stale,
     fetch_unenriched,
     insert_ability_record,
     insert_creature_link,
     mark_human_verified,
-    mark_stale,
-    clear_needs_review,
-    fetch_needs_review,
     mark_needs_review,
+    mark_stale,
     update_enriched_json,
     update_identity_hash,
 )
-
+from pfsrd2.sql.enrichment.tables import (
+    create_ability_creature_links_index,
+    create_ability_creature_links_table,
+    create_ability_records_index,
+    create_ability_records_table,
+)
 
 DB_NAME = "enrichment.db"
 
@@ -71,11 +69,13 @@ def _set_version(curs, ver):
 
 def _create_db_v_1(conn, curs):
     """Version 1: Create version tracking table."""
-    sql = "\n".join([
-        "CREATE TABLE IF NOT EXISTS enrichment_db_version(",
-        "  id INTEGER PRIMARY KEY,",
-        "  version INTEGER)",
-    ])
+    sql = "\n".join(
+        [
+            "CREATE TABLE IF NOT EXISTS enrichment_db_version(",
+            "  id INTEGER PRIMARY KEY,",
+            "  version INTEGER)",
+        ]
+    )
     curs.execute(sql)
     ver = _check_version(curs)
     if not ver:
@@ -104,18 +104,9 @@ def _create_db_v_3(conn, curs, ver):
     if ver >= 3:
         return ver
     ver = 3
-    curs.execute(
-        "ALTER TABLE ability_records"
-        " ADD COLUMN needs_review INTEGER DEFAULT 0"
-    )
-    curs.execute(
-        "ALTER TABLE ability_records"
-        " ADD COLUMN review_reason TEXT"
-    )
-    curs.execute(
-        "CREATE INDEX ability_records_needs_review"
-        " ON ability_records (needs_review)"
-    )
+    curs.execute("ALTER TABLE ability_records" " ADD COLUMN needs_review INTEGER DEFAULT 0")
+    curs.execute("ALTER TABLE ability_records" " ADD COLUMN review_reason TEXT")
+    curs.execute("CREATE INDEX ability_records_needs_review" " ON ability_records (needs_review)")
     _set_version(curs, ver)
     conn.commit()
     return ver

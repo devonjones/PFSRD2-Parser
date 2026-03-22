@@ -1,14 +1,13 @@
 """Tests for the regex extraction tier."""
 
-import pytest
 from pfsrd2.enrichment.regex_extractor import (
     detect_keywords,
+    extract_all,
     extract_area,
     extract_damage,
     extract_frequency,
     extract_range,
     extract_save_dc,
-    extract_all,
 )
 
 
@@ -437,6 +436,7 @@ class TestExtractAll:
 
     def test_json_string_input(self):
         import json
+
         ability = {
             "name": "Test",
             "type": "stat_block_section",

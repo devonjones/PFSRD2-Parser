@@ -1,6 +1,7 @@
 """Tests for the ability enrichment pass."""
 
 import json
+
 import pytest
 
 from pfsrd2.ability_enrichment import (
@@ -8,23 +9,20 @@ from pfsrd2.ability_enrichment import (
     _walk_abilities,
     ability_enrichment_pass,
 )
+from pfsrd2.ability_identity import (
+    compute_identity_hash,
+)
 from pfsrd2.sql.enrichment import (
     count_ability_records,
     fetch_abilities_for_creature,
     fetch_ability_by_hash,
     fetch_creatures_for_ability,
     get_enrichment_db_connection,
-    insert_ability_record,
     update_enriched_json,
 )
-from pfsrd2.ability_identity import (
-    ability_to_raw_json,
-    compute_identity_hash,
-)
 
 
-def _make_ability(name, text="", traits=None, action_type=None,
-                  frequency=None, effect=None):
+def _make_ability(name, text="", traits=None, action_type=None, frequency=None, effect=None):
     ability = {
         "type": "stat_block_section",
         "subtype": "ability",
@@ -60,13 +58,15 @@ def _make_creature(name, aonid, level, traits, source, abilities):
         elif ab_type == "reactive":
             reactive_abilities.append(ability)
         elif ab_type == "offensive":
-            offensive_actions.append({
-                "name": ability["name"],
-                "type": "stat_block_section",
-                "subtype": "offensive_action",
-                "offensive_action_type": "ability",
-                "ability": ability,
-            })
+            offensive_actions.append(
+                {
+                    "name": ability["name"],
+                    "type": "stat_block_section",
+                    "subtype": "offensive_action",
+                    "offensive_action_type": "ability",
+                    "ability": ability,
+                }
+            )
 
     return {
         "name": name,
@@ -75,9 +75,7 @@ def _make_creature(name, aonid, level, traits, source, abilities):
         "stat_block": {
             "creature_type": {
                 "level": level,
-                "traits": [
-                    {"name": t, "type": "trait"} for t in traits
-                ],
+                "traits": [{"name": t, "type": "trait"} for t in traits],
             },
             "defense": {
                 "automatic_abilities": auto_abilities,
@@ -92,10 +90,7 @@ def _make_creature(name, aonid, level, traits, source, abilities):
 
 class TestGetCreatureMetadata:
     def test_extracts_metadata(self):
-        struct = _make_creature(
-            "Adult Black Dragon", 128, 11,
-            ["Dragon", "Acid"], "Bestiary", []
-        )
+        struct = _make_creature("Adult Black Dragon", 128, 11, ["Dragon", "Acid"], "Bestiary", [])
         meta = _get_creature_metadata(struct)
         assert meta["creature_game_id"] == "128"
         assert meta["creature_name"] == "Adult Black Dragon"
@@ -111,9 +106,12 @@ class TestWalkAbilities:
         offensive = _make_ability("Breath Weapon", text="12d6 acid")
 
         struct = _make_creature(
-            "Dragon", 1, 11, [], "Bestiary",
-            [("automatic", auto), ("reactive", reactive),
-             ("offensive", offensive)]
+            "Dragon",
+            1,
+            11,
+            [],
+            "Bestiary",
+            [("automatic", auto), ("reactive", reactive), ("offensive", offensive)],
         )
         results = list(_walk_abilities(struct))
         assert [(c, a["name"]) for c, a in results] == [
@@ -153,13 +151,13 @@ class TestAbilityEnrichmentPass:
 
     def test_populates_db_on_first_run(self, db):
         breath = _make_ability(
-            "Breath Weapon", text="12d6 acid damage",
-            traits=["Acid", "Arcane"], action_type="Two Actions"
+            "Breath Weapon",
+            text="12d6 acid damage",
+            traits=["Acid", "Arcane"],
+            action_type="Two Actions",
         )
         struct = _make_creature(
-            "Adult Black Dragon", 128, 11,
-            ["Dragon", "Acid"], "Bestiary",
-            [("offensive", breath)]
+            "Adult Black Dragon", 128, 11, ["Dragon", "Acid"], "Bestiary", [("offensive", breath)]
         )
 
         ability_enrichment_pass(struct, conn=db)
@@ -176,14 +174,8 @@ class TestAbilityEnrichmentPass:
     def test_deduplicates_shared_abilities(self, db):
         grab = _make_ability("Grab", text="The creature grabs.")
 
-        struct1 = _make_creature(
-            "Goblin", 1, -1, ["Goblin"], "Bestiary",
-            [("offensive", grab)]
-        )
-        struct2 = _make_creature(
-            "Bugbear", 2, 2, ["Goblin"], "Bestiary",
-            [("offensive", grab)]
-        )
+        struct1 = _make_creature("Goblin", 1, -1, ["Goblin"], "Bestiary", [("offensive", grab)])
+        struct2 = _make_creature("Bugbear", 2, 2, ["Goblin"], "Bestiary", [("offensive", grab)])
 
         ability_enrichment_pass(struct1, conn=db)
         ability_enrichment_pass(struct2, conn=db)
@@ -200,20 +192,14 @@ class TestAbilityEnrichmentPass:
         assert creature_names == {"Goblin", "Bugbear"}
 
     def test_different_text_creates_separate_records(self, db):
-        breath_young = _make_ability(
-            "Breath Weapon", text="6d6 acid damage"
-        )
-        breath_adult = _make_ability(
-            "Breath Weapon", text="12d6 acid damage"
-        )
+        breath_young = _make_ability("Breath Weapon", text="6d6 acid damage")
+        breath_adult = _make_ability("Breath Weapon", text="12d6 acid damage")
 
         struct1 = _make_creature(
-            "Young Dragon", 1, 5, [], "Bestiary",
-            [("offensive", breath_young)]
+            "Young Dragon", 1, 5, [], "Bestiary", [("offensive", breath_young)]
         )
         struct2 = _make_creature(
-            "Adult Dragon", 2, 11, [], "Bestiary",
-            [("offensive", breath_adult)]
+            "Adult Dragon", 2, 11, [], "Bestiary", [("offensive", breath_adult)]
         )
 
         ability_enrichment_pass(struct1, conn=db)
@@ -226,10 +212,7 @@ class TestAbilityEnrichmentPass:
     def test_no_output_changes_on_first_run(self, db):
         """First run should not modify struct — just populates DB."""
         breath = _make_ability("Breath Weapon", text="12d6 acid")
-        struct = _make_creature(
-            "Dragon", 1, 11, [], "Bestiary",
-            [("offensive", breath)]
-        )
+        struct = _make_creature("Dragon", 1, 11, [], "Bestiary", [("offensive", breath)])
 
         before = json.dumps(struct, sort_keys=True)
         ability_enrichment_pass(struct, conn=db)
@@ -243,10 +226,7 @@ class TestAbilityEnrichmentPass:
             "Breath Weapon",
             text="12d6 acid damage in an 80-foot line (DC 30 basic Reflex save).",
         )
-        struct = _make_creature(
-            "Dragon", 1, 11, [], "Bestiary",
-            [("offensive", breath)]
-        )
+        struct = _make_creature("Dragon", 1, 11, [], "Bestiary", [("offensive", breath)])
 
         # First run: populate
         ability_enrichment_pass(struct, conn=db)
@@ -256,14 +236,16 @@ class TestAbilityEnrichmentPass:
         identity_hash = compute_identity_hash(breath)
         record = fetch_ability_by_hash(curs, identity_hash)
         enriched = dict(breath)
-        enriched["saving_throw"] = [{
-            "type": "stat_block_section",
-            "subtype": "save_dc",
-            "text": "DC 30 basic Reflex save",
-            "dc": 30,
-            "save_type": "Ref",
-            "basic": True,
-        }]
+        enriched["saving_throw"] = [
+            {
+                "type": "stat_block_section",
+                "subtype": "save_dc",
+                "text": "DC 30 basic Reflex save",
+                "dc": 30,
+                "save_type": "Ref",
+                "basic": True,
+            }
+        ]
         enriched["area"] = {
             "type": "stat_block_section",
             "subtype": "area",
@@ -273,9 +255,7 @@ class TestAbilityEnrichmentPass:
             "unit": "feet",
         }
         update_enriched_json(
-            curs, record["ability_id"],
-            json.dumps(enriched, sort_keys=True),
-            1, "regex"
+            curs, record["ability_id"], json.dumps(enriched, sort_keys=True), 1, "regex"
         )
         db.commit()
 
@@ -284,10 +264,7 @@ class TestAbilityEnrichmentPass:
             "Breath Weapon",
             text="12d6 acid damage in an 80-foot line (DC 30 basic Reflex save).",
         )
-        struct2 = _make_creature(
-            "Dragon", 1, 11, [], "Bestiary",
-            [("offensive", breath2)]
-        )
+        struct2 = _make_creature("Dragon", 1, 11, [], "Bestiary", [("offensive", breath2)])
         ability_enrichment_pass(struct2, conn=db)
 
         # Check ability got enriched
@@ -307,10 +284,7 @@ class TestAbilityEnrichmentPass:
             text="12d6 acid damage",
             frequency="once per day",
         )
-        struct = _make_creature(
-            "Dragon", 1, 11, [], "Bestiary",
-            [("offensive", breath)]
-        )
+        struct = _make_creature("Dragon", 1, 11, [], "Bestiary", [("offensive", breath)])
 
         # Populate
         ability_enrichment_pass(struct, conn=db)
@@ -322,9 +296,7 @@ class TestAbilityEnrichmentPass:
         enriched = dict(breath)
         enriched["frequency"] = "1d4 rounds"  # different from original
         update_enriched_json(
-            curs, record["ability_id"],
-            json.dumps(enriched, sort_keys=True),
-            1, "regex"
+            curs, record["ability_id"], json.dumps(enriched, sort_keys=True), 1, "regex"
         )
         db.commit()
 
@@ -334,10 +306,7 @@ class TestAbilityEnrichmentPass:
             text="12d6 acid damage",
             frequency="once per day",
         )
-        struct2 = _make_creature(
-            "Dragon", 1, 11, [], "Bestiary",
-            [("offensive", breath2)]
-        )
+        struct2 = _make_creature("Dragon", 1, 11, [], "Bestiary", [("offensive", breath2)])
         ability_enrichment_pass(struct2, conn=db)
 
         oa = struct2["stat_block"]["offense"]["offensive_actions"][0]
@@ -360,10 +329,7 @@ class TestAbilityEnrichmentPass:
             "dc": 36,
             "save_type": "Ref",
         }
-        struct = _make_creature(
-            "Frost Giant", 1, 14, [], "Bestiary",
-            [("offensive", breath)]
-        )
+        struct = _make_creature("Frost Giant", 1, 14, [], "Bestiary", [("offensive", breath)])
 
         ability_enrichment_pass(struct, conn=db)
 
@@ -373,16 +339,23 @@ class TestAbilityEnrichmentPass:
         record = fetch_ability_by_hash(curs, identity_hash)
         enriched = dict(breath)
         enriched["saving_throw"] = [
-            {"type": "stat_block_section", "subtype": "save_dc",
-             "text": "DC 36 basic Reflex save", "dc": 36,
-             "save_type": "Ref", "basic": True},
-            {"type": "stat_block_section", "subtype": "save_dc",
-             "text": "DC 36", "dc": 36},  # Escape DC, no save_type
+            {
+                "type": "stat_block_section",
+                "subtype": "save_dc",
+                "text": "DC 36 basic Reflex save",
+                "dc": 36,
+                "save_type": "Ref",
+                "basic": True,
+            },
+            {
+                "type": "stat_block_section",
+                "subtype": "save_dc",
+                "text": "DC 36",
+                "dc": 36,
+            },  # Escape DC, no save_type
         ]
         update_enriched_json(
-            curs, record["ability_id"],
-            json.dumps(enriched, sort_keys=True),
-            1, "regex"
+            curs, record["ability_id"], json.dumps(enriched, sort_keys=True), 1, "regex"
         )
         db.commit()
 
@@ -398,10 +371,7 @@ class TestAbilityEnrichmentPass:
             "dc": 36,
             "save_type": "Ref",
         }
-        struct2 = _make_creature(
-            "Frost Giant", 1, 14, [], "Bestiary",
-            [("offensive", breath2)]
-        )
+        struct2 = _make_creature("Frost Giant", 1, 14, [], "Bestiary", [("offensive", breath2)])
         ability_enrichment_pass(struct2, conn=db)
 
         oa = struct2["stat_block"]["offense"]["offensive_actions"][0]
@@ -416,10 +386,7 @@ class TestAbilityEnrichmentPass:
     def test_stale_enrichment_not_applied(self, db):
         """Stale enrichments should not be applied."""
         breath = _make_ability("Breath Weapon", text="12d6 acid damage")
-        struct = _make_creature(
-            "Dragon", 1, 11, [], "Bestiary",
-            [("offensive", breath)]
-        )
+        struct = _make_creature("Dragon", 1, 11, [], "Bestiary", [("offensive", breath)])
 
         ability_enrichment_pass(struct, conn=db)
 
@@ -430,20 +397,16 @@ class TestAbilityEnrichmentPass:
         enriched = dict(breath)
         enriched["saving_throw"] = [{"dc": 30}]
         update_enriched_json(
-            curs, record["ability_id"],
-            json.dumps(enriched, sort_keys=True),
-            1, "regex"
+            curs, record["ability_id"], json.dumps(enriched, sort_keys=True), 1, "regex"
         )
         from pfsrd2.sql.enrichment import mark_stale
+
         mark_stale(curs, record["ability_id"], record["raw_json"])
         db.commit()
 
         # Re-run — stale should not be applied
         breath2 = _make_ability("Breath Weapon", text="12d6 acid damage")
-        struct2 = _make_creature(
-            "Dragon", 1, 11, [], "Bestiary",
-            [("offensive", breath2)]
-        )
+        struct2 = _make_creature("Dragon", 1, 11, [], "Bestiary", [("offensive", breath2)])
         ability_enrichment_pass(struct2, conn=db)
 
         oa = struct2["stat_block"]["offense"]["offensive_actions"][0]

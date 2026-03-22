@@ -24,10 +24,7 @@ def _get_creature_metadata(struct):
     """Extract creature-level metadata for the link table."""
     sb = struct.get("stat_block", {})
     ct = sb.get("creature_type", {})
-    trait_names = [
-        t["name"] for t in ct.get("traits", [])
-        if isinstance(t, dict) and "name" in t
-    ]
+    trait_names = [t["name"] for t in ct.get("traits", []) if isinstance(t, dict) and "name" in t]
     sources = struct.get("sources", [])
     source_name = sources[0]["name"] if sources else None
     return {
@@ -67,36 +64,6 @@ def _dc_key(save_dc):
     return (save_dc.get("dc"), save_dc.get("save_type"))
 
 
-def _merge_saving_throws(ability, enriched):
-    """Merge saving_throw lists, deduplicating by DC+save_type.
-
-    Handles both single object and array formats from parser/enrichment.
-    Always produces an array.
-    """
-    existing = ability.get("saving_throw")
-    new = enriched.get("saving_throw")
-    if not new:
-        return
-
-    # Normalize both to lists
-    if existing and not isinstance(existing, list):
-        existing = [existing]
-    elif not existing:
-        existing = []
-    if not isinstance(new, list):
-        new = [new]
-
-    # Deduplicate: keep existing, add new DCs not already present
-    existing_keys = {_dc_key(s) for s in existing}
-    for save in new:
-        if _dc_key(save) not in existing_keys:
-            existing.append(save)
-            existing_keys.add(_dc_key(save))
-
-    if existing:
-        ability["saving_throw"] = existing
-
-
 def _normalize_to_list(value):
     """Normalize a value to a list."""
     if isinstance(value, list):
@@ -111,15 +78,14 @@ def _area_key(area):
 
 def _damage_key(damage):
     """Identity key for deduplicating damage."""
-    return (damage.get("formula"), damage.get("damage_type"),
-            damage.get("persistent", False))
+    return (damage.get("formula"), damage.get("damage_type"), damage.get("persistent", False))
 
 
 def _merge_list_field(ability, enriched, field, key_fn):
     """Merge a list field, deduplicating by key function.
 
     Handles both single object and array formats.
-    Produces an array if there are multiple items, single object if one.
+    Produces an array.
     """
     new = enriched.get(field)
     if not new:
@@ -182,17 +148,14 @@ def ability_enrichment_pass(struct, conn=None):
             existing = fetch_ability_by_hash(curs, identity_hash)
 
             if existing is None:
-                ability_id = insert_ability_record(
-                    curs, ability["name"], identity_hash, raw_json
-                )
+                ability_id = insert_ability_record(curs, ability["name"], identity_hash, raw_json)
             else:
                 ability_id = existing["ability_id"]
                 if existing["raw_json"] != raw_json:
                     mark_stale(curs, ability_id, raw_json)
 
                 # Apply enrichment if available and not stale
-                if (existing["enriched_json"]
-                        and not existing["stale"]):
+                if existing["enriched_json"] and not existing["stale"]:
                     _merge_enrichment(ability, existing["enriched_json"])
 
             insert_creature_link(

@@ -7,16 +7,40 @@ Each extractor returns a structured object or None.
 import json
 import re
 
-
 # --- Damage type mapping ---
 
 # Single-word damage types that appear in "XdY <type> damage" patterns
 DAMAGE_TYPES = {
-    "acid", "astral", "bleed", "bludgeoning", "cold", "electricity",
-    "elemental", "energy", "evil", "fire", "force", "good", "holy",
-    "lawful", "chaotic", "mental", "negative", "nonlethal", "physical",
-    "piercing", "poison", "positive", "precision", "slashing", "sonic",
-    "spirit", "split", "unholy", "vitality", "void",
+    "acid",
+    "astral",
+    "bleed",
+    "bludgeoning",
+    "cold",
+    "electricity",
+    "elemental",
+    "energy",
+    "evil",
+    "fire",
+    "force",
+    "good",
+    "holy",
+    "lawful",
+    "chaotic",
+    "mental",
+    "negative",
+    "nonlethal",
+    "physical",
+    "piercing",
+    "poison",
+    "positive",
+    "precision",
+    "slashing",
+    "sonic",
+    "spirit",
+    "split",
+    "unholy",
+    "vitality",
+    "void",
 }
 
 # Multi-word damage types (check these before single-word)
@@ -82,7 +106,7 @@ def _extract_trailing_modifier(text, match_end):
             "subtype": "modifier",
             "name": mod_text,
         }
-        return [modifier], text[match_end - len(text):match_end] + m.group(0)
+        return [modifier], text[match_end - len(text) : match_end] + m.group(0)
     return [], None
 
 
@@ -193,14 +217,16 @@ def extract_area(text):
         key = (size, shape, unit)
         if key not in seen:
             seen.add(key)
-            results.append({
-                "type": "stat_block_section",
-                "subtype": "area",
-                "text": m.group(0),
-                "shape": shape,
-                "size": size,
-                "unit": unit,
-            })
+            results.append(
+                {
+                    "type": "stat_block_section",
+                    "subtype": "area",
+                    "text": m.group(0),
+                    "shape": shape,
+                    "size": size,
+                    "unit": unit,
+                }
+            )
     return results
 
 
@@ -239,18 +265,13 @@ _TYPE = r"(\w+)"
 _DAMAGE_PATTERNS = [
     # Pattern 1: "XdY[+/-Z] [persistent] <type> damage"
     re.compile(
-        _DICE + r"\s+"
-        r"(persistent\s+)?"
-        r"(\w+(?:\s*,?\s*(?:or|and)\s+\w+)*)"
-        r"\s+damage",
+        _DICE + r"\s+" r"(persistent\s+)?" r"(\w+(?:\s*,?\s*(?:or|and)\s+\w+)*)" r"\s+damage",
         re.IGNORECASE,
     ),
     # Pattern 2: "XdY <type> and/plus XdY <type> damage"
     # Captures the first part that would otherwise be missed
     re.compile(
-        _DICE + r"\s+" + _TYPE
-        + r"\s+(?:and|plus)\s+"
-        + _DICE + r"\s+\w+\s+damage",
+        _DICE + r"\s+" + _TYPE + r"\s+(?:and|plus)\s+" + _DICE + r"\s+\w+\s+damage",
         re.IGNORECASE,
     ),
     # Pattern 3: "XdY damage" (untyped — no type word)
@@ -265,20 +286,12 @@ _DAMAGE_PATTERNS = [
     ),
     # Pattern 5: "extra/additional XdY <type> damage"
     re.compile(
-        r"(?:extra|additional)\s+"
-        + _DICE + r"\s+"
-        r"(persistent\s+)?"
-        + _TYPE
-        + r"\s+damage",
+        r"(?:extra|additional)\s+" + _DICE + r"\s+" r"(persistent\s+)?" + _TYPE + r"\s+damage",
         re.IGNORECASE,
     ),
     # Pattern 6: "XdY extra/additional <type> damage"
     re.compile(
-        _DICE
-        + r"\s+(?:extra|additional)\s+"
-        r"(persistent\s+)?"
-        + _TYPE
-        + r"\s+damage",
+        _DICE + r"\s+(?:extra|additional)\s+" r"(persistent\s+)?" + _TYPE + r"\s+damage",
         re.IGNORECASE,
     ),
 ]
@@ -382,7 +395,9 @@ _FREQUENCY_PATTERNS = [
     # "can't be used again for", "can't make a X again for"
     # Also handles "1d4+1 rounds" dice expressions with modifiers
     re.compile(
-        r"(?:can[\u2019']t|cannot) (?:be )?\w+ .{0,60}?again for (\d+d?\d*(?:\s*[+\-]\s*\d+)?\s+" + _TIME_UNITS + r")",
+        r"(?:can[\u2019']t|cannot) (?:be )?\w+ .{0,60}?again for (\d+d?\d*(?:\s*[+\-]\s*\d+)?\s+"
+        + _TIME_UNITS
+        + r")",
         re.IGNORECASE,
     ),
     # "can't be reactivated for X" — different verb pattern
@@ -401,8 +416,7 @@ _FREQUENCY_PATTERNS = [
         re.IGNORECASE,
     ),
     re.compile(
-        r"((?:two|three|four|five|six|seven|eight|nine|ten)"
-        r" times per " + _TIME_UNITS + r")",
+        r"((?:two|three|four|five|six|seven|eight|nine|ten)" r" times per " + _TIME_UNITS + r")",
         re.IGNORECASE,
     ),
 ]
@@ -519,7 +533,9 @@ _FALSE_ALARM_PATTERNS = {
         re.compile(r"victim.s (?:Fortitude|Reflex|Will) DC", re.I),
         re.compile(r"enemy.s (?:Fortitude|Reflex|Will) DC", re.I),
         # Skill DCs — creature's own skill used as DC
-        re.compile(r"(?:Athletics|Intimidation|Deception|Stealth|Perception|Performance) DC\b", re.I),
+        re.compile(
+            r"(?:Athletics|Intimidation|Deception|Stealth|Perception|Performance) DC\b", re.I
+        ),
         re.compile(r"(?:Sailing|Piloting|Legal) Lore DC\b", re.I),
         # "flat check to target" — not a save DC
         re.compile(r"flat check to target", re.I),
@@ -555,8 +571,13 @@ _FALSE_ALARM_PATTERNS = {
     ],
     "area": [
         # Speed bonuses, not areas
-        re.compile(r"[+-]\d+[- ]foot .{0,20}(?:bonus|penalty|circumstance|status) .{0,10}(?:to |Speed)", re.I),
-        re.compile(r"(?:bonus|penalty|circumstance|status) .{0,10}(?:to |Speed).{0,10}\d+[- ]foot", re.I),
+        re.compile(
+            r"[+-]\d+[- ]foot .{0,20}(?:bonus|penalty|circumstance|status) .{0,10}(?:to |Speed)",
+            re.I,
+        ),
+        re.compile(
+            r"(?:bonus|penalty|circumstance|status) .{0,10}(?:to |Speed).{0,10}\d+[- ]foot", re.I
+        ),
         re.compile(r"\d+[- ]foot[- ]circumstance", re.I),
         re.compile(r"\d+[- ]foot[- ]status", re.I),
         # Troop movement ("20-foot-by-20-foot area") — consumes 2 keyword matches
@@ -642,6 +663,7 @@ def _count_false_alarms(keyword, text):
 
 # --- Top-level extraction ---
 
+
 def extract_all(ability_json):
     """Run all extractors on an ability object.
 
@@ -708,7 +730,9 @@ def extract_all(ability_json):
             changed = True
             extracted_counts["damage"] = len(damages)
     else:
-        extracted_counts["damage"] = len(ability_json["damage"]) if isinstance(ability_json["damage"], list) else 1
+        extracted_counts["damage"] = (
+            len(ability_json["damage"]) if isinstance(ability_json["damage"], list) else 1
+        )
 
     if not ability_json.get("frequency"):
         freq = extract_frequency(combined)

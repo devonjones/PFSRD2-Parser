@@ -1,5 +1,8 @@
 import json
+import sqlite3
+
 import pytest
+
 from pfsrd2.sql.enrichment import (
     count_ability_records,
     fetch_abilities_by_name,
@@ -51,23 +54,23 @@ class TestAbilityRecordCRUD:
 
     def test_fetch_by_name(self, db):
         curs = db.cursor()
-        insert_ability_record(curs, "Grab", "hash1", '{}')
-        insert_ability_record(curs, "Grab", "hash2", '{}')
-        insert_ability_record(curs, "Push", "hash3", '{}')
+        insert_ability_record(curs, "Grab", "hash1", "{}")
+        insert_ability_record(curs, "Grab", "hash2", "{}")
+        insert_ability_record(curs, "Push", "hash3", "{}")
         db.commit()
         rows = fetch_abilities_by_name(curs, "Grab")
         assert len(rows) == 2
 
     def test_unique_hash_constraint(self, db):
         curs = db.cursor()
-        insert_ability_record(curs, "Grab", "hash123", '{}')
+        insert_ability_record(curs, "Grab", "hash123", "{}")
         db.commit()
-        with pytest.raises(Exception):
-            insert_ability_record(curs, "Grab", "hash123", '{}')
+        with pytest.raises(sqlite3.IntegrityError):
+            insert_ability_record(curs, "Grab", "hash123", "{}")
 
     def test_update_enrichment(self, db):
         curs = db.cursor()
-        aid = insert_ability_record(curs, "Grab", "hash123", '{}')
+        aid = insert_ability_record(curs, "Grab", "hash123", "{}")
         db.commit()
         enriched = json.dumps({"name": "Grab", "saving_throw": {"dc": 20}})
         update_enriched_json(curs, aid, enriched, 1, "regex")
@@ -91,7 +94,7 @@ class TestAbilityRecordCRUD:
 
     def test_mark_human_verified(self, db):
         curs = db.cursor()
-        aid = insert_ability_record(curs, "Grab", "hash123", '{}')
+        aid = insert_ability_record(curs, "Grab", "hash123", "{}")
         db.commit()
         mark_human_verified(curs, aid, True)
         db.commit()
@@ -100,9 +103,9 @@ class TestAbilityRecordCRUD:
 
     def test_fetch_unenriched(self, db):
         curs = db.cursor()
-        insert_ability_record(curs, "Grab", "hash1", '{}')
-        aid2 = insert_ability_record(curs, "Push", "hash2", '{}')
-        update_enriched_json(curs, aid2, '{}', 1, "regex")
+        insert_ability_record(curs, "Grab", "hash1", "{}")
+        aid2 = insert_ability_record(curs, "Push", "hash2", "{}")
+        update_enriched_json(curs, aid2, "{}", 1, "regex")
         db.commit()
         rows = fetch_unenriched(curs)
         assert len(rows) == 1
@@ -110,8 +113,8 @@ class TestAbilityRecordCRUD:
 
     def test_fetch_stale(self, db):
         curs = db.cursor()
-        aid = insert_ability_record(curs, "Grab", "hash1", '{}')
-        insert_ability_record(curs, "Push", "hash2", '{}')
+        aid = insert_ability_record(curs, "Grab", "hash1", "{}")
+        insert_ability_record(curs, "Push", "hash2", "{}")
         mark_stale(curs, aid, '{"new": true}')
         db.commit()
         rows = fetch_stale(curs)
@@ -120,14 +123,14 @@ class TestAbilityRecordCRUD:
 
     def test_fetch_needing_enrichment(self, db):
         curs = db.cursor()
-        aid1 = insert_ability_record(curs, "Grab", "hash1", '{}')
-        aid2 = insert_ability_record(curs, "Push", "hash2", '{}')
-        aid3 = insert_ability_record(curs, "Trip", "hash3", '{}')
+        aid1 = insert_ability_record(curs, "Grab", "hash1", "{}")
+        insert_ability_record(curs, "Push", "hash2", "{}")
+        aid3 = insert_ability_record(curs, "Trip", "hash3", "{}")
         # aid1: enriched at version 1
-        update_enriched_json(curs, aid1, '{}', 1, "regex")
+        update_enriched_json(curs, aid1, "{}", 1, "regex")
         # aid2: unenriched
         # aid3: enriched and human verified
-        update_enriched_json(curs, aid3, '{}', 1, "manual")
+        update_enriched_json(curs, aid3, "{}", 1, "manual")
         mark_human_verified(curs, aid3)
         db.commit()
         # current version 2: should get aid1 (old version) and aid2 (unenriched)
@@ -139,10 +142,16 @@ class TestAbilityRecordCRUD:
 class TestCreatureLinkCRUD:
     def test_insert_and_fetch(self, db):
         curs = db.cursor()
-        aid = insert_ability_record(curs, "Grab", "hash1", '{}')
+        aid = insert_ability_record(curs, "Grab", "hash1", "{}")
         insert_creature_link(
-            curs, aid, "game-id-1", "Goblin Warrior", -1,
-            ["Goblin", "Humanoid"], "Bestiary", "offensive"
+            curs,
+            aid,
+            "game-id-1",
+            "Goblin Warrior",
+            -1,
+            ["Goblin", "Humanoid"],
+            "Bestiary",
+            "offensive",
         )
         db.commit()
         links = fetch_creatures_for_ability(curs, aid)
@@ -154,7 +163,7 @@ class TestCreatureLinkCRUD:
 
     def test_multiple_creatures_same_ability(self, db):
         curs = db.cursor()
-        aid = insert_ability_record(curs, "Grab", "hash1", '{}')
+        aid = insert_ability_record(curs, "Grab", "hash1", "{}")
         insert_creature_link(curs, aid, "gid-1", "Goblin", -1, [], "Bestiary", "offensive")
         insert_creature_link(curs, aid, "gid-2", "Bugbear", 2, [], "Bestiary", "offensive")
         db.commit()
@@ -163,7 +172,7 @@ class TestCreatureLinkCRUD:
 
     def test_upsert_on_duplicate(self, db):
         curs = db.cursor()
-        aid = insert_ability_record(curs, "Grab", "hash1", '{}')
+        aid = insert_ability_record(curs, "Grab", "hash1", "{}")
         insert_creature_link(curs, aid, "gid-1", "Goblin", -1, [], "Bestiary", "offensive")
         # Update level for same creature+ability
         insert_creature_link(curs, aid, "gid-1", "Goblin", 0, [], "Bestiary", "offensive")
@@ -174,8 +183,8 @@ class TestCreatureLinkCRUD:
 
     def test_fetch_abilities_for_creature(self, db):
         curs = db.cursor()
-        aid1 = insert_ability_record(curs, "Grab", "hash1", '{}')
-        aid2 = insert_ability_record(curs, "Push", "hash2", '{}')
+        aid1 = insert_ability_record(curs, "Grab", "hash1", "{}")
+        aid2 = insert_ability_record(curs, "Push", "hash2", "{}")
         insert_creature_link(curs, aid1, "gid-1", "Goblin", -1, [], "B", "offensive")
         insert_creature_link(curs, aid2, "gid-1", "Goblin", -1, [], "B", "automatic")
         db.commit()
@@ -188,12 +197,12 @@ class TestCreatureLinkCRUD:
 class TestCounts:
     def test_count_ability_records(self, db):
         curs = db.cursor()
-        aid1 = insert_ability_record(curs, "Grab", "h1", '{}')
-        aid2 = insert_ability_record(curs, "Push", "h2", '{}')
-        aid3 = insert_ability_record(curs, "Trip", "h3", '{}')
-        update_enriched_json(curs, aid1, '{}', 1, "regex")
-        mark_stale(curs, aid2, '{}')
-        update_enriched_json(curs, aid3, '{}', 1, "manual")
+        aid1 = insert_ability_record(curs, "Grab", "h1", "{}")
+        aid2 = insert_ability_record(curs, "Push", "h2", "{}")
+        aid3 = insert_ability_record(curs, "Trip", "h3", "{}")
+        update_enriched_json(curs, aid1, "{}", 1, "regex")
+        mark_stale(curs, aid2, "{}")
+        update_enriched_json(curs, aid3, "{}", 1, "manual")
         mark_human_verified(curs, aid3)
         db.commit()
         counts = count_ability_records(curs)

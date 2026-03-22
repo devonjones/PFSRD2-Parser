@@ -6,7 +6,10 @@ test cases.
 """
 
 import json
+import re
 import subprocess
+
+from pfsrd2.enrichment.regex_extractor import _resolve_damage_type
 
 DEFAULT_MODEL = "qwen2.5:7b"
 OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -15,15 +18,19 @@ OLLAMA_URL = "http://localhost:11434/api/generate"
 def _query_ollama(prompt, model=None):
     """Send a prompt to the local Ollama instance and return the response."""
     model = model or DEFAULT_MODEL
-    payload = json.dumps({
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-    })
+    payload = json.dumps(
+        {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+        }
+    )
     try:
         result = subprocess.run(
             ["curl", "-s", OLLAMA_URL, "-d", payload],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         if result.returncode != 0:
             return None
@@ -125,16 +132,24 @@ Areas:"""
 
 # --- Extraction functions ---
 
+
 def _clean_llm_response(response):
     """Clean up LLM response, filtering noise and normalizing format."""
     if not response:
         return None
     lower = response.lower()
     # Filter obvious non-answers
-    if any(phrase in lower for phrase in [
-        "no frequency", "no instances", "none found", "not found",
-        "no constraints", "there are no",
-    ]):
+    if any(
+        phrase in lower
+        for phrase in [
+            "no frequency",
+            "no instances",
+            "none found",
+            "not found",
+            "no constraints",
+            "there are no",
+        ]
+    ):
         return None
     if lower.strip() == "none":
         return None
@@ -216,7 +231,6 @@ _SHAPE_MAP = {
 
 def _parse_area_response(parts):
     """Parse area response parts into structured area objects."""
-    import re
     areas = []
     seen = set()
     pattern = re.compile(r"(\d+)[- ](?:foot|mile)\s+(\w+)", re.I)
@@ -233,14 +247,16 @@ def _parse_area_response(parts):
             if key in seen:
                 continue
             seen.add(key)
-            areas.append({
-                "type": "stat_block_section",
-                "subtype": "area",
-                "text": part.strip(),
-                "shape": shape,
-                "size": size,
-                "unit": unit,
-            })
+            areas.append(
+                {
+                    "type": "stat_block_section",
+                    "subtype": "area",
+                    "text": part.strip(),
+                    "shape": shape,
+                    "size": size,
+                    "unit": unit,
+                }
+            )
     return areas if areas else None
 
 
@@ -250,14 +266,16 @@ def _parse_dc_response(parts, original_text=""):
     Validates extracted DCs against the original text to prevent
     hallucinations (e.g., model extracting "60" from "60-foot").
     """
-    import re
     saves = []
     seen = set()
     save_type_map = {
-        "fortitude": "Fort", "fort": "Fort",
-        "reflex": "Ref", "ref": "Ref",
+        "fortitude": "Fort",
+        "fort": "Fort",
+        "reflex": "Ref",
+        "ref": "Ref",
         "will": "Will",
-        "flat check": "Flat Check", "flat": "Flat Check",
+        "flat check": "Flat Check",
+        "flat": "Flat Check",
     }
 
     # Build set of DCs actually present in original text
@@ -306,8 +324,6 @@ def _parse_dc_response(parts, original_text=""):
 
 def _parse_damage_response(parts):
     """Parse damage response parts into structured attack_damage objects."""
-    import re
-    from pfsrd2.enrichment.regex_extractor import _resolve_damage_type
     damages = []
     seen = set()
     for part in parts:
@@ -318,7 +334,7 @@ def _parse_damage_response(parts):
         lower = part.lower()
         is_persistent = "persistent" in lower
         # Try to find damage type after the formula
-        remaining = part[m.end():].strip().lower()
+        remaining = part[m.end() :].strip().lower()
         # Remove "persistent" to find the type
         remaining = remaining.replace("persistent", "").strip()
         damage_type = None

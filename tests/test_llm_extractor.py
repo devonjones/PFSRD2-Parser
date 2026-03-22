@@ -13,7 +13,6 @@ These tests are designed to validate model upgrades — if you switch
 models, run these to confirm the new model handles the same cases.
 """
 
-import json
 import subprocess
 
 import pytest
@@ -23,7 +22,9 @@ def ollama_available():
     try:
         result = subprocess.run(
             ["curl", "-s", "http://localhost:11434/api/tags"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.returncode == 0
     except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -42,6 +43,7 @@ class TestFrequencyLLM:
 
     def _extract(self, name, text):
         from pfsrd2.enrichment.llm_extractor import extract_frequency_llm
+
         return extract_frequency_llm(name, text)
 
     def test_breath_weapon_recharge(self):
@@ -102,8 +104,7 @@ class TestFrequencyLLM:
     def test_simple_once_per_day(self):
         result = self._extract(
             "Corrupt Water",
-            "The dragon permanently befouls 10 cubic feet of liquid within "
-            "90 feet.",
+            "The dragon permanently befouls 10 cubic feet of liquid within " "90 feet.",
         )
         # No frequency in this text
         assert result is None
@@ -142,6 +143,7 @@ class TestAreaLLM:
 
     def _extract(self, name, text):
         from pfsrd2.enrichment.llm_extractor import extract_area_llm
+
         return extract_area_llm(name, text)
 
     def test_chimera_dual_area(self):
@@ -204,13 +206,13 @@ class TestDCLLM:
 
     def _extract(self, name, text):
         from pfsrd2.enrichment.llm_extractor import extract_dc_llm
+
         return extract_dc_llm(name, text)
 
     def test_escape_dc_from_text(self):
         result = self._extract(
             "Hurl Net",
-            "On a hit, the target is flat-footed. "
-            "The DC to Escape the net is 16.",
+            "On a hit, the target is flat-footed. " "The DC to Escape the net is 16.",
         )
         assert result is not None
         assert any(s["dc"] == 16 for s in result)
@@ -243,8 +245,7 @@ class TestDCLLM:
     def test_variable_dc_not_extracted(self):
         result = self._extract(
             "Infectious Aura",
-            "all adjacent creatures are exposed to the same disease, "
-            "at the same DC.",
+            "all adjacent creatures are exposed to the same disease, " "at the same DC.",
         )
         assert result is None
 
@@ -264,6 +265,7 @@ class TestDamageLLM:
 
     def _extract(self, name, text):
         from pfsrd2.enrichment.llm_extractor import extract_damage_llm
+
         return extract_damage_llm(name, text)
 
     def test_untyped_extra_damage(self):
@@ -282,8 +284,7 @@ class TestDamageLLM:
             "damage at the end of each of its turns.",
         )
         assert result is not None
-        assert any(d["formula"] == "2d6" and d.get("damage_type") == "fire"
-                   for d in result)
+        assert any(d["formula"] == "2d6" and d.get("damage_type") == "fire" for d in result)
 
     def test_combine_damage_not_extracted(self):
         result = self._extract(
@@ -302,8 +303,7 @@ class TestDamageLLM:
     def test_untyped_with_dc(self):
         result = self._extract(
             "Resanguinate",
-            "any living creature within 30 feet takes 4d6 damage "
-            "(DC 33 basic Fortitude save).",
+            "any living creature within 30 feet takes 4d6 damage " "(DC 33 basic Fortitude save).",
         )
         assert result is not None
         assert any(d["formula"] == "4d6" for d in result)
@@ -314,5 +314,4 @@ class TestDamageLLM:
             "6d6 spirit, DC 30 The failed prophet exerts control.",
         )
         assert result is not None
-        assert any(d["formula"] == "6d6" and d.get("damage_type") == "spirit"
-                   for d in result)
+        assert any(d["formula"] == "6d6" and d.get("damage_type") == "spirit" for d in result)

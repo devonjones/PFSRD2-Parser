@@ -27,8 +27,7 @@ def compute_identity_hash(ability):
     parts = []
 
     # Core identity fields (order matters for hash stability)
-    for field in ("name", "text", "effect", "frequency", "trigger",
-                  "requirement", "cost"):
+    for field in ("name", "text", "effect", "frequency", "trigger", "requirement", "cost"):
         parts.append(normalize_text(ability.get(field, "")))
 
     # Action type name
