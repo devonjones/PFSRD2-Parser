@@ -6613,16 +6613,17 @@ def _normalize_range(sb):
     if "range" not in sb:
         return
 
-    value_str = sb["range"]
-    if not value_str:
+    original_text = sb["range"]
+    if not original_text:
         return
 
     # Em dash means no range - remove the field
-    if value_str.strip() == "—":
+    if original_text.strip() == "—":
         del sb["range"]
         return
 
     # Extract unit and value
+    value_str = original_text
     unit = None
     if value_str.endswith(" ft."):
         unit = "feet"
@@ -6633,8 +6634,13 @@ def _normalize_range(sb):
 
     # Parse to int
     value = int(value_str.strip())
-    # Create range object
-    range_obj = {"type": "stat_block_section", "subtype": "range", "value": value}
+    # Create range object matching creature/spell range schema
+    range_obj = {
+        "type": "stat_block_section",
+        "subtype": "range",
+        "text": original_text,
+        "range": value,
+    }
     if unit:
         range_obj["unit"] = unit
     sb["range"] = range_obj
