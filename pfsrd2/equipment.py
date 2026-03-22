@@ -6635,14 +6635,14 @@ def _normalize_range(sb):
     # Parse to int
     value = int(value_str.strip())
     # Create range object matching creature/spell range schema
+    # Equipment ranges are always in feet
     range_obj = {
         "type": "stat_block_section",
         "subtype": "range",
         "text": original_text,
         "range": value,
+        "unit": unit or "feet",
     }
-    if unit:
-        range_obj["unit"] = unit
     sb["range"] = range_obj
 
 

@@ -846,7 +846,7 @@ def _parse_spell_range(text):
     if lower.startswith("touch or "):
         result["touch"] = True
         # Try to extract the numeric part
-        remainder = text[len("touch or "):]
+        remainder = text[len("touch or ") :]
         parsed = _parse_distance(remainder)
         if parsed:
             result["range"] = parsed[0]
@@ -896,7 +896,10 @@ def _parse_spell_area(text):
             areas.append(area)
 
     if areas:
-        return areas if len(areas) > 1 else areas[0]
+        # For compound areas, return the first parsed area but keep full text
+        result = areas[0]
+        result["text"] = text
+        return result
 
     # Unparseable — return as text-only object
     return {
@@ -906,9 +909,7 @@ def _parse_spell_area(text):
     }
 
 
-_DISTANCE_PATTERN = re.compile(
-    r"^([\d,]+)\s*(feet|foot|ft|miles?|Feet)(?:\s|$)", re.I
-)
+_DISTANCE_PATTERN = re.compile(r"^([\d,]+)\s*(feet|foot|ft|miles?|Feet)(?:\s|$)", re.I)
 
 _AREA_PATTERN_SPELL = re.compile(
     r"(\d+)[- ](?:foot|mile)(?:[- ]radius)?\s*(line|cone|burst|emanation|wall|cylinder)",
@@ -935,7 +936,7 @@ def _parse_distance(text):
     text = text.strip()
     # Strip trailing parenthetical modifiers
     if "(" in text:
-        text = text[:text.index("(")].strip()
+        text = text[: text.index("(")].strip()
     m = _DISTANCE_PATTERN.match(text)
     if m:
         value = int(m.group(1).replace(",", ""))

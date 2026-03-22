@@ -270,7 +270,7 @@
 				"range": {"type": "integer"},
 				"unit": {"enum": ["feet"]}
 			},
-			"required": ["type", "subtype", "text", "range"],
+			"required": ["type", "subtype", "text", "range", "unit"],
 			"additionalProperties": false
 		},
 		"reload": {
