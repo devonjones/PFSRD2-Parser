@@ -8,6 +8,13 @@ import subprocess
 import sys
 import tempfile
 
+from pfsrd2.enrichment.llm_extractor import (
+    extract_area_llm,
+    extract_damage_llm,
+    extract_dc_llm,
+    extract_frequency_llm,
+)
+from pfsrd2.enrichment.regex_extractor import extract_all
 from pfsrd2.sql.enrichment import (
     clear_needs_review,
     count_ability_records,
@@ -288,14 +295,6 @@ def cmd_reset(curs, args):
 
 def cmd_enrich(curs, args):
     """Run enrichment (regex + LLM) for a single creature's abilities."""
-    from pfsrd2.enrichment.llm_extractor import (
-        extract_area_llm,
-        extract_damage_llm,
-        extract_dc_llm,
-        extract_frequency_llm,
-    )
-    from pfsrd2.enrichment.regex_extractor import extract_all
-
     creature_id = _resolve_creature_id(curs, args.creature_id)
     if not creature_id:
         return
