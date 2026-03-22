@@ -864,7 +864,7 @@ def _parse_spell_range(text):
     area = _parse_single_area(text)
     if area:
         # These are areas misplaced in range — keep as range object but
-        # store the area shape info too. The text preserves what AoN said.
+        # store the area size as the range. The text preserves what AoN said.
         result["range"] = area["size"]
         result["unit"] = area["unit"]
         return result
@@ -912,7 +912,7 @@ def _parse_spell_area(text):
 _DISTANCE_PATTERN = re.compile(r"^([\d,]+)\s*(feet|foot|ft|miles?|Feet)(?:\s|$)", re.I)
 
 _AREA_PATTERN_SPELL = re.compile(
-    r"(\d+)[- ](?:foot|mile)(?:[- ]radius)?\s*(line|cone|burst|emanation|wall|cylinder)",
+    r"(\d+)[- ](foot|mile)(?:[- ]radius)?\s*(line|cone|burst|emanation|wall|cylinder)",
     re.I,
 )
 
@@ -966,8 +966,9 @@ def _parse_single_area(text):
     m = _AREA_PATTERN_SPELL.search(text)
     if m:
         size = int(m.group(1))
-        shape = _SHAPE_MAP_SPELL[m.group(2).lower()]
-        unit = "miles" if "mile" in m.group(0).lower() else "feet"
+        raw_unit = m.group(2).lower()
+        shape = _SHAPE_MAP_SPELL[m.group(3).lower()]
+        unit = "miles" if raw_unit == "mile" else "feet"
         return {
             "type": "stat_block_section",
             "subtype": "area",
