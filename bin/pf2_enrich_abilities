@@ -28,6 +28,38 @@ from pfsrd2.sql.enrichment import (
 ENRICHMENT_VERSION = 2
 
 
+def _format_regex_result(result, ability):
+    """Format extracted fields for dry-run display. Returns list of field strings."""
+    new_fields = []
+    if "saving_throw" in result and "saving_throw" not in ability:
+        for st in result["saving_throw"]:
+            new_fields.append(f"DC {st['dc']}")
+    if "area" in result and "area" not in ability:
+        areas = result["area"] if isinstance(result["area"], list) else [result["area"]]
+        for a in areas:
+            new_fields.append(f"{a['size']}-foot {a['shape']}")
+    if "damage" in result and "damage" not in ability:
+        d = result["damage"]
+        new_fields.append(
+            ", ".join(f"{x['formula']} {x.get('damage_type', 'untyped')}" for x in d)
+        )
+    if "frequency" in result and not ability.get("frequency"):
+        new_fields.append(f"freq: {result['frequency']}")
+    return new_fields
+
+
+def _format_missed_reason(missed):
+    """Format missed-keyword dict into a review reason string."""
+    parts = []
+    for kw in sorted(missed):
+        det, ext = missed[kw]
+        if ext == 0:
+            parts.append(f"{kw}({det})")
+        else:
+            parts.append(f"{kw}({ext}/{det})")
+    return "unextracted: " + ", ".join(parts)
+
+
 def run_regex(conn, args):
     """Run regex extraction on unenriched records."""
     curs = conn.cursor()
@@ -50,21 +82,7 @@ def run_regex(conn, args):
             enriched_json = json.dumps(result, sort_keys=True, ensure_ascii=False)
             if args.dry_run:
                 ability = json.loads(raw)
-                new_fields = []
-                if "saving_throw" in result and "saving_throw" not in ability:
-                    for st in result["saving_throw"]:
-                        new_fields.append(f"DC {st['dc']}")
-                if "area" in result and "area" not in ability:
-                    areas = result["area"] if isinstance(result["area"], list) else [result["area"]]
-                    for a in areas:
-                        new_fields.append(f"{a['size']}-foot {a['shape']}")
-                if "damage" in result and "damage" not in ability:
-                    d = result["damage"]
-                    new_fields.append(
-                        ", ".join(f"{x['formula']} {x.get('damage_type', 'untyped')}" for x in d)
-                    )
-                if "frequency" in result and not ability.get("frequency"):
-                    new_fields.append(f"freq: {result['frequency']}")
+                new_fields = _format_regex_result(result, ability)
                 if new_fields:
                     print(f"  {record['name']}: {' | '.join(new_fields)}")
             else:
@@ -74,14 +92,7 @@ def run_regex(conn, args):
             enriched_count += 1
 
         if missed:
-            parts = []
-            for kw in sorted(missed):
-                det, ext = missed[kw]
-                if ext == 0:
-                    parts.append(f"{kw}({det})")
-                else:
-                    parts.append(f"{kw}({ext}/{det})")
-            reason = "unextracted: " + ", ".join(parts)
+            reason = _format_missed_reason(missed)
             if args.dry_run:
                 print(f"  [FLAG] {record['name']}: {reason}")
             else:
