@@ -9,7 +9,7 @@ import json
 import re
 import subprocess
 
-from pfsrd2.enrichment.regex_extractor import _resolve_damage_type
+from pfsrd2.enrichment.regex_extractor import _SHAPE_MAP, _resolve_damage_type
 
 DEFAULT_MODEL = "qwen2.5:7b"
 OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -216,17 +216,6 @@ Ability: {name}
 Text: {text}
 
 DCs found:"""
-
-
-_SHAPE_MAP = {
-    "line": "line",
-    "cone": "cone",
-    "burst": "burst",
-    "emanation": "emanation",
-    "wall": "wall",
-    "cylinder": "cylinder",
-    "radius": "burst",
-}
 
 
 def _parse_area_response(parts):

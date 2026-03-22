@@ -1,4 +1,4 @@
-from pfsrd2.ability_identity import compute_identity_hash, normalize_text
+from pfsrd2.ability_identity import ability_to_raw_json, compute_identity_hash, normalize_text
 
 
 class TestNormalizeText:
@@ -144,3 +144,19 @@ class TestComputeIdentityHash:
             "text": "The creature grabs.",
         }
         assert compute_identity_hash(a1) == compute_identity_hash(a2)
+
+
+class TestAbilityToRawJson:
+    def test_deterministic(self):
+        ability = {"name": "Grab", "text": "The creature grabs.", "type": "ability"}
+        assert ability_to_raw_json(ability) == ability_to_raw_json(ability)
+
+    def test_sorted_keys(self):
+        a1 = {"z": 1, "a": 2}
+        a2 = {"a": 2, "z": 1}
+        assert ability_to_raw_json(a1) == ability_to_raw_json(a2)
+
+    def test_unicode_preserved(self):
+        ability = {"name": "Test", "text": "can\u2019t use"}
+        result = ability_to_raw_json(ability)
+        assert "\u2019" in result

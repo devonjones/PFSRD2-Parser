@@ -173,35 +173,20 @@ def cmd_edit(curs, args):
         clear_needs_review(curs, ability_id)
         print(f"Updated and verified: [{ability_id}] {record['name']}")
     except json.JSONDecodeError as e:
-        print(f"Invalid JSON: {e}")
-    finally:
+        print(f"Invalid JSON: {e}", file=sys.stderr)
         os.unlink(tmpfile)
+        sys.exit(1)
+    finally:
+        if os.path.exists(tmpfile):
+            os.unlink(tmpfile)
 
 
 def cmd_ability(curs, args):
     """Show all abilities for a creature."""
-    creature_id = args.creature_id
+    creature_id = _resolve_creature_id(curs, args.creature_id)
+    if not creature_id:
+        return
     records = fetch_abilities_for_creature(curs, creature_id)
-    if not records:
-        # Try by name
-        curs.execute(
-            "SELECT DISTINCT creature_game_id, creature_name"
-            " FROM ability_creature_links"
-            " WHERE creature_name LIKE ?"
-            " LIMIT 10",
-            (f"%{creature_id}%",),
-        )
-        matches = curs.fetchall()
-        if not matches:
-            print(f"No creature found: {creature_id}")
-            return
-        if len(matches) > 1:
-            print(f"Multiple creatures match '{creature_id}':")
-            for m in matches:
-                print(f"  [{m['creature_game_id']}] {m['creature_name']}")
-            return
-        creature_id = matches[0]["creature_game_id"]
-        records = fetch_abilities_for_creature(curs, creature_id)
 
     # Get creature info from links
     curs.execute(

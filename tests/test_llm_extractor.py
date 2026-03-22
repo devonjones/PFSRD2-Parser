@@ -315,3 +315,59 @@ class TestDamageLLM:
         )
         assert result is not None
         assert any(d["formula"] == "6d6" and d.get("damage_type") == "spirit" for d in result)
+
+
+class TestCleanLLMResponse:
+    """Tests for LLM response parsing — no Ollama required."""
+
+    def test_none_input(self):
+        from pfsrd2.enrichment.llm_extractor import _clean_llm_response
+
+        assert _clean_llm_response(None) is None
+
+    def test_none_string(self):
+        from pfsrd2.enrichment.llm_extractor import _clean_llm_response
+
+        assert _clean_llm_response("none") is None
+
+    def test_no_frequency_phrase(self):
+        from pfsrd2.enrichment.llm_extractor import _clean_llm_response
+
+        assert _clean_llm_response("no frequency constraints found") is None
+
+    def test_valid_response(self):
+        from pfsrd2.enrichment.llm_extractor import _clean_llm_response
+
+        result = _clean_llm_response("once per day; 1d4 rounds")
+        assert result == ["once per day", "1d4 rounds"]
+
+    def test_filters_none_entries(self):
+        from pfsrd2.enrichment.llm_extractor import _clean_llm_response
+
+        result = _clean_llm_response("once per day; none")
+        assert result == ["once per day"]
+
+
+class TestParseDCResponse:
+    """Tests for DC response parsing — no Ollama required."""
+
+    def test_basic_dc(self):
+        from pfsrd2.enrichment.llm_extractor import _parse_dc_response
+
+        result = _parse_dc_response(["DC 30 basic Reflex"], "DC 30 basic Reflex save")
+        assert len(result) == 1
+        assert result[0]["dc"] == 30
+        assert result[0]["save_type"] == "Ref"
+        assert result[0]["basic"] is True
+
+    def test_filters_hallucinated_dc(self):
+        from pfsrd2.enrichment.llm_extractor import _parse_dc_response
+
+        result = _parse_dc_response(["DC 60"], "60-foot line (DC 26 basic Reflex)")
+        assert result is None or not any(s["dc"] == 60 for s in result)
+
+    def test_deduplicates(self):
+        from pfsrd2.enrichment.llm_extractor import _parse_dc_response
+
+        result = _parse_dc_response(["DC 30 Reflex", "DC 30 Reflex"], "DC 30 Reflex")
+        assert len(result) == 1

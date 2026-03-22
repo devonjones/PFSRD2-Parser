@@ -758,7 +758,7 @@
 				"size": {"type": "integer"},
 				"unit": {"enum": ["feet", "miles"]}
 			},
-			"required": ["type", "subtype", "text"],
+			"required": ["type", "subtype", "text", "shape", "size", "unit"],
 			"additionalProperties": false
 		},
 		"save": {

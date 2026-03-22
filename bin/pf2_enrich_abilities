@@ -131,11 +131,12 @@ def _update_review_flag(curs, record, resolved_type, was_enriched):
 
 def run_llm(conn, args):
     """Run LLM extraction on flagged records for a specific type."""
+    # Maps LLM type to (extractor_function, enriched_json_field_name)
     extractors = {
-        "frequency": extract_frequency_llm,
-        "area": extract_area_llm,
-        "dc": extract_dc_llm,
-        "damage": extract_damage_llm,
+        "frequency": (extract_frequency_llm, "frequency"),
+        "area": (extract_area_llm, "area"),
+        "dc": (extract_dc_llm, "saving_throw"),
+        "damage": (extract_damage_llm, "damage"),
     }
 
     if args.llm_type not in extractors:
@@ -143,7 +144,7 @@ def run_llm(conn, args):
         print(f"Available: {', '.join(extractors.keys())}")
         return
 
-    extractor_fn = extractors[args.llm_type]
+    extractor_fn, field_name = extractors[args.llm_type]
     curs = conn.cursor()
 
     # Fetch flagged records that have this type unextracted
@@ -180,14 +181,8 @@ def run_llm(conn, args):
             else:
                 enriched = dict(ability)
 
-            if args.llm_type == "frequency" and not enriched.get("frequency"):
-                enriched["frequency"] = result
-            elif args.llm_type == "area" and not enriched.get("area"):
-                enriched["area"] = result
-            elif args.llm_type == "dc" and not enriched.get("saving_throw"):
-                enriched["saving_throw"] = result
-            elif args.llm_type == "damage" and not enriched.get("damage"):
-                enriched["damage"] = result
+            if not enriched.get(field_name):
+                enriched[field_name] = result
 
             enriched_json = json.dumps(enriched, sort_keys=True, ensure_ascii=False)
 

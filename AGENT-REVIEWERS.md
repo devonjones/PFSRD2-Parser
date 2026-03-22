@@ -87,6 +87,8 @@ Review JSON schema changes in `pfsrd2/schema/` for consistency with existing pat
 
 4. **Required fields**: Objects should declare appropriate `required` fields matching the pattern of similar objects elsewhere.
 
+5. **Cardinality differences are legitimate**: The same field name (e.g., `saving_throw`) may have different cardinality (single object vs array) in different contexts. For example, an `ability` may have multiple saving throws (primary + escape DC), while an `affliction` always has exactly one. This is intentional — different game concepts have different mechanical needs. Do NOT flag cardinality differences between sibling definitions unless the rationale is unclear.
+
 **Review approach:**
 1. For each schema change, identify the object type being added/modified
 2. Search other schemas for the same object type (by subtype value or structure)
