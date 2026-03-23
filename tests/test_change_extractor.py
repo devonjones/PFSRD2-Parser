@@ -234,15 +234,22 @@ class TestBuildTraitEffects:
             {"type": "link", "name": "mindless", "game-obj": "Traits", "aonid": 108},
         ]
         effects = _build_trait_effects(text, links)
-        names = {e["name"] for e in effects if e["operation"] == "add_item"}
-        assert names == {"Skeleton", "Undead", "Mindless"}
-        # Should NOT contain fragments like "Undead Traits And" or "Optionally"
+        # Skeleton and Undead are mandatory add_item
+        mandatory = {e["name"] for e in effects if e["operation"] == "add_item"}
+        assert mandatory == {"Skeleton", "Undead"}
+        # Mindless is optional (select with min=0)
+        selects = [e for e in effects if e["operation"] == "select"]
+        assert len(selects) == 1
+        assert selects[0]["selection"]["min"] == 0
+        assert selects[0]["selection"]["max"] == 1
+        assert "Mindless" in selects[0]["selection"]["options"]
+        # Should NOT contain fragments
         for e in effects:
             assert "Traits And" not in e.get("name", "")
             assert "Optionally" not in e.get("name", "")
 
     def test_link_based_extraction_water_template(self):
-        """Water template: 'either the amphibious or aquatic' should extract both."""
+        """Water template: 'either the amphibious or aquatic' is a choice of one."""
         text = "Add the water trait and either the amphibious or aquatic trait."
         links = [
             {"type": "link", "name": "water", "game-obj": "Traits", "aonid": 165},
@@ -250,8 +257,15 @@ class TestBuildTraitEffects:
             {"type": "link", "name": "aquatic", "game-obj": "Traits", "aonid": 14},
         ]
         effects = _build_trait_effects(text, links)
-        names = {e["name"] for e in effects if e["operation"] == "add_item"}
-        assert names == {"Water", "Amphibious", "Aquatic"}
+        # Water is mandatory
+        mandatory = {e["name"] for e in effects if e["operation"] == "add_item"}
+        assert mandatory == {"Water"}
+        # Amphibious/Aquatic is a choice (select with min=1, max=1)
+        selects = [e for e in effects if e["operation"] == "select"]
+        assert len(selects) == 1
+        assert selects[0]["selection"]["min"] == 1
+        assert selects[0]["selection"]["max"] == 1
+        assert set(selects[0]["selection"]["options"]) == {"Amphibious", "Aquatic"}
 
     def test_non_trait_links_ignored(self):
         """Links with game-obj != Traits should not be extracted as traits."""

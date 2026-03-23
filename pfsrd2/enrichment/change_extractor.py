@@ -9,7 +9,7 @@ import json
 import re
 import sys
 
-ENRICHMENT_VERSION = 10
+ENRICHMENT_VERSION = 12
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -200,7 +200,7 @@ def _build_effects(text, category, source_name, adjustments=None, links=None):
             {
                 "target": "$.statistics.gear",
                 "operation": "select",
-                "selection": {"type": "remove_n", "description": text},
+                "selection": {"type": "select", "action": "remove", "description": text},
             }
         ]
     return []
@@ -311,6 +311,34 @@ def _extract_trait_names_regex(t):
     return names
 
 
+def _classify_optional_traits(text, trait_names):
+    """Identify which traits are optional or part of a choice group.
+
+    Returns (optional_set, choice_set) where each is a set of lowercased names.
+    - optional: "optionally the mindless trait" → mindless is optional
+    - choice: "either the amphibious or aquatic trait" → both are choices
+    """
+    t = text.lower()
+    optional = set()
+    choice = set()
+
+    # "optionally, the X trait" or "optionally the X trait"
+    for m in re.finditer(r"optional(?:ly)?[,]?\s+(?:the\s+)?(\w+)", t):
+        candidate = m.group(1).title()
+        if candidate.lower() in {n.lower() for n in trait_names}:
+            optional.add(candidate.lower())
+
+    # "either the X or Y trait"
+    m = re.search(r"either\s+(?:the\s+)?(\w+)\s+or\s+(\w+)", t)
+    if m:
+        for g in (m.group(1), m.group(2)):
+            candidate = g.title()
+            if candidate.lower() in {n.lower() for n in trait_names}:
+                choice.add(candidate.lower())
+
+    return optional, choice
+
+
 def _build_trait_effects(text, links=None):
     effects = []
     t = text.lower()
@@ -351,34 +379,68 @@ def _build_trait_effects(text, links=None):
         )
 
     if not effects and ("add" in t or "gain" in t):
-        # Start with link-based extraction — Traits links are authoritative
+        # Collect all trait names from links + regex
+        all_trait_names = []
         extracted_names = set()
         if trait_links:
             for link in trait_links:
                 name = link.get("name", "").strip().title()
                 if name:
-                    operation = "remove_item" if "loses" in t or "remove" in t else "add_item"
-                    effects.append(
-                        {
-                            "target": "$.creature_type.creature_types",
-                            "operation": operation,
-                            "name": name,
-                        }
-                    )
+                    all_trait_names.append(name)
                     extracted_names.add(name.lower())
-
-        # Supplement with regex for traits not covered by links
-        # (e.g., "vampire" linking to MonsterFamilies instead of Traits)
         regex_names = _extract_trait_names_regex(t)
         for name in regex_names:
             if name.lower() not in extracted_names:
+                all_trait_names.append(name)
+                extracted_names.add(name.lower())
+
+        # Classify each trait as mandatory, optional, or choice
+        optional_traits, choice_traits = _classify_optional_traits(t, all_trait_names)
+        operation = "remove_item" if "loses" in t or "remove" in t else "add_item"
+
+        for name in all_trait_names:
+            nl = name.lower()
+            if nl in choice_traits:
+                continue  # Handled below as a select group
+            elif nl in optional_traits:
                 effects.append(
                     {
                         "target": "$.creature_type.creature_types",
-                        "operation": "add_item",
+                        "operation": "select",
+                        "selection": {
+                            "type": "select",
+                            "min": 0,
+                            "max": 1,
+                            "options": [name],
+                            "description": f"optionally add {name}",
+                        },
+                    }
+                )
+            else:
+                effects.append(
+                    {
+                        "target": "$.creature_type.creature_types",
+                        "operation": operation,
                         "name": name,
                     }
                 )
+
+        # Add choice group if any (e.g., "either amphibious or aquatic")
+        if choice_traits:
+            choice_names = [n for n in all_trait_names if n.lower() in choice_traits]
+            effects.append(
+                {
+                    "target": "$.creature_type.creature_types",
+                    "operation": "select",
+                    "selection": {
+                        "type": "select",
+                        "min": 1,
+                        "max": 1,
+                        "options": choice_names,
+                        "description": f"choose one of: {', '.join(choice_names)}",
+                    },
+                }
+            )
 
     if not effects:
         m = re.search(r"add the (\w+) trait", t)
@@ -680,7 +742,7 @@ def _build_damage_effects(text, source_name=""):
             {
                 "target": "$.offense.offensive_actions[*].attack",
                 "operation": "select",
-                "selection": {"type": "select_n", "description": text},
+                "selection": {"type": "select", "description": text},
             }
         ]
 
@@ -1099,7 +1161,7 @@ def _build_skill_effects(text):
             {
                 "target": "$.statistics.skills",
                 "operation": "select",
-                "selection": {"type": "select_one", "description": text},
+                "selection": {"type": "select", "min": 1, "max": 1, "description": text},
             }
         )
 
@@ -1108,7 +1170,13 @@ def _build_skill_effects(text):
             {
                 "target": "$.statistics.skills",
                 "operation": "select",
-                "selection": {"type": "select_one", "constraint": "lore", "description": text},
+                "selection": {
+                    "type": "select",
+                    "min": 1,
+                    "max": 1,
+                    "constraint": "lore",
+                    "description": text,
+                },
             }
         )
 
@@ -1136,7 +1204,7 @@ def _build_spell_effects(text):
             {
                 "target": "$.offense.offensive_actions[*].spells",
                 "operation": "select",
-                "selection": {"type": "replace_n", "description": text},
+                "selection": {"type": "select", "action": "replace", "description": text},
             }
         ]
     m = re.search(r"replace spells with (\w+) spells", t)
@@ -1146,7 +1214,8 @@ def _build_spell_effects(text):
                 "target": "$.offense.offensive_actions[*].spells.spell_list[*].spells",
                 "operation": "select",
                 "selection": {
-                    "type": "replace_n",
+                    "type": "select",
+                    "action": "replace",
                     "constraint": m.group(1).strip(),
                     "description": text,
                 },
@@ -1200,7 +1269,7 @@ def _build_strike_effects(text):
             {
                 "target": "$.offense.offensive_actions[*].attack",
                 "operation": "select",
-                "selection": {"type": "select_n", "description": text},
+                "selection": {"type": "select", "description": text},
             }
         ]
 
@@ -1220,7 +1289,9 @@ def _build_strike_effects(text):
                 "target": "$.offense.offensive_actions[*].attack.traits",
                 "operation": "select",
                 "selection": {
-                    "type": "select_one",
+                    "type": "select",
+                    "min": 1,
+                    "max": 1,
                     "options": ["versatile P", "versatile S"],
                     "description": text,
                 },
@@ -1251,11 +1322,12 @@ def _build_weakness_effects(text, adjustments=None):
                     k for k in adj if k not in ("type", "subtype", "level", "starting_level")
                 ]
                 if val_key:
+                    raw_val = adj[val_key[0]].replace("\u2013", "-").replace("\u2014", "-")
                     try:
-                        val = int(adj[val_key[0]])
+                        val = int(raw_val)
                     except ValueError:
                         print(
-                            f"WARNING: non-numeric weakness value: {adj[val_key[0]]!r}",
+                            f"WARNING: non-numeric weakness value: {raw_val!r}",
                             file=sys.stderr,
                         )
                         continue
@@ -1298,11 +1370,12 @@ def _build_resistance_effects(text, adjustments=None):
                     k for k in adj if k not in ("type", "subtype", "level", "starting_level")
                 ]
                 if val_key:
+                    raw_val = adj[val_key[0]].replace("\u2013", "-").replace("\u2014", "-")
                     try:
-                        val = int(adj[val_key[0]])
+                        val = int(raw_val)
                     except ValueError:
                         print(
-                            f"WARNING: non-numeric resistance value: {adj[val_key[0]]!r}",
+                            f"WARNING: non-numeric resistance value: {raw_val!r}",
                             file=sys.stderr,
                         )
                         continue
@@ -1394,7 +1467,9 @@ def _build_resistance_effects(text, adjustments=None):
                 "target": "$.defense.hitpoints[*].resistances[?(@.name=='physical')]",
                 "operation": "select",
                 "selection": {
-                    "type": "select_one",
+                    "type": "select",
+                    "min": 1,
+                    "max": 1,
                     "constraint": "bypass_material",
                     "description": text,
                 },
