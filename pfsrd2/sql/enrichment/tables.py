@@ -1,4 +1,4 @@
-"""Table and index creation for the ability enrichment database."""
+"""Table and index creation for the enrichment database."""
 
 
 def create_ability_records_table(curs):
@@ -59,3 +59,41 @@ def create_ability_creature_links_index(curs):
         "CREATE INDEX ability_creature_links_creature_game_id"
         " ON ability_creature_links (creature_game_id)"
     )
+
+
+# --- Change records (template/family rule enrichment) ---
+
+
+def create_change_records_table(curs):
+    sql = "\n".join(
+        [
+            "CREATE TABLE change_records (",
+            "  change_id INTEGER PRIMARY KEY,",
+            "  source_name TEXT NOT NULL,",
+            "  source_type TEXT NOT NULL,",
+            "  identity_hash TEXT NOT NULL UNIQUE,",
+            "  raw_json TEXT NOT NULL,",
+            "  enriched_json TEXT,",
+            "  enrichment_version INTEGER,",
+            "  extraction_method TEXT,",
+            "  human_verified INTEGER DEFAULT 0,",
+            "  needs_review INTEGER DEFAULT 0,",
+            "  review_reason TEXT,",
+            "  stale INTEGER DEFAULT 0,",
+            "  created_at TEXT NOT NULL,",
+            "  updated_at TEXT NOT NULL",
+            ")",
+        ]
+    )
+    curs.execute(sql)
+
+
+def create_change_records_index(curs):
+    curs.execute("CREATE INDEX change_records_identity_hash ON change_records (identity_hash)")
+    curs.execute("CREATE INDEX change_records_source_name ON change_records (source_name)")
+    curs.execute("CREATE INDEX change_records_source_type ON change_records (source_type)")
+    curs.execute("CREATE INDEX change_records_stale ON change_records (stale)")
+    curs.execute(
+        "CREATE INDEX change_records_enrichment_version ON change_records (enrichment_version)"
+    )
+    curs.execute("CREATE INDEX change_records_needs_review ON change_records (needs_review)")

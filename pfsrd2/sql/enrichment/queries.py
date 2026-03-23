@@ -1,4 +1,4 @@
-"""CRUD operations for the ability enrichment database."""
+"""CRUD operations for the enrichment database."""
 
 import json
 from datetime import UTC, datetime
@@ -248,3 +248,123 @@ def fetch_needs_review(curs):
     sql = "SELECT * FROM ability_records WHERE needs_review = 1"
     curs.execute(sql)
     return curs.fetchall()
+
+
+# --- Change record CRUD (template/family rule enrichment) ---
+
+
+def insert_change_record(curs, source_name, source_type, identity_hash, raw_json):
+    """Insert a new change record. Returns the change_id."""
+    now = _now()
+    sql = "\n".join(
+        [
+            "INSERT INTO change_records",
+            " (source_name, source_type, identity_hash, raw_json, created_at, updated_at)",
+            " VALUES (?, ?, ?, ?, ?, ?)",
+        ]
+    )
+    curs.execute(sql, (source_name, source_type, identity_hash, raw_json, now, now))
+    return curs.lastrowid
+
+
+def fetch_change_by_hash(curs, identity_hash):
+    sql = "SELECT * FROM change_records WHERE identity_hash = ?"
+    curs.execute(sql, (identity_hash,))
+    return curs.fetchone()
+
+
+def fetch_changes_for_source(curs, source_name, source_type):
+    sql = "SELECT * FROM change_records WHERE source_name = ? AND source_type = ?"
+    curs.execute(sql, (source_name, source_type))
+    return curs.fetchall()
+
+
+def fetch_changes_needing_enrichment(curs, current_version):
+    """Fetch change records that need (re-)enrichment."""
+    sql = "\n".join(
+        [
+            "SELECT * FROM change_records",
+            " WHERE human_verified = 0",
+            " AND (enrichment_version IS NULL",
+            "      OR enrichment_version < ?)",
+        ]
+    )
+    curs.execute(sql, (current_version,))
+    return curs.fetchall()
+
+
+def update_change_enriched_json(curs, change_id, enriched_json, enrichment_version, extraction_method):
+    """Store enrichment results for a change record."""
+    sql = "\n".join(
+        [
+            "UPDATE change_records",
+            " SET enriched_json = ?,",
+            "     enrichment_version = ?,",
+            "     extraction_method = ?,",
+            "     stale = 0,",
+            "     updated_at = ?",
+            " WHERE change_id = ?",
+        ]
+    )
+    curs.execute(sql, (enriched_json, enrichment_version, extraction_method, _now(), change_id))
+
+
+def mark_change_stale(curs, change_id, new_raw_json):
+    """Mark a change record as stale and update its raw_json."""
+    sql = "\n".join(
+        [
+            "UPDATE change_records",
+            " SET stale = 1,",
+            "     raw_json = ?,",
+            "     updated_at = ?",
+            " WHERE change_id = ?",
+        ]
+    )
+    curs.execute(sql, (new_raw_json, _now(), change_id))
+
+
+def mark_change_human_verified(curs, change_id, verified=True):
+    sql = "\n".join(
+        [
+            "UPDATE change_records",
+            " SET human_verified = ?,",
+            "     updated_at = ?",
+            " WHERE change_id = ?",
+        ]
+    )
+    curs.execute(sql, (1 if verified else 0, _now(), change_id))
+
+
+def mark_change_needs_review(curs, change_id, reason):
+    sql = "\n".join(
+        [
+            "UPDATE change_records",
+            " SET needs_review = 1,",
+            "     review_reason = ?,",
+            "     updated_at = ?",
+            " WHERE change_id = ?",
+        ]
+    )
+    curs.execute(sql, (reason, _now(), change_id))
+
+
+def count_change_records(curs):
+    """Return counts for reporting."""
+    curs.execute("SELECT COUNT(*) FROM change_records")
+    total = curs.fetchone()["COUNT(*)"]
+    curs.execute("SELECT COUNT(*) FROM change_records WHERE enrichment_version IS NOT NULL")
+    enriched = curs.fetchone()["COUNT(*)"]
+    curs.execute("SELECT COUNT(*) FROM change_records WHERE stale = 1")
+    stale = curs.fetchone()["COUNT(*)"]
+    curs.execute("SELECT COUNT(*) FROM change_records WHERE human_verified = 1")
+    verified = curs.fetchone()["COUNT(*)"]
+    curs.execute("SELECT COUNT(*) FROM change_records WHERE needs_review = 1")
+    needs_review = curs.fetchone()["COUNT(*)"]
+    return {
+        "total": total,
+        "enriched": enriched,
+        "unenriched": total - enriched,
+        "stale": stale,
+        "verified": verified,
+        "needs_review": needs_review,
+    }
