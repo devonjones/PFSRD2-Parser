@@ -9,7 +9,7 @@ import json
 import re
 import sys
 
-ENRICHMENT_VERSION = 8
+ENRICHMENT_VERSION = 9
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -41,7 +41,8 @@ def enrich_change(raw_json_str, source_name):
         "change_category": category,
     }
 
-    effects = _build_effects(text, category, source_name, adjustments)
+    links = change.get("links")
+    effects = _build_effects(text, category, source_name, adjustments, links)
     if effects:
         enriched["effects"] = effects
 
@@ -152,7 +153,7 @@ def _categorize_change_text(text):
     return "unknown"
 
 
-def _build_effects(text, category, source_name, adjustments=None):
+def _build_effects(text, category, source_name, adjustments=None, links=None):
     """Build effects for a categorized change."""
     if category == "abilities":
         return [
@@ -167,7 +168,7 @@ def _build_effects(text, category, source_name, adjustments=None):
     elif category == "languages":
         return _build_language_effects(text)
     elif category == "traits":
-        return _build_trait_effects(text)
+        return _build_trait_effects(text, links)
     elif category == "size":
         return _build_size_effects(text)
     elif category == "senses":
@@ -274,9 +275,13 @@ def _build_language_effects(text):
     return effects
 
 
-def _build_trait_effects(text):
+def _build_trait_effects(text, links=None):
     effects = []
     t = text.lower()
+
+    # Use links with game-obj="Traits" when available — these are authoritative
+    # and avoid the sentence fragment problem (pfsrd2-bfy)
+    trait_links = [l for l in (links or []) if l.get("game-obj") == "Traits"]
 
     m = re.search(r"replace the (\w+) trait with the (\w+) trait", t)
     if m:
@@ -295,20 +300,36 @@ def _build_trait_effects(text):
             }
         )
 
-    m = re.search(r"add the (.+?) traits?[\.,]", t)
-    if m:
-        trait_text = m.group(1)
-        traits = re.split(r",\s*(?:and\s+)?|\s+and\s+", trait_text)
-        for trait in traits:
-            trait = trait.strip()
-            if trait and trait not in ("optionally the mindless",):
+    if not effects and trait_links and ("add" in t or "gain" in t):
+        # Link-based extraction — each Traits link is a real trait name
+        for link in trait_links:
+            name = link.get("name", "").strip().title()
+            if name:
+                operation = "remove_item" if "loses" in t or "remove" in t else "add_item"
                 effects.append(
                     {
                         "target": "$.creature_type.creature_types",
-                        "operation": "add_item",
-                        "name": trait.title(),
+                        "operation": operation,
+                        "name": name,
                     }
                 )
+
+    # Fallback to regex when no trait links available
+    if not effects:
+        m = re.search(r"add the (.+?) traits?[\.,]", t)
+        if m:
+            trait_text = m.group(1)
+            traits = re.split(r",\s*(?:and\s+)?|\s+and\s+", trait_text)
+            for trait in traits:
+                trait = trait.strip()
+                if trait and not any(w in trait for w in ("optionally", "either", "trait")):
+                    effects.append(
+                        {
+                            "target": "$.creature_type.creature_types",
+                            "operation": "add_item",
+                            "name": trait.title(),
+                        }
+                    )
 
     if not effects:
         m = re.search(r"gains? the (.+?) traits?[,.\s]", t)
@@ -317,7 +338,9 @@ def _build_trait_effects(text):
             traits = re.split(r",\s*(?:and\s+)?|\s+and\s+", trait_text)
             for trait in traits:
                 trait = trait.strip()
-                if trait and "usually" not in trait:
+                if trait and not any(
+                    w in trait for w in ("usually", "optionally", "either", "trait")
+                ):
                     effects.append(
                         {
                             "target": "$.creature_type.creature_types",

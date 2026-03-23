@@ -225,6 +225,46 @@ class TestBuildTraitEffects:
         assert len(add_effects) == 1
         assert add_effects[0]["name"] == "Dwarf"
 
+    def test_link_based_extraction_avoids_fragments(self):
+        """pfsrd2-bfy: use Traits links instead of regex to avoid sentence fragments."""
+        text = "Add the skeleton and undead traits and, optionally, the mindless trait."
+        links = [
+            {"type": "link", "name": "skeleton", "game-obj": "Traits", "aonid": 236},
+            {"type": "link", "name": "undead", "game-obj": "Traits", "aonid": 160},
+            {"type": "link", "name": "mindless", "game-obj": "Traits", "aonid": 108},
+        ]
+        effects = _build_trait_effects(text, links)
+        names = {e["name"] for e in effects if e["operation"] == "add_item"}
+        assert names == {"Skeleton", "Undead", "Mindless"}
+        # Should NOT contain fragments like "Undead Traits And" or "Optionally"
+        for e in effects:
+            assert "Traits And" not in e.get("name", "")
+            assert "Optionally" not in e.get("name", "")
+
+    def test_link_based_extraction_water_template(self):
+        """Water template: 'either the amphibious or aquatic' should extract both."""
+        text = "Add the water trait and either the amphibious or aquatic trait."
+        links = [
+            {"type": "link", "name": "water", "game-obj": "Traits", "aonid": 165},
+            {"type": "link", "name": "amphibious", "game-obj": "Traits", "aonid": 13},
+            {"type": "link", "name": "aquatic", "game-obj": "Traits", "aonid": 14},
+        ]
+        effects = _build_trait_effects(text, links)
+        names = {e["name"] for e in effects if e["operation"] == "add_item"}
+        assert names == {"Water", "Amphibious", "Aquatic"}
+
+    def test_non_trait_links_ignored(self):
+        """Links with game-obj != Traits should not be extracted as traits."""
+        text = "Add the undead trait."
+        links = [
+            {"type": "link", "name": "undead", "game-obj": "Traits", "aonid": 160},
+            {"type": "link", "name": "Bestiary", "game-obj": "Sources", "aonid": 2},
+        ]
+        effects = _build_trait_effects(text, links)
+        names = {e["name"] for e in effects}
+        assert "Undead" in names
+        assert "Bestiary" not in names
+
 
 class TestBuildCombatStatEffects:
     def test_increase_ac_attack_dcs_saves(self):
