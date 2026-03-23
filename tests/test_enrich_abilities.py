@@ -2,9 +2,6 @@
 
 import importlib.util
 import os
-import types
-
-import pytest
 
 # Import the bin script as a module (no .py extension, so we need submodule_search_locations)
 _script_path = os.path.join(os.path.dirname(__file__), "..", "bin", "pf2_enrich_abilities")

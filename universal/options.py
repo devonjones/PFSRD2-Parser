@@ -1,6 +1,6 @@
+import argparse
 import os
 import sys
-from optparse import OptionParser
 
 
 def exec_main(options, args, function, localdir):
@@ -18,23 +18,15 @@ def exec_main(options, args, function, localdir):
             function(arg, options)
 
 
-def exec_load_main(parser, function):
-    options, args = parser.parse_args()
-    if not options.db:
-        sys.stderr.write("-d/--db required")
-        sys.exit(1)
-    function(options.db, args, options.parent)
-
-
 def option_parser(usage):
-    parser = OptionParser(usage=usage)
-    parser.add_option(
+    parser = argparse.ArgumentParser(usage=usage)
+    parser.add_argument(
         "-o",
         "--output",
         dest="output",
         help="Output data directory.  Should be top level directory of psrd data. (required)",
     )
-    parser.add_option(
+    parser.add_argument(
         "-d",
         "--dry-run",
         dest="dryrun",
@@ -42,7 +34,7 @@ def option_parser(usage):
         action="store_true",
         help="Dry run (no actual output)",
     )
-    parser.add_option(
+    parser.add_argument(
         "-k",
         "--skip-schema",
         dest="skip_schema",
@@ -50,7 +42,7 @@ def option_parser(usage):
         action="store_true",
         help="Skip schema validation",
     )
-    parser.add_option(
+    parser.add_argument(
         "-s",
         "--stdout",
         dest="stdout",
@@ -58,13 +50,5 @@ def option_parser(usage):
         action="store_true",
         help="Write json to stdout",
     )
-    return parser
-
-
-def load_option_parser(usage):
-    parser = OptionParser(usage=usage)
-    parser.add_option("-d", "--db", dest="db", help="Sqlite DB to load into (required)")
-    parser.add_option(
-        "-p", "--parent", dest="parent", help="Parent object to load under (default: psrd)"
-    )
+    parser.add_argument("files", nargs="*", help="Input files to process")
     return parser

@@ -167,6 +167,16 @@ def create_db_v_10(conn, curs, ver, source=None):
     return ver
 
 
+def create_db_v_11(conn, curs, ver, source=None):
+    if ver >= 11:
+        return ver
+    ver = 11
+    curs.execute("ALTER TABLE monster_abilities ADD COLUMN edition TEXT")
+    set_version(curs, ver)
+    conn.commit()
+    return ver
+
+
 def dict_factory(cursor, row):
     d = {}
     for idx, col in enumerate(cursor.description):
@@ -188,6 +198,7 @@ def get_db_connection(db, source=None):
         ver = create_db_v_8(conn, curs, ver, source)
         ver = create_db_v_9(conn, curs, ver, source)
         ver = create_db_v_10(conn, curs, ver, source)
+        ver = create_db_v_11(conn, curs, ver, source)
     finally:
         curs.close()
     conn.row_factory = dict_factory

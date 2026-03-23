@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup, Tag
 
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
+from pfsrd2.sql.sources import set_edition_from_db_pass
 from pfsrd2.sql.traits import trait_db_pass as universal_trait_db_pass
 from pfsrd2.trait import extract_starting_traits
 from universal.creatures import universal_handle_range, write_creature
@@ -45,7 +46,8 @@ def parse_monster_ability(filename, options):
     aon_pass(struct, basename)
     section_pass(struct)
     addon_pass(struct)
-    universal_trait_db_pass(struct, edition_required=False)
+    set_edition_from_db_pass(struct)
+    universal_trait_db_pass(struct)
     game_id_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)

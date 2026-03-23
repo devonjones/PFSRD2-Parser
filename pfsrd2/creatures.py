@@ -447,12 +447,9 @@ def monster_family_db_pass(struct):
     if not aonid:
         return
     db_path = get_db_path("pfsrd2.db")
-    conn = get_db_connection(db_path)
-    try:
+    with get_db_connection(db_path) as conn:
         curs = conn.cursor()
         family = _fetch_edition_matched_family(curs, struct, aonid)
-    finally:
-        conn.close()
     if not family:
         return
     family.pop("schema_version", None)
@@ -495,25 +492,6 @@ def _fetch_edition_matched_family(curs, struct, aonid):
 
 
 def monster_ability_db_pass(struct):
-    # TODO: Remove this workaround once monster abilities have edition field
-    REMASTERED_SOURCES = {
-        "Monster Core",
-        "Player Core",
-        "GM Core",
-        "Player Core 2",
-        "Rage of Elements",
-    }
-
-    def _get_ability_edition(ability_json):
-        """Determine edition from ability's source names."""
-        sources = ability_json.get("sources", [])
-        for source in sources:
-            source_name = source.get("name", "")
-            if source_name in REMASTERED_SOURCES:
-                return "remastered"
-        # Default to legacy if no remastered source found
-        return "legacy"
-
     def _pick_best_ability(abilities, target_edition):
         """Pick the ability that best matches the target edition."""
         if not abilities:
@@ -524,10 +502,15 @@ def monster_ability_db_pass(struct):
         # Parse all abilities and find edition matches
         for ability_row in abilities:
             ability_json = json.loads(ability_row["monster_ability"])
-            if _get_ability_edition(ability_json) == target_edition:
+            if ability_json.get("edition") == target_edition:
                 return ability_row
 
-        # No exact match, return first one
+        # No exact match — warn and return first one
+        names = [json.loads(a["monster_ability"]).get("name", "?") for a in abilities]
+        sys.stderr.write(
+            f"WARNING: _pick_best_ability: no edition match for {names[0]} "
+            f"(target={target_edition}), using first of {len(abilities)}\n"
+        )
         return abilities[0]
 
     def _template_get_magical_tradition(curs, ability):
@@ -573,9 +556,9 @@ def monster_ability_db_pass(struct):
             ability["universal_monster_ability"] = db_ability
 
     db_path = get_db_path("pfsrd2.db")
-    conn = get_db_connection(db_path)
-    curs = conn.cursor()
-    walk(struct, test_key_is_value("subtype", "ability"), _check_ability)
+    with get_db_connection(db_path) as conn:
+        curs = conn.cursor()
+        walk(struct, test_key_is_value("subtype", "ability"), _check_ability)
 
 
 def restructure_creature_pass(details, subtype, edition):

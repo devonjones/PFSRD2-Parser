@@ -1,13 +1,11 @@
 def create_link_cache_table(curs):
-    sql = "\n".join(
-        [
-            "CREATE TABLE link_cache (",
-            "  item_id INTEGER,",
-            "  item_aonid INTEGER,",
-            "  target_aonid INTEGER",
-            ")",
-        ]
-    )
+    sql = """
+CREATE TABLE link_cache (
+  item_id INTEGER,
+  item_aonid INTEGER,
+  target_aonid INTEGER
+)
+"""
     curs.execute(sql)
 
 
@@ -17,19 +15,20 @@ def drop_link_cache_table(curs):
 
 
 def insert_link_cache(curs, item_id, item_aonid, target_aonid):
-    sql = "\n".join(
-        [
-            "INSERT OR IGNORE INTO link_cache",
-            " (item_id, item_aonid, target_aonid)",
-            " VALUES",
-            " (?, ?, ?)",
-        ]
-    )
+    sql = """
+INSERT OR IGNORE INTO link_cache
+ (item_id, item_aonid, target_aonid)
+ VALUES
+ (?, ?, ?)
+"""
     curs.execute(sql, [item_id, item_aonid, target_aonid])
 
 
 def fetch_all_link_cache(curs):
-    sql = "\n".join(["SELECT item_id, item_aonid, target_aonid", " FROM link_cache"])
+    sql = """
+SELECT item_id, item_aonid, target_aonid
+ FROM link_cache
+"""
     curs.execute(sql)
     return curs.fetchall()
 

@@ -477,10 +477,9 @@ def main():
         parser.print_help()
         return
 
-    conn = get_enrichment_db_connection()
-    curs = conn.cursor()
+    with get_enrichment_db_connection() as conn:
+        curs = conn.cursor()
 
-    try:
         commands = {
             "stats": cmd_stats,
             "show": cmd_show,
@@ -496,8 +495,6 @@ def main():
 
         if args.command in ("verify", "edit", "reset", "enrich"):
             conn.commit()
-    finally:
-        conn.close()
 
 
 if __name__ == "__main__":

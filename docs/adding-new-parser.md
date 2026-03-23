@@ -192,7 +192,7 @@ import sys
 import os
 import json
 from sh import find
-from optparse import OptionParser
+import argparse
 from pfsrd2.sql import get_db_path, create_db
 from pfsrd2.sql.<type>s import insert_<type>, truncate_<type>s
 
@@ -213,21 +213,20 @@ def load_<type>s(conn, options):
 
 
 def option_parser(usage):
-    parser = OptionParser(usage=usage)
-    parser.add_option(
+    parser = argparse.ArgumentParser(usage=usage)
+    parser.add_argument(
         "-o", "--output", dest="output",
         help="Output data directory.  Should be top level directory of psrd data. (required)")
     return parser
 
 
 def main():
-    usage = "usage: %prog [options] [filenames]\nReads <type> json and inserts them into a <type> db"
+    usage = "%(prog)s [options]\nReads <type> json and inserts them into a <type> db"
     parser = option_parser(usage)
-    (options, args) = parser.parse_args()
+    options = parser.parse_args()
     db_path = get_db_path("pfsrd2.db")
-    conn = create_db(db_path)
-    load_<type>s(conn, options)
-    conn.close()
+    with create_db(db_path) as conn:
+        load_<type>s(conn, options)
 
 
 if __name__ == "__main__":

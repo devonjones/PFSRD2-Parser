@@ -3,7 +3,7 @@ import sys
 import os
 import json
 import glob
-from optparse import OptionParser
+import argparse
 from pfsrd2.sql import get_db_path, create_db
 from pfsrd2.sql.weapon_groups import insert_weapon_group, truncate_weapon_groups
 
@@ -24,8 +24,8 @@ def load_weapon_groups(conn, options):
 
 
 def option_parser(usage):
-    parser = OptionParser(usage=usage)
-    parser.add_option(
+    parser = argparse.ArgumentParser(usage=usage)
+    parser.add_argument(
         "-o",
         "--output",
         dest="output",
@@ -35,13 +35,12 @@ def option_parser(usage):
 
 
 def main():
-    usage = "usage: %prog [options] [filenames]\nReads weapon group json and inserts them into a weapon group db"
+    usage = "usage: %(prog)s [options] [filenames]\nReads weapon group json and inserts them into a weapon group db"
     parser = option_parser(usage)
-    (options, args) = parser.parse_args()
+    options = parser.parse_args()
     db_path = get_db_path("pfsrd2.db")
-    conn = create_db(db_path)
-    load_weapon_groups(conn, options)
-    conn.close()
+    with create_db(db_path) as conn:
+        load_weapon_groups(conn, options)
 
 
 if __name__ == "__main__":
