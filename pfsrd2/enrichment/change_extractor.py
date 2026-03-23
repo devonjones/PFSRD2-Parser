@@ -9,7 +9,7 @@ import json
 import re
 import sys
 
-ENRICHMENT_VERSION = 9
+ENRICHMENT_VERSION = 10
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -275,13 +275,63 @@ def _build_language_effects(text):
     return effects
 
 
+def _extract_trait_names_regex(t):
+    """Extract single-word trait names from text using regex.
+
+    Only extracts clean single-word names to avoid sentence fragments.
+    Multi-word patterns like 'either the amphibious or aquatic' are
+    handled by splitting on known connectors.
+    """
+    names = []
+    # "add the X and Y traits" or "gains the X and Y traits"
+    m = re.search(r"(?:add|gains?) the (.+?) traits?[,.\s]", t)
+    if m:
+        trait_text = m.group(1)
+        # Split on connectors, then validate each word
+        parts = re.split(r",\s*(?:and\s+)?|\s+and\s+|\s+or\s+", trait_text)
+        for part in parts:
+            # Extract only the last word (the actual trait name)
+            # e.g. "optionally the mindless" → "mindless"
+            # e.g. "either the amphibious" → "amphibious"
+            words = part.strip().split()
+            if words:
+                candidate = words[-1].strip()
+                # Skip noise words and multi-word fragments
+                if candidate and candidate not in (
+                    "the",
+                    "and",
+                    "or",
+                    "trait",
+                    "traits",
+                    "optionally",
+                    "either",
+                    "usually",
+                ):
+                    names.append(candidate.title())
+    return names
+
+
 def _build_trait_effects(text, links=None):
     effects = []
     t = text.lower()
 
     # Use links with game-obj="Traits" when available — these are authoritative
     # and avoid the sentence fragment problem (pfsrd2-bfy)
-    trait_links = [l for l in (links or []) if l.get("game-obj") == "Traits"]
+    all_links = links or []
+    trait_links = [l for l in all_links if l.get("game-obj") == "Traits"]
+
+    # Flag non-Traits links that look like they should be trait links
+    # (e.g., "vampire" linking to MonsterFamilies instead of Traits)
+    _NOISE_GAME_OBJS = {"Sources", "Languages", "Rules"}
+    for link in all_links:
+        game_obj = link.get("game-obj", "")
+        if game_obj != "Traits" and game_obj not in _NOISE_GAME_OBJS:
+            name = link.get("name", "")
+            print(
+                f"WARNING: trait change has non-Traits link: {name!r} "
+                f"(game-obj={game_obj!r}) — possible HTML bug",
+                file=sys.stderr,
+            )
 
     m = re.search(r"replace the (\w+) trait with the (\w+) trait", t)
     if m:
@@ -300,54 +350,35 @@ def _build_trait_effects(text, links=None):
             }
         )
 
-    if not effects and trait_links and ("add" in t or "gain" in t):
-        # Link-based extraction — each Traits link is a real trait name
-        for link in trait_links:
-            name = link.get("name", "").strip().title()
-            if name:
-                operation = "remove_item" if "loses" in t or "remove" in t else "add_item"
+    if not effects and ("add" in t or "gain" in t):
+        # Start with link-based extraction — Traits links are authoritative
+        extracted_names = set()
+        if trait_links:
+            for link in trait_links:
+                name = link.get("name", "").strip().title()
+                if name:
+                    operation = "remove_item" if "loses" in t or "remove" in t else "add_item"
+                    effects.append(
+                        {
+                            "target": "$.creature_type.creature_types",
+                            "operation": operation,
+                            "name": name,
+                        }
+                    )
+                    extracted_names.add(name.lower())
+
+        # Supplement with regex for traits not covered by links
+        # (e.g., "vampire" linking to MonsterFamilies instead of Traits)
+        regex_names = _extract_trait_names_regex(t)
+        for name in regex_names:
+            if name.lower() not in extracted_names:
                 effects.append(
                     {
                         "target": "$.creature_type.creature_types",
-                        "operation": operation,
+                        "operation": "add_item",
                         "name": name,
                     }
                 )
-
-    # Fallback to regex when no trait links available
-    if not effects:
-        m = re.search(r"add the (.+?) traits?[\.,]", t)
-        if m:
-            trait_text = m.group(1)
-            traits = re.split(r",\s*(?:and\s+)?|\s+and\s+", trait_text)
-            for trait in traits:
-                trait = trait.strip()
-                if trait and not any(w in trait for w in ("optionally", "either", "trait")):
-                    effects.append(
-                        {
-                            "target": "$.creature_type.creature_types",
-                            "operation": "add_item",
-                            "name": trait.title(),
-                        }
-                    )
-
-    if not effects:
-        m = re.search(r"gains? the (.+?) traits?[,.\s]", t)
-        if m:
-            trait_text = m.group(1)
-            traits = re.split(r",\s*(?:and\s+)?|\s+and\s+", trait_text)
-            for trait in traits:
-                trait = trait.strip()
-                if trait and not any(
-                    w in trait for w in ("usually", "optionally", "either", "trait")
-                ):
-                    effects.append(
-                        {
-                            "target": "$.creature_type.creature_types",
-                            "operation": "add_item",
-                            "name": trait.title(),
-                        }
-                    )
 
     if not effects:
         m = re.search(r"add the (\w+) trait", t)
