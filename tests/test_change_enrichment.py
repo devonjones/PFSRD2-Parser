@@ -1,12 +1,10 @@
 import json
-import sqlite3
 from unittest.mock import patch
 
 import pytest
 
-from pfsrd2.change_enrichment import ENRICHMENT_FIELDS, _merge_enrichment, change_enrichment_pass
+from pfsrd2.change_enrichment import _merge_enrichment, change_enrichment_pass
 from pfsrd2.sql.enrichment import (
-    fetch_change_by_hash,
     fetch_changes_for_source,
     get_enrichment_db_connection,
     update_change_enriched_json,
@@ -55,10 +53,12 @@ def _make_struct(source_type, name, changes, subtypes=None, adjustments=None):
 class TestMergeEnrichment:
     def test_merges_category_and_effects(self):
         change = {"text": "Add the undead trait.", "type": "stat_block_section"}
-        enriched_json = json.dumps({
-            "change_category": "traits",
-            "effects": [{"target": "$.creature_type", "operation": "add_item"}],
-        })
+        enriched_json = json.dumps(
+            {
+                "change_category": "traits",
+                "effects": [{"target": "$.creature_type", "operation": "add_item"}],
+            }
+        )
         _merge_enrichment(change, enriched_json)
         assert change["change_category"] == "traits"
         assert len(change["effects"]) == 1
@@ -68,10 +68,12 @@ class TestMergeEnrichment:
             "text": "Add the undead trait.",
             "change_category": "existing_category",
         }
-        enriched_json = json.dumps({
-            "change_category": "traits",
-            "effects": [{"target": "$.creature_type", "operation": "add_item"}],
-        })
+        enriched_json = json.dumps(
+            {
+                "change_category": "traits",
+                "effects": [{"target": "$.creature_type", "operation": "add_item"}],
+            }
+        )
         _merge_enrichment(change, enriched_json)
         # Should NOT overwrite existing change_category
         assert change["change_category"] == "existing_category"
@@ -80,10 +82,12 @@ class TestMergeEnrichment:
 
     def test_does_not_modify_text(self):
         change = {"text": "Original text."}
-        enriched_json = json.dumps({
-            "change_category": "traits",
-            "text": "Modified text.",
-        })
+        enriched_json = json.dumps(
+            {
+                "change_category": "traits",
+                "text": "Modified text.",
+            }
+        )
         _merge_enrichment(change, enriched_json)
         assert change["text"] == "Original text."
 
@@ -98,9 +102,7 @@ class TestChangeEnrichmentPass:
         """
         real_conn = get_enrichment_db_connection(db_path=":memory:")
         wrapper = _NonClosingConnection(real_conn)
-        with patch(
-            "pfsrd2.change_enrichment.get_enrichment_db_connection", return_value=wrapper
-        ):
+        with patch("pfsrd2.change_enrichment.get_enrichment_db_connection", return_value=wrapper):
             yield real_conn
         real_conn.close()
 
@@ -151,6 +153,24 @@ class TestChangeEnrichmentPass:
 
         curs = mock_db.cursor()
         rows = fetch_changes_for_source(curs, "Vampire :: Strigoi", "monster_family")
+        assert len(rows) == 1
+
+    def test_handles_nested_subtypes(self, mock_db):
+        """Nested subtypes should include full ancestry in source_name."""
+        grandchild_changes = [_make_change("Add darkvision.")]
+        child = {
+            "name": "True Abilities",
+            "changes": [],
+            "subtypes": [{"name": "Elder", "changes": grandchild_changes}],
+        }
+        subtypes = [child]
+        struct = _make_struct("monster_family", "Vampire", [], subtypes=subtypes)
+        change_enrichment_pass(struct, "monster_family")
+
+        curs = mock_db.cursor()
+        rows = fetch_changes_for_source(
+            curs, "Vampire :: True Abilities :: Elder", "monster_family"
+        )
         assert len(rows) == 1
 
     def test_uses_object_name_not_struct_name(self, mock_db):

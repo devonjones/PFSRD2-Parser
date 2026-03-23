@@ -38,14 +38,10 @@ class TestCategorizeChangeText:
         assert _categorize_change_text("Change Speed to 20 feet.") == "speed"
 
     def test_level(self):
-        assert (
-            _categorize_change_text("Increase the creature\u2019s level by 1.") == "level"
-        )
+        assert _categorize_change_text("Increase the creature\u2019s level by 1.") == "level"
 
     def test_hit_points(self):
-        assert (
-            _categorize_change_text("hit points based on level") == "hit_points"
-        )
+        assert _categorize_change_text("hit points based on level") == "hit_points"
 
     def test_unknown(self):
         assert _categorize_change_text("random nonsense text") == "unknown"
@@ -166,7 +162,9 @@ class TestEnrichChange:
             {"type": "stat_block_section", "subtype": "adjustment", "level": "2-4", "hp": "10"},
             {"type": "stat_block_section", "subtype": "adjustment", "level": "5+", "hp": "20"},
         ]
-        raw = json.dumps({"text": "Increase hit points based on level.", "_adjustments": adjustments})
+        raw = json.dumps(
+            {"text": "Increase hit points based on level.", "_adjustments": adjustments}
+        )
         enriched_str, _ = enrich_change(raw, "Template")
         enriched = json.loads(enriched_str)
         assert enriched["change_category"] == "hit_points"

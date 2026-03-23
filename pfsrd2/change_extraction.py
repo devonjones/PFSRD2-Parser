@@ -12,7 +12,6 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 from universal.universal import build_object, extract_link, get_links
 from universal.utils import get_text
 
-
 _ACTION_TITLE_MAP = {
     "Single Action": "One Action",
     "Two Actions": "Two Actions",

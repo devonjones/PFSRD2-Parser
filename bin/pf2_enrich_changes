@@ -35,49 +35,50 @@ def main():
     parser = argparse.ArgumentParser(description="Enrich template/family change records")
     parser.add_argument("--stats", action="store_true", help="Show enrichment statistics")
     parser.add_argument("--force", action="store_true", help="Re-enrich all non-verified records")
-    parser.add_argument("--unknown", action="store_true", help="Show records that couldn't be categorized")
+    parser.add_argument(
+        "--unknown", action="store_true", help="Show records that couldn't be categorized"
+    )
     parser.add_argument("--sample", type=int, help="Show N sample enriched records")
     args = parser.parse_args()
 
     conn = get_enrichment_db_connection()
-    curs = conn.cursor()
+    try:
+        curs = conn.cursor()
 
-    if args.stats:
-        _show_stats(curs)
+        if args.stats:
+            _show_stats(curs)
+            return
+
+        if args.unknown:
+            _show_unknown(curs)
+            return
+
+        if args.sample:
+            _show_sample(curs, args.sample)
+            return
+
+        # Run enrichment
+        version = 999999 if args.force else ENRICHMENT_VERSION
+        records = fetch_changes_needing_enrichment(curs, version)
+        print(f"Processing {len(records)} change records (version {ENRICHMENT_VERSION})...")
+
+        enriched_count = 0
+        unknown_count = 0
+        for record in records:
+            enriched_json, method = enrich_change(record["raw_json"], record["source_name"])
+            if enriched_json:
+                update_change_enriched_json(
+                    curs, record["change_id"], enriched_json, ENRICHMENT_VERSION, method
+                )
+                enriched_count += 1
+            else:
+                mark_change_needs_review(curs, record["change_id"], "unknown_category")
+                unknown_count += 1
+
+        conn.commit()
+        print(f"Enriched: {enriched_count}, Unknown: {unknown_count}")
+    finally:
         conn.close()
-        return
-
-    if args.unknown:
-        _show_unknown(curs)
-        conn.close()
-        return
-
-    if args.sample:
-        _show_sample(curs, args.sample)
-        conn.close()
-        return
-
-    # Run enrichment
-    version = 999999 if args.force else ENRICHMENT_VERSION
-    records = fetch_changes_needing_enrichment(curs, version)
-    print(f"Processing {len(records)} change records (version {ENRICHMENT_VERSION})...")
-
-    enriched_count = 0
-    unknown_count = 0
-    for record in records:
-        enriched_json, method = enrich_change(record["raw_json"], record["source_name"])
-        if enriched_json:
-            update_change_enriched_json(
-                curs, record["change_id"], enriched_json, ENRICHMENT_VERSION, method
-            )
-            enriched_count += 1
-        else:
-            mark_change_needs_review(curs, record["change_id"], "unknown_category")
-            unknown_count += 1
-
-    conn.commit()
-    print(f"Enriched: {enriched_count}, Unknown: {unknown_count}")
-    conn.close()
 
 
 def _show_stats(curs):
@@ -103,9 +104,7 @@ def _show_stats(curs):
             print(f"  {row['cat'] or 'null':20s} {row['cnt']}")
 
     # Source type breakdown
-    curs.execute(
-        "SELECT source_type, COUNT(*) as cnt FROM change_records GROUP BY source_type"
-    )
+    curs.execute("SELECT source_type, COUNT(*) as cnt FROM change_records GROUP BY source_type")
     rows = curs.fetchall()
     if rows:
         print("\nBy source type:")

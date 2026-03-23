@@ -293,7 +293,9 @@ def fetch_changes_needing_enrichment(curs, current_version):
     return curs.fetchall()
 
 
-def update_change_enriched_json(curs, change_id, enriched_json, enrichment_version, extraction_method):
+def update_change_enriched_json(
+    curs, change_id, enriched_json, enrichment_version, extraction_method
+):
     """Store enrichment results for a change record."""
     sql = "\n".join(
         [

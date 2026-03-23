@@ -7,9 +7,7 @@ in the monster_template parser pipeline.
 
 import json
 import re
-
-from universal.universal import build_object
-
+import sys
 
 ENRICHMENT_VERSION = 8
 
@@ -156,8 +154,6 @@ def _categorize_change_text(text):
 
 def _build_effects(text, category, source_name, adjustments=None):
     """Build effects for a categorized change."""
-    t = text.lower()
-
     if category == "abilities":
         return [
             {
@@ -215,9 +211,9 @@ def _extract_names_from_text(text, after_marker):
     idx = t.find(after_marker)
     if idx < 0:
         return []
-    rest = text[idx + len(after_marker):].strip()
+    rest = text[idx + len(after_marker) :].strip()
     if ". " in rest:
-        rest = rest[:rest.index(". ")]
+        rest = rest[: rest.index(". ")]
     rest = rest.rstrip(".")
     return [n.strip().strip("*") for n in rest.split(",") if n.strip()]
 
@@ -285,10 +281,18 @@ def _build_trait_effects(text):
     m = re.search(r"replace the (\w+) trait with the (\w+) trait", t)
     if m:
         effects.append(
-            {"target": "$.creature_type.creature_types", "operation": "remove_item", "name": m.group(1).title()}
+            {
+                "target": "$.creature_type.creature_types",
+                "operation": "remove_item",
+                "name": m.group(1).title(),
+            }
         )
         effects.append(
-            {"target": "$.creature_type.creature_types", "operation": "add_item", "name": m.group(2).title()}
+            {
+                "target": "$.creature_type.creature_types",
+                "operation": "add_item",
+                "name": m.group(2).title(),
+            }
         )
 
     m = re.search(r"add the (.+?) traits?[\.,]", t)
@@ -299,7 +303,11 @@ def _build_trait_effects(text):
             trait = trait.strip()
             if trait and trait not in ("optionally the mindless",):
                 effects.append(
-                    {"target": "$.creature_type.creature_types", "operation": "add_item", "name": trait.title()}
+                    {
+                        "target": "$.creature_type.creature_types",
+                        "operation": "add_item",
+                        "name": trait.title(),
+                    }
                 )
 
     if not effects:
@@ -311,14 +319,22 @@ def _build_trait_effects(text):
                 trait = trait.strip()
                 if trait and "usually" not in trait:
                     effects.append(
-                        {"target": "$.creature_type.creature_types", "operation": "add_item", "name": trait.title()}
+                        {
+                            "target": "$.creature_type.creature_types",
+                            "operation": "add_item",
+                            "name": trait.title(),
+                        }
                     )
 
     if not effects:
         m = re.search(r"add the (\w+) trait", t)
         if m:
             effects.append(
-                {"target": "$.creature_type.creature_types", "operation": "add_item", "name": m.group(1).title()}
+                {
+                    "target": "$.creature_type.creature_types",
+                    "operation": "add_item",
+                    "name": m.group(1).title(),
+                }
             )
 
     m = re.search(r"(?:if .+?has the|remove the) (\w+) trait,?\s*remove", t)
@@ -333,23 +349,61 @@ def _build_trait_effects(text):
         )
 
     if "rarity" in t and not effects:
-        effects.append({"conditional": "$.creature_type.rarity == 'Common'", "target": "$.creature_type.rarity", "operation": "replace", "value": "Uncommon"})
-        effects.append({"conditional": "$.creature_type.rarity == 'Uncommon'", "target": "$.creature_type.rarity", "operation": "replace", "value": "Rare"})
+        effects.append(
+            {
+                "conditional": "$.creature_type.rarity == 'Common'",
+                "target": "$.creature_type.rarity",
+                "operation": "replace",
+                "value": "Uncommon",
+            }
+        )
+        effects.append(
+            {
+                "conditional": "$.creature_type.rarity == 'Uncommon'",
+                "target": "$.creature_type.rarity",
+                "operation": "replace",
+                "value": "Rare",
+            }
+        )
 
     m = re.search(r"replace the (.+?) traits? with the$", t)
     if m and not effects:
         for trait in re.split(r"\s+and\s+|,\s*", m.group(1)):
-            effects.append({"target": "$.creature_type.creature_types", "operation": "remove_item", "name": trait.strip().title()})
+            effects.append(
+                {
+                    "target": "$.creature_type.creature_types",
+                    "operation": "remove_item",
+                    "name": trait.strip().title(),
+                }
+            )
 
     m = re.match(r"^-?\s*([\w\s,]+(?:\s+and\s+[\w\s]+)+)\s+traits?\.", t)
     if m and "replace" not in t and "add" not in t and not effects:
         for trait in re.split(r"\s+and\s+|,\s*", m.group(1)):
-            effects.append({"target": "$.creature_type.creature_types", "operation": "add_item", "name": trait.strip().title()})
+            effects.append(
+                {
+                    "target": "$.creature_type.creature_types",
+                    "operation": "add_item",
+                    "name": trait.strip().title(),
+                }
+            )
 
     m = re.search(r"loses the (\w+) trait.+?gains the (\w+) trait", t)
     if m and not effects:
-        effects.append({"target": "$.creature_type.creature_types", "operation": "remove_item", "name": m.group(1).title()})
-        effects.append({"target": "$.creature_type.creature_types", "operation": "add_item", "name": m.group(2).title()})
+        effects.append(
+            {
+                "target": "$.creature_type.creature_types",
+                "operation": "remove_item",
+                "name": m.group(1).title(),
+            }
+        )
+        effects.append(
+            {
+                "target": "$.creature_type.creature_types",
+                "operation": "add_item",
+                "name": m.group(2).title(),
+            }
+        )
 
     return effects
 
@@ -358,7 +412,9 @@ def _build_size_effects(text):
     t = text.lower()
     m = re.search(r"(?:change size to|reduce .+ size to|becomes?) (\w+)", t)
     if m:
-        return [{"target": "$.creature_type.size", "operation": "replace", "value": m.group(1).title()}]
+        return [
+            {"target": "$.creature_type.size", "operation": "replace", "value": m.group(1).title()}
+        ]
     if "increase" in t and "size" in t and "one" in t:
         return [{"target": "$.creature_type.size", "operation": "size_increment", "value": 1}]
     return []
@@ -390,11 +446,27 @@ def _build_sense_effects(text):
             )
     if "darkvision" in t:
         effects.append(
-            {"target": "$.senses.special_senses", "operation": "add_item", "item": {"type": "stat_block_section", "subtype": "special_sense", "name": "darkvision"}}
+            {
+                "target": "$.senses.special_senses",
+                "operation": "add_item",
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "special_sense",
+                    "name": "darkvision",
+                },
+            }
         )
     if "low-light vision" in t:
         effects.append(
-            {"target": "$.senses.special_senses", "operation": "add_item", "item": {"type": "stat_block_section", "subtype": "special_sense", "name": "low-light vision"}}
+            {
+                "target": "$.senses.special_senses",
+                "operation": "add_item",
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "special_sense",
+                    "name": "low-light vision",
+                },
+            }
         )
     return effects
 
@@ -417,9 +489,9 @@ def _build_attribute_effects(text):
     effects = []
     for m in re.finditer(r"(\w+) modifier of [+–-]?(\d+)", t):
         attr = m.group(1).lower()
-        prefix = t[max(0, m.start() - 3):m.start() + len(m.group(0))]
+        prefix = t[max(0, m.start() - 3) : m.start() + len(m.group(0))]
         val = int(m.group(2))
-        if "–" in prefix or "-" in prefix[:prefix.find(m.group(2))]:
+        if "–" in prefix or "-" in prefix[: prefix.find(m.group(2))]:
             val = -val
         effects.append({"target": f"$.statistics.{attr[:3]}", "operation": "replace", "value": val})
     return effects
@@ -446,23 +518,65 @@ def _build_combat_stat_effects(text):
     if "ac" in t:
         effects.append({"target": "$.defense.ac.value", "operation": "adjustment", "value": val})
     if "attack" in t:
-        effects.append({"target": "$.offense.offensive_actions[*].attack.bonus.bonuses", "operation": "adjustment", "value": val})
+        effects.append(
+            {
+                "target": "$.offense.offensive_actions[*].attack.bonus.bonuses",
+                "operation": "adjustment",
+                "value": val,
+            }
+        )
     if "dc" in t:
-        effects.append({"target": "$.offense.offensive_actions[*].spells.saving_throw.dc", "operation": "adjustment", "value": val})
-        effects.append({"target": "$.defense.automatic_abilities[*].saving_throw[*].dc", "operation": "adjustment", "value": val})
-        effects.append({"target": "$.defense.reactive_abilities[*].saving_throw[*].dc", "operation": "adjustment", "value": val})
-        effects.append({"target": "$.offense.offensive_actions[*].ability.saving_throw[*].dc", "operation": "adjustment", "value": val})
+        effects.append(
+            {
+                "target": "$.offense.offensive_actions[*].spells.saving_throw.dc",
+                "operation": "adjustment",
+                "value": val,
+            }
+        )
+        effects.append(
+            {
+                "target": "$.defense.automatic_abilities[*].saving_throw[*].dc",
+                "operation": "adjustment",
+                "value": val,
+            }
+        )
+        effects.append(
+            {
+                "target": "$.defense.reactive_abilities[*].saving_throw[*].dc",
+                "operation": "adjustment",
+                "value": val,
+            }
+        )
+        effects.append(
+            {
+                "target": "$.offense.offensive_actions[*].ability.saving_throw[*].dc",
+                "operation": "adjustment",
+                "value": val,
+            }
+        )
     if "saving throw" in t:
         for save in ("fort", "ref", "will"):
-            effects.append({"target": f"$.defense.saves.{save}.value", "operation": "adjustment", "value": val})
+            effects.append(
+                {"target": f"$.defense.saves.{save}.value", "operation": "adjustment", "value": val}
+            )
     if "perception" in t:
-        effects.append({"target": "$.senses.perception.value", "operation": "adjustment", "value": val})
+        effects.append(
+            {"target": "$.senses.perception.value", "operation": "adjustment", "value": val}
+        )
     if not effects:
         for save_name in ("will", "fort", "ref"):
             if save_name in t:
-                effects.append({"target": f"$.defense.saves.{save_name}.value", "operation": "adjustment", "value": val})
+                effects.append(
+                    {
+                        "target": f"$.defense.saves.{save_name}.value",
+                        "operation": "adjustment",
+                        "value": val,
+                    }
+                )
     if "skill" in t:
-        effects.append({"target": "$.statistics.skills[*].value", "operation": "adjustment", "value": val})
+        effects.append(
+            {"target": "$.statistics.skills[*].value", "operation": "adjustment", "value": val}
+        )
     return effects
 
 
@@ -508,11 +622,23 @@ def _build_damage_effects(text, source_name=""):
         return effects
 
     if "any number" in t and "strikes" in t:
-        return [{"target": "$.offense.offensive_actions[*].attack", "operation": "select", "selection": {"type": "select_n", "description": text}}]
+        return [
+            {
+                "target": "$.offense.offensive_actions[*].attack",
+                "operation": "select",
+                "selection": {"type": "select_n", "description": text},
+            }
+        ]
 
     m = re.search(r"damage.+?changes? to (\w+) damage", t)
     if m:
-        return [{"target": "$.offense.offensive_actions[*].attack.damage[*].damage_type", "operation": "replace", "value": m.group(1)}]
+        return [
+            {
+                "target": "$.offense.offensive_actions[*].attack.damage[*].damage_type",
+                "operation": "replace",
+                "value": m.group(1),
+            }
+        ]
 
     m = re.search(r"(?:add|gains?) a (\w[\w\s]*?) (?:ranged |melee )?strike", t)
     if m:
@@ -520,7 +646,11 @@ def _build_damage_effects(text, source_name=""):
             {
                 "target": "$.offense.offensive_actions",
                 "operation": "add_item",
-                "item": {"type": "stat_block_section", "subtype": "offensive_action", "name": m.group(1).strip().title()},
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "offensive_action",
+                    "name": m.group(1).strip().title(),
+                },
                 "value_from": "$.offense.offensive_actions[*].attack.damage | min",
             }
         ]
@@ -539,7 +669,12 @@ def _build_damage_effects(text, source_name=""):
     # "deal an additional 2d6 negative damage"
     m = re.search(r"deal an additional (\d+d\d+) (\w+) damage", t)
     if m:
-        item = {"type": "stat_block_section", "subtype": "attack_damage", "formula": m.group(1), "damage_type": m.group(2)}
+        item = {
+            "type": "stat_block_section",
+            "subtype": "attack_damage",
+            "formula": m.group(1),
+            "damage_type": m.group(2),
+        }
         if source_name:
             item["notes"] = source_name
         return [
@@ -553,7 +688,13 @@ def _build_damage_effects(text, source_name=""):
     # "change one die to fire damage"
     m = re.search(r"change one die to (\w+) damage", t)
     if m:
-        effects.append({"target": "$.offense.offensive_actions[*].attack.damage", "operation": "replace_one_die", "value": m.group(1)})
+        effects.append(
+            {
+                "target": "$.offense.offensive_actions[*].attack.damage",
+                "operation": "replace_one_die",
+                "value": m.group(1),
+            }
+        )
 
     # "add 1 fire damage to its strikes"
     m = re.search(r"add (\d+) (\w+) damage to its strikes", t)
@@ -563,7 +704,12 @@ def _build_damage_effects(text, source_name=""):
                 "conditional": "$.offense.offensive_actions[*].attack.damage[0].formula | dice_count <= 1",
                 "target": "$.offense.offensive_actions[*].attack.damage",
                 "operation": "add_item",
-                "item": {"type": "stat_block_section", "subtype": "attack_damage", "formula": m.group(1), "damage_type": m.group(2)},
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "attack_damage",
+                    "formula": m.group(1),
+                    "damage_type": m.group(2),
+                },
             }
         )
 
@@ -641,7 +787,12 @@ def _build_speed_effects(text):
                 eff = {
                     "target": "$.offense.speed.movement",
                     "operation": "add_item",
-                    "item": {"type": "stat_block_section", "subtype": "speed", "name": move_type, "movement_type": move_type},
+                    "item": {
+                        "type": "stat_block_section",
+                        "subtype": "speed",
+                        "name": move_type,
+                        "movement_type": move_type,
+                    },
                     "value_from": f"$.offense.speed.movement[?(@.movement_type=='{source_type}')].value / 2",
                 }
                 if "minimum" in t:
@@ -652,23 +803,41 @@ def _build_speed_effects(text):
                 eff = {
                     "target": "$.offense.speed.movement",
                     "operation": "add_item",
-                    "item": {"type": "stat_block_section", "subtype": "speed", "name": move_type, "movement_type": move_type},
+                    "item": {
+                        "type": "stat_block_section",
+                        "subtype": "speed",
+                        "name": move_type,
+                        "movement_type": move_type,
+                    },
                     "value_from": "$.offense.speed.movement[*].value | max",
                 }
             else:
                 eff = {
                     "target": "$.offense.speed.movement",
                     "operation": "add_item",
-                    "item": {"type": "stat_block_section", "subtype": "speed", "name": move_type, "movement_type": move_type},
+                    "item": {
+                        "type": "stat_block_section",
+                        "subtype": "speed",
+                        "name": move_type,
+                        "movement_type": move_type,
+                    },
                 }
             if "doesn't have" in t or "doesn\u2019t have" in t:
-                eff["conditional"] = f"$.offense.speed.movement[?(@.movement_type=='{move_type}')] == null"
+                eff["conditional"] = (
+                    f"$.offense.speed.movement[?(@.movement_type=='{move_type}')] == null"
+                )
             effects.append(eff)
             return effects
 
     # "change its highest Speed to a fly Speed"
     if "change" in t and "fly speed" in t:
-        return [{"target": "$.offense.speed.movement", "operation": "replace_highest_with", "movement_type": "fly"}]
+        return [
+            {
+                "target": "$.offense.speed.movement",
+                "operation": "replace_highest_with",
+                "movement_type": "fly",
+            }
+        ]
 
     # "Increase Speed by 10 feet or to 40 feet"
     m = re.search(r"increase speed by (\d+) feet or to (\d+) feet", t)
@@ -742,6 +911,7 @@ def _hp_effects_from_adjustments(adjustments, sign):
         try:
             value = int(raw_value)
         except ValueError:
+            print(f"WARNING: non-numeric HP adjustment value: {raw_value!r}", file=sys.stderr)
             continue
         # Ensure sign matches template direction
         if sign < 0 and value > 0:
@@ -790,7 +960,11 @@ def _build_skill_effects(text):
             {
                 "target": "$.statistics.skills",
                 "operation": "add_item",
-                "item": {"type": "stat_block_section", "subtype": "skill", "name": m.group(1).strip().title()},
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "skill",
+                    "name": m.group(1).strip().title(),
+                },
                 "value_from": "$.statistics.skills[*].value | max",
             }
         ]
@@ -804,7 +978,11 @@ def _build_skill_effects(text):
                 {
                     "target": "$.statistics.skills",
                     "operation": "add_item",
-                    "item": {"type": "stat_block_section", "subtype": "skill", "name": skill.strip().title()},
+                    "item": {
+                        "type": "stat_block_section",
+                        "subtype": "skill",
+                        "name": skill.strip().title(),
+                    },
                     "value_from": "$.statistics.skills[*].value | max",
                 }
             )
@@ -812,11 +990,23 @@ def _build_skill_effects(text):
 
     m = re.search(r"reduce.+?(\w+).+?modifier by (\d+)", t)
     if m:
-        effects.append({"target": f"$.statistics.skills[?(@.name=='{m.group(1).title()}')].value", "operation": "adjustment", "value": -int(m.group(2))})
+        effects.append(
+            {
+                "target": f"$.statistics.skills[?(@.name=='{m.group(1).title()}')].value",
+                "operation": "adjustment",
+                "value": -int(m.group(2)),
+            }
+        )
 
     m = re.search(r"(?:increase|set) the creature.s (\w+) modifier to.+?high skill", t)
     if m and not effects:
-        effects.append({"target": f"$.statistics.skills[?(@.name=='{m.group(1).title()}')].value", "operation": "replace", "value_from": "$.statistics.skills | high_for_level"})
+        effects.append(
+            {
+                "target": f"$.statistics.skills[?(@.name=='{m.group(1).title()}')].value",
+                "operation": "replace",
+                "value_from": "$.statistics.skills | high_for_level",
+            }
+        )
 
     m = re.search(r"give the creature a ([\w\s]+?) modifier.+?equal to.+?high skill value", t)
     if m and not effects:
@@ -827,7 +1017,11 @@ def _build_skill_effects(text):
                 {
                     "target": "$.statistics.skills",
                     "operation": "add_item",
-                    "item": {"type": "stat_block_section", "subtype": "skill", "name": skill.strip().title()},
+                    "item": {
+                        "type": "stat_block_section",
+                        "subtype": "skill",
+                        "name": skill.strip().title(),
+                    },
                     "value_from": "$.statistics.skills | high_for_level",
                 }
             )
@@ -835,14 +1029,34 @@ def _build_skill_effects(text):
     m = re.search(r"gains the (\w[\w\s]*?) skill", t)
     if m and not effects:
         effects.append(
-            {"target": "$.statistics.skills", "operation": "add_item", "item": {"type": "stat_block_section", "subtype": "skill", "name": m.group(1).strip().title()}}
+            {
+                "target": "$.statistics.skills",
+                "operation": "add_item",
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "skill",
+                    "name": m.group(1).strip().title(),
+                },
+            }
         )
 
     if "choose" in t and not effects:
-        effects.append({"target": "$.statistics.skills", "operation": "select", "selection": {"type": "select_one", "description": text}})
+        effects.append(
+            {
+                "target": "$.statistics.skills",
+                "operation": "select",
+                "selection": {"type": "select_one", "description": text},
+            }
+        )
 
     if "lore skill relevant" in t and not effects:
-        effects.append({"target": "$.statistics.skills", "operation": "select", "selection": {"type": "select_one", "constraint": "lore", "description": text}})
+        effects.append(
+            {
+                "target": "$.statistics.skills",
+                "operation": "select",
+                "selection": {"type": "select_one", "constraint": "lore", "description": text},
+            }
+        )
 
     return effects
 
@@ -855,18 +1069,33 @@ def _build_spell_effects(text):
             {
                 "target": "$.offense.offensive_actions",
                 "operation": "add_item",
-                "item": {"type": "stat_block_section", "subtype": "offensive_action", "name": m.group(1).strip().title(), "offensive_action_type": "spells"},
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "offensive_action",
+                    "name": m.group(1).strip().title(),
+                    "offensive_action_type": "spells",
+                },
             }
         ]
     if "swap" in t:
-        return [{"target": "$.offense.offensive_actions[*].spells", "operation": "select", "selection": {"type": "replace_n", "description": text}}]
+        return [
+            {
+                "target": "$.offense.offensive_actions[*].spells",
+                "operation": "select",
+                "selection": {"type": "replace_n", "description": text},
+            }
+        ]
     m = re.search(r"replace spells with (\w+) spells", t)
     if m:
         return [
             {
                 "target": "$.offense.offensive_actions[*].spells.spell_list[*].spells",
                 "operation": "select",
-                "selection": {"type": "replace_n", "constraint": m.group(1).strip(), "description": text},
+                "selection": {
+                    "type": "replace_n",
+                    "constraint": m.group(1).strip(),
+                    "description": text,
+                },
             }
         ]
     return []
@@ -880,22 +1109,46 @@ def _build_strike_effects(text):
         old_weapon = m.group(1)
         new_weapon = m.group(2)
         effects = [
-            {"target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.weapon", "operation": "replace", "value": new_weapon},
-            {"target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.name", "operation": "replace", "value": new_weapon.title()},
+            {
+                "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.weapon",
+                "operation": "replace",
+                "value": new_weapon,
+            },
+            {
+                "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.name",
+                "operation": "replace",
+                "value": new_weapon.title(),
+            },
         ]
         m2 = re.search(r"deal (\w+) damage instead of (\w+)", t)
         if m2:
             effects.append(
-                {"target": f"$.offense.offensive_actions[?(@.attack.weapon=='{new_weapon}')].attack.damage[*].damage_type", "operation": "replace", "value": m2.group(1)}
+                {
+                    "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{new_weapon}')].attack.damage[*].damage_type",
+                    "operation": "replace",
+                    "value": m2.group(1),
+                }
             )
         return effects
 
     m = re.search(r"reduce the reach.+?to (\d+) feet", t)
     if m:
-        return [{"target": "$.offense.offensive_actions[?(@.attack.attack_type=='melee')].attack.bonus", "operation": "set_reach", "value": int(m.group(1))}]
+        return [
+            {
+                "target": "$.offense.offensive_actions[?(@.attack.attack_type=='melee')].attack.bonus",
+                "operation": "set_reach",
+                "value": int(m.group(1)),
+            }
+        ]
 
     if "paralysis" in t or "drain life" in t:
-        return [{"target": "$.offense.offensive_actions[*].attack", "operation": "select", "selection": {"type": "select_n", "description": text}}]
+        return [
+            {
+                "target": "$.offense.offensive_actions[*].attack",
+                "operation": "select",
+                "selection": {"type": "select_n", "description": text},
+            }
+        ]
 
     if "ability" in t:
         return [
@@ -912,7 +1165,11 @@ def _build_strike_effects(text):
             {
                 "target": "$.offense.offensive_actions[*].attack.traits",
                 "operation": "select",
-                "selection": {"type": "select_one", "options": ["versatile P", "versatile S"], "description": text},
+                "selection": {
+                    "type": "select_one",
+                    "options": ["versatile P", "versatile S"],
+                    "description": text,
+                },
             }
         ]
 
@@ -936,11 +1193,17 @@ def _build_weakness_effects(text, adjustments=None):
         for name in names:
             for adj in adjustments:
                 level_text = adj.get("level", adj.get("starting_level", ""))
-                val_key = [k for k in adj if k not in ("type", "subtype", "level", "starting_level")]
+                val_key = [
+                    k for k in adj if k not in ("type", "subtype", "level", "starting_level")
+                ]
                 if val_key:
                     try:
                         val = int(adj[val_key[0]])
                     except ValueError:
+                        print(
+                            f"WARNING: non-numeric weakness value: {adj[val_key[0]]!r}",
+                            file=sys.stderr,
+                        )
                         continue
                     effects.append(
                         {
@@ -977,11 +1240,17 @@ def _build_resistance_effects(text, adjustments=None):
         if ("depending on" in t or "based on" in t) and adjustments:
             for adj in adjustments:
                 level_text = adj.get("level", adj.get("starting_level", ""))
-                val_key = [k for k in adj if k not in ("type", "subtype", "level", "starting_level")]
+                val_key = [
+                    k for k in adj if k not in ("type", "subtype", "level", "starting_level")
+                ]
                 if val_key:
                     try:
                         val = int(adj[val_key[0]])
                     except ValueError:
+                        print(
+                            f"WARNING: non-numeric resistance value: {adj[val_key[0]]!r}",
+                            file=sys.stderr,
+                        )
                         continue
                     effects.append(
                         {
@@ -1012,11 +1281,17 @@ def _build_resistance_effects(text, adjustments=None):
                 {
                     "target": "$.defense.hitpoints[*].resistances",
                     "operation": "add_item",
-                    "item": {"type": "stat_block_section", "subtype": "resistance", "name": res_name},
+                    "item": {
+                        "type": "stat_block_section",
+                        "subtype": "resistance",
+                        "name": res_name,
+                    },
                 }
             )
 
-    m = re.search(r"resistance to (?:all )?physical damage (?:\()?except (?:from )?(\w[\w\s]*?)[\),]", t)
+    m = re.search(
+        r"resistance to (?:all )?physical damage (?:\()?except (?:from )?(\w[\w\s]*?)[\),]", t
+    )
     if m and not effects:
         bypass = m.group(1).strip()
         effects.append(
@@ -1027,7 +1302,13 @@ def _build_resistance_effects(text, adjustments=None):
                     "type": "stat_block_section",
                     "subtype": "resistance",
                     "name": "physical",
-                    "modifiers": [{"type": "stat_block_section", "subtype": "modifier", "name": f"except {bypass}"}],
+                    "modifiers": [
+                        {
+                            "type": "stat_block_section",
+                            "subtype": "modifier",
+                            "name": f"except {bypass}",
+                        }
+                    ],
                 },
             }
         )
@@ -1037,17 +1318,32 @@ def _build_resistance_effects(text, adjustments=None):
             {
                 "target": "$.defense.hitpoints[*].automatic_abilities",
                 "operation": "add_item",
-                "item": {"type": "stat_block_section", "subtype": "ability", "name": "Fast Healing", "ability_type": "automatic"},
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "ability",
+                    "name": "Fast Healing",
+                    "ability_type": "automatic",
+                },
             }
         )
 
     if "choose" in t and not effects:
-        effects.append({"target": "$.defense.hitpoints[*].resistances", "operation": "add_item", "item": {"type": "stat_block_section", "subtype": "resistance", "name": "physical"}})
+        effects.append(
+            {
+                "target": "$.defense.hitpoints[*].resistances",
+                "operation": "add_item",
+                "item": {"type": "stat_block_section", "subtype": "resistance", "name": "physical"},
+            }
+        )
         effects.append(
             {
                 "target": "$.defense.hitpoints[*].resistances[?(@.name=='physical')]",
                 "operation": "select",
-                "selection": {"type": "select_one", "constraint": "bypass_material", "description": text},
+                "selection": {
+                    "type": "select_one",
+                    "constraint": "bypass_material",
+                    "description": text,
+                },
             }
         )
 

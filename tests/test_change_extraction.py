@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup
 
 from pfsrd2.change_extraction import (
     extract_inline_abilities,
+    parse_ability_nodes,
     parse_adjustments_table,
     parse_change,
 )
@@ -53,7 +54,9 @@ class TestParseChange:
 
 class TestExtractInlineAbilities:
     def test_extracts_abilities_delimited_by_br(self):
-        html = "<div>Some intro text. <b>Grab</b> The creature grabs.<br/><b>Push</b> It pushes.</div>"
+        html = (
+            "<div>Some intro text. <b>Grab</b> The creature grabs.<br/><b>Push</b> It pushes.</div>"
+        )
         bs = BeautifulSoup(html, "html.parser")
         div = bs.find("div")
         abilities = extract_inline_abilities(div)
@@ -71,8 +74,6 @@ class TestExtractInlineAbilities:
 
     def test_linked_ability_pattern(self):
         """parse_ability_nodes handles <a><b>Name</b></a> when passed directly."""
-        from pfsrd2.change_extraction import parse_ability_nodes
-
         html = '<a href="/Abilities.aspx?ID=1"><b>Grab</b></a> The creature grabs.'
         bs = BeautifulSoup(html, "html.parser")
         nodes = list(bs.children)

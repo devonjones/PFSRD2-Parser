@@ -20,7 +20,6 @@ from pfsrd2.sql.enrichment import (
     fetch_change_by_hash,
     get_enrichment_db_connection,
     insert_change_record,
-    mark_change_stale,
 )
 
 # Fields that enrichment adds to a change object
@@ -50,13 +49,17 @@ def change_enrichment_pass(struct, source_type):
         # Process top-level changes
         _process_changes(curs, obj.get("changes", []), source_name, source_type, adjustments)
 
-        # Process subtype changes (monster_family subtypes)
-        for subtype in obj.get("subtypes", []):
-            subtype_name = f"{source_name} :: {subtype.get('name', '')}"
-            _process_changes(curs, subtype.get("changes", []), subtype_name, source_type, adjustments)
-            for child in subtype.get("subtypes", []):
-                child_name = f"{source_name} :: {child.get('name', '')}"
-                _process_changes(curs, child.get("changes", []), child_name, source_type, adjustments)
+        # Process subtype changes (monster_family subtypes) recursively
+        def _process_subtypes_recursively(subtypes, parent_name):
+            for subtype in subtypes:
+                subtype_name = f"{parent_name} :: {subtype.get('name', '')}"
+                _process_changes(
+                    curs, subtype.get("changes", []), subtype_name, source_type, adjustments
+                )
+                if "subtypes" in subtype:
+                    _process_subtypes_recursively(subtype["subtypes"], subtype_name)
+
+        _process_subtypes_recursively(obj.get("subtypes", []), source_name)
 
         conn.commit()
     finally:
@@ -80,10 +83,6 @@ def _process_changes(curs, changes, source_name, source_type, adjustments=None):
 
         existing = fetch_change_by_hash(curs, identity_hash)
         if existing:
-            # Check if source text changed (shouldn't happen with same hash, but
-            # handle raw_json changes from link extraction etc.)
-            if existing["stale"]:
-                pass  # Already marked stale, skip
             # If enriched and not stale, merge enrichment back
             if existing["enriched_json"] and not existing["stale"]:
                 _merge_enrichment(change, existing["enriched_json"])
