@@ -13,6 +13,11 @@ def set_edition_from_db_pass(struct):
             row = curs.fetchone()
             if row and row.get("edition"):
                 struct["edition"] = row["edition"]
+                return
+    assert "edition" in struct, (
+        f"set_edition_from_db_pass: could not resolve edition from sources "
+        f"{[s.get('name') for s in struct.get('sources', [])]}"
+    )
 
 
 def create_sources_table(curs):

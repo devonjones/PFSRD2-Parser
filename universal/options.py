@@ -18,14 +18,6 @@ def exec_main(options, args, function, localdir):
             function(arg, options)
 
 
-def exec_load_main(parser, function):
-    args = parser.parse_args()
-    if not args.db:
-        sys.stderr.write("-d/--db required")
-        sys.exit(1)
-    function(args.db, [], args.parent)
-
-
 def option_parser(usage):
     parser = argparse.ArgumentParser(usage=usage)
     parser.add_argument(
@@ -59,13 +51,4 @@ def option_parser(usage):
         help="Write json to stdout",
     )
     parser.add_argument("files", nargs="*", help="Input files to process")
-    return parser
-
-
-def load_option_parser(usage):
-    parser = argparse.ArgumentParser(usage=usage)
-    parser.add_argument("-d", "--db", dest="db", help="Sqlite DB to load into (required)")
-    parser.add_argument(
-        "-p", "--parent", dest="parent", help="Parent object to load under (default: psrd)"
-    )
     return parser

@@ -64,7 +64,9 @@ def option_parser(usage):
 
 
 def main():
-    usage = "usage: %(prog)s [options] [filenames]\nReads trait json and inserts them into a trait db"
+    usage = (
+        "usage: %(prog)s [options] [filenames]\nReads trait json and inserts them into a trait db"
+    )
     parser = option_parser(usage)
     options = parser.parse_args()
     db_path = get_db_path("pfsrd2.db")

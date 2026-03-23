@@ -35,9 +35,7 @@ def option_parser(usage):
 
 
 def main():
-    usage = (
-        "usage: %(prog)s [options] [filenames]\nReads source json and inserts them into the sources db"
-    )
+    usage = "usage: %(prog)s [options] [filenames]\nReads source json and inserts them into the sources db"
     parser = option_parser(usage)
     options = parser.parse_args()
     db_path = get_db_path("pfsrd2.db")

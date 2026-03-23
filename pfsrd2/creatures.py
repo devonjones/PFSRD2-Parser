@@ -505,7 +505,12 @@ def monster_ability_db_pass(struct):
             if ability_json.get("edition") == target_edition:
                 return ability_row
 
-        # No exact match, return first one
+        # No exact match — warn and return first one
+        names = [json.loads(a["monster_ability"]).get("name", "?") for a in abilities]
+        sys.stderr.write(
+            f"WARNING: _pick_best_ability: no edition match for {names[0]} "
+            f"(target={target_edition}), using first of {len(abilities)}\n"
+        )
         return abilities[0]
 
     def _template_get_magical_tradition(curs, ability):

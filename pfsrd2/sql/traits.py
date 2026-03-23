@@ -25,7 +25,7 @@ def strip_nested_metadata(db_obj, expected_version):
     del db_obj["schema_version"]
 
 
-def trait_db_pass(struct, pre_process=None, edition_required=True):
+def trait_db_pass(struct, pre_process=None):
     """Enrich minimal trait objects with full trait data from database.
 
     Walks the struct finding all objects with subtype=="trait", looks up
@@ -40,9 +40,6 @@ def trait_db_pass(struct, pre_process=None, edition_required=True):
             DB lookups in pre-processing (e.g., splitting alignment traits).
             If it returns True, the trait is considered fully handled and the
             default DB replacement is skipped.
-        edition_required: If True (default), assert that struct has 'edition'
-            set before doing edition matching. Set to False for parsers like
-            monster_ability that legitimately lack edition.
     """
     from pfsrd2.sql import get_db_connection, get_db_path
 
@@ -58,12 +55,9 @@ def trait_db_pass(struct, pre_process=None, edition_required=True):
     def _handle_trait_link(db_trait):
         trait = json.loads(db_trait["trait"])
         edition = trait["edition"]
-        if not edition_required and "edition" not in struct:
-            return trait
-        if edition_required:
-            assert "edition" in struct, (
-                f"struct missing 'edition' but edition_required=True " f"(trait: {trait['name']})"
-            )
+        assert (
+            "edition" in struct
+        ), f"struct missing 'edition' for trait DB lookup (trait: {trait['name']})"
         if edition == struct["edition"]:
             return trait
         if "alternate_link" not in trait:
@@ -93,8 +87,6 @@ def trait_db_pass(struct, pre_process=None, edition_required=True):
         if "aonid" in db_trait:
             del db_trait["aonid"]
         strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
-        if "classes" in db_trait:
-            db_trait["classes"].sort()
         parent[index] = db_trait
 
     db_path = get_db_path("pfsrd2.db")
