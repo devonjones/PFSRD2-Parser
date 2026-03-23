@@ -3,7 +3,7 @@ import json
 import os
 import sys
 
-from optparse import OptionParser
+import argparse
 
 from sh import find
 
@@ -63,8 +63,8 @@ def load_monster_families(conn, options):
 
 
 def option_parser(usage):
-    parser = OptionParser(usage=usage)
-    parser.add_option(
+    parser = argparse.ArgumentParser(usage=usage)
+    parser.add_argument(
         "-o",
         "--output",
         dest="output",
@@ -74,17 +74,14 @@ def option_parser(usage):
 
 
 def main():
-    usage = "usage: %prog [options]\nReads monster family json and inserts them into the db"
+    usage = "usage: %(prog)s [options]\nReads monster family json and inserts them into the db"
     parser = option_parser(usage)
-    (options, args) = parser.parse_args()
+    options = parser.parse_args()
     if not options.output:
         parser.error("-o/--output is required")
     db_path = get_db_path("pfsrd2.db")
-    conn = create_db(db_path)
-    try:
+    with create_db(db_path) as conn:
         load_monster_families(conn, options)
-    finally:
-        conn.close()
 
 
 if __name__ == "__main__":

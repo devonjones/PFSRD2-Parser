@@ -49,7 +49,11 @@ def trait_db_pass(struct, pre_process=None, edition_required=True):
     def _merge_classes(trait, db_trait):
         trait_classes = set(trait.get("classes", []))
         db_trait_classes = set(db_trait.get("classes", []))
-        db_trait["classes"] = sorted(trait_classes | db_trait_classes)
+        merged = sorted(trait_classes | db_trait_classes)
+        if merged:
+            db_trait["classes"] = merged
+        else:
+            db_trait.pop("classes", None)
 
     def _handle_trait_link(db_trait):
         trait = json.loads(db_trait["trait"])
@@ -89,63 +93,63 @@ def trait_db_pass(struct, pre_process=None, edition_required=True):
         if "aonid" in db_trait:
             del db_trait["aonid"]
         strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
-        db_trait["classes"].sort()
+        if "classes" in db_trait:
+            db_trait["classes"].sort()
         parent[index] = db_trait
 
     db_path = get_db_path("pfsrd2.db")
-    conn = get_db_connection(db_path)
-    curs = conn.cursor()
-    walk(struct, test_key_is_value("subtype", "trait"), _check_trait)
-    conn.close()
+    with get_db_connection(db_path) as conn:
+        curs = conn.cursor()
+        walk(struct, test_key_is_value("subtype", "trait"), _check_trait)
 
 
 def create_traits_table(curs):
-    sql = "\n".join(
-        [
-            "CREATE TABLE traits (",
-            "  trait_id INTEGER PRIMARY KEY,",
-            "  game_id TEXT NOT NULL UNIQUE,",
-            "  name TEXT NOT NULL,",
-            "  classes TEXT,",
-            "  edition TEXT,",
-            "  trait TEXT" ")",
-        ]
-    )
+    sql = """
+CREATE TABLE traits (
+  trait_id INTEGER PRIMARY KEY,
+  game_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  classes TEXT,
+  edition TEXT,
+  trait TEXT)
+"""
     curs.execute(sql)
 
 
 def create_traits_index(curs):
-    sql = "\n".join(["CREATE INDEX traits_game_id", " ON traits (game_id)"])
+    sql = """
+CREATE INDEX traits_game_id
+ ON traits (game_id)
+"""
     curs.execute(sql)
 
 
 def create_trait_link_table(curs):
-    sql = "\n".join(
-        [
-            "CREATE TABLE trait_links (",
-            "  legacy_trait_id INTEGER,",
-            "  remastered_trait_id INTEGER,",
-            "  PRIMARY KEY (legacy_trait_id, remastered_trait_id)",
-            ")",
-        ]
-    )
+    sql = """
+CREATE TABLE trait_links (
+  legacy_trait_id INTEGER,
+  remastered_trait_id INTEGER,
+  PRIMARY KEY (legacy_trait_id, remastered_trait_id)
+)
+"""
     curs.execute(sql)
 
 
 def create_trait_link_index(curs):
-    sql = "\n".join(
-        ["CREATE INDEX trait_links_legacy_trait_id", " ON trait_links (legacy_trait_id)"]
-    )
+    sql = """
+CREATE INDEX trait_links_legacy_trait_id
+ ON trait_links (legacy_trait_id)
+"""
     curs.execute(sql)
 
 
 def truncate_traits(curs):
-    sql = "\n".join(["DELETE FROM traits"])
+    sql = "DELETE FROM traits"
     curs.execute(sql)
 
 
 def truncate_trait_links(curs):
-    sql = "\n".join(["DELETE FROM trait_links"])
+    sql = "DELETE FROM trait_links"
     curs.execute(sql)
 
 
@@ -158,71 +162,75 @@ def insert_trait(curs, trait):
         trait["edition"],
         text,
     ]
-    sql = "\n".join(
-        [
-            "INSERT INTO traits",
-            " (game_id, name, classes, edition, trait)",
-            " VALUES",
-            " (?, ?, ?, ?, ?)",
-        ]
-    )
+    sql = """
+INSERT INTO traits
+ (game_id, name, classes, edition, trait)
+ VALUES
+ (?, ?, ?, ?, ?)
+"""
     curs.execute(sql, values)
     return curs.lastrowid
 
 
 def fetch_trait(curs, game_id):
     values = [game_id]
-    sql = "\n".join(["SELECT *", " FROM traits", " WHERE game_id = ?"])
+    sql = """
+SELECT *
+ FROM traits
+ WHERE game_id = ?
+"""
     curs.execute(sql, values)
     return curs.fetchone()
 
 
 def fetch_trait_by_name(curs, name):
     values = [name.lower()]
-    sql = "\n".join(["SELECT t.*", " FROM traits t", " WHERE t.name = ?"])
+    sql = """
+SELECT t.*
+ FROM traits t
+ WHERE t.name = ?
+"""
     curs.execute(sql, values)
     return curs.fetchone()
 
 
 def fetch_trait_by_id(curs, trait_id):
-    sql = "\n".join(["SELECT *", " FROM traits", " WHERE trait_id = ?"])
+    sql = """
+SELECT *
+ FROM traits
+ WHERE trait_id = ?
+"""
     curs.execute(sql, (trait_id,))
     return curs.fetchone()
 
 
 def fetch_trait_by_aonid(curs, aonid):
-    sql = "\n".join(
-        [
-            "SELECT t.*",
-            " FROM traits t",
-            " JOIN trait_link_cache tlc ON t.trait_id = tlc.trait_id",
-            " WHERE tlc.trait_aonid = ?",
-        ]
-    )
+    sql = """
+SELECT t.*
+ FROM traits t
+ JOIN trait_link_cache tlc ON t.trait_id = tlc.trait_id
+ WHERE tlc.trait_aonid = ?
+"""
     curs.execute(sql, (aonid,))
     return curs.fetchone()
 
 
 def fetch_trait_by_link(curs, legacy_trait_id=None, remastered_trait_id=None):
     if legacy_trait_id:
-        sql = "\n".join(
-            [
-                "SELECT t.*",
-                " FROM traits t",
-                " JOIN trait_links tl ON t.trait_id = tl.remastered_trait_id",
-                " WHERE tl.legacy_trait_id = ?",
-            ]
-        )
+        sql = """
+SELECT t.*
+ FROM traits t
+ JOIN trait_links tl ON t.trait_id = tl.remastered_trait_id
+ WHERE tl.legacy_trait_id = ?
+"""
         curs.execute(sql, (legacy_trait_id,))
     elif remastered_trait_id:
-        sql = "\n".join(
-            [
-                "SELECT t.*",
-                " FROM traits t",
-                " JOIN trait_links tl ON t.trait_id = tl.legacy_trait_id",
-                " WHERE tl.remastered_trait_id = ?",
-            ]
-        )
+        sql = """
+SELECT t.*
+ FROM traits t
+ JOIN trait_links tl ON t.trait_id = tl.legacy_trait_id
+ WHERE tl.remastered_trait_id = ?
+"""
         curs.execute(sql, (remastered_trait_id,))
     else:
         raise ValueError("Either legacy_trait_id or remastered_trait_id must be provided")
@@ -230,12 +238,10 @@ def fetch_trait_by_link(curs, legacy_trait_id=None, remastered_trait_id=None):
 
 
 def insert_trait_link(curs, legacy_trait_id, remastered_trait_id):
-    sql = "\n".join(
-        [
-            "INSERT OR IGNORE INTO trait_links (legacy_trait_id, remastered_trait_id)",
-            "VALUES (?, ?)",
-        ]
-    )
+    sql = """
+INSERT OR IGNORE INTO trait_links (legacy_trait_id, remastered_trait_id)
+VALUES (?, ?)
+"""
     curs.execute(sql, (legacy_trait_id, remastered_trait_id))
 
 

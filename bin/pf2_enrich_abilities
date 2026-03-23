@@ -249,26 +249,22 @@ def main():
     )
     args = parser.parse_args()
 
-    conn = get_enrichment_db_connection()
+    with get_enrichment_db_connection() as conn:
+        if args.stats:
+            curs = conn.cursor()
+            counts = count_ability_records(curs)
+            print(f"Total abilities:  {counts['total']}")
+            print(f"Enriched:         {counts['enriched']}")
+            print(f"Unenriched:       {counts['unenriched']}")
+            print(f"Stale:            {counts['stale']}")
+            print(f"Human verified:   {counts['verified']}")
+            print(f"Needs review:     {counts['needs_review']}")
+            return
 
-    if args.stats:
-        curs = conn.cursor()
-        counts = count_ability_records(curs)
-        print(f"Total abilities:  {counts['total']}")
-        print(f"Enriched:         {counts['enriched']}")
-        print(f"Unenriched:       {counts['unenriched']}")
-        print(f"Stale:            {counts['stale']}")
-        print(f"Human verified:   {counts['verified']}")
-        print(f"Needs review:     {counts['needs_review']}")
-        conn.close()
-        return
-
-    if args.llm_type:
-        run_llm(conn, args)
-    else:
-        run_regex(conn, args)
-
-    conn.close()
+        if args.llm_type:
+            run_llm(conn, args)
+        else:
+            run_regex(conn, args)
 
 
 if __name__ == "__main__":

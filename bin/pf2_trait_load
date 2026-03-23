@@ -3,7 +3,7 @@ import sys
 import os
 import json
 from sh import find
-from optparse import OptionParser
+import argparse
 from pfsrd2.sql import get_db_path, create_db
 from pfsrd2.sql.traits import (
     insert_trait,
@@ -53,8 +53,8 @@ def load_traits(conn, options):
 
 
 def option_parser(usage):
-    parser = OptionParser(usage=usage)
-    parser.add_option(
+    parser = argparse.ArgumentParser(usage=usage)
+    parser.add_argument(
         "-o",
         "--output",
         dest="output",
@@ -64,13 +64,12 @@ def option_parser(usage):
 
 
 def main():
-    usage = "usage: %prog [options] [filenames]\nReads trait json and inserts them into a trait db"
+    usage = "usage: %(prog)s [options] [filenames]\nReads trait json and inserts them into a trait db"
     parser = option_parser(usage)
-    (options, args) = parser.parse_args()
+    options = parser.parse_args()
     db_path = get_db_path("pfsrd2.db")
-    conn = create_db(db_path)
-    load_traits(conn, options)
-    conn.close()
+    with create_db(db_path) as conn:
+        load_traits(conn, options)
 
 
 if __name__ == "__main__":
