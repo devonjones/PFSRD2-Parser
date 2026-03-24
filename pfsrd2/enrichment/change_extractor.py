@@ -329,6 +329,8 @@ def _classify_optional_traits(text, trait_names):
             optional.add(candidate.lower())
 
     # "either the X or Y trait"
+    # NOTE: only handles exactly 2 choices. A 3-way "either X, Y, or Z"
+    # pattern would need a more complex regex. No current templates use 3-way.
     m = re.search(r"either\s+(?:the\s+)?(\w+)\s+or\s+(\w+)", t)
     if m:
         for g in (m.group(1), m.group(2)):

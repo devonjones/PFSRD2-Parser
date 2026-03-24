@@ -7,15 +7,8 @@ source text changes, the hash changes and the old enrichment is marked stale.
 
 import hashlib
 import json
-import unicodedata
 
-
-def normalize_text(text):
-    """Normalize text for stable identity hashing."""
-    if not text:
-        return ""
-    text = unicodedata.normalize("NFC", text)
-    return " ".join(text.split())
+from pfsrd2.ability_identity import normalize_text
 
 
 def compute_change_hash(source_name, source_type, change_text):

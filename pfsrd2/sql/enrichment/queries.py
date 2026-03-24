@@ -280,13 +280,17 @@ def fetch_changes_for_source(curs, source_name, source_type):
 
 
 def fetch_changes_needing_enrichment(curs, current_version):
-    """Fetch change records that need (re-)enrichment."""
+    """Fetch change records that need (re-)enrichment.
+
+    Includes stale records (source text changed) regardless of version.
+    """
     sql = "\n".join(
         [
             "SELECT * FROM change_records",
             " WHERE human_verified = 0",
             " AND (enrichment_version IS NULL",
-            "      OR enrichment_version < ?)",
+            "      OR enrichment_version < ?",
+            "      OR stale = 1)",
         ]
     )
     curs.execute(sql, (current_version,))
