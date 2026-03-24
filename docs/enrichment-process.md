@@ -286,20 +286,154 @@ The `enrichment_version` on each record tracks which version of the extraction c
 
 When the parser re-runs and an object's text has changed (identity hash differs), the old enrichment record is marked `stale`. Stale enrichments are not applied. The offline enrichment process can re-extract them.
 
+## Change Enrichment (Template/Family Rules)
+
+Template and monster family construction rules use the same enrichment architecture, extended for rule extraction. The base parser extracts raw change text from `<li>` elements; all categorization and effect building happens offline.
+
+### Architecture
+
+```
+Parser run → identifies construction sections, extracts raw <li> text
+                    ↓
+Population pass → stores raw changes + adjustments + links in enrichment DB
+                    ↓
+Offline enrichment → regex categorization + effect building
+                    ↓
+Next parser run → merges enriched change_category + effects into JSON output
+```
+
+### Effect Types
+
+Effects use JSONPath-style targets and operations:
+
+| Operation | Description |
+|-----------|-------------|
+| `adjustment` | Add/subtract from a numeric value |
+| `replace` | Replace a value entirely |
+| `add_item` | Append an item to an array |
+| `remove_item` | Remove a named item from an array |
+| `add_items` | Append multiple items (from a source path) |
+| `replace_one_die` | Change one damage die to a new type |
+| `replace_highest_with` | Replace highest speed with a new type |
+| `size_increment` | Increase size by N categories |
+| `select` | Human/tool choice required (see below) |
+
+### Unified Select
+
+All choice/selection operations use a single `select` type with `min`/`max` cardinality:
+
+```json
+{
+    "operation": "select",
+    "target": "$.creature_type.creature_types",
+    "selection": {
+        "type": "select",
+        "min": 0,
+        "max": 1,
+        "options": [
+            {
+                "target": "$.creature_type.creature_types",
+                "operation": "add_item",
+                "name": "Mindless"
+            }
+        ],
+        "description": "optionally add Mindless"
+    }
+}
+```
+
+**Cardinality patterns:**
+
+| Pattern | min | max | Example |
+|---------|-----|-----|---------|
+| Required choice of one | 1 | 1 | "either amphibious or aquatic trait" |
+| Optional | 0 | 1 | "optionally, the mindless trait" |
+| Choose any number | 0 | *(omit)* | "any number of the creature's Strikes" |
+| Required, unbounded | 1 | *(omit)* | "add drain life to at least one Strike" |
+
+**Options are full objects**, not strings. Each option is either:
+- A complete effect object (with `target`, `operation`, `name`) for the consumer to apply directly
+- A complete data object (with `type`, `subtype`, `name`) to insert at the target
+
+This means consumers never need to construct objects — they pick from the options array and apply as-is.
+
+**Optional `action` field** for select operations that modify existing items:
+- `"action": "replace"` — selected items are replaced
+- `"action": "remove"` — selected items are removed
+
+### Damage Adjustments
+
+Flat damage modifiers use `attack_damage` objects (not modifier objects):
+
+```json
+{
+    "target": "$.offense.offensive_actions[*].attack.damage",
+    "operation": "add_item",
+    "item": {
+        "type": "stat_block_section",
+        "subtype": "attack_damage",
+        "formula": "+2",
+        "notes": "Elite"
+    }
+}
+```
+
+The `notes` field carries the template/family name. Dice formulas like `"2d6"` work in `formula` as well. The `damage_type` field is included when the text specifies one (e.g., `"damage_type": "negative"`).
+
+### Link-Based Trait Extraction
+
+Trait effects use `game-obj: "Traits"` links from the raw HTML as the authoritative source, supplemented by regex for traits whose links point to wrong game-obj (e.g., "vampire" linking to MonsterFamilies instead of Traits). Non-Traits links in trait changes produce stderr warnings as potential HTML bugs.
+
+### Adjustment Table Column Selection
+
+When building level-conditional effects from adjustment tables, the enrichment extractor prefers domain-specific columns:
+- HP effects: prefer columns with "hp" in the name
+- Resistance effects: prefer columns with "resist" in the name
+- Weakness effects: prefer columns with "weak" in the name
+
+This avoids picking the wrong column when tables have multiple value columns (e.g., `hp_decrease` + `resistance/feed_hp`).
+
+### CLI
+
+```bash
+bin/pf2_enrich_changes                # Enrich unenriched records
+bin/pf2_enrich_changes --force        # Re-enrich all (except human-verified)
+bin/pf2_enrich_changes --stats        # Show enrichment statistics
+bin/pf2_enrich_changes --unknown      # Show records that couldn't be categorized
+bin/pf2_enrich_changes --sample 5     # Show sample enriched records
+```
+
 ## Files Reference
+
+### Ability Enrichment
 
 | File | Purpose |
 |------|---------|
 | `pfsrd2/ability_enrichment.py` | Population pass + merge logic |
 | `pfsrd2/ability_identity.py` | Identity hashing |
-| `pfsrd2/sql/enrichment/__init__.py` | DB connection + migration chain |
-| `pfsrd2/sql/enrichment/tables.py` | Table/index DDL |
-| `pfsrd2/sql/enrichment/queries.py` | CRUD operations |
 | `pfsrd2/enrichment/regex_extractor.py` | Regex extraction + false alarm filters |
 | `pfsrd2/enrichment/llm_extractor.py` | LLM prompts + response parsers |
 | `bin/pf2_enrich_abilities` | Offline enrichment CLI |
 | `bin/pf2_ability_review` | Inspection/review CLI |
 | `docs/ability-enrichment.md` | Design doc for the ability enrichment system |
+
+### Change Enrichment (Template/Family Rules)
+
+| File | Purpose |
+|------|---------|
+| `pfsrd2/change_enrichment.py` | Population pass + merge logic |
+| `pfsrd2/change_identity.py` | Identity hashing for change objects |
+| `pfsrd2/change_extraction.py` | Shared HTML extraction (parse_change, abilities, adjustments) |
+| `pfsrd2/enrichment/change_extractor.py` | Regex categorization + effect building |
+| `bin/pf2_enrich_changes` | Offline enrichment CLI |
+
+### Shared Infrastructure
+
+| File | Purpose |
+|------|---------|
+| `pfsrd2/sql/enrichment/__init__.py` | DB connection + migration chain |
+| `pfsrd2/sql/enrichment/tables.py` | Table/index DDL |
+| `pfsrd2/sql/enrichment/queries.py` | CRUD operations |
 
 ## Extending to New Object Types
 
@@ -308,9 +442,9 @@ To enrich a new object type (e.g., spell effects, hazard mechanics):
 1. **Add tables** — new migration in `pfsrd2/sql/enrichment/__init__.py` for object-specific tables (or reuse existing if the schema fits)
 2. **Add identity hash** — determine which fields define the object's identity
 3. **Add population pass** — walk the objects in the parser pipeline, insert into DB
-4. **Add extractors** — regex patterns in `regex_extractor.py`, LLM prompts in `llm_extractor.py`
-5. **Add CLI support** — extend `pf2_enrich_abilities` with new `--llm` types
+4. **Add extractors** — regex patterns in `enrichment/`, LLM prompts in `llm_extractor.py`
+5. **Add CLI support** — new script in `bin/` or extend existing
 6. **Add tests** — identity hash stability, DB CRUD, extraction patterns, LLM validation
 7. **Run the full pipeline** — populate → enrich → apply → verify
 
-The enrichment DB is designed to be shared across object types. The `ability_records` and `ability_creature_links` tables are ability-specific, but the migration chain and connection management can host additional tables for other object types.
+The enrichment DB is designed to be shared across object types. The migration chain and connection management host tables for both ability and change enrichment.
