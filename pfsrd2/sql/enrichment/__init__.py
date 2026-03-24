@@ -11,20 +11,29 @@ import sqlite3
 from pfsrd2.sql.enrichment.queries import (  # noqa: F401
     clear_needs_review,
     count_ability_records,
+    count_change_records,
     fetch_abilities_by_name,
     fetch_abilities_for_creature,
     fetch_ability_by_hash,
     fetch_ability_by_id,
+    fetch_change_by_hash,
+    fetch_changes_for_source,
+    fetch_changes_needing_enrichment,
     fetch_creatures_for_ability,
     fetch_needing_enrichment,
     fetch_needs_review,
     fetch_stale,
     fetch_unenriched,
     insert_ability_record,
+    insert_change_record,
     insert_creature_link,
+    mark_change_human_verified,
+    mark_change_needs_review,
+    mark_change_stale,
     mark_human_verified,
     mark_needs_review,
     mark_stale,
+    update_change_enriched_json,
     update_enriched_json,
     update_identity_hash,
 )
@@ -33,6 +42,8 @@ from pfsrd2.sql.enrichment.tables import (
     create_ability_creature_links_table,
     create_ability_records_index,
     create_ability_records_table,
+    create_change_records_index,
+    create_change_records_table,
 )
 
 DB_NAME = "enrichment.db"
@@ -112,6 +123,18 @@ def _create_db_v_3(conn, curs, ver):
     return ver
 
 
+def _create_db_v_4(conn, curs, ver):
+    """Version 4: Create change_records table for template/family rule enrichment."""
+    if ver >= 4:
+        return ver
+    ver = 4
+    create_change_records_table(curs)
+    create_change_records_index(curs)
+    _set_version(curs, ver)
+    conn.commit()
+    return ver
+
+
 # --- Connection ---
 
 
@@ -129,6 +152,7 @@ def get_enrichment_db_connection(db_path=None):
         ver = _create_db_v_1(conn, curs)
         ver = _create_db_v_2(conn, curs, ver)
         ver = _create_db_v_3(conn, curs, ver)
+        ver = _create_db_v_4(conn, curs, ver)
     finally:
         curs.close()
     conn.row_factory = _dict_factory

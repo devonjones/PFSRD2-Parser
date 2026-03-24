@@ -4,15 +4,9 @@ import sys
 
 from bs4 import BeautifulSoup, Tag
 
+from pfsrd2.change_enrichment import change_enrichment_pass
+from pfsrd2.change_extraction import extract_inline_abilities, parse_change
 from pfsrd2.license import license_consolidation_pass, license_pass
-from pfsrd2.monster_template import (
-    _build_generic_effects,
-    _categorize_change_text,
-    _extract_inline_abilities,
-    _hp_effects_from_adjustments,
-    _parse_adjustments_table,
-    _parse_change,
-)
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
 from universal.files import char_replace, makedirs
@@ -58,6 +52,7 @@ def parse_monster_family(filename, options):
     restructure_pass(struct, "monster_family", find_monster_family)
     _extract_section_abilities(struct)
     _consolidate_creation_changes(struct)
+    change_enrichment_pass(struct, "monster_family")
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
     monster_family_cleanup_pass(struct)
@@ -252,8 +247,7 @@ def _extract_changes_from_section(section, all_sections=None):
     for li in ul.find_all("li", recursive=False):
         if not get_text(li).strip():
             continue
-        change = _parse_change(li)
-        change["change_category"] = _categorize_change_text(change.get("text", ""))
+        change = parse_change(li)
         changes.append(change)
     ul.decompose()
     section["text"] = str(bs).strip()
@@ -261,43 +255,7 @@ def _extract_changes_from_section(section, all_sections=None):
         return
     section["changes"] = changes
 
-    # Look for adjustments tables in subsections and peer sections
-    adjustments = None
-
-    def _find_table(sections):
-        for s in sections:
-            st = s.get("text", "")
-            if "|" in st or "<table" in st:
-                result = _parse_adjustments_table(st)
-                if result:
-                    return result
-            result = _find_table(s.get("sections", []))
-            if result:
-                return result
-        return None
-
-    adjustments = _find_table(section.get("sections", []))
-    if not adjustments and all_sections:
-        adjustments = _find_table(all_sections)
-
-    # Build effects using template machinery
-    temp_mt = {"changes": changes}
-    if adjustments:
-        temp_mt["adjustments"] = adjustments
-    _build_generic_effects(temp_mt)
-
-    # Handle special cases the generic builder misses
-    for change in changes:
-        if change.get("effects"):
-            continue
-        t = change.get("text", "").lower()
-        # "Do not modify the ghost's Hit Points"
-        if "do not modify" in t:
-            change["effects"] = [{"operation": "no_op", "target": "none"}]
-        # "Reduce/Increase HP by the amount listed on the table"
-        elif change.get("change_category") == "hit_points" and adjustments:
-            sign = -1 if "reduce" in t or "decrease" in t else 1
-            change["effects"] = _hp_effects_from_adjustments(adjustments, sign)
+    # Adjustments tables are handled by the enrichment pipeline
 
 
 def _consolidate_creation_changes(struct):
@@ -354,6 +312,8 @@ def _consolidate_creation_changes(struct):
                     }
                 ],
             }
+            if section.get("links"):
+                change["links"] = section["links"]
             subtype["changes"] = [change]
         # Recurse into subsections
         child_subtypes = []
@@ -450,7 +410,7 @@ def _extract_section_abilities(struct):
                 bs = BeautifulSoup(text, "html.parser")
                 # Don't extract from text that's purely in tables
                 if bs.find("b") and not (bs.find("table") and not bs.find("b", recursive=False)):
-                    abilities = _extract_inline_abilities(bs)
+                    abilities = extract_inline_abilities(bs)
                     if abilities:
                         section["text"] = str(bs).strip()
                         section.setdefault("abilities", []).extend(abilities)
