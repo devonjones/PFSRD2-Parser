@@ -242,7 +242,11 @@ class TestBuildTraitEffects:
         assert len(selects) == 1
         assert selects[0]["selection"]["min"] == 0
         assert selects[0]["selection"]["max"] == 1
-        assert "Mindless" in selects[0]["selection"]["options"]
+        # Options are full effect objects
+        opts = selects[0]["selection"]["options"]
+        assert len(opts) == 1
+        assert opts[0]["name"] == "Mindless"
+        assert opts[0]["operation"] == "add_item"
         # Should NOT contain fragments
         for e in effects:
             assert "Traits And" not in e.get("name", "")
@@ -265,7 +269,12 @@ class TestBuildTraitEffects:
         assert len(selects) == 1
         assert selects[0]["selection"]["min"] == 1
         assert selects[0]["selection"]["max"] == 1
-        assert set(selects[0]["selection"]["options"]) == {"Amphibious", "Aquatic"}
+        # Options are full effect objects
+        opts = selects[0]["selection"]["options"]
+        assert len(opts) == 2
+        opt_names = {o["name"] for o in opts}
+        assert opt_names == {"Amphibious", "Aquatic"}
+        assert all(o["operation"] == "add_item" for o in opts)
 
     def test_non_trait_links_ignored(self):
         """Links with game-obj != Traits should not be extracted as traits."""

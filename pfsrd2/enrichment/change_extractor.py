@@ -9,7 +9,7 @@ import json
 import re
 import sys
 
-ENRICHMENT_VERSION = 12
+ENRICHMENT_VERSION = 15
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -411,7 +411,13 @@ def _build_trait_effects(text, links=None):
                             "type": "select",
                             "min": 0,
                             "max": 1,
-                            "options": [name],
+                            "options": [
+                                {
+                                    "target": "$.creature_type.creature_types",
+                                    "operation": "add_item",
+                                    "name": name,
+                                }
+                            ],
                             "description": f"optionally add {name}",
                         },
                     }
@@ -436,7 +442,14 @@ def _build_trait_effects(text, links=None):
                         "type": "select",
                         "min": 1,
                         "max": 1,
-                        "options": choice_names,
+                        "options": [
+                            {
+                                "target": "$.creature_type.creature_types",
+                                "operation": "add_item",
+                                "name": n,
+                            }
+                            for n in choice_names
+                        ],
                         "description": f"choose one of: {', '.join(choice_names)}",
                     },
                 }
@@ -1292,7 +1305,10 @@ def _build_strike_effects(text):
                     "type": "select",
                     "min": 1,
                     "max": 1,
-                    "options": ["versatile P", "versatile S"],
+                    "options": [
+                        {"type": "stat_block_section", "subtype": "trait", "name": "versatile P"},
+                        {"type": "stat_block_section", "subtype": "trait", "name": "versatile S"},
+                    ],
                     "description": text,
                 },
             }
@@ -1318,13 +1334,14 @@ def _build_weakness_effects(text, adjustments=None):
         for name in names:
             for adj in adjustments:
                 level_text = adj.get("level", adj.get("starting_level", ""))
-                val_key = [
-                    k for k in adj if k not in ("type", "subtype", "level", "starting_level")
-                ]
+                skip_keys = {"type", "subtype", "level", "starting_level"}
+                # Prefer weakness-specific columns
+                weak_keys = [k for k in adj if k not in skip_keys and "weak" in k.lower()]
+                val_key = weak_keys if weak_keys else [k for k in adj if k not in skip_keys]
                 if val_key:
                     raw_val = adj[val_key[0]].replace("\u2013", "-").replace("\u2014", "-")
                     try:
-                        val = int(raw_val)
+                        val = abs(int(raw_val))  # Weakness values are always positive
                     except ValueError:
                         print(
                             f"WARNING: non-numeric weakness value: {raw_val!r}",
@@ -1362,17 +1379,20 @@ def _build_resistance_effects(text, adjustments=None):
 
     m = re.search(r"resistance to ([\w\s]+?)(?:,|\.|depending|with)", t)
     if m:
+        # Clean up name — "physical damage" → "physical"
         name = m.group(1).strip()
+        name = re.sub(r"\s+damage$", "", name)
         if ("depending on" in t or "based on" in t) and adjustments:
             for adj in adjustments:
                 level_text = adj.get("level", adj.get("starting_level", ""))
-                val_key = [
-                    k for k in adj if k not in ("type", "subtype", "level", "starting_level")
-                ]
+                skip_keys = {"type", "subtype", "level", "starting_level"}
+                # Prefer resistance-specific columns
+                res_keys = [k for k in adj if k not in skip_keys and "resist" in k.lower()]
+                val_key = res_keys if res_keys else [k for k in adj if k not in skip_keys]
                 if val_key:
                     raw_val = adj[val_key[0]].replace("\u2013", "-").replace("\u2014", "-")
                     try:
-                        val = int(raw_val)
+                        val = abs(int(raw_val))  # Resistance values are always positive
                     except ValueError:
                         print(
                             f"WARNING: non-numeric resistance value: {raw_val!r}",
@@ -1450,6 +1470,37 @@ def _build_resistance_effects(text, adjustments=None):
                     "subtype": "ability",
                     "name": "Fast Healing",
                     "ability_type": "automatic",
+                },
+            }
+        )
+
+    # "Choose one type of material that bypasses this resistance"
+    # The bypass material is a modifier on the resistance object
+    m_choose = re.search(r"choose one type of material.+?bypasses", t)
+    if m_choose:
+        # Extract material options from text like "cold iron (vetalarana), silver (moroi), or wood (jiang-shi)"
+        options = re.findall(r"(\w[\w\s]*?)\s*\(", t[m_choose.end() :])
+        # Clean up: strip leading "or ", "and "
+        options = [re.sub(r"^(?:or|and)\s+", "", o.strip()) for o in options]
+        options = [o for o in options if o]
+        effects.append(
+            {
+                "target": "$.defense.hitpoints[*].resistances[?(@.name=='physical')]",
+                "operation": "select",
+                "selection": {
+                    "type": "select",
+                    "min": 1,
+                    "max": 1,
+                    "options": [
+                        {
+                            "type": "stat_block_section",
+                            "subtype": "modifier",
+                            "name": f"except {o.strip()}",
+                        }
+                        for o in options
+                        if o.strip()
+                    ],
+                    "description": "bypass material",
                 },
             }
         )
