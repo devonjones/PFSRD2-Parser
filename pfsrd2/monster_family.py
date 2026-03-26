@@ -115,25 +115,28 @@ def _content_filter(soup):
     for div in main.find_all("div", {"class": "siderbarlook"}):
         div.unwrap()
     # Fix h3.title tags that contain body content (abilities, descriptions)
-    # These are not real headings — the content is inside the h3 tag.
-    # Split them: extract title text as a real h3, unwrap the rest.
+    # These are headings with inline content (h3 contains <b>, <br>, <ul>
+    # etc.). Split: extract title as h3 name, leave body as h3 children
+    # so parse_universal treats them as proper section headings with content.
     for h3 in list(main.find_all("h3", {"class": "title"})):
-        # A real heading has only text/link children. If it has <b>, <br>,
-        # <ul> etc., it's a fake heading with inline content.
         has_body_content = h3.find("br") or h3.find("ul") or h3.find("b")
         if not has_body_content:
             continue
-        # Extract the title — text before the first <br> or <b>
+        # Extract the title text — everything before the first <br>, <b>, or <ul>
         title_parts = []
         for child in list(h3.children):
-            if isinstance(child, Tag) and child.name in ("br", "b", "ul"):
+            if isinstance(child, Tag) and child.name in ("br", "b", "ul", "span", "h2", "h3"):
                 break
             title_parts.append(child.extract())
-        # Create a clean h3 with just the title
         title_text = "".join(str(p) for p in title_parts).strip()
+        # Create a clean h3 with just the title, move body content after it
         if title_text:
-            new_h3 = BeautifulSoup(f'<h3 class="title">{title_text}</h3>', "html.parser").h3
+            new_h3 = BeautifulSoup(
+                f'<h3 class="title">{title_text}</h3>', "html.parser"
+            ).h3
             h3.insert_before(new_h3)
+        # Unwrap the old h3 so its body content becomes siblings after the new h3
+        # parse_universal's title_collapse_pass will group them under the h3
         h3.unwrap()
     # Remove the "Members" heading and its creature list.
     # <h3 class="framing">Members</h3> followed by creature links
