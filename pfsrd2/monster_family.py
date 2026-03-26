@@ -114,36 +114,32 @@ def _content_filter(soup):
     # Unwrap siderbarlook divs (alternate link handled separately)
     for div in main.find_all("div", {"class": "siderbarlook"}):
         div.unwrap()
-    # Fix h3.title tags that contain body content (abilities, descriptions)
-    # These are headings with inline content (h3 contains <b>, <br>, <ul>
-    # etc.). Split: extract title as h3 name, leave body as h3 children
-    # so parse_universal treats them as proper section headings with content.
+    # Split h3.title tags that contain body content (abilities, descriptions).
+    # These are headings with inline content — the h3 wraps both the title AND
+    # the body. Split: extract title as a clean h3, unwrap the rest so it becomes
+    # sibling content. parse_universal's title_collapse_pass groups it correctly.
     for h3 in list(main.find_all("h3", {"class": "title"})):
         has_body_content = h3.find("br") or h3.find("ul") or h3.find("b")
         if not has_body_content:
             continue
-        # Extract the title text — everything before the first <br>, <b>, or <ul>
+        # Extract the title text — everything before the first body element
         title_parts = []
         for child in list(h3.children):
-            if isinstance(child, Tag) and child.name in ("br", "b", "ul", "span", "h2", "h3"):
+            if isinstance(child, Tag) and child.name in ("br", "b", "ul"):
                 break
             title_parts.append(child.extract())
         title_text = "".join(str(p) for p in title_parts).strip()
-        # Create a clean h3 with just the title, move body content after it
         if title_text:
             new_h3 = BeautifulSoup(
                 f'<h3 class="title">{title_text}</h3>', "html.parser"
             ).h3
             h3.insert_before(new_h3)
-        # Unwrap the old h3 so its body content becomes siblings after the new h3
-        # parse_universal's title_collapse_pass will group them under the h3
         h3.unwrap()
     # Remove the "Members" heading and its creature list.
     # <h3 class="framing">Members</h3> followed by creature links
     for h3 in main.find_all("h3", {"class": "framing"}):
         text = h3.get_text(strip=True)
         if text == "Members":
-            # Remove everything between this h3 and the next heading
             node = h3.next_sibling
             while node:
                 next_node = node.next_sibling
@@ -152,11 +148,6 @@ def _content_filter(soup):
                 node.extract()
                 node = next_node
             h3.extract()
-        else:
-            # Other framing headings (e.g., "Book of the Dead") — promote to h2
-            # so parse_universal treats them as section headings
-            h3.name = "h2"
-            h3["class"] = "title"
 
 
 def restructure_monster_family_pass(details):
