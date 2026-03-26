@@ -5,7 +5,8 @@ import sys
 from bs4 import BeautifulSoup, Tag
 
 from pfsrd2.change_enrichment import change_enrichment_pass
-from pfsrd2.change_extraction import extract_inline_abilities, parse_change
+from pfsrd2.change_extraction import parse_change
+from universal.ability import parse_abilities_from_nodes
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
@@ -109,9 +110,7 @@ def _content_filter(soup):
     # Decompose sidebar images in headings (icons)
     for img in main.find_all("img"):
         img.decompose()
-    # Unwrap action spans — keep text like "[one-action]"
-    for span in main.find_all("span", {"class": "action"}):
-        span.unwrap()
+    # Keep action spans intact — the unified ability parser extracts them.
     # Unwrap siderbarlook divs (alternate link handled separately)
     for div in main.find_all("div", {"class": "siderbarlook"}):
         div.unwrap()
@@ -399,7 +398,7 @@ def _extract_section_abilities(struct):
 
     Monster family "Creating X" sections contain abilities as <b>Name</b>
     followed by description text, separated by <br>. This extracts them
-    into structured ability objects on the section.
+    into structured ability objects on the section using the unified parser.
     """
 
     def _process(section):
@@ -409,8 +408,10 @@ def _extract_section_abilities(struct):
             if "<b>" in text or "<b " in text:
                 bs = BeautifulSoup(text, "html.parser")
                 # Don't extract from text that's purely in tables
-                if bs.find("b") and not (bs.find("table") and not bs.find("b", recursive=False)):
-                    abilities = extract_inline_abilities(bs)
+                if bs.find("b") and not (
+                    bs.find("table") and not bs.find("b", recursive=False)
+                ):
+                    abilities = _extract_abilities_from_bs(bs)
                     if abilities:
                         section["text"] = str(bs).strip()
                         section.setdefault("abilities", []).extend(abilities)
@@ -419,6 +420,29 @@ def _extract_section_abilities(struct):
 
     for section in struct.get("sections", []):
         _process(section)
+
+
+def _extract_abilities_from_bs(bs):
+    """Extract abilities from a BS object using the unified parser.
+
+    Finds the first <b> tag not inside a <table> and collects all nodes
+    from there onward, then passes them to the unified ability parser.
+    """
+    first_b = None
+    for b in bs.find_all("b"):
+        if not b.find_parent("table"):
+            first_b = b
+            break
+    if not first_b:
+        return None
+    # Collect all nodes from the first <b> onward (siblings only)
+    ability_nodes = []
+    node = first_b
+    while node:
+        next_node = node.next_sibling
+        ability_nodes.append(node.extract())
+        node = next_node
+    return parse_abilities_from_nodes(ability_nodes)
 
 
 def monster_family_link_pass(struct):

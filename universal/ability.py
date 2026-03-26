@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 
 from pfsrd2.action import extract_action_type
 from pfsrd2.trait import extract_starting_traits
+from universal.creatures import universal_handle_save_dc
 from universal.universal import (
     build_object,
     extract_bold_fields,
@@ -174,6 +175,9 @@ def parse_ability_from_html(
     extract_bold_fields(ability, bs, labels, decompose=True)
     # Also extract Stage N fields
     _extract_stage_fields(ability, bs)
+
+    # Convert saving_throw and damage from strings to structured arrays
+    _normalize_structured_fields(ability)
 
     # Extract result blocks
     extract_result_blocks(ability, bs, break_on_any_bold=break_results_on_any_bold)
@@ -349,6 +353,10 @@ def _apply_addon(ability, addon_name, addon_nodes):
         if value:
             stage["text"] = value
         ability.setdefault("stages", []).append(stage)
+    elif addon_name == "Saving Throw":
+        ability["saving_throw"] = [_parse_save_dc(value)]
+    elif addon_name == "Damage":
+        ability["damage"] = _parse_damage(value)
     else:
         key = addon_name.lower().replace(" ", "_")
         # Standard normalizations
@@ -358,6 +366,73 @@ def _apply_addon(ability, addon_name, addon_nodes):
             key = "prerequisite"
         if value:
             ability[key] = value
+
+
+def _normalize_structured_fields(ability):
+    """Convert saving_throw and damage from strings to structured arrays.
+
+    extract_bold_fields produces strings, but the schema requires arrays
+    of save_dc / attack_damage objects.
+    """
+    if "saving_throw" in ability and isinstance(ability["saving_throw"], str):
+        ability["saving_throw"] = [_parse_save_dc(ability["saving_throw"])]
+    if "damage" in ability and isinstance(ability["damage"], str):
+        ability["damage"] = _parse_damage(ability["damage"])
+
+
+def _parse_save_dc(text):
+    """Parse a saving throw string into a save_dc object.
+
+    Tries structured parsing (DC + save type), falls back to minimal
+    object with just the text for freeform descriptions.
+    """
+    if not text:
+        return {"type": "stat_block_section", "subtype": "save_dc", "text": ""}
+    if "DC" in text:
+        try:
+            return universal_handle_save_dc(text)
+        except (AssertionError, ValueError):
+            pass
+    # Fallback: minimal object with text
+    save_dc = {"type": "stat_block_section", "subtype": "save_dc", "text": text}
+    # Try to extract save type from common patterns
+    _SAVE_TYPES = {
+        "Fortitude": "Fort",
+        "Fort": "Fort",
+        "Reflex": "Ref",
+        "Ref": "Ref",
+        "Will": "Will",
+    }
+    for name, abbrev in _SAVE_TYPES.items():
+        if name in text:
+            save_dc["save_type"] = abbrev
+            break
+    return save_dc
+
+
+def _parse_damage(text):
+    """Parse a damage string into an array of attack_damage objects.
+
+    Tries structured parsing (dice formula + type), falls back to
+    minimal object with the text as effect.
+    """
+    if not text:
+        return []
+    # Try to import and use the creature parser's damage parser
+    try:
+        from pfsrd2.creatures import parse_attack_damage
+
+        return parse_attack_damage(text)
+    except (ImportError, AssertionError, Exception):
+        pass
+    # Fallback: single object with text as effect
+    return [
+        {
+            "type": "stat_block_section",
+            "subtype": "attack_damage",
+            "effect": text,
+        }
+    ]
 
 
 # --------------------------------------------------------------------------- #

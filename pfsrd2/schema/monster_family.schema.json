@@ -694,8 +694,7 @@
 			"required": [
 				"type",
 				"subtype",
-				"text",
-				"dc"
+				"text"
 			],
 			"additionalProperties": false
 		},
