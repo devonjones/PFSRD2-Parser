@@ -46,17 +46,37 @@ def _make_ability(name, text="", traits=None, action_type=None, frequency=None, 
     return ability
 
 
+def _make_special_sense(name):
+    return {
+        "type": "stat_block_section",
+        "subtype": "special_sense",
+        "name": name,
+    }
+
+
 def _make_creature(name, aonid, level, traits, source, abilities):
     """Build a minimal creature struct with abilities in various locations."""
     auto_abilities = []
     reactive_abilities = []
+    hp_auto_abilities = []
+    interaction_abilities = []
+    communication_abilities = []
     offensive_actions = []
+    special_senses = []
 
     for ab_type, ability in abilities:
         if ab_type == "automatic":
             auto_abilities.append(ability)
         elif ab_type == "reactive":
             reactive_abilities.append(ability)
+        elif ab_type == "hp_automatic":
+            hp_auto_abilities.append(ability)
+        elif ab_type == "interaction":
+            interaction_abilities.append(ability)
+        elif ab_type == "communication":
+            communication_abilities.append(ability)
+        elif ab_type == "special_sense":
+            special_senses.append(ability)
         elif ab_type == "offensive":
             offensive_actions.append(
                 {
@@ -68,7 +88,7 @@ def _make_creature(name, aonid, level, traits, source, abilities):
                 }
             )
 
-    return {
+    struct = {
         "name": name,
         "aonid": aonid,
         "sources": [{"name": source, "type": "source"}],
@@ -80,12 +100,23 @@ def _make_creature(name, aonid, level, traits, source, abilities):
             "defense": {
                 "automatic_abilities": auto_abilities,
                 "reactive_abilities": reactive_abilities,
+                "hitpoints": [{"automatic_abilities": hp_auto_abilities}] if hp_auto_abilities else [],
             },
+            "senses": {
+                "special_senses": special_senses,
+            },
+            "statistics": {
+                "languages": {
+                    "communication_abilities": communication_abilities,
+                },
+            },
+            "interaction_abilities": interaction_abilities,
             "offense": {
                 "offensive_actions": offensive_actions,
             },
         },
     }
+    return struct
 
 
 class TestGetCreatureMetadata:
@@ -103,6 +134,43 @@ class TestWalkAbilities:
     def test_walks_all_ability_locations(self):
         auto = _make_ability("Frightful Presence")
         reactive = _make_ability("Attack of Opportunity")
+        hp_auto = _make_ability("Negative Healing")
+        interaction = _make_ability("Smoke Vision")
+        communication = _make_ability("Telepathy")
+        offensive = _make_ability("Breath Weapon", text="12d6 acid")
+        darkvision = _make_special_sense("darkvision")
+
+        struct = _make_creature(
+            "Dragon",
+            1,
+            11,
+            [],
+            "Bestiary",
+            [
+                ("automatic", auto),
+                ("reactive", reactive),
+                ("hp_automatic", hp_auto),
+                ("interaction", interaction),
+                ("communication", communication),
+                ("offensive", offensive),
+                ("special_sense", darkvision),
+            ],
+        )
+        results = list(_walk_abilities(struct))
+        assert [(c, a["name"]) for c, a in results] == [
+            ("automatic", "Frightful Presence"),
+            ("reactive", "Attack of Opportunity"),
+            ("hp_automatic", "Negative Healing"),
+            ("interaction", "Smoke Vision"),
+            ("communication", "Telepathy"),
+            ("offensive", "Breath Weapon"),
+            ("special_sense", "darkvision"),
+        ]
+
+    def test_walks_original_three_categories(self):
+        """Backward compatibility — the original 3 categories still work."""
+        auto = _make_ability("Frightful Presence")
+        reactive = _make_ability("Attack of Opportunity")
         offensive = _make_ability("Breath Weapon", text="12d6 acid")
 
         struct = _make_creature(
@@ -114,11 +182,10 @@ class TestWalkAbilities:
             [("automatic", auto), ("reactive", reactive), ("offensive", offensive)],
         )
         results = list(_walk_abilities(struct))
-        assert [(c, a["name"]) for c, a in results] == [
-            ("automatic", "Frightful Presence"),
-            ("reactive", "Attack of Opportunity"),
-            ("offensive", "Breath Weapon"),
-        ]
+        categories = [c for c, _ in results]
+        assert "automatic" in categories
+        assert "reactive" in categories
+        assert "offensive" in categories
 
     def test_skips_non_abilities(self):
         struct = {

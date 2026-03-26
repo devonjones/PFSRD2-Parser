@@ -39,24 +39,56 @@ def _get_creature_metadata(struct):
 def _walk_abilities(struct):
     """Yield (category, ability) tuples from a creature's stat block.
 
-    Category is one of: "automatic", "reactive", "offensive".
+    Categories match the location in the creature schema:
+    - "automatic": defense.automatic_abilities
+    - "reactive": defense.reactive_abilities
+    - "hp_automatic": defense.hitpoints[*].automatic_abilities
+    - "interaction": stat_block.interaction_abilities
+    - "communication": statistics.languages.communication_abilities
+    - "offensive": offense.offensive_actions[*].ability
+    - "special_sense": senses.special_senses
     """
     sb = struct.get("stat_block", {})
     defense = sb.get("defense", {})
 
+    # defense.automatic_abilities
     for ability in defense.get("automatic_abilities", []):
         if ability.get("subtype") == "ability":
             yield "automatic", ability
 
+    # defense.reactive_abilities
     for ability in defense.get("reactive_abilities", []):
         if ability.get("subtype") == "ability":
             yield "reactive", ability
 
+    # defense.hitpoints[*].automatic_abilities
+    for hp in defense.get("hitpoints", []):
+        for ability in hp.get("automatic_abilities", []):
+            if ability.get("subtype") == "ability":
+                yield "hp_automatic", ability
+
+    # stat_block.interaction_abilities
+    for ability in sb.get("interaction_abilities", []):
+        if ability.get("subtype") == "ability":
+            yield "interaction", ability
+
+    # statistics.languages.communication_abilities
+    languages = sb.get("statistics", {}).get("languages", {})
+    for ability in languages.get("communication_abilities", []):
+        if ability.get("subtype") == "ability":
+            yield "communication", ability
+
+    # offense.offensive_actions[*].ability
     for oa in sb.get("offense", {}).get("offensive_actions", []):
         if oa.get("offensive_action_type") == "ability":
             ability = oa.get("ability")
             if ability:
                 yield "offensive", ability
+
+    # senses.special_senses
+    for sense in sb.get("senses", {}).get("special_senses", []):
+        if sense.get("subtype") == "special_sense":
+            yield "special_sense", sense
 
 
 def _dc_key(save_dc):
