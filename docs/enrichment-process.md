@@ -312,9 +312,13 @@ Effects use JSONPath-style targets and operations:
 | `replace` | Replace a value entirely |
 | `add_item` | Append an item to an array |
 | `remove_item` | Remove a named item from an array |
+| `remove_all_except` | Remove all items from array except the named `movement_type` |
 | `add_items` | Append multiple items (from a source path) |
+| `add_modifier` | *(deprecated — use `add_item` with `attack_damage`)* |
+| `no_op` | Explicit no-change (e.g., "Do not modify the ghost's Hit Points") |
 | `replace_one_die` | Change one damage die to a new type |
-| `replace_highest_with` | Replace highest speed with a new type |
+| `replace_highest_with` | Replace highest speed with a new type (includes `item` template) |
+| `set_reach` | Set melee reach to a specific value |
 | `size_increment` | Increase size by N categories |
 | `select` | Human/tool choice required (see below) |
 
@@ -360,6 +364,34 @@ This means consumers never need to construct objects — they pick from the opti
 **Optional `action` field** for select operations that modify existing items:
 - `"action": "replace"` — selected items are replaced
 - `"action": "remove"` — selected items are removed
+
+### Effect Fields
+
+Each effect object can have these fields:
+
+| Field | Description |
+|-------|-------------|
+| `target` | JSONPath to the field being modified |
+| `operation` | The operation to perform (see table above) |
+| `value` | Scalar value for `adjustment`, `replace` |
+| `item` | Object to add for `add_item`, or template for `replace_highest_with` |
+| `name` | Name for `add_item`/`remove_item` when adding to a name-based array |
+| `conditional` | JSONPath condition that must be true for the effect to apply |
+| `minimum` | Floor value for adjustments (e.g., "increase by 10 or to 40, whichever is higher") |
+| `value_from` | Computed value source (e.g., `"$.skills[*].value \| max"`) |
+| `movement_type` | Speed type for speed operations |
+| `selection` | Choice specification for `select` operations |
+| `source` | Source path for `add_items` (bulk copy from template) |
+
+**Conditionals** use JSONPath expressions against the creature being modified:
+
+```json
+{"conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8"}
+{"conditional": "$.offense.speed.movement[?(@.movement_type=='walk')].value > 20"}
+{"conditional": "default"}
+```
+
+The special value `"default"` means "apply unless a more specific conditional matched."
 
 ### Damage Adjustments
 

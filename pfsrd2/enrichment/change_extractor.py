@@ -9,7 +9,7 @@ import json
 import re
 import sys
 
-ENRICHMENT_VERSION = 15
+ENRICHMENT_VERSION = 17
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -213,6 +213,10 @@ def _extract_names_from_text(text, after_marker):
     if idx < 0:
         return []
     rest = text[idx + len(after_marker) :].strip()
+    # If there's a colon (e.g., "weaknesses, with a value...: force, ghost touch"),
+    # use everything after the colon as the actual name list
+    if ":" in rest:
+        rest = rest[rest.index(":") + 1 :].strip()
     if ". " in rest:
         rest = rest[: rest.index(". ")]
     rest = rest.rstrip(".")
@@ -763,13 +767,27 @@ def _build_damage_effects(text, source_name=""):
 
     m = re.search(r"damage.+?changes? to (\w+) damage", t)
     if m:
-        return [
+        effects = [
             {
                 "target": "$.offense.offensive_actions[*].attack.damage[*].damage_type",
                 "operation": "replace",
                 "value": m.group(1),
-            }
+            },
         ]
+        # "those Strikes are magical" — add magical trait to attacks
+        if "magical" in t:
+            effects.append(
+                {
+                    "target": "$.offense.offensive_actions[*].attack.traits",
+                    "operation": "add_item",
+                    "item": {
+                        "type": "stat_block_section",
+                        "subtype": "trait",
+                        "name": "magical",
+                    },
+                }
+            )
+        return effects
 
     m = re.search(r"(?:add|gains?) a (\w[\w\s]*?) (?:ranged |melee )?strike", t)
     if m:
@@ -962,13 +980,28 @@ def _build_speed_effects(text):
 
     # "change its highest Speed to a fly Speed"
     if "change" in t and "fly speed" in t:
-        return [
+        effects = [
             {
                 "target": "$.offense.speed.movement",
                 "operation": "replace_highest_with",
                 "movement_type": "fly",
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "speed",
+                    "movement_type": "fly",
+                },
             }
         ]
+        # "Remove all other Speeds"
+        if "remove" in t and "other" in t:
+            effects.append(
+                {
+                    "target": "$.offense.speed.movement",
+                    "operation": "remove_all_except",
+                    "movement_type": "fly",
+                }
+            )
+        return effects
 
     # "Increase Speed by 10 feet or to 40 feet"
     m = re.search(r"increase speed by (\d+) feet or to (\d+) feet", t)
@@ -1063,7 +1096,8 @@ def _hp_effects_from_adjustments(adjustments, sign):
 
 def _level_text_to_conditional(text):
     """Convert table level text like '2-4' or '20+' to a jsonpath conditional."""
-    text = text.strip()
+    # Normalize en-dash/em-dash to ASCII hyphen for range detection
+    text = text.strip().replace("\u2013", "-").replace("\u2014", "-")
     if "or lower" in text or "or less" in text:
         num = re.search(r"(\d+)", text)
         if num:
