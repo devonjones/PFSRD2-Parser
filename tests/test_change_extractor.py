@@ -2,11 +2,13 @@ import json
 
 from pfsrd2.enrichment.change_extractor import (
     _build_combat_stat_effects,
+    _build_damage_effects,
     _build_hit_points_effects,
     _build_speed_effects,
     _build_trait_effects,
     _categorize_change_text,
     _damage_adjustment_item,
+    _extract_names_from_text,
     _level_text_to_conditional,
     _normalize_movement_type,
     enrich_change,
@@ -347,3 +349,70 @@ class TestLevelTextToConditional:
     def test_single_number(self):
         result = _level_text_to_conditional("5")
         assert result == "$.creature_type.level == 5"
+
+    def test_en_dash_range(self):
+        """pfsrd2-sz3: en-dash should be treated as range separator."""
+        result = _level_text_to_conditional("4\u20138")
+        assert result == "$.creature_type.level >= 4 && $.creature_type.level <= 8"
+
+    def test_em_dash_range(self):
+        result = _level_text_to_conditional("9\u201413")
+        assert result == "$.creature_type.level >= 9 && $.creature_type.level <= 13"
+
+
+class TestExtractNamesFromText:
+    def test_simple_list(self):
+        result = _extract_names_from_text("immunities: fire, cold, poison.", "immunities:")
+        assert result == ["fire", "cold", "poison"]
+
+    def test_colon_after_descriptive_text(self):
+        """pfsrd2-3e5: colon separates description from actual names."""
+        result = _extract_names_from_text(
+            "weaknesses, with a value based on the creature's level: force, ghost touch, positive.",
+            "weaknesses",
+        )
+        assert result == ["force", "ghost touch", "positive"]
+
+    def test_no_match(self):
+        result = _extract_names_from_text("no marker here", "immunities:")
+        assert result == []
+
+
+class TestBuildDamageEffects:
+    def test_magical_trait_added(self):
+        """pfsrd2-yyr: 'Strikes are magical' should add magical trait."""
+        text = "The damage of physical Strikes changes to negative damage, and those Strikes are magical."
+        effects = _build_damage_effects(text, "Ghost")
+        ops = [e["operation"] for e in effects]
+        assert "replace" in ops
+        assert "add_item" in ops
+        magical = [
+            e
+            for e in effects
+            if e.get("operation") == "add_item" and e.get("item", {}).get("name") == "magical"
+        ]
+        assert len(magical) == 1
+
+    def test_no_magical_without_keyword(self):
+        text = "The damage of physical Strikes changes to negative damage."
+        effects = _build_damage_effects(text, "Ghost")
+        magical = [e for e in effects if e.get("operation") == "add_item"]
+        assert len(magical) == 0
+
+
+class TestBuildSpeedEffectsRemoveAll:
+    def test_replace_highest_with_remove_all(self):
+        """pfsrd2-3b0: should have item template and remove_all_except."""
+        text = "Change its highest Speed to a fly Speed. Remove all other Speeds."
+        effects = _build_speed_effects(text)
+        assert len(effects) == 2
+        assert effects[0]["operation"] == "replace_highest_with"
+        assert "item" in effects[0]
+        assert effects[0]["item"]["movement_type"] == "fly"
+        assert effects[1]["operation"] == "remove_all_except"
+
+    def test_replace_highest_without_remove(self):
+        text = "Change its highest Speed to a fly Speed."
+        effects = _build_speed_effects(text)
+        assert len(effects) == 1
+        assert effects[0]["operation"] == "replace_highest_with"
