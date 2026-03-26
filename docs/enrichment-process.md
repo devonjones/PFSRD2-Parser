@@ -412,6 +412,50 @@ Flat damage modifiers use `attack_damage` objects (not modifier objects):
 
 The `notes` field carries the template/family name. Dice formulas like `"2d6"` work in `formula` as well. The `damage_type` field is included when the text specifies one (e.g., `"damage_type": "negative"`).
 
+### Damage Type Changes
+
+When a template changes Strike damage types (e.g., "physical Strikes changes to negative damage, and those Strikes are magical"), two effects are produced:
+
+```json
+[
+    {
+        "target": "$.offense.offensive_actions[*].attack.damage[*].damage_type",
+        "operation": "replace",
+        "value": "negative"
+    },
+    {
+        "target": "$.offense.offensive_actions[*].attack.traits",
+        "operation": "add_item",
+        "item": {"type": "stat_block_section", "subtype": "trait", "name": "magical"}
+    }
+]
+```
+
+The `magical` trait is added only when the text explicitly says "Strikes are magical" (regex: `r"strikes? are magical"`).
+
+### Speed Changes
+
+The `replace_highest_with` operation includes an `item` template so the consumer knows what to create:
+
+```json
+{
+    "target": "$.offense.speed.movement",
+    "operation": "replace_highest_with",
+    "movement_type": "fly",
+    "item": {"type": "stat_block_section", "subtype": "speed", "movement_type": "fly"}
+}
+```
+
+When combined with "Remove all other Speeds", a `remove_all_except` effect follows:
+
+```json
+{
+    "target": "$.offense.speed.movement",
+    "operation": "remove_all_except",
+    "movement_type": "fly"
+}
+```
+
 ### Link-Based Trait Extraction
 
 Trait effects use `game-obj: "Traits"` links from the raw HTML as the authoritative source, supplemented by regex for traits whose links point to wrong game-obj (e.g., "vampire" linking to MonsterFamilies instead of Traits). Non-Traits links in trait changes produce stderr warnings as potential HTML bugs.
@@ -424,6 +468,67 @@ When building level-conditional effects from adjustment tables, the enrichment e
 - Weakness effects: prefer columns with "weak" in the name
 
 This avoids picking the wrong column when tables have multiple value columns (e.g., `hp_decrease` + `resistance/feed_hp`).
+
+### Ability Placement via Enrichment DB
+
+When templates or families add abilities (e.g., "Add the following abilities: Darkvision, Negative Healing, Ghostly Passage"), the enrichment pipeline determines where each ability belongs in the creature schema by looking up its `ability_category` in the ability enrichment DB.
+
+The ability enrichment DB tracks 7 categories from creature/NPC parsing:
+
+| Category | Schema Path | Examples |
+|----------|-------------|---------|
+| `automatic` | `$.defense.automatic_abilities` | Frightful Presence, All-Around Vision |
+| `reactive` | `$.defense.reactive_abilities` | Attack of Opportunity, Shield Block |
+| `hp_automatic` | `$.defense.hitpoints[*].automatic_abilities` | Negative Healing, Fast Healing, Coffin Restoration |
+| `interaction` | `$.stat_block.interaction_abilities` | Smoke Vision, Children of the Night |
+| `communication` | `$.statistics.languages.communication_abilities` | Telepathy, Tongues |
+| `offensive` | `$.offense.offensive_actions` | Breath Weapon, Constrict, Drink Blood |
+| `special_sense` | `$.senses.special_senses` | darkvision, tremorsense, low-light vision |
+
+**How it works:**
+
+1. The change enrichment extractor (`enrichment/change_extractor.py`) detects `category == "abilities"`
+2. It calls `_build_ability_placement_effects()` which uses `ability_placement.py`
+3. For each ability name in the change, `lookup_ability_categories()` queries the ability enrichment DB (case-insensitive) for the most common category across all creatures
+4. Abilities are grouped by target path, producing separate `add_items` effects per target
+
+**Example output** (Ghost template):
+```json
+{
+    "change_category": "abilities",
+    "effects": [
+        {
+            "target": "$.senses.special_senses",
+            "operation": "add_items",
+            "source": "$.changes[*].abilities",
+            "names": ["Darkvision"]
+        },
+        {
+            "target": "$.defense.hitpoints[*].automatic_abilities",
+            "operation": "add_items",
+            "source": "$.changes[*].abilities",
+            "names": ["Negative Healing"]
+        },
+        {
+            "target": "$.defense.automatic_abilities",
+            "operation": "add_items",
+            "source": "$.changes[*].abilities",
+            "names": ["Ghostly Passage"]
+        }
+    ]
+}
+```
+
+The `names` field on each effect tells the consumer which abilities from the change's `abilities` array to place at that target. Abilities not found in the DB default to `$.defense.automatic_abilities`.
+
+**Pipeline order matters:**
+1. Run creature + NPC parsers first (populates ability enrichment DB with categories)
+2. Run change enrichment (`bin/pf2_enrich_changes`) — this does the lookups
+3. Run template + family parsers (merges enriched effects into JSON output)
+
+**Addon fields recognized by `_build_ability_placement_effects`:**
+
+Template/family abilities with addon names (Requirements, Trigger, Effect, etc.) are filtered out of the ability list — they're sub-fields of the preceding ability, not standalone abilities.
 
 ### CLI
 
@@ -455,9 +560,16 @@ bin/pf2_enrich_changes --sample 5     # Show sample enriched records
 |------|---------|
 | `pfsrd2/change_enrichment.py` | Population pass + merge logic |
 | `pfsrd2/change_identity.py` | Identity hashing for change objects |
-| `pfsrd2/change_extraction.py` | Shared HTML extraction (parse_change, abilities, adjustments) |
+| `pfsrd2/change_extraction.py` | HTML extraction (parse_change, adjustments) |
 | `pfsrd2/enrichment/change_extractor.py` | Regex categorization + effect building |
+| `pfsrd2/ability_placement.py` | Ability category lookup for placement routing |
 | `bin/pf2_enrich_changes` | Offline enrichment CLI |
+
+### Unified Ability Parser
+
+| File | Purpose |
+|------|---------|
+| `universal/ability.py` | Unified ability parser (action types, traits, addons, afflictions) |
 
 ### Shared Infrastructure
 
