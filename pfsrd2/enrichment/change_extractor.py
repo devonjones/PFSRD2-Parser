@@ -780,7 +780,7 @@ def _build_damage_effects(text, source_name=""):
             },
         ]
         # "those Strikes are magical" — add magical trait to attacks
-        if "magical" in t:
+        if re.search(r"strikes? are magical", t):
             effects.append(
                 {
                     "target": "$.offense.offensive_actions[*].attack.traits",
