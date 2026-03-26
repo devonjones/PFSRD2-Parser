@@ -324,14 +324,13 @@
 			"type": "object",
 			"properties": {
 				"type": {
-					"enum": [
-						"stat_block_section"
-					]
+					"enum": ["stat_block_section"]
 				},
 				"subtype": {
-					"enum": [
-						"ability"
-					]
+					"enum": ["ability"]
+				},
+				"ability_type": {
+					"type": "string"
 				},
 				"name": {
 					"type": "string"
@@ -342,15 +341,40 @@
 				"action_type": {
 					"$ref": "#/definitions/action_type"
 				},
+				"traits": {
+					"type": "array",
+					"items": {"type": "object"}
+				},
 				"link": {
 					"$ref": "#/definitions/link"
 				},
 				"links": {
 					"type": "array",
-					"items": {
-						"$ref": "#/definitions/link"
-					},
+					"items": {"$ref": "#/definitions/link"},
 					"additionalItems": false
+				},
+				"trigger": {"type": "string"},
+				"requirement": {"type": "string"},
+				"requirements": {"type": "string"},
+				"prerequisite": {"type": "string"},
+				"effect": {"type": "string"},
+				"frequency": {"type": "string"},
+				"cost": {"type": "string"},
+				"duration": {"type": "string"},
+				"range": {"type": "object"},
+				"damage": {"type": "array", "items": {"type": "object"}},
+				"saving_throw": {},
+				"critical_success": {"type": "string"},
+				"success": {"type": "string"},
+				"failure": {"type": "string"},
+				"critical_failure": {"type": "string"},
+				"context": {"type": "string"},
+				"onset": {"type": "string"},
+				"maximum_duration": {"type": "string"},
+				"special": {"type": "string"},
+				"stages": {
+					"type": "array",
+					"items": {"type": "object"}
 				}
 			},
 			"required": [

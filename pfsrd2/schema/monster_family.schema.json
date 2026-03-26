@@ -391,6 +391,9 @@
 						"ability"
 					]
 				},
+				"ability_type": {
+					"type": "string"
+				},
 				"name": {
 					"type": "string"
 				},
@@ -399,6 +402,12 @@
 				},
 				"action_type": {
 					"$ref": "#/definitions/action_type"
+				},
+				"traits": {
+					"type": "array",
+					"items": {
+						"type": "object"
+					}
 				},
 				"link": {
 					"$ref": "#/definitions/link"
@@ -409,7 +418,50 @@
 						"$ref": "#/definitions/link"
 					},
 					"additionalItems": false
-				}
+				},
+				"requirement": {
+					"type": "string"
+				},
+				"trigger": {
+					"type": "string"
+				},
+				"effect": {
+					"type": "string"
+				},
+				"frequency": {
+					"type": "string"
+				},
+				"cost": {
+					"type": "string"
+				},
+				"duration": {
+					"type": "string"
+				},
+				"saving_throw": {
+					"type": "string"
+				},
+				"onset": {
+					"type": "string"
+				},
+				"maximum_duration": {
+					"type": "string"
+				},
+				"stages": {
+					"type": "array",
+					"items": {
+						"type": "object"
+					}
+				},
+				"requirements": {"type": "string"},
+				"prerequisite": {"type": "string"},
+				"range": {"type": "object"},
+				"damage": {"type": "array", "items": {"type": "object"}},
+				"context": {"type": "string"},
+				"special": {"type": "string"},
+				"critical_success": {"type": "string"},
+				"success": {"type": "string"},
+				"failure": {"type": "string"},
+				"critical_failure": {"type": "string"}
 			},
 			"required": [
 				"name",

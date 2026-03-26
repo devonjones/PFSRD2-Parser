@@ -46,7 +46,18 @@
 					"items": {"$ref": "#/definitions/area"},
 					"additionalItems": false
 				},
-				"modifiers": {"$ref": "#/definitions/modifiers"}
+				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"context": {"type": "string"},
+				"duration": {"type": "string"},
+				"onset": {"type": "string"},
+				"maximum_duration": {"type": "string"},
+				"special": {"type": "string"},
+				"requirements": {"type": "string"},
+				"stages": {
+					"type": "array",
+					"items": {"$ref": "#/definitions/affliction_stage"},
+					"additionalItems": false
+				}
 			},
 			"required": ["name", "type", "subtype", "ability_type"],
 			"additionalProperties": false
