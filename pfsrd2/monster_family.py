@@ -222,10 +222,19 @@ def _extract_creation_changes(struct):
     """
     all_sections = struct.get("sections", [])
 
+    def _is_creation_section(name):
+        n = name.lower()
+        if "creating" in n or "building" in n:
+            return True
+        if "abilities" in n:
+            return True
+        if "spellcasters" in n:
+            return True
+        return False
+
     def _process_section(section):
-        name = section.get("name", "").lower()
-        is_creation = "creating" in name or "building" in name
-        if is_creation and "text" in section:
+        name = section.get("name", "")
+        if _is_creation_section(name) and "text" in section:
             _extract_changes_from_section(section, all_sections)
         for sub in section.get("sections", []):
             _process_section(sub)
