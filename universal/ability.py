@@ -299,15 +299,16 @@ def _build_ability_from_entry(entry, ability_type, labels):
     raw_html = "".join(str(n) for n in entry["text_nodes"]).strip()
 
     if raw_html:
-        # Extract action type from spans
-        remaining_html, action = extract_action_type(raw_html)
-        if action:
-            ability["action_type"] = action
-
-        # Extract traits from parenthesized text
-        remaining_text, traits = extract_starting_traits(remaining_html.strip())
+        # Extract traits first — they may appear before the action span
+        # e.g., "(divine, void) [free-action]"
+        remaining_html, traits = extract_starting_traits(raw_html.strip())
         if traits:
             ability["traits"] = traits
+
+        # Extract action type from spans
+        remaining_text, action = extract_action_type(remaining_html.strip())
+        if action:
+            ability["action_type"] = action
 
         # Extract links from remaining text
         if remaining_text.strip():

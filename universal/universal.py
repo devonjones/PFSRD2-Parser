@@ -212,6 +212,11 @@ def subtitle_pass(details, max_title):
                 h = Heading(3, detail)
                 h.details = sub
                 retdetails.append(h)
+            elif has_name(detail, "h4") and max_title >= 4:
+                sub = img_details(detail)
+                h = Heading(4, detail)
+                h.details = sub
+                retdetails.append(h)
             elif has_name(detail, "span") and not is_trait(detail) and not is_action(detail):
                 # Skip empty spans (common in HTML5 update)
                 if not get_text(detail).strip():
