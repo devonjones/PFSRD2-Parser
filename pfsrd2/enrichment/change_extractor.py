@@ -15,6 +15,11 @@ ENRICHMENT_VERSION = 17
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
 
 
+def _normalize_dashes(text):
+    """Normalize en-dash/em-dash to ASCII hyphen for numeric parsing."""
+    return text.replace("\u2013", "-").replace("\u2014", "-")
+
+
 def enrich_change(raw_json_str, source_name):
     """Enrich a single change record.
 
@@ -1071,7 +1076,7 @@ def _hp_effects_from_adjustments(adjustments, sign):
         value_key = hp_keys if hp_keys else [k for k in adj if k not in skip_keys]
         if not value_key:
             continue
-        raw_value = adj[value_key[0]].replace("\u2013", "-").replace("\u2014", "-")
+        raw_value = _normalize_dashes(adj[value_key[0]])
         try:
             value = int(raw_value)
         except ValueError:
@@ -1097,7 +1102,7 @@ def _hp_effects_from_adjustments(adjustments, sign):
 def _level_text_to_conditional(text):
     """Convert table level text like '2-4' or '20+' to a jsonpath conditional."""
     # Normalize en-dash/em-dash to ASCII hyphen for range detection
-    text = text.strip().replace("\u2013", "-").replace("\u2014", "-")
+    text = _normalize_dashes(text.strip())
     if "or lower" in text or "or less" in text:
         num = re.search(r"(\d+)", text)
         if num:
@@ -1375,7 +1380,7 @@ def _build_weakness_effects(text, adjustments=None):
                 weak_keys = [k for k in adj if k not in skip_keys and "weak" in k.lower()]
                 val_key = weak_keys if weak_keys else [k for k in adj if k not in skip_keys]
                 if val_key:
-                    raw_val = adj[val_key[0]].replace("\u2013", "-").replace("\u2014", "-")
+                    raw_val = _normalize_dashes(adj[val_key[0]])
                     try:
                         val = abs(int(raw_val))  # Weakness values are always positive
                     except ValueError:
@@ -1426,7 +1431,7 @@ def _build_resistance_effects(text, adjustments=None):
                 res_keys = [k for k in adj if k not in skip_keys and "resist" in k.lower()]
                 val_key = res_keys if res_keys else [k for k in adj if k not in skip_keys]
                 if val_key:
-                    raw_val = adj[val_key[0]].replace("\u2013", "-").replace("\u2014", "-")
+                    raw_val = _normalize_dashes(adj[val_key[0]])
                     try:
                         val = abs(int(raw_val))  # Resistance values are always positive
                     except ValueError:

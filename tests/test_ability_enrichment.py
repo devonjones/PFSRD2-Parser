@@ -100,7 +100,9 @@ def _make_creature(name, aonid, level, traits, source, abilities):
             "defense": {
                 "automatic_abilities": auto_abilities,
                 "reactive_abilities": reactive_abilities,
-                "hitpoints": [{"automatic_abilities": hp_auto_abilities}] if hp_auto_abilities else [],
+                "hitpoints": (
+                    [{"automatic_abilities": hp_auto_abilities}] if hp_auto_abilities else []
+                ),
             },
             "senses": {
                 "special_senses": special_senses,
