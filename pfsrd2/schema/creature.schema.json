@@ -47,6 +47,7 @@
 					"additionalItems": false
 				},
 				"modifiers": {"$ref": "#/definitions/modifiers"},
+				"link": {"$ref": "#/definitions/link"},
 				"context": {"type": "string"},
 				"duration": {"type": "string"},
 				"onset": {"type": "string"},
