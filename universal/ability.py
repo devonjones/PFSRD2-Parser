@@ -84,7 +84,7 @@ def _assert_no_unextracted_frontmatter(ability):
     front = text[:30]
     match = re.search(r"\[[^\]]+\]", front)
     if match:
-        raise AssertionError(
+        assert False, (
             f"Ability '{name}' has literal action text '{match.group()}' — "
             f'HTML is missing <span class="action"> element'
         )
@@ -106,7 +106,7 @@ def _assert_no_unextracted_frontmatter(ability):
                 and all(p[0:1].islower() for p in parts if p)
             )
             if looks_like_traits:
-                raise AssertionError(
+                assert False, (
                     f"Ability '{name}' has unextracted traits '({trait_text})' "
                     f"at start of text — HTML likely has broken trait links"
                 )
@@ -706,7 +706,7 @@ def _handle_aura(ability):
         elif "damage" in part:
             ability["damage"] = _parse_damage(part)
         else:
-            raise AssertionError(
+            assert False, (
                 f"Unrecognized aura stat part '{part}' in ability "
                 f"'{ability.get('name', '?')}': {ability['text']}"
             )
