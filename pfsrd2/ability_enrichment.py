@@ -188,8 +188,7 @@ def _apply_uma_from_db(ability, main_curs, edition=None):
     # Strip trait templates
     if "traits" in db_ability:
         db_ability["traits"] = [
-            t for t in db_ability["traits"]
-            if t.get("type") != "trait_template"
+            t for t in db_ability["traits"] if t.get("type") != "trait_template"
         ]
         for trait in db_ability["traits"]:
             for key in ("schema_version",):
@@ -202,13 +201,17 @@ def _apply_uma_from_db(ability, main_curs, edition=None):
 # These should not receive ability_category even if they appear in the
 # abilities array (parser bug — they should be nested in their parent).
 _NOT_CATEGORIZABLE = {
-    "Critical Success", "Success", "Failure", "Critical Failure",
+    "Critical Success",
+    "Success",
+    "Failure",
+    "Critical Failure",
 }
 
 
 def _is_stage_name(name):
     """Check if a name looks like an affliction stage (Stage 1, Stage 2, etc.)."""
     import re
+
     return bool(re.match(r"^Stage \d+$", name))
 
 
@@ -245,10 +248,9 @@ def _enrich_abilities(abilities, conn, edition=None):
     """
     curs = conn.cursor()
 
-    # Open main DB for UMA lookups
-    db_path = get_db_path("pfsrd2.db")
-    main_conn = get_db_connection(db_path)
-    main_curs = main_conn.cursor()
+    # Lazily open main DB only if UMA lookup is needed
+    main_conn = None
+    main_curs = None
 
     try:
         for ability in abilities:
@@ -279,19 +281,21 @@ def _enrich_abilities(abilities, conn, edition=None):
                 # Apply ability_category from DB (skip result blocks/stages,
                 # and skip if already set deterministically above)
                 name = ability.get("name", "")
-                is_real_ability = (
-                    name not in _NOT_CATEGORIZABLE
-                    and not _is_stage_name(name)
-                )
+                is_real_ability = name not in _NOT_CATEGORIZABLE and not _is_stage_name(name)
                 if is_real_ability and "ability_category" not in ability:
                     if existing.get("ability_category"):
                         ability["ability_category"] = existing["ability_category"]
 
                 # Wire up UMA from monster abilities DB
                 if is_real_ability and existing.get("is_uma"):
+                    if main_conn is None:
+                        db_path = get_db_path("pfsrd2.db")
+                        main_conn = get_db_connection(db_path)
+                        main_curs = main_conn.cursor()
                     _apply_uma_from_db(ability, main_curs, edition=edition)
     finally:
-        main_conn.close()
+        if main_conn is not None:
+            main_conn.close()
 
 
 def ability_enrichment_pass(struct, conn=None):
@@ -309,9 +313,10 @@ def ability_enrichment_pass(struct, conn=None):
     if owns_conn:
         conn = get_enrichment_db_connection()
     edition = struct.get("edition")
-    db_path = get_db_path("pfsrd2.db")
-    main_conn = get_db_connection(db_path)
-    main_curs = main_conn.cursor()
+
+    # Lazily open main DB only if UMA lookup is needed
+    main_conn = None
+    main_curs = None
 
     try:
         curs = conn.cursor()
@@ -334,6 +339,10 @@ def ability_enrichment_pass(struct, conn=None):
 
                 # Wire up UMA from monster abilities DB
                 if existing.get("is_uma"):
+                    if main_conn is None:
+                        db_path = get_db_path("pfsrd2.db")
+                        main_conn = get_db_connection(db_path)
+                        main_curs = main_conn.cursor()
                     _apply_uma_from_db(ability, main_curs, edition=edition)
 
             insert_creature_link(
@@ -349,7 +358,8 @@ def ability_enrichment_pass(struct, conn=None):
 
         conn.commit()
     finally:
-        main_conn.close()
+        if main_conn is not None:
+            main_conn.close()
         if owns_conn:
             conn.close()
 
@@ -372,8 +382,15 @@ def _walk_all_abilities(struct):
         # Recurse into all dict/list values EXCEPT abilities (handled above)
         # and fields that are nested inside abilities
         for key, value in struct.items():
-            if key in ("abilities", "stages", "universal_monster_ability",
-                       "critical_success", "success", "failure", "critical_failure"):
+            if key in (
+                "abilities",
+                "stages",
+                "universal_monster_ability",
+                "critical_success",
+                "success",
+                "failure",
+                "critical_failure",
+            ):
                 continue
             yield from _walk_all_abilities(value)
     elif isinstance(struct, list):

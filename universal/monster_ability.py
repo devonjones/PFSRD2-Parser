@@ -67,8 +67,7 @@ def monster_ability_db_pass(struct, edition=None):
                 # Strip metadata from nested traits and remove trait templates
                 if "traits" in db_ability:
                     db_ability["traits"] = [
-                        t for t in db_ability["traits"]
-                        if t.get("type") != "trait_template"
+                        t for t in db_ability["traits"] if t.get("type") != "trait_template"
                     ]
                     for trait in db_ability["traits"]:
                         for key in ("schema_version",):

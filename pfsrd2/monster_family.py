@@ -134,9 +134,7 @@ def _content_filter(soup):
             title_parts.append(child.extract())
         title_text = "".join(str(p) for p in title_parts).strip()
         if title_text:
-            new_h3 = BeautifulSoup(
-                f'<h3 class="title">{title_text}</h3>', "html.parser"
-            ).h3
+            new_h3 = BeautifulSoup(f'<h3 class="title">{title_text}</h3>', "html.parser").h3
             h3.insert_before(new_h3)
         h3.unwrap()
     # Remove the "Members" heading and its creature list.
@@ -417,9 +415,7 @@ def _extract_section_abilities(struct):
             if "<b>" in text or "<b " in text:
                 bs = BeautifulSoup(text, "html.parser")
                 # Don't extract from text that's purely in tables
-                if bs.find("b") and not (
-                    bs.find("table") and not bs.find("b", recursive=False)
-                ):
+                if bs.find("b") and not (bs.find("table") and not bs.find("b", recursive=False)):
                     abilities = _extract_abilities_from_bs(bs)
                     if abilities:
                         section["text"] = str(bs).strip()

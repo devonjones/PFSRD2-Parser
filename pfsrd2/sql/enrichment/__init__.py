@@ -152,15 +152,10 @@ def _create_db_v_5(conn, curs, ver):
     if ver >= 5:
         return ver
     ver = 5
+    curs.execute("ALTER TABLE ability_records ADD COLUMN ability_category TEXT")
+    curs.execute("ALTER TABLE ability_records ADD COLUMN is_uma INTEGER DEFAULT 0")
     curs.execute(
-        "ALTER TABLE ability_records ADD COLUMN ability_category TEXT"
-    )
-    curs.execute(
-        "ALTER TABLE ability_records ADD COLUMN is_uma INTEGER DEFAULT 0"
-    )
-    curs.execute(
-        "CREATE INDEX ability_records_ability_category"
-        " ON ability_records (ability_category)"
+        "CREATE INDEX ability_records_ability_category" " ON ability_records (ability_category)"
     )
     _set_version(curs, ver)
     conn.commit()

@@ -26,7 +26,6 @@ from universal.universal import (
 )
 from universal.utils import get_text
 
-
 # Default set of bold-labeled fields recognized across all parsers.
 # Parsers can pass a custom set to restrict or extend.
 DEFAULT_ADDON_LABELS = {
@@ -64,6 +63,7 @@ _NOT_ABILITY_NAMES = {
     "Source",
 }
 
+
 def _assert_no_unextracted_frontmatter(ability):
     """Fail fast if ability text contains patterns that should have been extracted.
 
@@ -87,7 +87,7 @@ def _assert_no_unextracted_frontmatter(ability):
     if match:
         assert False, (
             f"Ability '{name}' has literal action text '{match.group()}' — "
-            f"HTML is missing <span class=\"action\"> element"
+            f'HTML is missing <span class="action"> element'
         )
 
     # Check for unextracted traits at start of text.
@@ -547,9 +547,7 @@ def _extract_span_traits(bs, ability):
             a = span.find("a")
             if a:
                 name, trait_link = extract_link(a)
-                trait = build_object(
-                    "stat_block_section", "trait", name.strip()
-                )
+                trait = build_object("stat_block_section", "trait", name.strip())
                 if trait_link:
                     trait["link"] = trait_link
                 traits.append(trait)
@@ -703,9 +701,7 @@ def _handle_aura(ability):
         elif "feet" in part or "miles" in part or "mile" in part:
             range_obj = universal_handle_range(part)
             assert range_obj, f"Malformed aura range: {ability['text']}"
-            assert "range" not in ability, (
-                f"Duplicate range in aura: {ability}"
-            )
+            assert "range" not in ability, f"Duplicate range in aura: {ability}"
             ability["range"] = range_obj
         elif "damage" in part:
             ability["damage"] = _parse_damage(part)

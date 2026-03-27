@@ -7,7 +7,6 @@ appears in across existing creatures.
 
 from pfsrd2.sql.enrichment import get_enrichment_db_connection
 
-
 # Mapping from enrichment DB category to the JSONPath target in the creature schema
 CATEGORY_TARGETS = {
     "automatic": "$.defense.automatic_abilities",

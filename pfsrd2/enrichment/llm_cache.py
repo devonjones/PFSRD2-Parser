@@ -12,7 +12,6 @@ import os
 import sqlite3
 from datetime import UTC, datetime
 
-
 DB_NAME = "llm_cache.db"
 
 

@@ -16,25 +16,21 @@ def _make_nodes(html):
 
 class TestParseAbilitiesFromNodes:
     def test_simple_ability(self):
-        nodes = _make_nodes('<b>Grab</b> The creature grabs.')
+        nodes = _make_nodes("<b>Grab</b> The creature grabs.")
         abilities = parse_abilities_from_nodes(nodes)
         assert len(abilities) == 1
         assert abilities[0]["name"] == "Grab"
         assert "text" in abilities[0]
 
     def test_multiple_abilities(self):
-        nodes = _make_nodes(
-            '<b>Grab</b> The creature grabs.<br/><b>Push</b> It pushes.'
-        )
+        nodes = _make_nodes("<b>Grab</b> The creature grabs.<br/><b>Push</b> It pushes.")
         abilities = parse_abilities_from_nodes(nodes)
         assert len(abilities) == 2
         assert abilities[0]["name"] == "Grab"
         assert abilities[1]["name"] == "Push"
 
     def test_linked_ability(self):
-        nodes = _make_nodes(
-            '<a href="/Abilities.aspx?ID=1"><b>Grab</b></a> The creature grabs.'
-        )
+        nodes = _make_nodes('<a href="/Abilities.aspx?ID=1"><b>Grab</b></a> The creature grabs.')
         abilities = parse_abilities_from_nodes(nodes)
         assert len(abilities) == 1
         assert abilities[0]["name"] == "Grab"
@@ -90,10 +86,10 @@ class TestParseAbilitiesFromNodes:
         # Trait links must be real <a game-obj="Traits"> — see test_addon_merging comment.
         nodes = _make_nodes(
             '<b>Ghoul Fever</b> (<a href="Traits.aspx?ID=46" game-obj="Traits" aonid="46">disease</a>) '
-            '<b>Saving Throw</b> DC 26 Fortitude; '
-            '<b>Stage 1</b> carrier (1 day); '
-            '<b>Stage 2</b> 3d8 negative damage (1 day); '
-            '<b>Stage 3</b> dead'
+            "<b>Saving Throw</b> DC 26 Fortitude; "
+            "<b>Stage 1</b> carrier (1 day); "
+            "<b>Stage 2</b> 3d8 negative damage (1 day); "
+            "<b>Stage 3</b> dead"
         )
         abilities = parse_abilities_from_nodes(nodes)
         assert len(abilities) == 1
@@ -105,12 +101,12 @@ class TestParseAbilitiesFromNodes:
 
     def test_mixed_abilities_and_affliction(self):
         nodes = _make_nodes(
-            '<b>Darkvision</b><br/>'
-            '<b>Negative Healing</b><br/>'
+            "<b>Darkvision</b><br/>"
+            "<b>Negative Healing</b><br/>"
             '<b>Ghoul Fever</b> (<a href="Traits.aspx?ID=46" game-obj="Traits" aonid="46">disease</a>) '
-            '<b>Saving Throw</b> Fortitude; '
-            '<b>Stage 1</b> carrier; '
-            '<b>Stage 2</b> damage<br/>'
+            "<b>Saving Throw</b> Fortitude; "
+            "<b>Stage 1</b> carrier; "
+            "<b>Stage 2</b> damage<br/>"
             '<b>Paralysis</b> (<a href="Traits.aspx?ID=93" game-obj="Traits" aonid="93">incapacitation</a>) Text.'
         )
         abilities = parse_abilities_from_nodes(nodes)
@@ -125,8 +121,8 @@ class TestParseAbilitiesFromNodes:
         """Saving Throw addon should produce array of save_dc objects."""
         nodes = _make_nodes(
             '<b>Ghoul Fever</b> (<a href="Traits.aspx?ID=46" game-obj="Traits" aonid="46">disease</a>) '
-            '<b>Saving Throw</b> DC 26 Fortitude; '
-            '<b>Stage 1</b> carrier (1 day)'
+            "<b>Saving Throw</b> DC 26 Fortitude; "
+            "<b>Stage 1</b> carrier (1 day)"
         )
         abilities = parse_abilities_from_nodes(nodes)
         assert len(abilities) == 1
@@ -140,9 +136,7 @@ class TestParseAbilitiesFromNodes:
     def test_saving_throw_without_dc(self):
         """Freeform saving throw text should still produce array."""
         nodes = _make_nodes(
-            '<b>Curse</b> '
-            '<b>Saving Throw</b> Fortitude; '
-            '<b>Stage 1</b> doomed 1'
+            "<b>Curse</b> " "<b>Saving Throw</b> Fortitude; " "<b>Stage 1</b> doomed 1"
         )
         abilities = parse_abilities_from_nodes(nodes)
         st = abilities[0]["saving_throw"]
@@ -232,9 +226,7 @@ class TestParseAbilityFromHtml:
         assert ability.get("access") == "Member of guild."
 
         # Custom labels without Access
-        ability2 = parse_ability_from_html(
-            "Guild Entry", html, addon_labels={"Trigger"}
-        )
+        ability2 = parse_ability_from_html("Guild Entry", html, addon_labels={"Trigger"})
         assert "access" not in ability2
 
     def test_link_extraction(self):
@@ -307,9 +299,7 @@ class TestTraitExtractionCleanup:
 
     def test_non_trait_parentheses_preserved(self):
         """Parenthesized text that isn't a trait should be preserved in text."""
-        nodes = _make_nodes(
-            '<b>Mythic Weakness</b> (Frailty) A mythic ambusher relies on stealth.'
-        )
+        nodes = _make_nodes("<b>Mythic Weakness</b> (Frailty) A mythic ambusher relies on stealth.")
         abilities = parse_abilities_from_nodes(nodes)
         assert len(abilities) == 1
         assert "(Frailty)" in abilities[0]["text"]
