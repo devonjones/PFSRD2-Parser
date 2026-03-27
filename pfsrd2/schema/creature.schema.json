@@ -2829,7 +2829,9 @@
 			},
 			"required": [
 				"name",
-				"type"
+				"type",
+				"game-id",
+				"game-obj"
 			],
 			"additionalProperties": false
 		}

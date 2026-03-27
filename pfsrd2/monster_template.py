@@ -10,6 +10,7 @@ from pfsrd2.change_extraction import (
     parse_change,
 )
 from universal.ability import parse_abilities_from_nodes
+from universal.monster_ability import monster_ability_db_pass
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
@@ -58,6 +59,7 @@ def parse_monster_template(filename, options):
     game_id_pass(struct)
     monster_template_cleanup_pass(struct)
     set_edition_from_db_pass(struct)
+    monster_ability_db_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
     strip_block_tags(struct)
