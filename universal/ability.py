@@ -489,8 +489,8 @@ def _parse_save_dc(text):
     if "DC" in text:
         try:
             return universal_handle_save_dc(text)
-        except (AssertionError, ValueError):
-            pass
+        except ValueError:
+            pass  # Malformed DC number — fall through to text fallback
     # Fallback: minimal object with text
     save_dc = {"type": "stat_block_section", "subtype": "save_dc", "text": text}
     # Try to extract save type from common patterns
@@ -516,13 +516,13 @@ def _parse_damage(text):
     """
     if not text:
         return []
-    # Try to import and use the creature parser's damage parser
+    # Try to use the creature parser's damage parser
     try:
         from pfsrd2.creatures import parse_attack_damage
 
         return parse_attack_damage(text)
-    except (ImportError, AssertionError, Exception):
-        pass
+    except ImportError:
+        pass  # creatures module not available (circular import or test context)
     # Fallback: single object with text as effect
     return [
         {

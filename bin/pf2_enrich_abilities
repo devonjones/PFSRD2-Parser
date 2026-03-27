@@ -30,6 +30,7 @@ from pfsrd2.sql.enrichment import (
     update_enriched_json,
     update_is_uma,
 )
+from pfsrd2.ability_enrichment import _deterministic_category
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 
 ENRICHMENT_VERSION = 2
@@ -240,19 +241,8 @@ def run_llm(conn, args):
 
 
 def _deterministic_category_from_raw(raw_json):
-    """Determine category from action type in raw JSON. Same logic as runtime."""
-    ability = json.loads(raw_json)
-    action_type = ability.get("action_type")
-    if not isinstance(action_type, dict):
-        return None
-    action_name = action_type.get("name", "")
-    if action_name == "Reaction":
-        return "reactive"
-    if action_name in ("One Action", "Two Actions", "Three Actions"):
-        return "offensive"
-    if action_name == "Free Action" and ability.get("trigger"):
-        return "reactive"
-    return None
+    """Determine category from action type in raw JSON."""
+    return _deterministic_category(json.loads(raw_json))
 
 
 def run_classify(conn, args):
@@ -402,8 +392,6 @@ def run_llm_classify(conn, args):
     Sends uncategorized abilities (excluding spell noise) to the LLM
     with their name, text, action type, and traits.
     """
-    import re as _re
-
     curs = conn.cursor()
     uncategorized = fetch_uncategorized_abilities(curs)
 
@@ -411,7 +399,7 @@ def run_llm_classify(conn, args):
     targets = []
     for record in uncategorized:
         name = record["name"]
-        if _re.match(r"^\d+(st|nd|rd|th)?$", name) or _re.match(r"^\d+", name):
+        if re.match(r"^\d+(st|nd|rd|th)?$", name) or re.match(r"^\d+", name):
             continue
         if "Level or Higher" in name:
             continue

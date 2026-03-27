@@ -5,6 +5,7 @@ When enriched data exists, merges it into the ability objects.
 """
 
 import json
+import re
 
 from pfsrd2.ability_identity import ability_to_raw_json, compute_identity_hash
 from pfsrd2.sql import get_db_connection, get_db_path
@@ -210,8 +211,6 @@ _NOT_CATEGORIZABLE = {
 
 def _is_stage_name(name):
     """Check if a name looks like an affliction stage (Stage 1, Stage 2, etc.)."""
-    import re
-
     return bool(re.match(r"^Stage \d+$", name))
 
 

@@ -326,7 +326,7 @@ bin/pf2_enrich_abilities --classify-stats # Category breakdown
 
 ### What doesn't get ability_category
 
-- **Creature abilities** — redundant with stat block position, not applied
+- **Creature abilities** — not added to JSON output (redundant with stat block position), but stored in the enrichment DB's `ability_creature_links` table for use in classifying template/family abilities
 - **Result blocks** (Critical Success/Failure) — not standalone abilities
 - **Affliction stages** (Stage 1, Stage 2) — nested sub-entries
 - **Spell noise** (~900 records) — spell levels and list items parsed as abilities (PFSRD2-Parser-udk4)
