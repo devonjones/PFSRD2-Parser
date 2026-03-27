@@ -224,6 +224,8 @@ def _extract_creation_changes(struct):
             return True
         if "spellcasters" in n:
             return True
+        if "adjustments" in n:
+            return True
         return False
 
     def _process_section(section):
