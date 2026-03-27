@@ -451,6 +451,7 @@ def _extract_trait(description):
                     print(parts)
                     raise e
         else:
+            newdescription.append("(")
             newdescription.append(text)
             newdescription.append(")")
         description = back

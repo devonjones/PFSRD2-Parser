@@ -7,6 +7,7 @@ When enriched data exists, merges it into the ability objects.
 import json
 
 from pfsrd2.ability_identity import ability_to_raw_json, compute_identity_hash
+from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import (
     fetch_ability_by_hash,
     get_enrichment_db_connection,
@@ -14,6 +15,7 @@ from pfsrd2.sql.enrichment import (
     insert_creature_link,
     mark_stale,
 )
+from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 
 # Fields that enrichment can add to an ability object.
 # These are the structured mechanics extracted from text.
@@ -87,7 +89,7 @@ def _walk_abilities(struct):
 
     # senses.special_senses
     for sense in sb.get("senses", {}).get("special_senses", []):
-        if sense.get("subtype") == "special_sense":
+        if sense.get("subtype") == "ability":
             yield "special_sense", sense
 
 
@@ -157,6 +159,141 @@ def _merge_enrichment(ability, enriched_json):
             ability[field] = enriched[field]
 
 
+def _apply_uma_from_db(ability, main_curs, edition=None):
+    """Wire up universal_monster_ability from the monster abilities DB.
+
+    If the ability is flagged as a UMA in the enrichment DB but doesn't
+    already have the universal_monster_ability object, look it up and attach it.
+    """
+    if "universal_monster_ability" in ability:
+        return  # Already wired (e.g., from HTML link detection)
+
+    results = fetch_monster_abilities_by_name(main_curs, ability["name"])
+    if not results:
+        return
+
+    # Pick best match by edition
+    data = results[0]
+    if len(results) > 1 and edition:
+        for r in results:
+            ability_json = json.loads(r["monster_ability"])
+            if ability_json.get("edition") == edition:
+                data = r
+                break
+
+    db_ability = json.loads(data["monster_ability"])
+    # Strip metadata that doesn't belong on a nested object
+    for key in ("schema_version", "license"):
+        db_ability.pop(key, None)
+    # Strip trait templates
+    if "traits" in db_ability:
+        db_ability["traits"] = [
+            t for t in db_ability["traits"]
+            if t.get("type") != "trait_template"
+        ]
+        for trait in db_ability["traits"]:
+            for key in ("schema_version",):
+                trait.pop(key, None)
+
+    ability["universal_monster_ability"] = db_ability
+
+
+# Names that are result blocks or affliction stages, not standalone abilities.
+# These should not receive ability_category even if they appear in the
+# abilities array (parser bug — they should be nested in their parent).
+_NOT_CATEGORIZABLE = {
+    "Critical Success", "Success", "Failure", "Critical Failure",
+}
+
+
+def _is_stage_name(name):
+    """Check if a name looks like an affliction stage (Stage 1, Stage 2, etc.)."""
+    import re
+    return bool(re.match(r"^Stage \d+$", name))
+
+
+def _deterministic_category(ability):
+    """Determine ability_category from action type alone.
+
+    Reactions are always reactive. 1/2/3 action abilities are always
+    offensive. Free actions with a trigger are always reactive.
+    Returns the category string, or None if it can't be determined.
+    """
+    action_type = ability.get("action_type")
+    if not isinstance(action_type, dict):
+        return None
+    action_name = action_type.get("name", "")
+    if action_name == "Reaction":
+        return "reactive"
+    if action_name in ("One Action", "Two Actions", "Three Actions"):
+        return "offensive"
+    if action_name == "Free Action" and ability.get("trigger"):
+        return "reactive"
+    return None
+
+
+def _enrich_abilities(abilities, conn, edition=None):
+    """Core enrichment loop: insert/update records and merge enriched data.
+
+    Works for any list of ability dicts regardless of source (creature,
+    monster family, monster template).
+
+    Merges:
+    - enriched_json fields (saving_throw, damage, area, range, frequency)
+    - ability_category from classification
+    - universal_monster_ability from monster abilities DB (for UMAs)
+    """
+    curs = conn.cursor()
+
+    # Open main DB for UMA lookups
+    db_path = get_db_path("pfsrd2.db")
+    main_conn = get_db_connection(db_path)
+    main_curs = main_conn.cursor()
+
+    try:
+        for ability in abilities:
+            if ability.get("subtype") != "ability":
+                continue
+
+            # Deterministic category from action type — no DB/LLM needed
+            det_cat = _deterministic_category(ability)
+            if det_cat:
+                ability["ability_category"] = det_cat
+
+            identity_hash = compute_identity_hash(ability)
+            raw_json = ability_to_raw_json(ability)
+
+            existing = fetch_ability_by_hash(curs, identity_hash)
+
+            if existing is None:
+                insert_ability_record(curs, ability["name"], identity_hash, raw_json)
+            else:
+                ability_id = existing["ability_id"]
+                if existing["raw_json"] != raw_json:
+                    mark_stale(curs, ability_id, raw_json)
+
+                # Apply enrichment if available and not stale
+                if existing["enriched_json"] and not existing["stale"]:
+                    _merge_enrichment(ability, existing["enriched_json"])
+
+                # Apply ability_category from DB (skip result blocks/stages,
+                # and skip if already set deterministically above)
+                name = ability.get("name", "")
+                is_real_ability = (
+                    name not in _NOT_CATEGORIZABLE
+                    and not _is_stage_name(name)
+                )
+                if is_real_ability and "ability_category" not in ability:
+                    if existing.get("ability_category"):
+                        ability["ability_category"] = existing["ability_category"]
+
+                # Wire up UMA from monster abilities DB
+                if is_real_ability and existing.get("is_uma"):
+                    _apply_uma_from_db(ability, main_curs, edition=edition)
+    finally:
+        main_conn.close()
+
+
 def ability_enrichment_pass(struct, conn=None):
     """Populate the enrichment DB and apply enrichments to abilities.
 
@@ -171,6 +308,11 @@ def ability_enrichment_pass(struct, conn=None):
     owns_conn = conn is None
     if owns_conn:
         conn = get_enrichment_db_connection()
+    edition = struct.get("edition")
+    db_path = get_db_path("pfsrd2.db")
+    main_conn = get_db_connection(db_path)
+    main_curs = main_conn.cursor()
+
     try:
         curs = conn.cursor()
         for category, ability in _walk_abilities(struct):
@@ -190,6 +332,10 @@ def ability_enrichment_pass(struct, conn=None):
                 if existing["enriched_json"] and not existing["stale"]:
                     _merge_enrichment(ability, existing["enriched_json"])
 
+                # Wire up UMA from monster abilities DB
+                if existing.get("is_uma"):
+                    _apply_uma_from_db(ability, main_curs, edition=edition)
+
             insert_creature_link(
                 curs,
                 ability_id,
@@ -201,6 +347,57 @@ def ability_enrichment_pass(struct, conn=None):
                 category,
             )
 
+        conn.commit()
+    finally:
+        main_conn.close()
+        if owns_conn:
+            conn.close()
+
+
+def _walk_all_abilities(struct):
+    """Walk all abilities in any struct type (family, template, creature).
+
+    Yields ability dicts from changes[].abilities[] arrays found
+    anywhere in the structure. Does NOT recurse into ability objects
+    themselves — nested children like result blocks (Critical Success,
+    Failure) and affliction stages are not standalone abilities.
+    """
+    if isinstance(struct, dict):
+        # Direct abilities array on this object
+        for ability in struct.get("abilities", []):
+            if isinstance(ability, dict) and ability.get("subtype") == "ability":
+                yield ability
+                # Don't recurse into the ability — its children aren't
+                # standalone abilities
+        # Recurse into all dict/list values EXCEPT abilities (handled above)
+        # and fields that are nested inside abilities
+        for key, value in struct.items():
+            if key in ("abilities", "stages", "universal_monster_ability",
+                       "critical_success", "success", "failure", "critical_failure"):
+                continue
+            yield from _walk_all_abilities(value)
+    elif isinstance(struct, list):
+        for item in struct:
+            yield from _walk_all_abilities(item)
+
+
+def template_ability_enrichment_pass(struct, conn=None):
+    """Enrichment pass for monster family and monster template abilities.
+
+    Same as ability_enrichment_pass but walks the template/family
+    structure instead of creature stat blocks. No creature links are
+    created — these abilities describe what to add to a creature, not
+    a creature's own abilities.
+
+    Merges ability_category, UMA data, and enriched fields.
+    """
+    edition = struct.get("edition")
+    owns_conn = conn is None
+    if owns_conn:
+        conn = get_enrichment_db_connection()
+    try:
+        abilities = list(_walk_all_abilities(struct))
+        _enrich_abilities(abilities, conn, edition=edition)
         conn.commit()
     finally:
         if owns_conn:

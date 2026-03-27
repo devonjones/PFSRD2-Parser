@@ -9,6 +9,7 @@ import json
 import re
 import subprocess
 
+from pfsrd2.enrichment.llm_cache import cache_get, cache_put, compute_prompt_hash
 from pfsrd2.enrichment.regex_extractor import _SHAPE_MAP, _resolve_damage_type
 
 DEFAULT_MODEL = "qwen2.5:7b"
@@ -16,8 +17,19 @@ OLLAMA_URL = "http://localhost:11434/api/generate"
 
 
 def _query_ollama(prompt, model=None):
-    """Send a prompt to the local Ollama instance and return the response."""
+    """Send a prompt to the local Ollama instance and return the response.
+
+    Results are cached in ~/.pfsrd2/llm_cache.db keyed on (prompt_hash, model).
+    If the prompt template changes, the hash changes and the LLM is re-queried.
+    """
     model = model or DEFAULT_MODEL
+    prompt_hash = compute_prompt_hash(prompt)
+
+    # Check cache first
+    cached = cache_get(prompt_hash, model)
+    if cached is not None:
+        return cached
+
     payload = json.dumps(
         {
             "model": model,
@@ -35,9 +47,13 @@ def _query_ollama(prompt, model=None):
         if result.returncode != 0:
             return None
         response = json.loads(result.stdout)
-        return response.get("response", "").strip()
+        response_text = response.get("response", "").strip()
     except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
         return None
+
+    # Cache the result (even empty responses, to avoid re-querying)
+    cache_put(prompt_hash, model, response_text)
+    return response_text
 
 
 # --- Per-type prompt templates ---
@@ -386,3 +402,86 @@ def extract_area_llm(name, text, model=None):
     if not parts:
         return None
     return _parse_area_response(parts)
+
+
+# --- Ability category classification ---
+
+# Valid categories matching creature stat block sections
+VALID_CATEGORIES = {
+    "offensive",
+    "automatic",
+    "reactive",
+    "interaction",
+    "special_sense",
+    "hp_automatic",
+    "communication",
+}
+
+CATEGORY_PROMPT = """You are classifying a Pathfinder 2E monster ability into the correct section of a creature's stat block.
+
+The sections of a creature stat block are:
+
+1. **special_sense** — Perception-related abilities: darkvision, low-light vision, scent, tremorsense, lifesense, echolocation, or any ability that lets the creature detect or perceive things.
+
+2. **communication** — Language and communication abilities: telepathy, tongues, or abilities that enable non-standard communication.
+
+3. **interaction** — Abilities that affect how a creature interacts with the world PASSIVELY, not tied to combat actions. Examples: At-Will Spells notes, animal empathy, camouflage, light blindness. These appear BEFORE the defense section.
+
+4. **hp_automatic** — Abilities tied to the creature's hit points: regeneration, fast healing, negative healing, void healing. These appear inside the HP line of the defense section.
+
+5. **automatic** — Passive defensive abilities and auras that are always active. Examples: frightful presence, stench aura, troop defenses, golem antimagic, all-around vision (when defensive), resistances that have special rules. These appear in the defense section after HP.
+
+6. **reactive** — Abilities that are reactions or free actions usually triggered when it's NOT the creature's turn. Examples: Attack of Opportunity, Reactive Strike, Shield Block, Ferocity, nimble dodge. These are defensive reactions.
+
+7. **offensive** — Abilities the creature actively uses on its turn. Any ability with an action cost (1 action, 2 actions, 3 actions, free action on own turn). Examples: Breath Weapon, Change Shape, Sneak Attack, Constrict, Swallow Whole, Trample, special strikes.
+
+**Rules:**
+- If the ability has an action cost (one-action, two-actions, three-actions), it is almost always **offensive** unless it's clearly a **reaction**.
+- If the ability is a reaction (triggered by another's action), it is **reactive**.
+- Auras are **automatic**.
+- Senses are **special_sense**.
+- Healing/regeneration/negative healing → **hp_automatic**.
+- When unsure, default to **offensive**. Most abilities are offensive.
+
+Respond with ONLY the category name. No explanation.
+
+Ability name: {name}
+Action type: {action}
+Traits: {traits}
+Text: {text}
+
+Category:"""
+
+
+def classify_ability_category_llm(name, text, action="", traits="", model=None):
+    """Classify an ability into a creature stat block category using LLM.
+
+    Returns one of the VALID_CATEGORIES strings, or None if classification fails.
+    """
+    prompt = CATEGORY_PROMPT.format(
+        name=name,
+        text=text[:500],  # Truncate long text
+        action=action or "none",
+        traits=traits or "none",
+    )
+    response = _query_ollama(prompt, model)
+    if not response:
+        return None
+
+    # Clean and validate
+    category = response.strip().lower().replace(" ", "_")
+    # Handle common LLM variations
+    if category in ("sense", "senses", "perception"):
+        category = "special_sense"
+    if category in ("defense", "defensive", "passive"):
+        category = "automatic"
+    if category in ("offense", "attack", "proactive"):
+        category = "offensive"
+    if category in ("reaction",):
+        category = "reactive"
+    if category in ("hp", "hitpoints", "hit_points", "healing"):
+        category = "hp_automatic"
+
+    if category in VALID_CATEGORIES:
+        return category
+    return None

@@ -15,7 +15,8 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 
 from pfsrd2.action import extract_action_type
 from pfsrd2.trait import extract_starting_traits
-from universal.creatures import universal_handle_save_dc
+from universal.creatures import universal_handle_range, universal_handle_save_dc
+from universal.utils import split_maintain_parens
 from universal.universal import (
     build_object,
     extract_bold_fields,
@@ -62,6 +63,54 @@ _NOT_ABILITY_NAMES = {
     "Related Groups",
     "Source",
 }
+
+def _assert_no_unextracted_frontmatter(ability):
+    """Fail fast if ability text contains patterns that should have been extracted.
+
+    Traits are always frontmatter — if text starts with parenthesized content
+    that looks like traits, the HTML likely has broken trait links.
+    Action icons should always be in <span class="action"> elements.
+
+    IMPORTANT: These assertions are intentional strategic fragility. When they
+    fire, the fix is in the HTML source (add missing <span> or trait <a> tags),
+    NOT in this parser. Do not suppress, catch, or weaken these checks.
+    """
+    text = ability.get("text", "")
+    if not text:
+        return
+    name = ability.get("name", "?")
+
+    # Check for literal action text near the front (HTML bug: missing <span>).
+    # Any [something] in roughly the first 30 chars is suspect.
+    front = text[:30]
+    match = re.search(r"\[[^\]]+\]", front)
+    if match:
+        assert False, (
+            f"Ability '{name}' has literal action text '{match.group()}' — "
+            f"HTML is missing <span class=\"action\"> element"
+        )
+
+    # Check for unextracted traits at start of text.
+    # Pattern: text starts with "(" and has ")" before any sentence content.
+    # Skip if ability already has traits (extraction succeeded on a different pass).
+    if not ability.get("traits") and text.lstrip().startswith("("):
+        paren_end = text.find(")")
+        if 0 < paren_end < 100:
+            trait_text = text[text.index("(") + 1 : paren_end]
+            # Only flag if it looks like trait names: multiple comma-separated
+            # lowercase words. A single capitalized word like (Frailty) is a
+            # parenthetical note, not traits.
+            parts = [p.strip() for p in trait_text.split(",")]
+            looks_like_traits = (
+                len(parts) > 1
+                and all(len(p.split()) <= 3 for p in parts)
+                and all(p[0:1].islower() for p in parts if p)
+            )
+            if looks_like_traits:
+                assert False, (
+                    f"Ability '{name}' has unextracted traits '({trait_text})' "
+                    f"at start of text — HTML likely has broken trait links"
+                )
 
 
 # --------------------------------------------------------------------------- #
@@ -204,6 +253,12 @@ def parse_ability_from_html(
     # Detect affliction
     _detect_affliction(ability)
 
+    # Extract structured aura fields (range, damage, DC)
+    _handle_aura(ability)
+
+    # Strategic fragility: fail fast on unextracted frontmatter
+    _assert_no_unextracted_frontmatter(ability)
+
     if fxn_post_process:
         fxn_post_process(ability)
 
@@ -252,7 +307,13 @@ def _split_nodes(nodes):
                 continue
             if current:
                 entries.append(current)
-            current = (name, None, [])
+            # Check for <b><a>Name</a></b> pattern (link inside bold)
+            inner_a = node.find("a")
+            if inner_a:
+                _name, link_obj = extract_link(inner_a)
+                current = (name, link_obj, [])
+            else:
+                current = (name, None, [])
             continue
 
         if current:
@@ -331,6 +392,12 @@ def _build_ability_from_entry(entry, ability_type, labels):
             if traits:
                 ability["traits"] = traits
 
+        # Clean up leading semicolons left after trait extraction
+        # e.g., "(divine, necromancy); When..." → "; When..." after trait removal
+        remaining_text = remaining_text.strip()
+        if remaining_text.startswith(";"):
+            remaining_text = remaining_text[1:].strip()
+
         # Extract links from remaining text
         if remaining_text.strip():
             ab_bs = BeautifulSoup(remaining_text, "html.parser")
@@ -350,6 +417,12 @@ def _build_ability_from_entry(entry, ability_type, labels):
 
     # Detect universal monster ability from link
     _detect_universal_monster_ability(ability)
+
+    # Extract structured aura fields (range, damage, DC)
+    _handle_aura(ability)
+
+    # Strategic fragility: fail fast on unextracted frontmatter
+    _assert_no_unextracted_frontmatter(ability)
 
     return ability
 
@@ -573,3 +646,84 @@ def _detect_universal_monster_ability(ability):
             "game-id": link.get("game-id", ""),
             "aonid": link.get("aonid"),
         }
+
+
+# --------------------------------------------------------------------------- #
+# Internal: Aura parsing
+# --------------------------------------------------------------------------- #
+
+
+def _handle_aura(ability):
+    """Extract structured aura fields (range, damage, DC) from ability text.
+
+    Auras are abilities with an "aura" trait. The first sentence of the text
+    contains the aura's stats: range, damage, and/or saving throw DC. This
+    function extracts those into structured fields and removes the stats
+    sentence from the text.
+
+    IMPORTANT: This uses strategic fragility — if an aura trait is present
+    and the first sentence looks like stats but doesn't parse, it asserts.
+    The fix is in the HTML or the parser, NOT in suppressing the assertion.
+    """
+    if "traits" not in ability or "text" not in ability:
+        return
+
+    has_aura = any(t.get("name", "").lower() == "aura" for t in ability["traits"])
+    if not has_aura:
+        return
+
+    text = ability["text"]
+    parts = text.split(".")
+    first_sentence = parts[0]
+
+    # Only process if the first sentence has aura-like stats
+    if not _is_aura_stats(first_sentence):
+        return
+
+    # Clean leading/trailing semicolons
+    stats_text = first_sentence.strip()
+    if stats_text.startswith(";"):
+        stats_text = stats_text[1:].strip()
+    if stats_text.endswith(";"):
+        stats_text = stats_text[:-1].strip()
+
+    # Split by comma (respecting parentheses) and parse each part.
+    # IMPORTANT: These assertions are intentional strategic fragility.
+    # When they fire, fix the HTML to put range/DC in comma-separated
+    # format at the start of the aura text. Do NOT weaken these checks.
+    stat_parts = split_maintain_parens(stats_text, ",")
+    for part in stat_parts:
+        part = part.strip()
+        if not part:
+            continue
+        if "DC" in part:
+            save = universal_handle_save_dc(part)
+            assert save, f"Malformed aura DC: {ability['text']}"
+            ability.setdefault("saving_throw", []).append(save)
+        elif "feet" in part or "miles" in part or "mile" in part:
+            range_obj = universal_handle_range(part)
+            assert range_obj, f"Malformed aura range: {ability['text']}"
+            assert "range" not in ability, (
+                f"Duplicate range in aura: {ability}"
+            )
+            ability["range"] = range_obj
+        elif "damage" in part:
+            ability["damage"] = _parse_damage(part)
+        else:
+            assert False, (
+                f"Unrecognized aura stat part '{part}' in ability "
+                f"'{ability.get('name', '?')}': {ability['text']}"
+            )
+
+    # Remove the stats sentence from text, keep the rest
+    parts.pop(0)
+    remaining = ".".join(parts).strip()
+    if remaining:
+        ability["text"] = remaining
+    else:
+        del ability["text"]
+
+
+def _is_aura_stats(text):
+    """Check if text looks like aura stats (range, damage, DC)."""
+    return "damage" in text or "DC" in text or "feet" in text or "miles" in text or "mile" in text

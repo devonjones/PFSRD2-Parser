@@ -449,6 +449,18 @@
 						"$ref": "#/definitions/affliction_stage"
 					},
 					"additionalItems": false
+				},
+				"ability_category": {
+					"type": "string",
+					"enum": [
+						"offensive",
+						"automatic",
+						"reactive",
+						"interaction",
+						"special_sense",
+						"hp_automatic",
+						"communication"
+					]
 				}
 			},
 			"required": [

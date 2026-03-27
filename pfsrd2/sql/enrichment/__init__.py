@@ -33,9 +33,13 @@ from pfsrd2.sql.enrichment.queries import (  # noqa: F401
     mark_human_verified,
     mark_needs_review,
     mark_stale,
+    update_ability_category,
     update_change_enriched_json,
     update_enriched_json,
     update_identity_hash,
+    update_is_uma,
+    fetch_majority_category_for_name,
+    fetch_uncategorized_abilities,
 )
 from pfsrd2.sql.enrichment.tables import (
     create_ability_creature_links_index,
@@ -135,6 +139,34 @@ def _create_db_v_4(conn, curs, ver):
     return ver
 
 
+def _create_db_v_5(conn, curs, ver):
+    """Version 5: Add ability_category and is_uma to ability_records.
+
+    ability_category: which creature stat block list this ability belongs to
+    (automatic, reactive, offensive, interaction, special_sense, hp_automatic,
+    communication). Populated by enrichment from creature data or LLM.
+
+    is_uma: whether this ability is a Universal Monster Ability. Populated
+    mechanistically by checking the monster_abilities DB.
+    """
+    if ver >= 5:
+        return ver
+    ver = 5
+    curs.execute(
+        "ALTER TABLE ability_records ADD COLUMN ability_category TEXT"
+    )
+    curs.execute(
+        "ALTER TABLE ability_records ADD COLUMN is_uma INTEGER DEFAULT 0"
+    )
+    curs.execute(
+        "CREATE INDEX ability_records_ability_category"
+        " ON ability_records (ability_category)"
+    )
+    _set_version(curs, ver)
+    conn.commit()
+    return ver
+
+
 # --- Connection ---
 
 
@@ -153,6 +185,7 @@ def get_enrichment_db_connection(db_path=None):
         ver = _create_db_v_2(conn, curs, ver)
         ver = _create_db_v_3(conn, curs, ver)
         ver = _create_db_v_4(conn, curs, ver)
+        ver = _create_db_v_5(conn, curs, ver)
     finally:
         curs.close()
     conn.row_factory = _dict_factory

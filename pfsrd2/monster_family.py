@@ -4,6 +4,7 @@ import sys
 
 from bs4 import BeautifulSoup, Tag
 
+from pfsrd2.ability_enrichment import template_ability_enrichment_pass
 from pfsrd2.change_enrichment import change_enrichment_pass
 from pfsrd2.change_extraction import parse_change
 from universal.ability import parse_abilities_from_nodes
@@ -64,6 +65,7 @@ def parse_monster_family(filename, options):
     license_consolidation_pass(struct)
     strip_block_tags(struct)
     universal_markdown_pass(struct, struct["name"], "", fxn_valid_tags=_valid_tags)
+    template_ability_enrichment_pass(struct)
     remove_empty_fields(struct)
     _strip_image_links(struct)
     if not options.skip_schema:

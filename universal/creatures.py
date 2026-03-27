@@ -337,7 +337,8 @@ def universal_handle_special_senses(parts):
     for part in parts:
         sense = {
             "type": "stat_block_section",
-            "subtype": "special_sense",
+            "subtype": "ability",
+            "ability_type": "special_sense",
         }
         part = _handle_special_sense_range(part, sense)
         if part.find("(") > -1:

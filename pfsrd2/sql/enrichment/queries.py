@@ -374,3 +374,51 @@ def count_change_records(curs):
         "verified": verified,
         "needs_review": needs_review,
     }
+
+
+# --- Ability category and UMA classification ---
+
+
+def update_ability_category(curs, ability_id, category):
+    """Set the ability_category for an ability record."""
+    now = _now()
+    sql = "UPDATE ability_records SET ability_category = ?, updated_at = ? WHERE ability_id = ?"
+    curs.execute(sql, (category, now, ability_id))
+
+
+def update_is_uma(curs, ability_id, is_uma=True):
+    """Mark an ability as a Universal Monster Ability."""
+    now = _now()
+    sql = "UPDATE ability_records SET is_uma = ?, updated_at = ? WHERE ability_id = ?"
+    curs.execute(sql, (1 if is_uma else 0, now, ability_id))
+
+
+def fetch_uncategorized_abilities(curs):
+    """Fetch ability records that don't have an ability_category yet."""
+    sql = "SELECT * FROM ability_records WHERE ability_category IS NULL ORDER BY name"
+    curs.execute(sql)
+    return curs.fetchall()
+
+
+def fetch_majority_category_for_name(curs, name):
+    """Get the most common category for an ability name from creature links.
+
+    Case-insensitive name matching — creature parser may store names
+    in different case than template/family parser.
+
+    Returns (category, count, total) or None if no creature links exist.
+    """
+    sql = """
+        SELECT acl.ability_category, COUNT(*) as cnt
+        FROM ability_records ar
+        JOIN ability_creature_links acl ON ar.ability_id = acl.ability_id
+        WHERE LOWER(ar.name) = LOWER(?)
+        GROUP BY acl.ability_category
+        ORDER BY cnt DESC
+    """
+    curs.execute(sql, (name,))
+    rows = curs.fetchall()
+    if not rows:
+        return None
+    total = sum(r["cnt"] for r in rows)
+    return rows[0]["ability_category"], rows[0]["cnt"], total

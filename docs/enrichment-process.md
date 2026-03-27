@@ -24,7 +24,11 @@ Offline enrichment → regex tier → LLM tier → manual review
 Next parser run → merges enriched fields into JSON output
 ```
 
-The enrichment DB (`~/.pfsrd2/enrichment.db`) is separate from the main `pfsrd2.db` and survives rebuilds. It has its own migration chain in `pfsrd2/sql/enrichment/`.
+Two databases in `~/.pfsrd2/`:
+- **`enrichment.db`** — Working state. Ability records, creature links, change records, categories, UMA flags. Can be blown away and rebuilt.
+- **`llm_cache.db`** — Persistent LLM response cache. Keyed on `(prompt_hash, model)`. Survives rebuilds. Prompt template changes automatically invalidate stale entries.
+
+Both have their own migration/table creation in `pfsrd2/sql/enrichment/` and `pfsrd2/enrichment/llm_cache.py` respectively.
 
 ## Step-by-Step Process
 
@@ -285,6 +289,47 @@ The `enrichment_version` on each record tracks which version of the extraction c
 ### Stale Detection
 
 When the parser re-runs and an object's text has changed (identity hash differs), the old enrichment record is marked `stale`. Stale enrichments are not applied. The offline enrichment process can re-extract them.
+
+## Ability Classification
+
+Every ability in the enrichment DB gets an `ability_category` that identifies where it belongs in a creature stat block. This is essential for template/family abilities — when a template says "add Darkvision", the consumer needs to know it goes in `special_senses`, not `automatic_abilities`.
+
+### Classification Tiers (run in order)
+
+1. **Deterministic (action type)** — Reactions → `reactive`, 1/2/3 actions → `offensive`, Free Action + trigger → `reactive`. No DB or LLM needed.
+2. **Creature links** — Each creature ability has a definitive category from its stat block position. Direct copy.
+3. **Name lookup** — Template/family abilities without creature links are matched by name (case-insensitive) against creature data. Majority vote.
+4. **UMA detection** — Name match against `monster_abilities` table in pfsrd2.db. Also assigns category from creature data.
+5. **LLM** — Remaining abilities classified using Ollama with a stat block structure prompt. Cached in `llm_cache.db`.
+
+Valid categories: `offensive`, `automatic`, `reactive`, `interaction`, `special_sense`, `hp_automatic`, `communication`
+
+### UMA Detection
+
+Universal Monster Abilities are detected mechanistically — name match against the `monster_abilities` table in `pfsrd2.db`. When detected:
+- `is_uma` flag set on the enrichment record
+- `universal_monster_ability` object wired from the DB during parser merge
+- Applied to ALL abilities (creature, template, family) — creatures that have abilities like "Grab" without HTML links to MonsterAbilities.aspx get the full UMA object from enrichment
+
+### Creature special_senses
+
+Special senses (darkvision, tremorsense, etc.) are abilities with `subtype: "ability"` and `ability_type: "special_sense"`. They participate in enrichment like any other ability — getting UMA objects, category classification, etc.
+
+### Ability Classification CLI
+
+```bash
+bin/pf2_enrich_abilities --uma            # UMA detection (all records)
+bin/pf2_enrich_abilities --classify       # Deterministic + creature data + name lookup
+bin/pf2_enrich_abilities --llm-classify   # LLM for remaining (~300-400, cached)
+bin/pf2_enrich_abilities --classify-stats # Category breakdown
+```
+
+### What doesn't get ability_category
+
+- **Creature abilities** — redundant with stat block position, not applied
+- **Result blocks** (Critical Success/Failure) — not standalone abilities
+- **Affliction stages** (Stage 1, Stage 2) — nested sub-entries
+- **Spell noise** (~900 records) — spell levels and list items parsed as abilities (PFSRD2-Parser-udk4)
 
 ## Change Enrichment (Template/Family Rules)
 
@@ -549,8 +594,9 @@ bin/pf2_enrich_changes --sample 5     # Show sample enriched records
 | `pfsrd2/ability_enrichment.py` | Population pass + merge logic |
 | `pfsrd2/ability_identity.py` | Identity hashing |
 | `pfsrd2/enrichment/regex_extractor.py` | Regex extraction + false alarm filters |
-| `pfsrd2/enrichment/llm_extractor.py` | LLM prompts + response parsers |
-| `bin/pf2_enrich_abilities` | Offline enrichment CLI |
+| `pfsrd2/enrichment/llm_extractor.py` | LLM prompts + response parsers (mechanics + category classification) |
+| `pfsrd2/enrichment/llm_cache.py` | Persistent LLM response cache (`~/.pfsrd2/llm_cache.db`) |
+| `bin/pf2_enrich_abilities` | Offline enrichment CLI (regex, LLM, classify, UMA) |
 | `bin/pf2_ability_review` | Inspection/review CLI |
 | `docs/ability-enrichment.md` | Design doc for the ability enrichment system |
 
@@ -592,3 +638,20 @@ To enrich a new object type (e.g., spell effects, hazard mechanics):
 7. **Run the full pipeline** — populate → enrich → apply → verify
 
 The enrichment DB is designed to be shared across object types. The migration chain and connection management host tables for both ability and change enrichment.
+
+## Full Rebuild Order
+
+When rebuilding from scratch (see also `rebuild-enrichment` skill in `.claude/skills/`):
+
+1. **Phase 1**: Run all parsers sequentially (populates enrichment DB)
+   - Creatures → NPCs → families → templates
+   - **CRITICAL: Sequential only — SQLite silently drops concurrent writes**
+2. **Phase 2**: Enrich abilities
+   - `--uma` → `--classify` → `--llm-classify` (classification)
+   - regex → `--llm frequency/dc/area/damage` (mechanics extraction)
+3. **Phase 3**: Re-run families + templates (merges enriched abilities into change data)
+4. **Phase 4**: Enrich changes (`bin/pf2_enrich_changes`)
+5. **Phase 5**: Re-run all parsers (final merge of all enrichment into JSON)
+6. **Phase 6**: Verify (check error logs, enrichment stats, diff review)
+
+**Order matters**: abilities must be enriched before changes (changes contain abilities). Three parser runs for families/templates, two for creatures/NPCs.
