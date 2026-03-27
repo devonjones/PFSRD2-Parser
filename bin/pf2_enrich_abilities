@@ -290,8 +290,7 @@ def run_classify(conn, args):
     creature_classified = 0
     for record in uncategorized:
         curs.execute(
-            "SELECT DISTINCT ability_category FROM ability_creature_links"
-            " WHERE ability_id = ?",
+            "SELECT DISTINCT ability_category FROM ability_creature_links" " WHERE ability_id = ?",
             (record["ability_id"],),
         )
         rows = curs.fetchall()
@@ -452,7 +451,9 @@ def run_llm_classify(conn, args):
         if category and action:
             if action == "Reaction" and category != "reactive":
                 category = "reactive"
-            elif action in ("One Action", "Two Actions", "Three Actions") and category not in ("offensive",):
+            elif action in ("One Action", "Two Actions", "Three Actions") and category not in (
+                "offensive",
+            ):
                 category = "offensive"
             elif action == "Free Action" and raw.get("trigger") and category != "reactive":
                 category = "reactive"
@@ -540,20 +541,20 @@ def main():
         "--model", default=None, help="Ollama model to use for LLM extraction (default: qwen2.5:3b)"
     )
     parser.add_argument(
-        "--classify", action="store_true",
-        help="Run Tier 1 ability category classification from creature data"
+        "--classify",
+        action="store_true",
+        help="Run Tier 1 ability category classification from creature data",
     )
     parser.add_argument(
-        "--uma", action="store_true",
-        help="Run Tier 2 UMA detection against monster abilities DB"
+        "--uma", action="store_true", help="Run Tier 2 UMA detection against monster abilities DB"
     )
     parser.add_argument(
-        "--classify-stats", action="store_true",
-        help="Show ability classification statistics"
+        "--classify-stats", action="store_true", help="Show ability classification statistics"
     )
     parser.add_argument(
-        "--llm-classify", action="store_true",
-        help="Run Tier 3 LLM classification on uncategorized abilities"
+        "--llm-classify",
+        action="store_true",
+        help="Run Tier 3 LLM classification on uncategorized abilities",
     )
     args = parser.parse_args()
 

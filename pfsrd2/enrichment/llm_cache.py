@@ -23,7 +23,8 @@ def _get_db_path():
 
 
 def _ensure_table(conn):
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS llm_cache (
             prompt_hash TEXT NOT NULL,
             model TEXT NOT NULL,
@@ -31,7 +32,8 @@ def _ensure_table(conn):
             created_at TEXT NOT NULL,
             PRIMARY KEY (prompt_hash, model)
         )
-    """)
+    """
+    )
     conn.commit()
 
 

@@ -610,17 +610,15 @@ def _extract_stage_fields(ability, bs):
 
 
 def _detect_affliction(ability):
-    """Detect if an ability is actually an affliction and set ability_type.
+    """Detect if an ability is an affliction and set ability_type.
 
-    An ability is an affliction if it has a saving_throw field AND
+    An ability is an affliction if it has a saving_throw field OR
     at least one stage. When detected, ability_type is set to "affliction".
     """
     has_saving_throw = "saving_throw" in ability
     has_stages = bool(ability.get("stages"))
 
-    if has_saving_throw and has_stages:
-        ability["ability_type"] = "affliction"
-    elif has_saving_throw or has_stages:
+    if has_saving_throw or has_stages:
         # Partial affliction — still flag it
         ability["ability_type"] = "affliction"
 
