@@ -9,6 +9,7 @@ import re
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
+from universal.ability import parse_abilities_from_nodes
 from universal.universal import build_object, extract_link, get_links
 from universal.utils import get_text
 
@@ -119,7 +120,7 @@ def _extract_abilities_from_li(li):
                 found_abilities_text = True
             continue
         ability_nodes.append(node)
-    return parse_ability_nodes(ability_nodes)
+    return parse_abilities_from_nodes(ability_nodes)
 
 
 def extract_inline_abilities(bs):

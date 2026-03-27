@@ -6,10 +6,10 @@ from bs4 import BeautifulSoup
 
 from pfsrd2.change_enrichment import change_enrichment_pass
 from pfsrd2.change_extraction import (
-    extract_inline_abilities,
     parse_adjustments_table,
     parse_change,
 )
+from universal.ability import parse_abilities_from_nodes
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
@@ -200,12 +200,35 @@ def _try_extract_changes(source_section, mt):
     # Check for inline abilities — either when there's no <ul>, or in
     # remaining text after the <ul> was removed (ancestry templates put
     # abilities after the </ul>)
-    abilities = extract_inline_abilities(bs)
+    abilities = _extract_abilities_from_bs(bs)
     if abilities:
         source_section["text"] = str(bs).strip()
         mt.setdefault("abilities", []).extend(abilities)
         found = True
     return found
+
+
+def _extract_abilities_from_bs(bs):
+    """Extract abilities from a BS object using the unified parser."""
+    first_b = None
+    for b in bs.find_all("b"):
+        if not b.find_parent("table"):
+            first_b = b
+            break
+    if not first_b:
+        return None
+    # If the <b> is inside an <a>, start from the <a> instead
+    start_node = first_b
+    if first_b.parent and first_b.parent.name == "a":
+        start_node = first_b.parent
+    # Collect all nodes from the start onward (siblings only)
+    ability_nodes = []
+    node = start_node
+    while node:
+        next_node = node.next_sibling
+        ability_nodes.append(node.extract())
+        node = next_node
+    return parse_abilities_from_nodes(ability_nodes)
 
 
 def _extract_adjustments_pass(struct):
