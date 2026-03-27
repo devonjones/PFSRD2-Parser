@@ -11,12 +11,11 @@ Two entry points:
 
 import re
 
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Tag
 
 from pfsrd2.action import extract_action_type
 from pfsrd2.trait import extract_starting_traits
 from universal.creatures import universal_handle_range, universal_handle_save_dc
-from universal.utils import split_maintain_parens
 from universal.universal import (
     build_object,
     extract_bold_fields,
@@ -24,7 +23,7 @@ from universal.universal import (
     extract_result_blocks,
     get_links,
 )
-from universal.utils import get_text
+from universal.utils import get_text, split_maintain_parens
 
 # Default set of bold-labeled fields recognized across all parsers.
 # Parsers can pass a custom set to restrict or extend.
@@ -85,10 +84,7 @@ def _assert_no_unextracted_frontmatter(ability):
     front = text[:30]
     match = re.search(r"\[[^\]]+\]", front)
     if match:
-        assert False, (
-            f"Ability '{name}' has literal action text '{match.group()}' — "
-            f'HTML is missing <span class="action"> element'
-        )
+        raise AssertionError(f"Ability '{name}' has literal action text '{match.group()}' — " f'HTML is missing <span class="action"> element')
 
     # Check for unextracted traits at start of text.
     # Pattern: text starts with "(" and has ")" before any sentence content.
@@ -107,10 +103,7 @@ def _assert_no_unextracted_frontmatter(ability):
                 and all(p[0:1].islower() for p in parts if p)
             )
             if looks_like_traits:
-                assert False, (
-                    f"Ability '{name}' has unextracted traits '({trait_text})' "
-                    f"at start of text — HTML likely has broken trait links"
-                )
+                raise AssertionError(f"Ability '{name}' has unextracted traits '({trait_text})' " f"at start of text — HTML likely has broken trait links")
 
 
 # --------------------------------------------------------------------------- #
@@ -333,14 +326,10 @@ def _merge_addons(entries, labels, fxn_is_addon=None):
     """
     merged = []
     for name, link, text_nodes in entries:
-        lower_name = name.lower().strip()
+        name.lower().strip()
         is_addon = False
 
-        if fxn_is_addon and fxn_is_addon(name):
-            is_addon = True
-        elif name.strip() in labels:
-            is_addon = True
-        elif _STAGE_RE.match(name.strip()):
+        if fxn_is_addon and fxn_is_addon(name) or name.strip() in labels or _STAGE_RE.match(name.strip()):
             is_addon = True
 
         if is_addon and merged:
@@ -706,10 +695,7 @@ def _handle_aura(ability):
         elif "damage" in part:
             ability["damage"] = _parse_damage(part)
         else:
-            assert False, (
-                f"Unrecognized aura stat part '{part}' in ability "
-                f"'{ability.get('name', '?')}': {ability['text']}"
-            )
+            raise AssertionError(f"Unrecognized aura stat part '{part}' in ability " f"'{ability.get('name', '?')}': {ability['text']}")
 
     # Remove the stats sentence from text, keep the rest
     parts.pop(0)

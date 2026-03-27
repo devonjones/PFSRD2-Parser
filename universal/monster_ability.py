@@ -7,11 +7,10 @@ Used by: creature, monster family, and monster template parsers.
 """
 
 import json
-import sys
 
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
-from universal.universal import walk, test_key_is_value
+from universal.universal import test_key_is_value, walk
 
 
 def monster_ability_db_pass(struct, edition=None):

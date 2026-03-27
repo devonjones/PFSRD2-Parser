@@ -20,9 +20,11 @@ from pfsrd2.sql.enrichment.queries import (  # noqa: F401
     fetch_changes_for_source,
     fetch_changes_needing_enrichment,
     fetch_creatures_for_ability,
+    fetch_majority_category_for_name,
     fetch_needing_enrichment,
     fetch_needs_review,
     fetch_stale,
+    fetch_uncategorized_abilities,
     fetch_unenriched,
     insert_ability_record,
     insert_change_record,
@@ -38,8 +40,6 @@ from pfsrd2.sql.enrichment.queries import (  # noqa: F401
     update_enriched_json,
     update_identity_hash,
     update_is_uma,
-    fetch_majority_category_for_name,
-    fetch_uncategorized_abilities,
 )
 from pfsrd2.sql.enrichment.tables import (
     create_ability_creature_links_index,

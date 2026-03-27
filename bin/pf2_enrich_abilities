@@ -492,7 +492,7 @@ def print_classification_stats(conn):
     curs.execute("SELECT COUNT(*) as c FROM ability_records WHERE is_uma = 1")
     umas = curs.fetchone()["c"]
 
-    print(f"\n=== Ability Classification Stats ===")
+    print("\n=== Ability Classification Stats ===")
     print(f"Total records:   {total}")
     print(f"Categorized:     {categorized}")
     print(f"Uncategorized:   {uncategorized}")
@@ -503,7 +503,7 @@ def print_classification_stats(conn):
         " WHERE ability_category IS NOT NULL"
         " GROUP BY ability_category ORDER BY c DESC"
     )
-    print(f"\nCategory breakdown:")
+    print("\nCategory breakdown:")
     for row in curs.fetchall():
         print(f"  {row['ability_category']}: {row['c']}")
 

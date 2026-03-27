@@ -7,7 +7,7 @@ enrichment pipeline's job.
 
 import re
 
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, NavigableString
 
 from universal.ability import parse_abilities_from_nodes
 from universal.universal import build_object, get_links

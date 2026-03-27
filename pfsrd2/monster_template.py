@@ -10,13 +10,13 @@ from pfsrd2.change_extraction import (
     parse_adjustments_table,
     parse_change,
 )
-from universal.ability import parse_abilities_from_nodes
-from universal.monster_ability import monster_ability_db_pass
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
+from universal.ability import parse_abilities_from_nodes
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
+from universal.monster_ability import monster_ability_db_pass
 from universal.universal import (
     aon_pass,
     entity_pass,
