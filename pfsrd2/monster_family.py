@@ -48,10 +48,10 @@ def parse_monster_family(filename, options):
     _strip_empty_text(struct)
     source_pass(struct, find_monster_family)
     _extract_creation_changes(struct)
+    _extract_section_abilities(struct)
     monster_family_link_pass(struct)
     aon_pass(struct, basename)
     restructure_pass(struct, "monster_family", find_monster_family)
-    _extract_section_abilities(struct)
     _consolidate_creation_changes(struct)
     change_enrichment_pass(struct, "monster_family")
     remove_empty_sections_pass(struct)
@@ -440,9 +440,13 @@ def _extract_abilities_from_bs(bs):
             break
     if not first_b:
         return None
-    # Collect all nodes from the first <b> onward (siblings only)
+    # If the <b> is inside an <a>, start from the <a> instead
+    start_node = first_b
+    if first_b.parent and first_b.parent.name == "a":
+        start_node = first_b.parent
+    # Collect all nodes from the start onward (siblings only)
     ability_nodes = []
-    node = first_b
+    node = start_node
     while node:
         next_node = node.next_sibling
         ability_nodes.append(node.extract())

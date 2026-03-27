@@ -949,7 +949,8 @@
 				},
 				"type": {
 					"enum": [
-						"trait"
+						"trait",
+						"stat_block_section"
 					]
 				},
 				"game-id": {
@@ -994,15 +995,19 @@
 						"legacy",
 						"remastered"
 					]
+				},
+				"subtype": {
+					"enum": [
+						"trait"
+					]
+				},
+				"link": {
+					"$ref": "#/definitions/link"
 				}
 			},
 			"required": [
 				"name",
-				"type",
-				"game-id",
-				"game-obj",
-				"sources",
-				"edition"
+				"type"
 			],
 			"additionalProperties": false
 		},
