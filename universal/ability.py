@@ -84,7 +84,10 @@ def _assert_no_unextracted_frontmatter(ability):
     front = text[:30]
     match = re.search(r"\[[^\]]+\]", front)
     if match:
-        raise AssertionError(f"Ability '{name}' has literal action text '{match.group()}' — " f'HTML is missing <span class="action"> element')
+        raise AssertionError(
+            f"Ability '{name}' has literal action text '{match.group()}' — "
+            f'HTML is missing <span class="action"> element'
+        )
 
     # Check for unextracted traits at start of text.
     # Pattern: text starts with "(" and has ")" before any sentence content.
@@ -103,7 +106,10 @@ def _assert_no_unextracted_frontmatter(ability):
                 and all(p[0:1].islower() for p in parts if p)
             )
             if looks_like_traits:
-                raise AssertionError(f"Ability '{name}' has unextracted traits '({trait_text})' " f"at start of text — HTML likely has broken trait links")
+                raise AssertionError(
+                    f"Ability '{name}' has unextracted traits '({trait_text})' "
+                    f"at start of text — HTML likely has broken trait links"
+                )
 
 
 # --------------------------------------------------------------------------- #
@@ -329,7 +335,12 @@ def _merge_addons(entries, labels, fxn_is_addon=None):
         name.lower().strip()
         is_addon = False
 
-        if fxn_is_addon and fxn_is_addon(name) or name.strip() in labels or _STAGE_RE.match(name.strip()):
+        if (
+            fxn_is_addon
+            and fxn_is_addon(name)
+            or name.strip() in labels
+            or _STAGE_RE.match(name.strip())
+        ):
             is_addon = True
 
         if is_addon and merged:
@@ -695,7 +706,10 @@ def _handle_aura(ability):
         elif "damage" in part:
             ability["damage"] = _parse_damage(part)
         else:
-            raise AssertionError(f"Unrecognized aura stat part '{part}' in ability " f"'{ability.get('name', '?')}': {ability['text']}")
+            raise AssertionError(
+                f"Unrecognized aura stat part '{part}' in ability "
+                f"'{ability.get('name', '?')}': {ability['text']}"
+            )
 
     # Remove the stats sentence from text, keep the rest
     parts.pop(0)
