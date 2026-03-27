@@ -2151,11 +2151,7 @@
 					"$ref": "#/definitions/number_with_modifiers"
 				},
 				"special_senses": {
-					"type": "array",
-					"items": {
-						"$ref": "#/definitions/special_sense"
-					},
-					"additionalItems": false
+					"$ref": "#/definitions/abilities"
 				}
 			},
 			"required": [
@@ -2833,10 +2829,7 @@
 			},
 			"required": [
 				"name",
-				"type",
-				"game-id",
-				"game-obj",
-				"sources"
+				"type"
 			],
 			"additionalProperties": false
 		}

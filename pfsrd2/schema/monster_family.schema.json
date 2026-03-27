@@ -1066,10 +1066,7 @@
 			},
 			"required": [
 				"name",
-				"type",
-				"game-id",
-				"game-obj",
-				"sources"
+				"type"
 			],
 			"additionalProperties": false
 		}

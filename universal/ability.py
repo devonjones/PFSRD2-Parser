@@ -314,8 +314,8 @@ def _build_ability_from_entry(entry, ability_type, labels):
     raw_html = "".join(str(n) for n in entry["text_nodes"]).strip()
 
     if raw_html:
-        # Extract traits first — they may appear before the action span
-        # e.g., "(divine, void) [free-action]"
+        # Extract traits — may appear before OR after the action span
+        # e.g., "(divine, void) [free-action]" OR "[one-action] (arcane, transmutation)"
         remaining_html, traits = extract_starting_traits(raw_html.strip())
         if traits:
             ability["traits"] = traits
@@ -324,6 +324,12 @@ def _build_ability_from_entry(entry, ability_type, labels):
         remaining_text, action = extract_action_type(remaining_html.strip())
         if action:
             ability["action_type"] = action
+
+        # Try traits again after action extraction (handles action-before-traits)
+        if not traits:
+            remaining_text, traits = extract_starting_traits(remaining_text.strip())
+            if traits:
+                ability["traits"] = traits
 
         # Extract links from remaining text
         if remaining_text.strip():
@@ -341,6 +347,9 @@ def _build_ability_from_entry(entry, ability_type, labels):
 
     # Detect affliction
     _detect_affliction(ability)
+
+    # Detect universal monster ability from link
+    _detect_universal_monster_ability(ability)
 
     return ability
 
@@ -543,3 +552,24 @@ def _detect_affliction(ability):
     elif has_saving_throw or has_stages:
         # Partial affliction — still flag it
         ability["ability_type"] = "affliction"
+
+
+def _detect_universal_monster_ability(ability):
+    """Detect if an ability is a universal monster ability from its link.
+
+    If the ability name links to MonsterAbilities.aspx, it's a universal
+    monster ability. Set the universal_monster_ability field with the
+    link data so consumers can look it up.
+    """
+    link = ability.get("link")
+    if not link:
+        return
+    if link.get("game-obj") == "MonsterAbilities":
+        ability["universal_monster_ability"] = {
+            "name": ability["name"],
+            "type": "ability",
+            "ability_type": "universal_monster_ability",
+            "game-obj": "MonsterAbilities",
+            "game-id": link.get("game-id", ""),
+            "aonid": link.get("aonid"),
+        }
