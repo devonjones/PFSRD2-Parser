@@ -56,6 +56,13 @@ _STAGE_RE = re.compile(r"^Stage\s+\d+$", re.IGNORECASE)
 # Addon fields that signal an affliction when combined with Stage N
 _AFFLICTION_FIELDS = {"saving_throw", "onset", "maximum_duration"}
 
+# Bold labels that should NOT be treated as ability names.
+# These appear as <b> in sections but are structural labels, not abilities.
+_NOT_ABILITY_NAMES = {
+    "Related Groups",
+    "Source",
+}
+
 
 # --------------------------------------------------------------------------- #
 # Entry point A: Parse node sequence
@@ -227,6 +234,10 @@ def _split_nodes(nodes):
         if isinstance(node, Tag) and node.name == "a" and node.find("b"):
             b = node.find("b")
             name = get_text(b).strip()
+            if name in _NOT_ABILITY_NAMES:
+                if current:
+                    current[2].append(node)
+                continue
             if current:
                 entries.append(current)
             _name, link_obj = extract_link(node)
@@ -235,6 +246,10 @@ def _split_nodes(nodes):
 
         if isinstance(node, Tag) and node.name == "b":
             name = get_text(node).strip()
+            if name in _NOT_ABILITY_NAMES:
+                if current:
+                    current[2].append(node)
+                continue
             if current:
                 entries.append(current)
             current = (name, None, [])
