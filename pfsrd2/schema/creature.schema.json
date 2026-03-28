@@ -1494,8 +1494,7 @@
       "required": [
         "type",
         "subtype",
-        "text",
-        "change_category"
+        "text"
       ],
       "type": "object"
     },
