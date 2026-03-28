@@ -1350,17 +1350,21 @@ def process_interaction_ability(sb, section, sections):
     addons = _consume_addon_sections(sections)
 
     # Build ability through unified parser
+    # Don't pass link here — creature code handles title links separately
     ability = parse_ability_from_html(
         ability_name,
         description,
         ability_type="interaction",
         action_type=title_action,
-        link=link,
         addon_labels=set(),  # No bold-field extraction — addons come from sections
     )
 
     # Apply pre-consumed addons
     _apply_addons(ability, addons)
+
+    # Add title link
+    if link:
+        ability["links"] = [link]
 
     return ability
 
@@ -1662,12 +1666,12 @@ def process_defensive_ability(section, sections, sb):
     addons = _consume_addon_sections(sections)
 
     # Build ability through unified parser
+    # Don't pass link here — creature code handles title links separately
     ability = parse_ability_from_html(
         section[0],
         description,
         ability_type="automatic",
         action_type=title_action,
-        link=link,
         addon_labels=set(),  # No bold-field extraction — addons come from sections
     )
 
@@ -1681,11 +1685,10 @@ def process_defensive_ability(section, sections, sb):
         ability["ability_type"] = "reactive"
         sb_key = "reactive_abilities"
 
-    # Prepend title link if present
+    # Add title link
     if link:
         links = ability.setdefault("links", [])
-        if link not in links:
-            links.insert(0, link)
+        links.insert(0, link)
 
     sb["defense"].setdefault(sb_key, []).append(ability)
 
