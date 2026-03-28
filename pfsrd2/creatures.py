@@ -522,9 +522,8 @@ def _handle_trait_template(curs, ability, db_ability):
     db_ability["traits"].remove(deltrait)
     if deltrait["name"] == "magical tradition":
         newtrait = _get_magical_tradition_trait(curs, ability)
-        if newtrait:
-            db_ability["traits"].append(newtrait)
-            return
+        db_ability["traits"].append(newtrait)
+        return
     assert False, f"Unknown trait template: {deltrait['name']}"
 
 

@@ -13,6 +13,8 @@ from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 from universal.universal import test_key_is_value, walk
 
+EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION = 1.2
+
 
 def monster_ability_db_pass(struct, edition=None, fxn_handle_trait_template=None):
     """Enrich abilities with universal monster ability data from the DB.
@@ -47,21 +49,34 @@ def monster_ability_db_pass(struct, edition=None, fxn_handle_trait_template=None
             data = _pick_best_ability(abilities, target_edition)
             if data:
                 db_ability = json.loads(data["monster_ability"])
-                # Strip schema_version (doesn't belong on nested object).
+                # Assert expected schema version before stripping
+                sv = db_ability.pop("schema_version", None)
+                assert sv is None or sv <= EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION, (
+                    f"Monster ability schema version {sv} > expected "
+                    f"{EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION} for {name}"
+                )
                 # Keep "license" — license_consolidation_pass needs it.
-                db_ability.pop("schema_version", None)
                 # Handle trait templates — either substitute or strip
                 if "traits" in db_ability:
                     if fxn_handle_trait_template:
                         fxn_handle_trait_template(curs, ability, db_ability)
                     else:
+                        # Strip trait templates with warning for unknown types
+                        templates = [
+                            t for t in db_ability["traits"] if t.get("type") == "trait_template"
+                        ]
+                        for t in templates:
+                            sys.stderr.write(
+                                f"WARNING: stripping trait_template "
+                                f"'{t.get('name', '?')}' from UMA "
+                                f"'{name}' (no handler provided)\n"
+                            )
                         db_ability["traits"] = [
                             t for t in db_ability["traits"] if t.get("type") != "trait_template"
                         ]
                     # Strip metadata from nested traits
                     for trait in db_ability["traits"]:
-                        for key in ("schema_version",):
-                            trait.pop(key, None)
+                        trait.pop("schema_version", None)
                 ability["universal_monster_ability"] = db_ability
             elif ability.get("universal_monster_ability"):
                 # DB didn't find it — remove the incomplete skeleton
