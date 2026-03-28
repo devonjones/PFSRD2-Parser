@@ -56,9 +56,7 @@ def monster_ability_db_pass(struct, edition=None, fxn_handle_trait_template=None
                         fxn_handle_trait_template(curs, ability, db_ability)
                     else:
                         db_ability["traits"] = [
-                            t
-                            for t in db_ability["traits"]
-                            if t.get("type") != "trait_template"
+                            t for t in db_ability["traits"] if t.get("type") != "trait_template"
                         ]
                     # Strip metadata from nested traits
                     for trait in db_ability["traits"]:

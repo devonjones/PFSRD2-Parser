@@ -12,7 +12,6 @@ from pfsrd2.action import build_action_type, extract_action_type
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
-from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 from pfsrd2.sql.monster_families import (
     fetch_monster_family_by_aonid,
     fetch_monster_family_by_link,
@@ -35,8 +34,8 @@ from universal.creatures import (
     write_creature,
 )
 from universal.files import char_replace, makedirs
-from universal.monster_ability import monster_ability_db_pass as universal_monster_ability_db_pass
 from universal.markdown import markdown_pass
+from universal.monster_ability import monster_ability_db_pass as universal_monster_ability_db_pass
 from universal.universal import (
     aon_pass,
     build_object,
@@ -61,8 +60,6 @@ from universal.universal import (
     source_pass,
     string_with_modifiers,
     string_with_modifiers_from_string_list,
-    test_key_is_value,
-    walk,
 )
 from universal.utils import (
     clear_garbage,
@@ -158,9 +155,7 @@ def parse_creature(filename, options):
     monster_family_db_pass(struct)
     universal_trait_db_pass(struct, pre_process=_creature_trait_pre_process)
 
-    universal_monster_ability_db_pass(
-        struct, fxn_handle_trait_template=_handle_trait_template
-    )
+    universal_monster_ability_db_pass(struct, fxn_handle_trait_template=_handle_trait_template)
     ability_enrichment_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
