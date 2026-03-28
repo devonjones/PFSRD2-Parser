@@ -12,7 +12,6 @@ from pfsrd2.action import build_action_type, extract_action_type
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
-from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 from pfsrd2.sql.monster_families import (
     fetch_monster_family_by_aonid,
     fetch_monster_family_by_link,
@@ -36,6 +35,7 @@ from universal.creatures import (
 )
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass
+from universal.monster_ability import monster_ability_db_pass as universal_monster_ability_db_pass
 from universal.universal import (
     aon_pass,
     build_object,
@@ -60,8 +60,6 @@ from universal.universal import (
     source_pass,
     string_with_modifiers,
     string_with_modifiers_from_string_list,
-    test_key_is_value,
-    walk,
 )
 from universal.utils import (
     clear_garbage,
@@ -157,7 +155,7 @@ def parse_creature(filename, options):
     monster_family_db_pass(struct)
     universal_trait_db_pass(struct, pre_process=_creature_trait_pre_process)
 
-    monster_ability_db_pass(struct)
+    universal_monster_ability_db_pass(struct, fxn_handle_trait_template=_handle_trait_template)
     ability_enrichment_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
@@ -491,74 +489,43 @@ def _fetch_edition_matched_family(curs, struct, aonid):
     return family
 
 
-def monster_ability_db_pass(struct):
-    def _pick_best_ability(abilities, target_edition):
-        """Pick the ability that best matches the target edition."""
-        if not abilities:
-            return None
-        if len(abilities) == 1:
-            return abilities[0]
+def _get_magical_tradition_trait(curs, ability):
+    """Get the magical tradition trait for a creature's ability.
 
-        # Parse all abilities and find edition matches
-        for ability_row in abilities:
-            ability_json = json.loads(ability_row["monster_ability"])
-            if ability_json.get("edition") == target_edition:
-                return ability_row
+    Checks if the creature's ability already has a tradition trait
+    (Arcane, Divine, Occult, Primal). If not, returns a generic
+    [Magical Tradition] placeholder trait from the DB.
+    """
+    if "traits" in ability:
+        for trait in ability["traits"]:
+            if trait["name"] in ["Arcane", "Divine", "Occult", "Primal"]:
+                return trait
+    data = fetch_trait_by_name(curs, "[Magical Tradition]")
+    assert data is not None, "Required trait '[Magical Tradition]' not found in database"
+    return json.loads(data["trait"])
 
-        # No exact match — warn and return first one
-        names = [json.loads(a["monster_ability"]).get("name", "?") for a in abilities]
-        sys.stderr.write(
-            f"WARNING: _pick_best_ability: no edition match for {names[0]} "
-            f"(target={target_edition}), using first of {len(abilities)}\n"
-        )
-        return abilities[0]
 
-    def _template_get_magical_tradition(curs, ability):
-        if "traits" in ability:
-            for trait in ability["traits"]:
-                if trait["name"] in ["Arcane", "Divine", "Occult", "Primal"]:
-                    return trait
-        data = fetch_trait_by_name(curs, "[Magical Tradition]")
-        return json.loads(data["trait"])
+def _handle_trait_template(curs, ability, db_ability):
+    """Substitute trait templates in a UMA's DB record with actual traits.
 
-    def _handle_trait_template(curs, ability, db_ability):
-        if "traits" not in db_ability:
-            return
-        deltrait = None
-        for trait in db_ability["traits"]:
-            if trait["type"] == "trait_template":
-                deltrait = trait
-        if not deltrait:
-            return
+    Called by monster_ability_db_pass via fxn_handle_trait_template callback.
+    Currently handles the [Magical Tradition] template used by spellcasting UMAs.
+    """
+    if "traits" not in db_ability:
+        return
+    deltrait = None
+    for trait in db_ability["traits"]:
+        if trait["type"] == "trait_template":
+            deltrait = trait
+    if not deltrait:
+        return
 
-        db_ability["traits"].remove(deltrait)
-        if deltrait["name"] == "magical tradition":
-            newtrait = _template_get_magical_tradition(curs, ability)
-            if newtrait:
-                db_ability["traits"].append(newtrait)
-                return
-        raise AssertionError("Shouldn't get here")
-
-    EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION = 1.2
-
-    def _check_ability(ability, parent):
-        abilities = fetch_monster_abilities_by_name(curs, ability["name"])
-        data = _pick_best_ability(abilities, struct["edition"])
-        if data:
-            db_ability = json.loads(data["monster_ability"])
-            _handle_trait_template(curs, ability, db_ability)
-            strip_nested_metadata(db_ability, EXPECTED_MONSTER_ABILITY_SCHEMA_VERSION)
-            # Traits inside the DB ability also carry schema_version from
-            # when they were enriched by trait_db_pass during monster_ability parsing
-            for trait in db_ability.get("traits", []):
-                if "schema_version" in trait:
-                    strip_nested_metadata(trait, EXPECTED_TRAIT_SCHEMA_VERSION)
-            ability["universal_monster_ability"] = db_ability
-
-    db_path = get_db_path("pfsrd2.db")
-    with get_db_connection(db_path) as conn:
-        curs = conn.cursor()
-        walk(struct, test_key_is_value("subtype", "ability"), _check_ability)
+    db_ability["traits"].remove(deltrait)
+    if deltrait["name"] == "magical tradition":
+        newtrait = _get_magical_tradition_trait(curs, ability)
+        db_ability["traits"].append(newtrait)
+        return
+    assert False, f"Unknown trait template: {deltrait['name']}"
 
 
 def restructure_creature_pass(details, subtype, edition):
@@ -2194,7 +2161,8 @@ def process_offensive_action(section):
         del parent_section["text"]
         section = {
             "type": "stat_block_section",
-            "subtype": "affliction",
+            "subtype": "ability",
+            "ability_type": "affliction",
             "name": parent_section["name"],
         }
         if "action_type" in parent_section:
@@ -2241,7 +2209,7 @@ def process_offensive_action(section):
                         if extra:
                             section.setdefault("text", []).append(extra)
                         newtext = dc_match.group(1)
-                    section["saving_throw"] = universal_handle_save_dc(newtext)
+                    section["saving_throw"] = [universal_handle_save_dc(newtext)]
                 elif title == "Requirements":
                     assert "requirements" not in section, text
                     section["requirements"] = newtext
@@ -2291,7 +2259,7 @@ def process_offensive_action(section):
                         addon,
                         section["text"],
                     )
-        parent_section["affliction"] = section
+        parent_section["ability"] = section
 
     # <b>Mythic Power</b> 3 Mythic Points <ul><li><i>Mythic Skill</i> <span class="action" title="Free Action" role="img" aria-label="Free Action">[free-action]</span> <b>Cost</b> 1 Mythic Point; <a style="text-decoration:underline" href="Skills.aspx?ID=36">Athletics</a> or <a style="text-decoration:underline" href="Skills.aspx?ID=48">Stealth</a> (page 168)</li><li><i>Remove a Condition</i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b>1 Mythic Point; <b>Effect</b> The gogiteth ends one condition affecting it.</li></ul>
     # <b><a style="text-decoration:underline" href="MonsterTemplates.aspx?ID=32">Mythic Ferocity</a>  <span class="action" title="Reaction" role="img" aria-label="Reaction">[reaction]</span> </b> <b>cost</b> 1 Mythic Point, 65 HP
@@ -2517,7 +2485,7 @@ def process_offensive_action(section):
         if bs.b:
             title = get_text(bs.b)
             if title.strip() in ["Saving Throw"] or "Stage 1" in titles:
-                section["offensive_action_type"] = "affliction"
+                section["offensive_action_type"] = "ability"
                 parse_affliction(section)
             else:
                 section["offensive_action_type"] = "ability"
