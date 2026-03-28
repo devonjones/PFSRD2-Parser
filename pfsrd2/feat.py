@@ -815,7 +815,7 @@ def write_feat(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
     filename = create_feat_filename(jsondir, struct)
     with open(filename, "w") as fp:
-        json.dump(struct, fp, indent=4, sort_keys=True)
+        json.dump(struct, fp, indent=2, sort_keys=True)
 
 
 def create_feat_filename(jsondir, struct):

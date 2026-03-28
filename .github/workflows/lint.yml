@@ -28,6 +28,28 @@ jobs:
       - name: Run Ruff linter
         run: ruff check .
 
+      - name: Check JSON schema formatting
+        run: |
+          python3 -c "
+          import json, glob, sys
+          bad = []
+          for f in sorted(glob.glob('pfsrd2/schema/*.json')):
+              with open(f) as fp:
+                  raw = fp.read()
+              data = json.loads(raw)
+              expected = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + '\n'
+              if raw != expected:
+                  bad.append(f)
+          if bad:
+              print('JSON schemas not formatted (indent=2, sort_keys=True):')
+              for f in bad:
+                  print(f'  {f}')
+              print()
+              print('Fix: run pre-commit or reformat with indent=2, sort_keys=True')
+              sys.exit(1)
+          print('All JSON schemas correctly formatted')
+          "
+
   test:
     runs-on: ubuntu-latest
     steps:

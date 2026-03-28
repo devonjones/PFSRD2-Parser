@@ -8,3 +8,12 @@ repos:
     rev: v0.8.6
     hooks:
       - id: ruff
+
+  - repo: local
+    hooks:
+      - id: json-schema-format
+        name: json-schema-format
+        entry: python3 -c 'import json,sys;exec("for f in sys.argv[1:]:\n d=json.load(open(f))\n open(f,\"w\").write(json.dumps(d,indent=2,sort_keys=True,ensure_ascii=False)+\"\\n\")")'
+        language: system
+        files: ^pfsrd2/schema/.*\.json$
+        types: [json]

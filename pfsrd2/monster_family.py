@@ -505,7 +505,7 @@ def write_monster_family(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
     filename = create_monster_family_filename(jsondir, struct)
     fp = open(filename, "w")
-    json.dump(struct, fp, indent=4, sort_keys=True)
+    json.dump(struct, fp, indent=2, sort_keys=True)
     fp.close()
 
 
