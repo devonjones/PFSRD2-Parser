@@ -43,7 +43,9 @@ _conn = None
 def _get_conn():
     global _conn
     if _conn is None:
-        _conn = sqlite3.connect(_get_db_path())
+        _conn = sqlite3.connect(_get_db_path(), timeout=30)
+        _conn.execute("PRAGMA journal_mode=WAL")
+        _conn.execute("PRAGMA busy_timeout=30000")
         _ensure_table(_conn)
     return _conn
 
