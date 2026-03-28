@@ -501,6 +501,7 @@ def _get_magical_tradition_trait(curs, ability):
             if trait["name"] in ["Arcane", "Divine", "Occult", "Primal"]:
                 return trait
     data = fetch_trait_by_name(curs, "[Magical Tradition]")
+    assert data is not None, "Required trait '[Magical Tradition]' not found in database"
     return json.loads(data["trait"])
 
 
