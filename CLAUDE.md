@@ -268,13 +268,24 @@ These pipelines process hundreds or thousands of files, so they can take signifi
 
 ### Error Logging
 
-As pipelines run, errors are recorded in `bin/errors.*.log` files:
+As pipelines run, errors are recorded in `bin/errors.pf2.<type>.log` files. **ALWAYS check the correct log file after every parser run.** The naming is NOT always the plural of the content type:
 
-```
-errors.pf2.monsters.log
-errors.pf2.npcs.log
-errors.pf2.conditions.log
-```
+| Script | Error Log |
+|--------|-----------|
+| `pf2_run_creatures.sh` | `errors.pf2.creatures.log` |
+| `pf2_run_npcs.sh` | `errors.pf2.npc.log` |
+| `pf2_run_monster_families.sh` | `errors.pf2.monster_family.log` |
+| `pf2_run_monster_templates.sh` | `errors.pf2.monster_template.log` |
+| `pf2_run_traits.sh` | `errors.pf2.trait.log` |
+| `pf2_run_conditions.sh` | `errors.pf2.condition.log` |
+| `pf2_run_skills.sh` | `errors.pf2.skill.log` |
+| `pf2_run_equipment.sh <type>` | `errors.pf2.<type>.log` |
+| `pf2_run_sources.sh` | `errors.pf2.source.log` |
+| `pf2_run_monster_abilities.sh` | `errors.pf2.monster_abilities.log` |
+| `pf2_run_feats.sh` | `errors.pf2.feat.log` |
+| `pf2_run_spells.sh` | `errors.pf2.spell.log` |
+
+**CRITICAL**: The script exit code is 0 even when files fail — errors are logged to the file, not signaled via exit code. You MUST check the log file to know if there were errors. A missing log file means zero errors.
 
 ### Error Seed Iteration Workflow
 
@@ -1013,13 +1024,13 @@ Typical workflow when fixing a parser bug:
 PFSRD2-Parser/bin/pf2_run_creatures.sh
 
 # 2. Check for errors
-cat PFSRD2-Parser/bin/errors.pf2.monsters.log
+cat PFSRD2-Parser/bin/errors.pf2.creatures.log
 
 # 3. If there are errors, investigate the first one
 # Edit the parser code to fix the issue
 
 # 4. Reprocess only failed files
-mv PFSRD2-Parser/bin/errors.pf2.monsters.log PFSRD2-Parser/bin/errors.pf2.monsters
+mv PFSRD2-Parser/bin/errors.pf2.creatures.log PFSRD2-Parser/bin/errors.pf2.creatures
 PFSRD2-Parser/bin/pf2_run_creatures.sh
 
 # 5. Verify the fix worked

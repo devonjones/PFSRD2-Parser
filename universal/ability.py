@@ -686,6 +686,9 @@ def _handle_aura(ability):
     if stats_text.endswith(";"):
         stats_text = stats_text[:-1].strip()
 
+    # Normalize number commas (e.g., "1,000 feet" → "1000 feet") before splitting
+    stats_text = re.sub(r"(\d),(\d{3})", r"\1\2", stats_text)
+
     # Split by comma (respecting parentheses) and parse each part.
     # IMPORTANT: These assertions are intentional strategic fragility.
     # When they fire, fix the HTML to put range/DC in comma-separated
@@ -704,7 +707,7 @@ def _handle_aura(ability):
             assert range_obj, f"Malformed aura range: {ability['text']}"
             assert "range" not in ability, f"Duplicate range in aura: {ability}"
             ability["range"] = range_obj
-        elif "damage" in part:
+        elif "damage" in part or re.match(r"\d+d\d+", part):
             ability["damage"] = _parse_damage(part)
         else:
             assert False, (
@@ -722,5 +725,7 @@ def _handle_aura(ability):
 
 
 def _is_aura_stats(text):
-    """Check if text looks like aura stats (range, damage, DC)."""
-    return "damage" in text or "DC" in text or "feet" in text or "miles" in text or "mile" in text
+    """Check if text looks like aura stats (range, damage, DC, dice formula)."""
+    if "damage" in text or "DC" in text or "feet" in text or "miles" in text or "mile" in text:
+        return True
+    return bool(re.search(r"\d+d\d+", text))
