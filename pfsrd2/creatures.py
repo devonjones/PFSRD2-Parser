@@ -25,6 +25,7 @@ from pfsrd2.sql.traits import (
     trait_db_pass as universal_trait_db_pass,
 )
 from pfsrd2.trait import extract_starting_traits, trait_parse
+from universal.ability import parse_ability_from_html
 from universal.creatures import (
     universal_handle_perception,
     universal_handle_range,
@@ -33,7 +34,6 @@ from universal.creatures import (
     universal_handle_special_senses,
     write_creature,
 )
-from universal.ability import parse_ability_from_html
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass
 from universal.monster_ability import monster_ability_db_pass as universal_monster_ability_db_pass
@@ -52,7 +52,6 @@ from universal.universal import (
     is_trait,
     link_modifiers,
     link_objects,
-    link_value,
     link_values,
     parse_universal,
     remove_empty_sections_pass,
