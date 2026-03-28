@@ -493,11 +493,11 @@ _HTML_VALUE_FIELDS = {
 
 
 def _extract_links_from_addon_fields(ability):
-    """Extract and unwrap links from addon/result field values.
+    """Extract and unwrap links from addon/result/stage field values.
 
-    Bold-field and result-block extraction store raw HTML including <a> tags.
-    This extracts them to the ability's links array and unwraps the tags,
-    leaving clean text in the field values.
+    Bold-field, result-block, and stage extraction store raw HTML including
+    <a> tags. This extracts them to the ability's links array and unwraps
+    the tags, leaving clean text in the field values.
     """
     for key in list(ability.keys()):
         if key not in _HTML_VALUE_FIELDS:
@@ -511,6 +511,17 @@ def _extract_links_from_addon_fields(ability):
             ability.setdefault("links", []).extend(links)
         ability[key] = str(ab_bs).strip()
 
+    # Also handle stages array — each stage has a "text" field
+    for stage in ability.get("stages", []):
+        text = stage.get("text", "")
+        if "<a" not in text:
+            continue
+        ab_bs = BeautifulSoup(text, "html.parser")
+        links = get_links(ab_bs, unwrap=True)
+        if links:
+            ability.setdefault("links", []).extend(links)
+        stage["text"] = str(ab_bs).strip()
+
 
 def _normalize_structured_fields(ability):
     """Convert saving_throw, damage, and range from strings to structured objects.
@@ -519,9 +530,25 @@ def _normalize_structured_fields(ability):
     structured objects for these fields.
     """
     if "saving_throw" in ability and isinstance(ability["saving_throw"], str):
-        ability["saving_throw"] = [_parse_save_dc(ability["saving_throw"])]
+        # Strip links before parsing (they may contain condition links)
+        st_text = ability["saving_throw"]
+        if "<a" in st_text:
+            st_bs = BeautifulSoup(st_text, "html.parser")
+            st_links = get_links(st_bs, unwrap=True)
+            if st_links:
+                ability.setdefault("links", []).extend(st_links)
+            st_text = str(st_bs).strip()
+        ability["saving_throw"] = [_parse_save_dc(st_text)]
     if "damage" in ability and isinstance(ability["damage"], str):
-        ability["damage"] = _parse_damage(ability["damage"])
+        # Strip links before parsing
+        dmg_text = ability["damage"]
+        if "<a" in dmg_text:
+            dmg_bs = BeautifulSoup(dmg_text, "html.parser")
+            dmg_links = get_links(dmg_bs, unwrap=True)
+            if dmg_links:
+                ability.setdefault("links", []).extend(dmg_links)
+            dmg_text = str(dmg_bs).strip()
+        ability["damage"] = _parse_damage(dmg_text)
     if "range" in ability and isinstance(ability["range"], str):
         range_obj = universal_handle_range(ability["range"])
         if range_obj:
