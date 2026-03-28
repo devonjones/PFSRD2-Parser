@@ -47,9 +47,9 @@ def monster_ability_db_pass(struct, edition=None, fxn_handle_trait_template=None
             data = _pick_best_ability(abilities, target_edition)
             if data:
                 db_ability = json.loads(data["monster_ability"])
-                # Strip metadata that doesn't belong on a nested object
-                for key in ("schema_version", "license"):
-                    db_ability.pop(key, None)
+                # Strip schema_version (doesn't belong on nested object).
+                # Keep "license" — license_consolidation_pass needs it.
+                db_ability.pop("schema_version", None)
                 # Handle trait templates — either substitute or strip
                 if "traits" in db_ability:
                     if fxn_handle_trait_template:

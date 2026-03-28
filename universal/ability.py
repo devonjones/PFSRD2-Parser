@@ -489,8 +489,11 @@ def _parse_save_dc(text):
     if "DC" in text:
         try:
             return universal_handle_save_dc(text)
-        except ValueError:
-            pass  # Malformed DC number — fall through to text fallback
+        except (ValueError, AssertionError):
+            # Legitimate: non-numeric DCs like "the high spell DC for the
+            # ghoul's level" or "moderate spell DC for the werecreature's
+            # new level". These are formulas, not parser bugs.
+            pass
     # Fallback: minimal object with text
     save_dc = {"type": "stat_block_section", "subtype": "save_dc", "text": text}
     # Try to extract save type from common patterns
