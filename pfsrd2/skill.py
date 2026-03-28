@@ -79,7 +79,7 @@ def parse_skill(filename, options):
             jsondir = makedirs(output, struct["game-obj"], name)
             write_skill(jsondir, struct, name)
     elif options.stdout:
-        print(json.dumps(struct, indent=2))
+        print(json.dumps(struct, indent=2, sort_keys=True))
 
 
 def _content_filter(soup):
@@ -542,7 +542,7 @@ def write_skill(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
     filename = create_skill_filename(jsondir, struct)
     fp = open(filename, "w")
-    json.dump(struct, fp, indent=4)
+    json.dump(struct, fp, indent=4, sort_keys=True)
     fp.close()
 
 

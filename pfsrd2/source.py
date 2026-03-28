@@ -78,7 +78,7 @@ def parse_source(filename, options):
         jsondir = makedirs(output, struct["game-obj"])
         write_source(jsondir, struct)
     elif options.stdout:
-        print(json.dumps(struct, indent=2))
+        print(json.dumps(struct, indent=2, sort_keys=True))
 
 
 def source_struct_pass(struct):
@@ -276,7 +276,7 @@ def write_source(jsondir, struct):
     print("{}: {}".format(struct["game-obj"], struct["name"]))
     filename = create_source_filename(jsondir, struct)
     fp = open(filename, "w")
-    json.dump(struct, fp, indent=4)
+    json.dump(struct, fp, indent=4, sort_keys=True)
     fp.close()
 
 

@@ -78,7 +78,7 @@ def parse_monster_family(filename, options):
             jsondir = makedirs(output, "monster_families", name)
             write_monster_family(jsondir, struct, name)
     elif options.stdout:
-        print(json.dumps(struct, indent=2))
+        print(json.dumps(struct, indent=2, sort_keys=True))
 
 
 def _content_filter(soup):
@@ -505,7 +505,7 @@ def write_monster_family(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
     filename = create_monster_family_filename(jsondir, struct)
     fp = open(filename, "w")
-    json.dump(struct, fp, indent=4)
+    json.dump(struct, fp, indent=4, sort_keys=True)
     fp.close()
 
 

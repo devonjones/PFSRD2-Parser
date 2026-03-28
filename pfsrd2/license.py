@@ -69,7 +69,7 @@ def write_license(jsondir, struct):
     print("{}: {}".format("license", struct["name"]))
     filename = create_license_filename(jsondir, struct)
     fp = open(filename, "w")
-    json.dump(struct, fp, indent=4)
+    json.dump(struct, fp, indent=4, sort_keys=True)
     fp.close()
 
 
