@@ -52,14 +52,14 @@ if test -f "$BIN_DIR/errors.pf2.${ERROR_SUFFIX}"; then
 		if [[ "$i" == "done" ]]; then
 			exit
 		fi
-		if ! "$BIN_DIR/pf2_equipment_parse" "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
+		if ! "$BIN_DIR/pf2_equipment_parse" -o "$PF2_DATA_DIR" "$EQUIPMENT_TYPE" "$i" ; then
 			echo "$i" >> "$BIN_DIR/errors.pf2.${ERROR_SUFFIX}.log"
 		fi
 	done
 else
 	for i in `ls $PF2_WEB_DIR/$PLURAL/$PLURAL.aspx.ID_*.html | msort -j -q -l -n 1 -c hybrid`
 	do
-		if ! "$BIN_DIR/pf2_equipment_parse" "$EQUIPMENT_TYPE" -o "$PF2_DATA_DIR" "$i" ; then
+		if ! "$BIN_DIR/pf2_equipment_parse" -o "$PF2_DATA_DIR" "$EQUIPMENT_TYPE" "$i" ; then
 			echo "$i" >> "$BIN_DIR/errors.pf2.${ERROR_SUFFIX}.log"
 		fi
 	done
