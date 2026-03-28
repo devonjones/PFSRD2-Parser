@@ -686,8 +686,9 @@ def _handle_aura(ability):
     if stats_text.endswith(";"):
         stats_text = stats_text[:-1].strip()
 
-    # Normalize number commas (e.g., "1,000 feet" → "1000 feet") before splitting
-    stats_text = re.sub(r"(\d),(\d{3})", r"\1\2", stats_text)
+    # Normalize number commas (e.g., "1,000,000 feet" → "1000000 feet") before splitting
+    while re.search(r"(\d),(\d{3})", stats_text):
+        stats_text = re.sub(r"(\d),(\d{3})", r"\1\2", stats_text)
 
     # Split by comma (respecting parentheses) and parse each part.
     # IMPORTANT: These assertions are intentional strategic fragility.

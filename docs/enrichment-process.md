@@ -654,9 +654,8 @@ The enrichment DB is designed to be shared across object types. The migration ch
 
 When rebuilding from scratch (see also `rebuild-enrichment` skill in `.claude/skills/`):
 
-1. **Phase 1**: Run all parsers sequentially (populates enrichment DB)
-   - Creatures → NPCs → families → templates
-   - **CRITICAL: Sequential only — SQLite silently drops concurrent writes**
+1. **Phase 1**: Run all parsers (populates enrichment DB)
+   - Creatures, NPCs, families, templates — can run in parallel (WAL mode + busy timeout)
 2. **Phase 2**: Enrich abilities: `bin/pf2_enrich_abilities --all`
 3. **Phase 3**: Re-run families + templates (merges enriched abilities into change data)
 4. **Phase 4**: Enrich changes: `bin/pf2_enrich_changes`

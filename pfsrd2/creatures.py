@@ -1571,89 +1571,9 @@ def process_defense(hp, section, ret=False):
     hp[section[0].lower()] = defense[section[0].lower()]
 
 
-def handle_aura(sb, ability):
-    def _test_aura(test):
-        if "damage" in test:
-            return True
-        if "DC" in test:
-            return True
-        return bool("feet" in test or "miles" in test or "mile" in test)
-
-    def _test_aura_dc(ability):
-        if sb["name"] in ["Weykoward", "Watch Officer", "Twins of Rowan"]:
-            return
-        if "saving_throw" not in ability and "DC " in ability["text"]:
-            # TODO: Find a more graceful way to deal with 1816
-            if sb["name"] in constants.CREATURE_IGNORE_DC_AURA:
-                return
-            # Try to extract DC from body text (may have HTML links like <a>basic</a> before save type)
-            text_stripped = re.sub(r"<[^>]+>", "", ability["text"])
-            # Format: "DC 23 Fortitude" or "DC 23 basic Fortitude"
-            m = re.search(r"DC (\d+)\s+(?:\w+\s+)?(Fortitude|Fort|Reflex|Will|flat)", text_stripped)
-            if not m:
-                # Reverse format: "Fortitude DC 23"
-                m2 = re.search(r"(Fortitude|Fort|Reflex|Will|flat)\s+DC\s+(\d+)", text_stripped)
-                if m2:
-                    save_text = f"DC {m2.group(2)} {m2.group(1)}"
-                    ability["saving_throw"] = [universal_handle_save_dc(save_text)]
-                    return
-                # Standalone DC without explicit save type
-                m3 = re.search(r"DC (\d+)", text_stripped)
-                if m3:
-                    save_text = f"DC {m3.group(1)}"
-                    ability["saving_throw"] = [universal_handle_save_dc(save_text)]
-                    return
-            if m:
-                save_text = f"DC {m.group(1)} {m.group(2)}"
-                ability["saving_throw"] = [universal_handle_save_dc(save_text)]
-                return
-            raise AssertionError(f"DC in text, but no save in aura: {ability}")
-
-    found = False
-    if "traits" in ability and "text" in ability:
-        for trait in ability["traits"]:
-            if sb["name"] in ["Brainchild"]:
-                # TODO: Find a more graceful way to deal with 1085
-                found = False
-            elif trait["name"] == "aura":
-                found = True
-        if found:
-            parts = ability["text"].split(".")
-            test = parts[0]
-            if _test_aura(test):
-                if test.startswith(";"):
-                    test = test[1:].strip()
-                if test.endswith(";"):
-                    test = test[:-1].strip()
-                test_parts = split_maintain_parens(test, ",")
-                while test_parts:
-                    test_part = test_parts.pop(0)
-                    if "DC" in test_part:
-                        save = universal_handle_save_dc(test_part.strip())
-                        assert save, "Malformed range and DC: {}".format(ability["text"])
-                        ability.setdefault("saving_throw", []).append(save)
-                    elif "feet" in test_part or "miles" in test_part or "mile" in test:
-                        range = universal_handle_range(test_part.strip())
-                        assert range, "Malformed range and DC: {}".format(ability["text"])
-                        assert (
-                            "range" not in ability
-                        ), f"Can't add a range to an object that as a range already: {ability}"
-                        ability["range"] = range
-                    elif "damage" in test_part:
-                        dam = parse_attack_damage(test_part)
-                        ability["damage"] = dam
-                    else:
-                        raise AssertionError("Malformed aura stats: {}".format(ability["text"]))
-                parts.pop(0)
-                ability["text"] = ".".join(parts).strip()
-                _test_aura_dc(ability)
-            else:
-                if "Merlokrep" in ability["text"]:
-                    # TODO: Find a more graceful way to deal with 2179
-                    return
-                raise AssertionError(ability["text"])
-        if ability["text"] == "":
-            del ability["text"]
+# handle_aura removed — now handled by universal/ability.py _handle_aura
+# via parse_ability_from_html. Creature-specific special cases (Brainchild,
+# Merlokrep) were HTML bugs that have been fixed.
 
 
 def process_defensive_ability(section, sections, sb):
