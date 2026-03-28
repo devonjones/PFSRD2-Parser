@@ -33,6 +33,7 @@ from universal.creatures import (
     universal_handle_special_senses,
     write_creature,
 )
+from universal.ability import parse_ability_from_html
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass
 from universal.monster_ability import monster_ability_db_pass as universal_monster_ability_db_pass
@@ -1295,18 +1296,14 @@ def process_items(section):
     return items
 
 
-def process_interaction_ability(sb, section, sections):
-    ability_name = section[0]
-    description = section[1]
-    link = section[2]
-    title_action = section[3]
-    ability = {
-        "name": ability_name,
-        "type": "stat_block_section",
-        "subtype": "ability",
-        "ability_type": "interaction",
-    }
-    addons = [
+def _consume_addon_sections(sections):
+    """Consume addon sections from the lookahead list.
+
+    Creature stat blocks have addon fields (Frequency, Trigger, etc.) as
+    separate tuples in the sections list. This consumes them and returns
+    a dict of {field_name: (value_html, links)} pairs.
+    """
+    addon_names = {
         "Frequency",
         "Trigger",
         "Effect",
@@ -1318,42 +1315,53 @@ def process_interaction_ability(sb, section, sections):
         "Failure",
         "Critical Failure",
         "Cost",
-    ]
-    while len(sections) > 0 and sections[0][0] in addons:
+    }
+    addons = {}
+    while len(sections) > 0 and sections[0][0] in addon_names:
         addon = sections.pop(0)
         assert addon[2] is None
-        addon_name = addon[0].lower().replace(" ", "_")
-        if addon_name == "requirements":
-            addon_name = "requirement"
+        field_name = addon[0].lower().replace(" ", "_")
+        if field_name == "requirements":
+            field_name = "requirement"
         value = addon[1].strip()
         if value.endswith(";"):
             value = value[:-1]
         bs = BeautifulSoup(value, "html.parser")
         links = get_links(bs, unwrap=True)
-        if len(links) > 0:
+        addons[field_name] = (str(bs), links)
+    return addons
+
+
+def _apply_addons(ability, addons):
+    """Apply pre-consumed addon fields to an ability dict."""
+    for field_name, (value, links) in addons.items():
+        ability[field_name] = value
+        if links:
             ability.setdefault("links", []).extend(links)
-        ability[addon_name] = str(bs)
 
-    description, action = extract_action_type(description.strip())
-    description, traits = extract_starting_traits(description.strip())
 
-    if action:
-        ability["action_type"] = action
-    elif title_action:
-        ability["action_type"] = title_action
-    elif action and title_action:
-        raise AssertionError(section)
+def process_interaction_ability(sb, section, sections):
+    ability_name = section[0]
+    description = section[1]
+    link = section[2]
+    title_action = section[3]
 
-    if len(traits) > 0:
-        ability["traits"] = traits
-    if len(description.strip()) > 0:
-        ability["text"] = description.strip()
-    if link:
-        # TODO: fix []
-        ability["links"] = [link]
+    # Consume addon sections from the lookahead list (creature-specific)
+    addons = _consume_addon_sections(sections)
 
-    handle_aura(sb, ability)
-    link_value(ability, field="text")
+    # Build ability through unified parser
+    ability = parse_ability_from_html(
+        ability_name,
+        description,
+        ability_type="interaction",
+        action_type=title_action,
+        link=link,
+        addon_labels=set(),  # No bold-field extraction — addons come from sections
+    )
+
+    # Apply pre-consumed addons
+    _apply_addons(ability, addons)
+
     return ability
 
 
@@ -1648,60 +1656,37 @@ def process_defensive_ability(section, sections, sb):
     assert section[0].strip() not in ["Immunities", "Resistances", "Weaknesses"], section[0]
     description = section[1]
     link = section[2]
-    action = section[3]
-    sb_key = "automatic_abilities"
-    ability = {
-        "type": "stat_block_section",
-        "subtype": "ability",
-        "ability_type": "automatic",
-        "name": section[0],
-    }
-    if action:
-        ability["action_type"] = action
-    addons = [
-        "Frequency",
-        "Trigger",
-        "Effect",
-        "Duration",
-        "Requirement",
-        "Critical Success",
-        "Success",
-        "Failure",
-        "Critical Failure",
-    ]
-    while len(sections) > 0 and sections[0][0] in addons:
-        addon = sections.pop(0)
-        assert addon[2] is None
-        addon_name = addon[0].lower().replace(" ", "_")
-        value = addon[1].strip()
-        if value.endswith(";"):
-            value = value[:-1]
-        bs = BeautifulSoup(value, "html.parser")
-        links = get_links(bs, unwrap=True)
-        if len(links) > 0:
-            ability.setdefault("links", []).extend(links)
-        ability[addon_name] = str(bs)
+    title_action = section[3]
 
-    description, action = extract_action_type(description.strip())
-    if action:
-        ability["action_type"] = action
-        ability["subtype"] = "ability"
+    # Consume addon sections from the lookahead list (creature-specific)
+    addons = _consume_addon_sections(sections)
+
+    # Build ability through unified parser
+    ability = parse_ability_from_html(
+        section[0],
+        description,
+        ability_type="automatic",
+        action_type=title_action,
+        link=link,
+        addon_labels=set(),  # No bold-field extraction — addons come from sections
+    )
+
+    # Apply pre-consumed addons
+    _apply_addons(ability, addons)
+
+    # Determine placement: if action found in description, it's reactive
+    sb_key = "automatic_abilities"
+    if "action_type" in ability and not title_action:
+        # Action was extracted from description (not title) — reactive ability
         ability["ability_type"] = "reactive"
         sb_key = "reactive_abilities"
 
-    description, traits = extract_starting_traits(description.strip())
-    if len(traits) > 0:
-        ability["traits"] = traits
-
-    if len(description) > 0:
-        ability["text"] = description.strip()
-
-    handle_aura(sb, ability)
-
-    link_value(ability, field="text")
+    # Prepend title link if present
     if link:
         links = ability.setdefault("links", [])
-        links.insert(0, link)
+        if link not in links:
+            links.insert(0, link)
+
     sb["defense"].setdefault(sb_key, []).append(ability)
 
 
