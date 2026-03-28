@@ -1362,9 +1362,10 @@ def process_interaction_ability(sb, section, sections):
     # Apply pre-consumed addons
     _apply_addons(ability, addons)
 
-    # Add title link
+    # Prepend title link
     if link:
-        ability["links"] = [link]
+        links = ability.setdefault("links", [])
+        links.insert(0, link)
 
     return ability
 
