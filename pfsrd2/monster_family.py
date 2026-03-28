@@ -4,13 +4,16 @@ import sys
 
 from bs4 import BeautifulSoup, Tag
 
+from pfsrd2.ability_enrichment import template_ability_enrichment_pass
 from pfsrd2.change_enrichment import change_enrichment_pass
-from pfsrd2.change_extraction import extract_inline_abilities, parse_change
+from pfsrd2.change_extraction import parse_change
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
+from universal.ability import parse_abilities_from_nodes
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
+from universal.monster_ability import monster_ability_db_pass
 from universal.universal import (
     aon_pass,
     entity_pass,
@@ -47,20 +50,22 @@ def parse_monster_family(filename, options):
     _strip_empty_text(struct)
     source_pass(struct, find_monster_family)
     _extract_creation_changes(struct)
+    _extract_section_abilities(struct)
     monster_family_link_pass(struct)
     aon_pass(struct, basename)
     restructure_pass(struct, "monster_family", find_monster_family)
-    _extract_section_abilities(struct)
     _consolidate_creation_changes(struct)
     change_enrichment_pass(struct, "monster_family")
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
     monster_family_cleanup_pass(struct)
     set_edition_from_db_pass(struct)
+    monster_ability_db_pass(struct)
     license_pass(struct)
     license_consolidation_pass(struct)
     strip_block_tags(struct)
     universal_markdown_pass(struct, struct["name"], "", fxn_valid_tags=_valid_tags)
+    template_ability_enrichment_pass(struct)
     remove_empty_fields(struct)
     _strip_image_links(struct)
     if not options.skip_schema:
@@ -109,28 +114,24 @@ def _content_filter(soup):
     # Decompose sidebar images in headings (icons)
     for img in main.find_all("img"):
         img.decompose()
-    # Unwrap action spans — keep text like "[one-action]"
-    for span in main.find_all("span", {"class": "action"}):
-        span.unwrap()
+    # Keep action spans intact — the unified ability parser extracts them.
     # Unwrap siderbarlook divs (alternate link handled separately)
     for div in main.find_all("div", {"class": "siderbarlook"}):
         div.unwrap()
-    # Fix h3.title tags that contain body content (abilities, descriptions)
-    # These are not real headings — the content is inside the h3 tag.
-    # Split them: extract title text as a real h3, unwrap the rest.
+    # Split h3.title tags that contain body content (abilities, descriptions).
+    # These are headings with inline content — the h3 wraps both the title AND
+    # the body. Split: extract title as a clean h3, unwrap the rest so it becomes
+    # sibling content. parse_universal's title_collapse_pass groups it correctly.
     for h3 in list(main.find_all("h3", {"class": "title"})):
-        # A real heading has only text/link children. If it has <b>, <br>,
-        # <ul> etc., it's a fake heading with inline content.
         has_body_content = h3.find("br") or h3.find("ul") or h3.find("b")
         if not has_body_content:
             continue
-        # Extract the title — text before the first <br> or <b>
+        # Extract the title text — everything before the first body element
         title_parts = []
         for child in list(h3.children):
             if isinstance(child, Tag) and child.name in ("br", "b", "ul"):
                 break
             title_parts.append(child.extract())
-        # Create a clean h3 with just the title
         title_text = "".join(str(p) for p in title_parts).strip()
         if title_text:
             new_h3 = BeautifulSoup(f'<h3 class="title">{title_text}</h3>', "html.parser").h3
@@ -141,7 +142,6 @@ def _content_filter(soup):
     for h3 in main.find_all("h3", {"class": "framing"}):
         text = h3.get_text(strip=True)
         if text == "Members":
-            # Remove everything between this h3 and the next heading
             node = h3.next_sibling
             while node:
                 next_node = node.next_sibling
@@ -150,11 +150,6 @@ def _content_filter(soup):
                 node.extract()
                 node = next_node
             h3.extract()
-        else:
-            # Other framing headings (e.g., "Book of the Dead") — promote to h2
-            # so parse_universal treats them as section headings
-            h3.name = "h2"
-            h3["class"] = "title"
 
 
 def restructure_monster_family_pass(details):
@@ -223,10 +218,19 @@ def _extract_creation_changes(struct):
     """
     all_sections = struct.get("sections", [])
 
+    def _is_creation_section(name):
+        n = name.lower()
+        if "creating" in n or "building" in n:
+            return True
+        if "abilities" in n:
+            return True
+        if "spellcasters" in n:
+            return True
+        return "adjustments" in n
+
     def _process_section(section):
-        name = section.get("name", "").lower()
-        is_creation = "creating" in name or "building" in name
-        if is_creation and "text" in section:
+        name = section.get("name", "")
+        if _is_creation_section(name) and "text" in section:
             _extract_changes_from_section(section, all_sections)
         for sub in section.get("sections", []):
             _process_section(sub)
@@ -399,7 +403,7 @@ def _extract_section_abilities(struct):
 
     Monster family "Creating X" sections contain abilities as <b>Name</b>
     followed by description text, separated by <br>. This extracts them
-    into structured ability objects on the section.
+    into structured ability objects on the section using the unified parser.
     """
 
     def _process(section):
@@ -410,7 +414,7 @@ def _extract_section_abilities(struct):
                 bs = BeautifulSoup(text, "html.parser")
                 # Don't extract from text that's purely in tables
                 if bs.find("b") and not (bs.find("table") and not bs.find("b", recursive=False)):
-                    abilities = extract_inline_abilities(bs)
+                    abilities = _extract_abilities_from_bs(bs)
                     if abilities:
                         section["text"] = str(bs).strip()
                         section.setdefault("abilities", []).extend(abilities)
@@ -419,6 +423,33 @@ def _extract_section_abilities(struct):
 
     for section in struct.get("sections", []):
         _process(section)
+
+
+def _extract_abilities_from_bs(bs):
+    """Extract abilities from a BS object using the unified parser.
+
+    Finds the first <b> tag not inside a <table> and collects all nodes
+    from there onward, then passes them to the unified ability parser.
+    """
+    first_b = None
+    for b in bs.find_all("b"):
+        if not b.find_parent("table"):
+            first_b = b
+            break
+    if not first_b:
+        return None
+    # If the <b> is inside an <a>, start from the <a> instead
+    start_node = first_b
+    if first_b.parent and first_b.parent.name == "a":
+        start_node = first_b.parent
+    # Collect all nodes from the start onward (siblings only)
+    ability_nodes = []
+    node = start_node
+    while node:
+        next_node = node.next_sibling
+        ability_nodes.append(node.extract())
+        node = next_node
+    return parse_abilities_from_nodes(ability_nodes)
 
 
 def monster_family_link_pass(struct):

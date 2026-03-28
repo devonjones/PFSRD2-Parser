@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Offline ability enrichment — regex and LLM extraction."""
+"""Offline ability enrichment — regex, LLM extraction, and classification."""
 
 import argparse
 import json
@@ -8,22 +8,30 @@ import sys
 
 from pfsrd2.enrichment.llm_extractor import (
     DEFAULT_MODEL,
+    classify_ability_category_llm,
     extract_area_llm,
     extract_damage_llm,
     extract_dc_llm,
     extract_frequency_llm,
 )
 from pfsrd2.enrichment.regex_extractor import extract_all
+from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import (
     clear_needs_review,
     count_ability_records,
+    fetch_majority_category_for_name,
     fetch_needing_enrichment,
     fetch_needs_review,
+    fetch_uncategorized_abilities,
     fetch_unenriched,
     get_enrichment_db_connection,
     mark_needs_review,
+    update_ability_category,
     update_enriched_json,
+    update_is_uma,
 )
+from pfsrd2.ability_enrichment import _deterministic_category
+from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 
 ENRICHMENT_VERSION = 2
 
@@ -216,8 +224,13 @@ def run_llm(conn, args):
         if not result:
             failed_count += 1
 
-        if (i + 1) % 10 == 0:
-            sys.stderr.write(f"  {i + 1}/{total}\r")
+        if (i + 1) % 20 == 0:
+            pct = (i + 1) * 100 // total
+            sys.stderr.write(
+                f"  {i + 1}/{total} ({pct}%) — enriched: {enriched_count}, failed: {failed_count}\n"
+            )
+            if not args.dry_run:
+                conn.commit()
 
     if not args.dry_run:
         conn.commit()
@@ -225,6 +238,274 @@ def run_llm(conn, args):
     print(f"\nLLM processed {total} {args.llm_type} records:")
     print(f"  Enriched: {enriched_count}")
     print(f"  No result: {failed_count}")
+
+
+def _deterministic_category_from_raw(raw_json):
+    """Determine category from action type in raw JSON."""
+    return _deterministic_category(json.loads(raw_json))
+
+
+def run_classify(conn, args):
+    """Classify uncategorized abilities.
+
+    Step 0: Deterministic — action type determines category for reactions
+    and action-cost abilities. No DB/LLM needed.
+
+    Step 1: Creature abilities — each has a definitive category from its
+    creature link.
+
+    Step 2: Template/family abilities (no creature links) — look up by
+    name against creature data.
+    """
+    curs = conn.cursor()
+    uncategorized = fetch_uncategorized_abilities(curs)
+    print(f"Uncategorized abilities: {len(uncategorized)}")
+
+    # Step 0: Deterministic from action type
+    det_classified = 0
+    for record in uncategorized:
+        cat = _deterministic_category_from_raw(record["raw_json"])
+        if cat:
+            if not args.dry_run:
+                update_ability_category(curs, record["ability_id"], cat)
+            det_classified += 1
+    if not args.dry_run:
+        conn.commit()
+
+    uncategorized = fetch_uncategorized_abilities(curs)
+    print(f"Step 0 — deterministic (action type): classified {det_classified}")
+    print(f"Remaining uncategorized: {len(uncategorized)}")
+
+    # Step 1: Creature abilities — copy from their creature link
+    creature_classified = 0
+    for record in uncategorized:
+        curs.execute(
+            "SELECT DISTINCT ability_category FROM ability_creature_links" " WHERE ability_id = ?",
+            (record["ability_id"],),
+        )
+        rows = curs.fetchall()
+        if len(rows) == 1:
+            cat = rows[0]["ability_category"]
+            if not args.dry_run:
+                update_ability_category(curs, record["ability_id"], cat)
+            creature_classified += 1
+        elif len(rows) > 1:
+            # Same ability_id in multiple categories across creatures —
+            # use majority vote
+            result = fetch_majority_category_for_name(curs, record["name"])
+            if result:
+                cat, count, total = result
+                if not args.dry_run:
+                    update_ability_category(curs, record["ability_id"], cat)
+                creature_classified += 1
+
+    if not args.dry_run:
+        conn.commit()
+
+    # Refresh uncategorized list after step 1
+    remaining = fetch_uncategorized_abilities(curs)
+    print(f"Step 1 — creature links: classified {creature_classified}")
+    print(f"Remaining uncategorized: {len(remaining)}")
+
+    # Step 2: Template/family abilities — name-based lookup
+    name_classified = 0
+    no_data = 0
+    for record in remaining:
+        result = fetch_majority_category_for_name(curs, record["name"])
+        if result is None:
+            no_data += 1
+            continue
+
+        category, count, total = result
+        # Any creature data is useful here — even a single data point
+        if total >= 1:
+            if args.dry_run:
+                print(f"  {record['name']} → {category} ({count}/{total})")
+            else:
+                update_ability_category(curs, record["ability_id"], category)
+            name_classified += 1
+        else:
+            no_data += 1
+
+    if not args.dry_run:
+        conn.commit()
+
+    remaining_final = fetch_uncategorized_abilities(curs)
+    print(f"Step 2 — name lookup: classified {name_classified}, no creature data {no_data}")
+    print(f"Still uncategorized (need LLM): {len(remaining_final)}")
+
+
+def run_uma_detection(conn, args):
+    """Tier 2: Detect Universal Monster Abilities mechanistically.
+
+    Checks ALL ability records (creature, template, family) against the
+    monster_abilities DB. Marks matching records as UMAs and assigns
+    categories from creature data when available.
+    """
+    curs = conn.cursor()
+    db_path = get_db_path("pfsrd2.db")
+    main_conn = get_db_connection(db_path)
+    main_curs = main_conn.cursor()
+
+    curs.execute("SELECT ability_id, name FROM ability_records WHERE is_uma = 0")
+    records = curs.fetchall()
+    print(f"Checking {len(records)} non-UMA records against monster abilities DB...")
+
+    found = 0
+    for record in records:
+        results = fetch_monster_abilities_by_name(main_curs, record["name"])
+        if results:
+            if args.dry_run:
+                print(f"  {record['name']} → UMA")
+            else:
+                update_is_uma(curs, record["ability_id"], True)
+            found += 1
+
+    if not args.dry_run:
+        conn.commit()
+    main_conn.close()
+    print(f"Tier 2 — UMA detection: {found} abilities marked as UMA")
+
+    # For UMAs without a category, assign from creature data
+    if not args.dry_run:
+        curs.execute(
+            "SELECT ability_id, name FROM ability_records"
+            " WHERE is_uma = 1 AND ability_category IS NULL"
+        )
+        uma_uncategorized = curs.fetchall()
+        categorized = 0
+        for record in uma_uncategorized:
+            result = fetch_majority_category_for_name(curs, record["name"])
+            if result:
+                category, count, total = result
+                if total >= 1:
+                    update_ability_category(curs, record["ability_id"], category)
+                    categorized += 1
+        conn.commit()
+        if categorized:
+            print(f"  Also categorized {categorized} UMAs from creature data")
+
+
+def run_llm_classify(conn, args):
+    """Tier 3: Classify remaining abilities using LLM.
+
+    Sends uncategorized abilities (excluding spell noise) to the LLM
+    with their name, text, action type, and traits.
+    """
+    curs = conn.cursor()
+    uncategorized = fetch_uncategorized_abilities(curs)
+
+    # Filter out spell-level noise and list items
+    targets = []
+    for record in uncategorized:
+        name = record["name"]
+        if re.match(r"^\d+(st|nd|rd|th)?$", name) or re.match(r"^\d+", name):
+            continue
+        if "Level or Higher" in name:
+            continue
+        if "Spell" in name or "Cantrip" in name or name == "Spells":
+            continue
+        raw = json.loads(record["raw_json"])
+        text = raw.get("text", "")
+        # Skip list items (text starts with ':' or ', ')
+        if text.startswith(":") or text.startswith(", "):
+            continue
+        targets.append(record)
+
+    print(f"LLM classifying {len(targets)} abilities...")
+
+    classified = 0
+    failed = 0
+    for i, record in enumerate(targets):
+        raw = json.loads(record["raw_json"])
+        name = record["name"]
+        text = raw.get("text", "")
+        # For UMAs, use the UMA description if the ability has no text
+        uma = raw.get("universal_monster_ability", {})
+        if not text and uma.get("text"):
+            text = uma["text"]
+        action = ""
+        if raw.get("action_type") and isinstance(raw["action_type"], dict):
+            action = raw["action_type"].get("name", "")
+        traits = ", ".join(
+            t["name"] for t in raw.get("traits", []) if isinstance(t, dict) and "name" in t
+        )
+
+        category = classify_ability_category_llm(
+            name, text, action=action, traits=traits, model=args.model
+        )
+
+        # Action-based heuristic override: actions restrict valid categories
+        if category and action:
+            if action == "Reaction" and category != "reactive":
+                category = "reactive"
+            elif action in ("One Action", "Two Actions", "Three Actions") and category not in (
+                "offensive",
+            ):
+                category = "offensive"
+            elif action == "Free Action" and raw.get("trigger") and category != "reactive":
+                category = "reactive"
+
+        if category:
+            if args.dry_run:
+                print(f"  {name} → {category}")
+            else:
+                update_ability_category(curs, record["ability_id"], category)
+            classified += 1
+        else:
+            if args.dry_run:
+                print(f"  [FAILED] {name}")
+            failed += 1
+
+        if (i + 1) % 20 == 0:
+            sys.stderr.write(f"  {i + 1}/{len(targets)}\r")
+            if not args.dry_run:
+                conn.commit()
+
+    if not args.dry_run:
+        conn.commit()
+
+    print(f"\nTier 3 — LLM classify: classified={classified}, failed={failed}")
+
+
+def print_classification_stats(conn):
+    """Print classification statistics."""
+    curs = conn.cursor()
+
+    curs.execute("SELECT COUNT(*) as c FROM ability_records")
+    total = curs.fetchone()["c"]
+    curs.execute("SELECT COUNT(*) as c FROM ability_records WHERE ability_category IS NOT NULL")
+    categorized = curs.fetchone()["c"]
+    curs.execute("SELECT COUNT(*) as c FROM ability_records WHERE ability_category IS NULL")
+    uncategorized = curs.fetchone()["c"]
+    curs.execute("SELECT COUNT(*) as c FROM ability_records WHERE is_uma = 1")
+    umas = curs.fetchone()["c"]
+
+    print("\n=== Ability Classification Stats ===")
+    print(f"Total records:   {total}")
+    print(f"Categorized:     {categorized}")
+    print(f"Uncategorized:   {uncategorized}")
+    print(f"UMAs:            {umas}")
+
+    curs.execute(
+        "SELECT ability_category, COUNT(*) as c FROM ability_records"
+        " WHERE ability_category IS NOT NULL"
+        " GROUP BY ability_category ORDER BY c DESC"
+    )
+    print("\nCategory breakdown:")
+    for row in curs.fetchall():
+        print(f"  {row['ability_category']}: {row['c']}")
+
+    # Show sample uncategorized
+    curs.execute(
+        "SELECT DISTINCT name FROM ability_records"
+        " WHERE ability_category IS NULL ORDER BY name LIMIT 20"
+    )
+    rows = curs.fetchall()
+    if rows:
+        print(f"\nSample uncategorized ({uncategorized} total):")
+        for row in rows:
+            print(f"  {row['name']}")
 
 
 def main():
@@ -247,9 +528,29 @@ def main():
     parser.add_argument(
         "--model", default=None, help="Ollama model to use for LLM extraction (default: qwen2.5:3b)"
     )
+    parser.add_argument(
+        "--classify",
+        action="store_true",
+        help="Run Tier 1 ability category classification from creature data",
+    )
+    parser.add_argument(
+        "--uma", action="store_true", help="Run Tier 2 UMA detection against monster abilities DB"
+    )
+    parser.add_argument(
+        "--classify-stats", action="store_true", help="Show ability classification statistics"
+    )
+    parser.add_argument(
+        "--llm-classify",
+        action="store_true",
+        help="Run Tier 3 LLM classification on uncategorized abilities",
+    )
     args = parser.parse_args()
 
     with get_enrichment_db_connection() as conn:
+        if args.classify_stats:
+            print_classification_stats(conn)
+            return
+
         if args.stats:
             curs = conn.cursor()
             counts = count_ability_records(curs)
@@ -259,6 +560,18 @@ def main():
             print(f"Stale:            {counts['stale']}")
             print(f"Human verified:   {counts['verified']}")
             print(f"Needs review:     {counts['needs_review']}")
+            return
+
+        if args.classify:
+            run_classify(conn, args)
+            return
+
+        if args.uma:
+            run_uma_detection(conn, args)
+            return
+
+        if args.llm_classify:
+            run_llm_classify(conn, args)
             return
 
         if args.llm_type:

@@ -49,7 +49,8 @@ def _make_ability(name, text="", traits=None, action_type=None, frequency=None, 
 def _make_special_sense(name):
     return {
         "type": "stat_block_section",
-        "subtype": "special_sense",
+        "subtype": "ability",
+        "ability_type": "special_sense",
         "name": name,
     }
 

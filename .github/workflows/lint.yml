@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install black ruff
+          pip install "black==24.10.0" ruff
 
       - name: Check Black formatting
         run: black --check .

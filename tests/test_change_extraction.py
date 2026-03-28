@@ -1,8 +1,6 @@
 from bs4 import BeautifulSoup
 
 from pfsrd2.change_extraction import (
-    extract_inline_abilities,
-    parse_ability_nodes,
     parse_adjustments_table,
     parse_change,
 )
@@ -50,52 +48,6 @@ class TestParseChange:
         assert "abilities" in change
         assert len(change["abilities"]) == 2
         assert change["abilities"][0]["name"] == "Grab"
-
-
-class TestExtractInlineAbilities:
-    def test_extracts_abilities_delimited_by_br(self):
-        html = (
-            "<div>Some intro text. <b>Grab</b> The creature grabs.<br/><b>Push</b> It pushes.</div>"
-        )
-        bs = BeautifulSoup(html, "html.parser")
-        div = bs.find("div")
-        abilities = extract_inline_abilities(div)
-        assert abilities is not None
-        assert len(abilities) == 2
-        assert abilities[0]["name"] == "Grab"
-        assert abilities[1]["name"] == "Push"
-
-    def test_returns_none_when_no_bold(self):
-        html = "<div>Some text without any bold elements.</div>"
-        bs = BeautifulSoup(html, "html.parser")
-        div = bs.find("div")
-        abilities = extract_inline_abilities(div)
-        assert abilities is None
-
-    def test_linked_ability_pattern(self):
-        """parse_ability_nodes handles <a><b>Name</b></a> when passed directly."""
-        html = '<a href="/Abilities.aspx?ID=1"><b>Grab</b></a> The creature grabs.'
-        bs = BeautifulSoup(html, "html.parser")
-        nodes = list(bs.children)
-        abilities = parse_ability_nodes(nodes)
-        assert abilities is not None
-        assert len(abilities) == 1
-        assert abilities[0]["name"] == "Grab"
-        assert "link" in abilities[0]
-
-    def test_action_type_extraction(self):
-        html = (
-            '<div><b>Breath Weapon</b> <span class="action" title="Two Actions">aa</span>'
-            " The dragon breathes fire.</div>"
-        )
-        bs = BeautifulSoup(html, "html.parser")
-        div = bs.find("div")
-        abilities = extract_inline_abilities(div)
-        assert abilities is not None
-        assert len(abilities) == 1
-        assert abilities[0]["name"] == "Breath Weapon"
-        assert "action_type" in abilities[0]
-        assert abilities[0]["action_type"]["name"] == "Two Actions"
 
 
 class TestParseAdjustmentsTable:
