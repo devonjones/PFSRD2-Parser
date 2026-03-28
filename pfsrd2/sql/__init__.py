@@ -171,7 +171,11 @@ def create_db_v_11(conn, curs, ver, source=None):
     if ver >= 11:
         return ver
     ver = 11
-    curs.execute("ALTER TABLE monster_abilities ADD COLUMN edition TEXT")
+    # Check if column already exists (may have been added outside migration chain)
+    curs.execute("PRAGMA table_info(monster_abilities)")
+    cols = [r[1] for r in curs.fetchall()]
+    if "edition" not in cols:
+        curs.execute("ALTER TABLE monster_abilities ADD COLUMN edition TEXT")
     set_version(curs, ver)
     conn.commit()
     return ver
