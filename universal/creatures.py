@@ -26,7 +26,7 @@ def write_creature(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
     filename = create_creature_filename(jsondir, struct)
     fp = open(filename, "w")
-    json.dump(struct, fp, indent=4)
+    json.dump(struct, fp, indent=2, sort_keys=True)
     fp.close()
 
 

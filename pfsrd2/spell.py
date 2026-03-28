@@ -104,7 +104,7 @@ def parse_spell(filename, options):
             jsondir = makedirs(output, struct["game-obj"], name)
             write_spell(jsondir, struct, name)
     elif options.stdout:
-        print(json.dumps(struct, indent=2))
+        print(json.dumps(struct, indent=2, sort_keys=True))
 
 
 def _content_filter(soup):
@@ -1014,7 +1014,7 @@ def write_spell(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
     filename = create_spell_filename(jsondir, struct)
     fp = open(filename, "w")
-    json.dump(struct, fp, indent=4)
+    json.dump(struct, fp, indent=2, sort_keys=True)
     fp.close()
 
 

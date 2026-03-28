@@ -106,7 +106,7 @@ def parse_feat(filename, options):
             jsondir = makedirs(output, struct["game-obj"], name)
             write_feat(jsondir, struct, name)
     elif options.stdout:
-        print(json.dumps(struct, indent=2))
+        print(json.dumps(struct, indent=2, sort_keys=True))
 
 
 def _content_filter(soup):
@@ -815,7 +815,7 @@ def write_feat(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
     filename = create_feat_filename(jsondir, struct)
     with open(filename, "w") as fp:
-        json.dump(struct, fp, indent=4)
+        json.dump(struct, fp, indent=2, sort_keys=True)
 
 
 def create_feat_filename(jsondir, struct):

@@ -84,7 +84,7 @@ def parse_alien(filename, options):
             jsondir = makedirs(output, struct["game-obj"], name)
             write_creature(jsondir, struct, name)
     elif options.stdout:
-        print(json.dumps(struct, indent=2))
+        print(json.dumps(struct, indent=2, sort_keys=True))
 
 
 def restructure_alien_pass(details, subtype):

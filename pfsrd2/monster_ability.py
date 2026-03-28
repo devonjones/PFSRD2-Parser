@@ -64,7 +64,7 @@ def parse_monster_ability(filename, options):
             jsondir = makedirs(output, "monster_abilities", name)
             write_creature(jsondir, struct, name)
     elif options.stdout:
-        print(json.dumps(struct, indent=2))
+        print(json.dumps(struct, indent=2, sort_keys=True))
 
 
 def restructure_monster_ability_pass(details):

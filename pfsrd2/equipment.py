@@ -755,7 +755,7 @@ def parse_equipment_v2(filename, options):
             jsondir = makedirs(output, config["output_subdir"], name)
             write_creature(jsondir, struct, name)
     elif options.stdout:
-        print(json.dumps(struct, indent=2))
+        print(json.dumps(struct, indent=2, sort_keys=True))
 
 
 def restructure_equipment_pass(details, equipment_type):

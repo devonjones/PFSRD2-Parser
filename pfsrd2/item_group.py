@@ -96,7 +96,7 @@ def parse_item_group(filename, options):
         jsondir = makedirs(output, output_dir)
         write_creature(jsondir, struct, char_replace(struct["name"]))
     elif options.stdout:
-        print(json.dumps(struct, indent=2))
+        print(json.dumps(struct, indent=2, sort_keys=True))
 
 
 def restructure_armor_group_pass(details, subtype="armor_group"):

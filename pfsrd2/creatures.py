@@ -174,7 +174,7 @@ def parse_creature(filename, options):
             jsondir = makedirs(output, struct["game-obj"], name)
             write_creature(jsondir, struct, name)
     elif options.stdout:
-        print(json.dumps(struct, indent=2))
+        print(json.dumps(struct, indent=2, sort_keys=True))
 
 
 def section_pass(struct):

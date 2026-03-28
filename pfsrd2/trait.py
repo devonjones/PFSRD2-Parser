@@ -77,7 +77,7 @@ def parse_trait(filename, options):
             jsondir = makedirs(output, struct["game-obj"], name)
             write_trait(jsondir, struct, name)
     elif options.stdout:
-        print(json.dumps(struct, indent=2))
+        print(json.dumps(struct, indent=2, sort_keys=True))
 
 
 def restructure_trait_pass(details):
@@ -306,7 +306,7 @@ def write_trait(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
     filename = create_trait_filename(jsondir, struct)
     fp = open(filename, "w")
-    json.dump(struct, fp, indent=4)
+    json.dump(struct, fp, indent=2, sort_keys=True)
     fp.close()
 
 
