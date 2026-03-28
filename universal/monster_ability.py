@@ -7,13 +7,14 @@ Used by: creature, monster family, and monster template parsers.
 """
 
 import json
+import sys
 
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 from universal.universal import test_key_is_value, walk
 
 
-def monster_ability_db_pass(struct, edition=None):
+def monster_ability_db_pass(struct, edition=None, fxn_handle_trait_template=None):
     """Enrich abilities with universal monster ability data from the DB.
 
     Walks all abilities in the struct. For each ability whose link points
@@ -24,6 +25,10 @@ def monster_ability_db_pass(struct, edition=None):
         struct: The parsed structure to walk
         edition: Target edition ("legacy" or "remastered") for picking
                  the best match. If None, uses struct.get("edition").
+        fxn_handle_trait_template: Optional callback(curs, ability, db_ability)
+            for substituting trait templates. If None, trait templates are
+            simply stripped. Creatures pass a function that replaces
+            [Magical Tradition] with the creature's actual tradition trait.
     """
     target_edition = edition or struct.get("edition")
 
@@ -32,30 +37,12 @@ def monster_ability_db_pass(struct, edition=None):
         curs = conn.cursor()
 
         def _check_ability(ability, parent):
-            # Check if this ability should be a UMA:
-            # 1. Has a link to MonsterAbilities (from HTML)
-            # 2. Has a universal_monster_ability skeleton (from parser detection)
-            # 3. Has a link on it at all with game-obj MonsterAbilities
-            should_check = False
-            link = ability.get("link")
-            if link and link.get("game-obj") == "MonsterAbilities":
-                should_check = True
-            uma = ability.get("universal_monster_ability")
-            if uma:
-                should_check = True
-            # Also check links array (link may have been moved there)
-            for lnk in ability.get("links", []):
-                if lnk.get("game-obj") == "MonsterAbilities":
-                    should_check = True
-                    break
-
-            if not should_check:
-                return
-
             name = ability.get("name", "")
             if not name:
                 return
 
+            # Always look up by name — creature abilities may not have
+            # MonsterAbilities links in HTML but are still UMAs
             abilities = fetch_monster_abilities_by_name(curs, name)
             data = _pick_best_ability(abilities, target_edition)
             if data:
@@ -63,11 +50,17 @@ def monster_ability_db_pass(struct, edition=None):
                 # Strip metadata that doesn't belong on a nested object
                 for key in ("schema_version", "license"):
                     db_ability.pop(key, None)
-                # Strip metadata from nested traits and remove trait templates
+                # Handle trait templates — either substitute or strip
                 if "traits" in db_ability:
-                    db_ability["traits"] = [
-                        t for t in db_ability["traits"] if t.get("type") != "trait_template"
-                    ]
+                    if fxn_handle_trait_template:
+                        fxn_handle_trait_template(curs, ability, db_ability)
+                    else:
+                        db_ability["traits"] = [
+                            t
+                            for t in db_ability["traits"]
+                            if t.get("type") != "trait_template"
+                        ]
+                    # Strip metadata from nested traits
                     for trait in db_ability["traits"]:
                         for key in ("schema_version",):
                             trait.pop(key, None)
@@ -92,5 +85,10 @@ def _pick_best_ability(abilities, target_edition):
         if ability_json.get("edition") == target_edition:
             return ability_row
 
-    # No exact match — return first one
+    # No exact match — warn and return first one
+    names = [json.loads(a["monster_ability"]).get("name", "?") for a in abilities]
+    sys.stderr.write(
+        f"WARNING: _pick_best_ability: no edition match for {names[0]} "
+        f"(target={target_edition}), using first of {len(abilities)}\n"
+    )
     return abilities[0]

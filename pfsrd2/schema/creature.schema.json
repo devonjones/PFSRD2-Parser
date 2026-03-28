@@ -1785,7 +1785,6 @@
 					"enum": [
 						"attack",
 						"spells",
-						"affliction",
 						"ability",
 						"mythic_ability"
 					]
@@ -1795,9 +1794,6 @@
 				},
 				"spells": {
 					"$ref": "#/definitions/spells"
-				},
-				"affliction": {
-					"$ref": "#/definitions/affliction"
 				},
 				"ability": {
 					"$ref": "#/definitions/ability"
