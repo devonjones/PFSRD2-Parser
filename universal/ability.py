@@ -237,6 +237,9 @@ def parse_ability_from_html(
     # Extract result blocks
     extract_result_blocks(ability, bs, break_on_any_bold=break_results_on_any_bold)
 
+    # Extract and unwrap links from addon/result field values
+    _extract_links_from_addon_fields(ability)
+
     # Extract links from remaining text
     links = get_links(bs, unwrap=True)
     if links:
@@ -466,16 +469,65 @@ def _apply_addon(ability, addon_name, addon_nodes):
             ability[key] = value
 
 
-def _normalize_structured_fields(ability):
-    """Convert saving_throw and damage from strings to structured arrays.
+# Fields that may contain HTML with <a> tags from bold-field or result-block extraction
+_HTML_VALUE_FIELDS = {
+    "frequency",
+    "trigger",
+    "effect",
+    "duration",
+    "requirement",
+    "prerequisite",
+    "cost",
+    "critical_success",
+    "success",
+    "failure",
+    "critical_failure",
+    "range",
+    "damage",
+    "saving_throw",
+    "onset",
+    "maximum_duration",
+    "special",
+    "access",
+}
 
-    extract_bold_fields produces strings, but the schema requires arrays
-    of save_dc / attack_damage objects.
+
+def _extract_links_from_addon_fields(ability):
+    """Extract and unwrap links from addon/result field values.
+
+    Bold-field and result-block extraction store raw HTML including <a> tags.
+    This extracts them to the ability's links array and unwraps the tags,
+    leaving clean text in the field values.
+    """
+    for key in list(ability.keys()):
+        if key not in _HTML_VALUE_FIELDS:
+            continue
+        value = ability[key]
+        if not isinstance(value, str) or "<a" not in value:
+            continue
+        ab_bs = BeautifulSoup(value, "html.parser")
+        links = get_links(ab_bs, unwrap=True)
+        if links:
+            ability.setdefault("links", []).extend(links)
+        ability[key] = str(ab_bs).strip()
+
+
+def _normalize_structured_fields(ability):
+    """Convert saving_throw, damage, and range from strings to structured objects.
+
+    extract_bold_fields produces strings, but the schema requires
+    structured objects for these fields.
     """
     if "saving_throw" in ability and isinstance(ability["saving_throw"], str):
         ability["saving_throw"] = [_parse_save_dc(ability["saving_throw"])]
     if "damage" in ability and isinstance(ability["damage"], str):
         ability["damage"] = _parse_damage(ability["damage"])
+    if "range" in ability and isinstance(ability["range"], str):
+        range_obj = universal_handle_range(ability["range"])
+        if range_obj:
+            ability["range"] = range_obj
+        else:
+            del ability["range"]  # Can't parse — remove rather than leave invalid string
 
 
 def _parse_save_dc(text):

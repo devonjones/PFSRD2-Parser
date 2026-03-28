@@ -2251,105 +2251,47 @@ def process_offensive_action(section):
             )
 
     def parse_offensive_ability(parent_section):
-        def _handle_name(parent_section, new_section):
+        def _clean_name(parent_section):
+            """Clean HTML from ability name — strip action spans, extract links."""
             name_text = parent_section["name"]
+            link = None
             if "<" in name_text:
-                validset = {"a", "b"}
                 bs = BeautifulSoup(name_text, "html.parser")
-                # Strip action icon spans from name
                 for span in bs.find_all("span", class_="action"):
                     span.decompose()
-                name_text = str(bs)
-                parent_section["name"] = name_text
-                tags = get_unique_tag_set(name_text)
-                if not tags:
-                    name_text = get_text(bs).strip()
-                    new_section["name"] = name_text
-                    parent_section["name"] = name_text
-                    return
-                assert tags.issubset(validset), parent_section
-                bs = BeautifulSoup(name_text, "html.parser")
                 if bs.a:
                     name_text, link = extract_link(bs.a)
-                    new_section.setdefault("links", []).append(link)
                 if bs.b:
                     bs.b.unwrap()
-                    name_text = get_text(bs)
-            new_section["name"] = name_text.strip()
-            parent_section["name"] = name_text.strip()
+                name_text = get_text(bs).strip() if not link else name_text
+            name_text = name_text.strip()
+            parent_section["name"] = name_text
+            return name_text, link
 
+        name, name_link = _clean_name(parent_section)
         text = parent_section["text"]
         del parent_section["text"]
-        section = {
-            "type": "stat_block_section",
-            "subtype": "ability",
-            "ability_type": "offensive",
-        }
-        _handle_name(parent_section, section)
-        if "action_type" in parent_section:
-            section["action_type"] = parent_section["action_type"]
-            del parent_section["action_type"]
-        if "traits" in parent_section:
-            section["traits"] = parent_section["traits"]
-            del parent_section["traits"]
-        bs = BeautifulSoup(text, "html.parser")
-        links = get_links(bs)
-        if len(links) > 0:
-            section.setdefault("links", []).extend(links)
-        while bs.a:
-            bs.a.unwrap()
 
-        children = list(bs)
-        addons = {}
-        current = None
-        parts = []
-        addon_names = [
-            "Frequency",
-            "Trigger",
-            "Effect",
-            "Damage",
-            "Duration",
-            "Requirement",
-            "Requirements",
-            "Prerequisite",
-            "Critical Success",
-            "Success",
-            "Failure",
-            "Critical Failure",
-            "Range",
-            "Cost",
-        ]
-        if section["name"] == "Planar Incarnation":
-            parts = [str(c) for c in children]
-        else:
-            while len(children) > 0:
-                child = children.pop(0)
-                if child.name == "b":
-                    current = get_text(child).strip()
-                    if current == "Requirements":
-                        current = "Requirement"
-                    if current == "Prerequisites":
-                        current = "Prerequisite"
-                elif current:
-                    assert current in addon_names, f"{current}, {text}"
-                    addon_text = str(child)
-                    if addon_text.strip().endswith(";"):
-                        addon_text = addon_text.rstrip()[:-1]
-                    addons.setdefault(current.lower().replace(" ", "_"), []).append(addon_text)
-                else:
-                    parts.append(str(child))
-        for k, v in addons.items():
-            if k == "range":
-                assert len(v) == 1, f"Malformed range: {v}"
-                section["range"] = universal_handle_range(v[0])
-            elif k == "damage":
-                assert len(v) == 1, f"Malformed range: {v}"
-                section["damage"] = parse_attack_damage(v[0])
-            else:
-                section[k] = clear_garbage(v)
-        if len(parts) > 0:
-            section["text"] = clear_garbage(parts)
-        parent_section["ability"] = section
+        # Get pre-extracted action_type and traits from parent
+        action_type = parent_section.pop("action_type", None)
+        traits = parent_section.pop("traits", None)
+
+        # Build through unified parser
+        ability = parse_ability_from_html(
+            name,
+            text,
+            ability_type="offensive",
+            action_type=action_type,
+            traits=traits,
+        )
+
+        # Prepend name link if present
+        if name_link:
+            links = ability.setdefault("links", [])
+            links.insert(0, name_link)
+
+        parent_section["name"] = name
+        parent_section["ability"] = ability
 
     def _is_spell(section):
         parts = section["name"].split(" ")
