@@ -230,7 +230,10 @@ The LLM response parser should:
 ### 10. Run LLM Enrichment
 
 ```bash
-# Per type
+# All at once (preferred — LLM calls are cached so subsequent runs are fast):
+bin/pf2_enrich_abilities --all
+
+# Or per type if needed:
 bin/pf2_enrich_abilities --llm frequency
 bin/pf2_enrich_abilities --llm area
 bin/pf2_enrich_abilities --llm dc
@@ -315,14 +318,22 @@ Universal Monster Abilities are detected mechanistically — name match against 
 
 Special senses (darkvision, tremorsense, etc.) are abilities with `subtype: "ability"` and `ability_type: "special_sense"`. They participate in enrichment like any other ability — getting UMA objects, category classification, etc.
 
-### Ability Classification CLI
+### Ability Enrichment CLI
 
 ```bash
-bin/pf2_enrich_abilities --uma            # UMA detection (all records)
+bin/pf2_enrich_abilities --all            # Run everything (preferred)
+bin/pf2_enrich_abilities --uma            # UMA detection only
 bin/pf2_enrich_abilities --classify       # Deterministic + creature data + name lookup
-bin/pf2_enrich_abilities --llm-classify   # LLM for remaining (~300-400, cached)
+bin/pf2_enrich_abilities --llm-classify   # LLM classification only
+bin/pf2_enrich_abilities                  # Regex + stale re-enrichment
+bin/pf2_enrich_abilities --llm damage     # Single LLM type
+bin/pf2_enrich_abilities --stats          # Enrichment counts
 bin/pf2_enrich_abilities --classify-stats # Category breakdown
 ```
+
+The `--all` flag runs: UMA → classify → LLM classify → regex (including stale) → LLM frequency/dc/area/damage. All LLM calls are cached in `~/.pfsrd2/llm_cache.db`.
+
+**Stale records**: When a parser run produces abilities with the same identity hash but different `raw_json` (e.g., trait metadata changed), the record is marked stale. The regex pass automatically re-enriches stale records. LLM calls hit cache so re-enrichment is fast.
 
 ### What doesn't get ability_category
 
@@ -643,14 +654,11 @@ The enrichment DB is designed to be shared across object types. The migration ch
 
 When rebuilding from scratch (see also `rebuild-enrichment` skill in `.claude/skills/`):
 
-1. **Phase 1**: Run all parsers sequentially (populates enrichment DB)
-   - Creatures → NPCs → families → templates
-   - **CRITICAL: Sequential only — SQLite silently drops concurrent writes**
-2. **Phase 2**: Enrich abilities
-   - `--uma` → `--classify` → `--llm-classify` (classification)
-   - regex → `--llm frequency/dc/area/damage` (mechanics extraction)
+1. **Phase 1**: Run all parsers (populates enrichment DB)
+   - Creatures, NPCs, families, templates — can run in parallel (WAL mode + busy timeout)
+2. **Phase 2**: Enrich abilities: `bin/pf2_enrich_abilities --all`
 3. **Phase 3**: Re-run families + templates (merges enriched abilities into change data)
-4. **Phase 4**: Enrich changes (`bin/pf2_enrich_changes`)
+4. **Phase 4**: Enrich changes: `bin/pf2_enrich_changes`
 5. **Phase 5**: Re-run all parsers (final merge of all enrichment into JSON)
 6. **Phase 6**: Verify (check error logs, enrichment stats, diff review)
 

@@ -25,6 +25,7 @@ from pfsrd2.sql.traits import (
     trait_db_pass as universal_trait_db_pass,
 )
 from pfsrd2.trait import extract_starting_traits, trait_parse
+from universal.ability import parse_ability_from_html
 from universal.creatures import (
     universal_handle_perception,
     universal_handle_range,
@@ -51,7 +52,6 @@ from universal.universal import (
     is_trait,
     link_modifiers,
     link_objects,
-    link_value,
     link_values,
     parse_universal,
     remove_empty_sections_pass,
@@ -1295,18 +1295,14 @@ def process_items(section):
     return items
 
 
-def process_interaction_ability(sb, section, sections):
-    ability_name = section[0]
-    description = section[1]
-    link = section[2]
-    title_action = section[3]
-    ability = {
-        "name": ability_name,
-        "type": "stat_block_section",
-        "subtype": "ability",
-        "ability_type": "interaction",
-    }
-    addons = [
+def _consume_addon_sections(sections):
+    """Consume addon sections from the lookahead list.
+
+    Creature stat blocks have addon fields (Frequency, Trigger, etc.) as
+    separate tuples in the sections list. This consumes them and returns
+    a dict of {field_name: (value_html, links)} pairs.
+    """
+    addon_names = {
         "Frequency",
         "Trigger",
         "Effect",
@@ -1318,42 +1314,58 @@ def process_interaction_ability(sb, section, sections):
         "Failure",
         "Critical Failure",
         "Cost",
-    ]
-    while len(sections) > 0 and sections[0][0] in addons:
+    }
+    addons = {}
+    while len(sections) > 0 and sections[0][0] in addon_names:
         addon = sections.pop(0)
         assert addon[2] is None
-        addon_name = addon[0].lower().replace(" ", "_")
-        if addon_name == "requirements":
-            addon_name = "requirement"
+        field_name = addon[0].lower().replace(" ", "_")
+        if field_name == "requirements":
+            field_name = "requirement"
         value = addon[1].strip()
         if value.endswith(";"):
             value = value[:-1]
         bs = BeautifulSoup(value, "html.parser")
         links = get_links(bs, unwrap=True)
-        if len(links) > 0:
+        addons[field_name] = (str(bs), links)
+    return addons
+
+
+def _apply_addons(ability, addons):
+    """Apply pre-consumed addon fields to an ability dict."""
+    for field_name, (value, links) in addons.items():
+        ability[field_name] = value
+        if links:
             ability.setdefault("links", []).extend(links)
-        ability[addon_name] = str(bs)
 
-    description, action = extract_action_type(description.strip())
-    description, traits = extract_starting_traits(description.strip())
 
-    if action:
-        ability["action_type"] = action
-    elif title_action:
-        ability["action_type"] = title_action
-    elif action and title_action:
-        raise AssertionError(section)
+def process_interaction_ability(sb, section, sections):
+    ability_name = section[0]
+    description = section[1]
+    link = section[2]
+    title_action = section[3]
 
-    if len(traits) > 0:
-        ability["traits"] = traits
-    if len(description.strip()) > 0:
-        ability["text"] = description.strip()
+    # Consume addon sections from the lookahead list (creature-specific)
+    addons = _consume_addon_sections(sections)
+
+    # Build ability through unified parser
+    # Don't pass link here — creature code handles title links separately
+    ability = parse_ability_from_html(
+        ability_name,
+        description,
+        ability_type="interaction",
+        action_type=title_action,
+        addon_labels=set(),  # No bold-field extraction — addons come from sections
+    )
+
+    # Apply pre-consumed addons
+    _apply_addons(ability, addons)
+
+    # Prepend title link
     if link:
-        # TODO: fix []
-        ability["links"] = [link]
+        links = ability.setdefault("links", [])
+        links.insert(0, link)
 
-    handle_aura(sb, ability)
-    link_value(ability, field="text")
     return ability
 
 
@@ -1559,149 +1571,45 @@ def process_defense(hp, section, ret=False):
     hp[section[0].lower()] = defense[section[0].lower()]
 
 
-def handle_aura(sb, ability):
-    def _test_aura(test):
-        if "damage" in test:
-            return True
-        if "DC" in test:
-            return True
-        return bool("feet" in test or "miles" in test or "mile" in test)
-
-    def _test_aura_dc(ability):
-        if sb["name"] in ["Weykoward", "Watch Officer", "Twins of Rowan"]:
-            return
-        if "saving_throw" not in ability and "DC " in ability["text"]:
-            # TODO: Find a more graceful way to deal with 1816
-            if sb["name"] in constants.CREATURE_IGNORE_DC_AURA:
-                return
-            # Try to extract DC from body text (may have HTML links like <a>basic</a> before save type)
-            text_stripped = re.sub(r"<[^>]+>", "", ability["text"])
-            # Format: "DC 23 Fortitude" or "DC 23 basic Fortitude"
-            m = re.search(r"DC (\d+)\s+(?:\w+\s+)?(Fortitude|Fort|Reflex|Will|flat)", text_stripped)
-            if not m:
-                # Reverse format: "Fortitude DC 23"
-                m2 = re.search(r"(Fortitude|Fort|Reflex|Will|flat)\s+DC\s+(\d+)", text_stripped)
-                if m2:
-                    save_text = f"DC {m2.group(2)} {m2.group(1)}"
-                    ability["saving_throw"] = [universal_handle_save_dc(save_text)]
-                    return
-                # Standalone DC without explicit save type
-                m3 = re.search(r"DC (\d+)", text_stripped)
-                if m3:
-                    save_text = f"DC {m3.group(1)}"
-                    ability["saving_throw"] = [universal_handle_save_dc(save_text)]
-                    return
-            if m:
-                save_text = f"DC {m.group(1)} {m.group(2)}"
-                ability["saving_throw"] = [universal_handle_save_dc(save_text)]
-                return
-            raise AssertionError(f"DC in text, but no save in aura: {ability}")
-
-    found = False
-    if "traits" in ability and "text" in ability:
-        for trait in ability["traits"]:
-            if sb["name"] in ["Brainchild"]:
-                # TODO: Find a more graceful way to deal with 1085
-                found = False
-            elif trait["name"] == "aura":
-                found = True
-        if found:
-            parts = ability["text"].split(".")
-            test = parts[0]
-            if _test_aura(test):
-                if test.startswith(";"):
-                    test = test[1:].strip()
-                if test.endswith(";"):
-                    test = test[:-1].strip()
-                test_parts = split_maintain_parens(test, ",")
-                while test_parts:
-                    test_part = test_parts.pop(0)
-                    if "DC" in test_part:
-                        save = universal_handle_save_dc(test_part.strip())
-                        assert save, "Malformed range and DC: {}".format(ability["text"])
-                        ability.setdefault("saving_throw", []).append(save)
-                    elif "feet" in test_part or "miles" in test_part or "mile" in test:
-                        range = universal_handle_range(test_part.strip())
-                        assert range, "Malformed range and DC: {}".format(ability["text"])
-                        assert (
-                            "range" not in ability
-                        ), f"Can't add a range to an object that as a range already: {ability}"
-                        ability["range"] = range
-                    elif "damage" in test_part:
-                        dam = parse_attack_damage(test_part)
-                        ability["damage"] = dam
-                    else:
-                        raise AssertionError("Malformed aura stats: {}".format(ability["text"]))
-                parts.pop(0)
-                ability["text"] = ".".join(parts).strip()
-                _test_aura_dc(ability)
-            else:
-                if "Merlokrep" in ability["text"]:
-                    # TODO: Find a more graceful way to deal with 2179
-                    return
-                raise AssertionError(ability["text"])
-        if ability["text"] == "":
-            del ability["text"]
+# handle_aura removed — now handled by universal/ability.py _handle_aura
+# via parse_ability_from_html. Creature-specific special cases (Brainchild,
+# Merlokrep) were HTML bugs that have been fixed.
 
 
 def process_defensive_ability(section, sections, sb):
     assert section[0].strip() not in ["Immunities", "Resistances", "Weaknesses"], section[0]
     description = section[1]
     link = section[2]
-    action = section[3]
-    sb_key = "automatic_abilities"
-    ability = {
-        "type": "stat_block_section",
-        "subtype": "ability",
-        "ability_type": "automatic",
-        "name": section[0],
-    }
-    if action:
-        ability["action_type"] = action
-    addons = [
-        "Frequency",
-        "Trigger",
-        "Effect",
-        "Duration",
-        "Requirement",
-        "Critical Success",
-        "Success",
-        "Failure",
-        "Critical Failure",
-    ]
-    while len(sections) > 0 and sections[0][0] in addons:
-        addon = sections.pop(0)
-        assert addon[2] is None
-        addon_name = addon[0].lower().replace(" ", "_")
-        value = addon[1].strip()
-        if value.endswith(";"):
-            value = value[:-1]
-        bs = BeautifulSoup(value, "html.parser")
-        links = get_links(bs, unwrap=True)
-        if len(links) > 0:
-            ability.setdefault("links", []).extend(links)
-        ability[addon_name] = str(bs)
+    title_action = section[3]
 
-    description, action = extract_action_type(description.strip())
-    if action:
-        ability["action_type"] = action
-        ability["subtype"] = "ability"
+    # Consume addon sections from the lookahead list (creature-specific)
+    addons = _consume_addon_sections(sections)
+
+    # Build ability through unified parser
+    # Don't pass link here — creature code handles title links separately
+    ability = parse_ability_from_html(
+        section[0],
+        description,
+        ability_type="automatic",
+        action_type=title_action,
+        addon_labels=set(),  # No bold-field extraction — addons come from sections
+    )
+
+    # Apply pre-consumed addons
+    _apply_addons(ability, addons)
+
+    # Determine placement: if action found in description, it's reactive
+    sb_key = "automatic_abilities"
+    if "action_type" in ability and not title_action:
+        # Action was extracted from description (not title) — reactive ability
         ability["ability_type"] = "reactive"
         sb_key = "reactive_abilities"
 
-    description, traits = extract_starting_traits(description.strip())
-    if len(traits) > 0:
-        ability["traits"] = traits
-
-    if len(description) > 0:
-        ability["text"] = description.strip()
-
-    handle_aura(sb, ability)
-
-    link_value(ability, field="text")
+    # Add title link
     if link:
         links = ability.setdefault("links", [])
         links.insert(0, link)
+
     sb["defense"].setdefault(sb_key, []).append(ability)
 
 

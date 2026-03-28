@@ -22,6 +22,7 @@ from pfsrd2.sql.enrichment import (
     fetch_majority_category_for_name,
     fetch_needing_enrichment,
     fetch_needs_review,
+    fetch_stale,
     fetch_uncategorized_abilities,
     fetch_unenriched,
     get_enrichment_db_connection,
@@ -68,13 +69,19 @@ def _format_missed_reason(missed):
 
 
 def run_regex(conn, args):
-    """Run regex extraction on unenriched records."""
+    """Run regex extraction on unenriched and stale records."""
     curs = conn.cursor()
 
     if args.force_version:
         records = fetch_needing_enrichment(curs, ENRICHMENT_VERSION)
     else:
         records = fetch_unenriched(curs)
+        # Also re-enrich stale records — their raw_json changed so
+        # enrichment needs to be re-extracted. LLM cache makes this fast.
+        stale = fetch_stale(curs)
+        if stale:
+            print(f"Including {len(stale)} stale records for re-enrichment")
+            records = list(records) + list(stale)
 
     enriched_count = 0
     flagged_count = 0
@@ -544,6 +551,11 @@ def main():
         action="store_true",
         help="Run Tier 3 LLM classification on uncategorized abilities",
     )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Run everything: UMA + classify + LLM classify + regex + all LLM types",
+    )
     args = parser.parse_args()
 
     with get_enrichment_db_connection() as conn:
@@ -560,6 +572,16 @@ def main():
             print(f"Stale:            {counts['stale']}")
             print(f"Human verified:   {counts['verified']}")
             print(f"Needs review:     {counts['needs_review']}")
+            return
+
+        if args.all:
+            run_uma_detection(conn, args)
+            run_classify(conn, args)
+            run_llm_classify(conn, args)
+            run_regex(conn, args)
+            for llm_type in ["frequency", "dc", "area", "damage"]:
+                args.llm_type = llm_type
+                run_llm(conn, args)
             return
 
         if args.classify:

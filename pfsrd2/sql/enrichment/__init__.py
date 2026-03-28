@@ -169,11 +169,15 @@ def get_enrichment_db_connection(db_path=None):
     """Get a connection to the enrichment database.
 
     Creates the DB and runs migrations if needed.
+    Uses WAL mode and a busy timeout so concurrent processes wait
+    instead of failing with "database is locked".
     Pass db_path=":memory:" for testing.
     """
     if db_path is None:
         db_path = _get_db_path()
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
     curs = conn.cursor()
     try:
         ver = _create_db_v_1(conn, curs)
