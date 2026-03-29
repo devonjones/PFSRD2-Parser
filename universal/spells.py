@@ -96,12 +96,11 @@ def parse_spell_block(name, text, action_type=None, traits=None):
     header_text = parts.pop(0)
     while parts:
         next_stripped = parts[0].strip()
-        if next_stripped.startswith("attack") or next_stripped.startswith(
-            "spell attack"
-        ):
-            header_text += ", " + parts.pop(0)
-        elif next_stripped.endswith("Focus Points") or next_stripped.endswith(
-            "Focus Point"
+        if (
+            next_stripped.startswith("attack")
+            or next_stripped.startswith("spell attack")
+            or next_stripped.endswith("Focus Points")
+            or next_stripped.endswith("Focus Point")
         ):
             header_text += ", " + parts.pop(0)
         else:
@@ -112,7 +111,6 @@ def parse_spell_block(name, text, action_type=None, traits=None):
         tt = tt.strip()
         if tt == "":
             continue
-        chunks = tt.split(" ")
         if tt.startswith("DC"):
             section["saving_throw"] = universal_handle_save_dc(tt)
         elif tt.startswith("attack") or tt.startswith("spell attack"):
@@ -125,9 +123,7 @@ def parse_spell_block(name, text, action_type=None, traits=None):
             else:
                 section["spell_attack"] = int(att_val)
             if att_mods:
-                section.setdefault("notes", []).append(
-                    "spell attack " + tt[tt.index("(") :]
-                )
+                section.setdefault("notes", []).append("spell attack " + tt[tt.index("(") :])
         elif tt.endswith("Focus Points"):
             section["focus_points"] = int(tt.replace(" Focus Points", "").strip())
         elif tt.endswith("Focus Point"):
@@ -248,13 +244,15 @@ def _parse_spell_list(section, part):
                 bs_str = str(bs)
                 # Find first space after the level ordinal
                 idx = bs_str.find(m_bare.group(0).strip())
-                if idx >= 0:
-                    bs_str = bs_str[idx + len(m_bare.group(0).strip()) :]
-                    bs = BeautifulSoup(bs_str, "html.parser")
+                assert idx >= 0, (
+                    f"Bare level '{m_bare.group(0).strip()}' found in text"
+                    f" but not in HTML: {bs_str[:200]}"
+                )
+                bs_str = bs_str[idx + len(m_bare.group(0).strip()) :]
+                bs = BeautifulSoup(bs_str, "html.parser")
             else:
                 raise AssertionError(
-                    f"No <b> tag in spell list part for"
-                    f" {section['name']}: {part[:200]}"
+                    f"No <b> tag in spell list part for" f" {section['name']}: {part[:200]}"
                 )
         else:
             level_text = get_text(bs.b.extract()).strip()
@@ -285,15 +283,15 @@ def _parse_spell_list(section, part):
                     if not level_text:
                         # Level outside <b>: "<b>Cantrips</b> (4th) ..."
                         remaining = get_text(bs).strip()
-                        m_cantrip = re.match(
-                            r"^\((\d+)[snrt][tdh](?:,[^)]+)?\)", remaining
+                        m_cantrip = re.match(r"^\((\d+)[snrt][tdh](?:,[^)]+)?\)", remaining)
+                        assert m_cantrip, (
+                            f"Cantrips level not found in remaining" f" text: {remaining[:100]}"
                         )
-                        if m_cantrip:
-                            level_text = m_cantrip.group(0)
-                            # Remove the level text from bs
-                            bs_str = str(bs)
-                            bs_str = bs_str[bs_str.index(")") + 1 :]
-                            bs = BeautifulSoup(bs_str, "html.parser")
+                        level_text = m_cantrip.group(0)
+                        # Remove the level text from bs
+                        bs_str = str(bs)
+                        bs_str = bs_str[bs_str.index(")") + 1 :]
+                        bs = BeautifulSoup(bs_str, "html.parser")
                 elif level_text.startswith("Cantrips"):
                     # Combined format: "Cantrips (3rd)" as single <b> tag
                     spell_list["cantrips"] = True
@@ -302,14 +300,10 @@ def _parse_spell_list(section, part):
                 # "(2nd, 1st for bosun)" — store variants as note
                 m = re.match(r"^\(?(\d+)[snrt][tdh]\)?$", level_text)
                 if not m:
-                    m_variant = re.match(
-                        r"^\((\d+)[snrt][tdh](,.+)\)$", level_text
-                    )
+                    m_variant = re.match(r"^\((\d+)[snrt][tdh](,.+)\)$", level_text)
                     assert m_variant, f"Failed to parse spells: {part}"
                     spell_list["level_text"] = level_text
-                    section.setdefault("notes", []).append(
-                        level_text
-                    )
+                    section.setdefault("notes", []).append(level_text)
                     spell_list["level"] = int(m_variant.group(1))
                 else:
                     spell_list["level"] = int(m.groups()[0])
