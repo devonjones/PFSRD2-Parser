@@ -5,6 +5,7 @@ import sys
 
 from bs4 import BeautifulSoup, NavigableString
 
+from pfsrd2.action import ACTION_TITLE_MAP
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
@@ -349,13 +350,7 @@ def _extract_spell_name(bs, spell, struct):
             struct["name"] = clean_name
 
 
-_ACTION_TITLE_MAP = {
-    "Single Action": "One Action",
-    "Two Actions": "Two Actions",
-    "Three Actions": "Three Actions",
-    "Reaction": "Reaction",
-    "Free Action": "Free Action",
-}
+_ACTION_TITLE_MAP = ACTION_TITLE_MAP  # noqa: F811 — alias for local usage
 
 
 def _extract_traits(bs, spell):

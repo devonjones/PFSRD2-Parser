@@ -2,6 +2,14 @@ from bs4 import BeautifulSoup, NavigableString
 
 from universal.universal import build_object
 
+ACTION_TITLE_MAP = {
+    "Single Action": "One Action",
+    "Two Actions": "Two Actions",
+    "Three Actions": "Three Actions",
+    "Reaction": "Reaction",
+    "Free Action": "Free Action",
+}
+
 
 def extract_action_type(text, title=False):
     # Action must be the first child of the text
@@ -73,7 +81,7 @@ def extract_action_type(text, title=False):
     ]
     while len(children) > 0:
         child = children.pop(0)
-        if child.name == "span" and child["title"] in action_names:
+        if child.name == "span" and child.get("title") in action_names:
             action = build_action_type(child, action)
         else:
             newchildren.append(child)

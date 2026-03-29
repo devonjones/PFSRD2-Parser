@@ -8,8 +8,8 @@ from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
 from pfsrd2.sql.traits import trait_db_pass as universal_trait_db_pass
-from pfsrd2.trait import extract_starting_traits
-from universal.creatures import universal_handle_range, write_creature
+from universal.ability import parse_ability_from_html
+from universal.creatures import write_creature
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass
 from universal.universal import (
@@ -45,7 +45,6 @@ def parse_monster_ability(filename, options):
     struct = restructure_monster_ability_pass(details)
     aon_pass(struct, basename)
     section_pass(struct)
-    addon_pass(struct)
     set_edition_from_db_pass(struct)
     universal_trait_db_pass(struct)
     game_id_pass(struct)
@@ -82,58 +81,36 @@ def restructure_monster_ability_pass(details):
     return sb
 
 
+_MA_ADDON_LABELS = {
+    "Frequency",
+    "Trigger",
+    "Effect",
+    "Duration",
+    "Requirement",
+    "Requirements",
+    "Prerequisite",
+    "Cost",
+    "Range",
+    "Saving Throw",
+    "Damage",
+}
+
+
 def section_pass(struct):
-    def _handle_front_spans(section):
-        def _handle_action(section, tag):
-            action = build_action(tag)
-            assert action, tag
-            section["action_type"] = action
-            tag.decompose()
+    """Extract structured fields from the monster ability text.
 
-        def _tag_is_action(tag):
-            assert "class" in tag.attrs, tag
-            tag_class = tag["class"]
-            return "action" in tag_class
-
-        if "text" not in section:
-            return
-        bs = BeautifulSoup(section["text"].strip(), "html.parser")
-        children = list(bs.children)
-        while children and is_tag_named(children[0], ["span"]):
-            tag = children.pop(0)
-            if _tag_is_action(tag):
-                _handle_action(section, tag)
-            else:
-                raise AssertionError(tag)
-        section["text"] = str(bs)
+    Keeps source extraction (custom child-walking logic) in-house,
+    delegates everything else to the unified ability parser.
+    """
 
     def _fix_name(section):
         bs = BeautifulSoup(str(section["name"]), "html.parser")
         section["name"] = get_text(bs).strip()
 
-    def _handle_traits(section):
-        text, traits = extract_starting_traits(section["text"])
-        section["text"] = text
-        if traits:
-            section["traits"] = traits
-
-    def _clear_links(section):
-        text = section.setdefault("text", "")
-        links = section.setdefault("links", [])
-        bs = BeautifulSoup(text, "html.parser")
-        while bs.a:
-            _, link = extract_link(bs.a)
-            links.append(link)
-            bs.a.unwrap()
-        section["text"] = str(bs)
-        if len(links) == 0:
-            del section["links"]
-
     def _handle_source(section):
         def _extract_source_info(children):
             if type(children[0]) != Tag:
                 return None
-
             if get_text(children[0]).strip() == "Source":
                 children.pop(0).decompose()
                 a = children.pop(0)
@@ -145,129 +122,78 @@ def section_pass(struct):
                     source["errata"] = errata[1]
                     sup.decompose()
                 return source
-
             return None
 
         if "text" not in section:
             return
-
         bs = BeautifulSoup(section["text"].strip(), "html.parser")
         children = list(bs.children)
-
-        _clear_bad_tags(children)
-        children = _clear_empty_tags(children)
+        # Strip leading br/hr
+        while children and is_tag_named(children[0], ["br", "hr"]):
+            children.pop(0).decompose()
+        children = [c for c in children if str(c).strip() != ""]
         source = _extract_source_info(children)
         if source:
             section["sources"] = [source]
-        _clear_bad_tags(children)
-        section["text"] = str(bs)
-
-    def _clear_empty_tags(children):
-        return [c for c in children if str(c).strip() != ""]
-
-    def _clear_bad_tags(children, direction=0):
-        while children and is_tag_named(children[direction], ["br", "hr"]):
+        # Strip leading br/hr again after source removal
+        while children and is_tag_named(children[0], ["br", "hr"]):
             children.pop(0).decompose()
-
-    def _clear_garbage(section):
-        if "text" not in section:
-            return
-        if section["text"] == "":
-            del section["text"]
-            return
-        bs = BeautifulSoup(section["text"].strip(), "html.parser")
-        children = list(bs.children)
-        _clear_bad_tags(children)
-        _clear_bad_tags(children, -1)
         section["text"] = str(bs)
+
+    def _extract_action_and_strip(section):
+        """Extract action type from leading spans, remove them from text.
+
+        Must run before _handle_source so the <b>Source</b> tag is the
+        first child. Returns extracted action_type or None.
+        """
+        from pfsrd2.action import extract_action_type
+
+        if "text" not in section:
+            return None
+        text, action_type = extract_action_type(section["text"])
+        section["text"] = text
+        return action_type
 
     _fix_name(struct)
-    _handle_front_spans(struct)
+    extracted_action = _extract_action_and_strip(struct)
     _handle_source(struct)
-    _handle_traits(struct)
-    _clear_links(struct)
-    _clear_garbage(struct)
 
+    text = struct.get("text", "")
+    if not text:
+        return
 
-def build_action(child, action=None):
-    assert not action, f"Multiple actions detected: {child}"
-    action_name = child["title"]
-    action = build_object("stat_block_section", "action_type", action_name)
-    if action_name == "Single Action":
-        action["name"] = "One Action"
-    return action
+    # Delegate to unified ability parser
+    ability = parse_ability_from_html(
+        struct["name"],
+        text,
+        ability_type="universal_monster_ability",
+        action_type=extracted_action,
+        addon_labels=_MA_ADDON_LABELS,
+    )
 
-
-def build_object(dtype, subtype, name, keys=None):
-    assert type(name) is str
-    obj = {"type": dtype, "subtype": subtype, "name": name.strip()}
-    if keys:
-        obj.update(keys)
-    return obj
-
-
-def addon_pass(struct):
-    def _oa_html_reduction(data):
-        bs = BeautifulSoup("".join(data).strip(), "html.parser")
-        if list(bs.children)[-1].name == "br":
-            list(bs.children)[-1].unwrap()
-        return str(bs)
-
-    def _handle_ranges(addons):
-        for k, v in addons.items():
-            if k == "range":
-                assert len(v) == 1, f"Malformed range: {v}"
-                struct["range"] = universal_handle_range(v[0])
-            else:
-                struct[k] = _oa_html_reduction(v)
-
-    def _get_prospective_name(child):
-        current = get_text(child).strip()
-        if current == "Requirements":
-            current = "Requirement"
-        return current
-
-    def _create_addon(current, child):
-        addon_names = [
-            "Frequency",
-            "Trigger",
-            "Effect",
-            "Duration",
-            "Requirement",
-            "Requirements",
-            "Prerequisite",
-            "Critical Success",
-            "Success",
-            "Failure",
-            "Critical Failure",
-            "Range",
-            "Cost",
-        ]
-        assert current in addon_names, f"{current}, {text}"
-        addon_text = str(child)
-        if addon_text.strip().endswith(";"):
-            addon_text = addon_text.rstrip()[:-1]
-        addons.setdefault(current.lower().replace(" ", "_"), []).append(addon_text)
-
-    def _set_struct_text(struct, parts):
-        if len(parts) > 0:
-            struct["text"] = _oa_html_reduction(parts)
-        else:
-            del struct["text"]
-
-    text = struct["text"]
-    bs = BeautifulSoup(text, "html.parser")
-    children = list(bs)
-    addons = {}
-    current = None
-    parts = []
-    while len(children) > 0:
-        child = children.pop(0)
-        if child.name == "b":
-            current = _get_prospective_name(child)
-        elif current:
-            _create_addon(current, child)
-        else:
-            parts.append(str(child))
-    _handle_ranges(addons)
-    _set_struct_text(struct, parts)
+    # Merge extracted fields into top-level struct
+    _MERGE_FIELDS = (
+        "action_type",
+        "traits",
+        "requirement",
+        "prerequisite",
+        "trigger",
+        "effect",
+        "frequency",
+        "duration",
+        "cost",
+        "range",
+        "saving_throw",
+        "damage",
+        "text",
+        "links",
+        "critical_success",
+        "success",
+        "failure",
+        "critical_failure",
+    )
+    for key in _MERGE_FIELDS:
+        if key in ability:
+            struct[key] = ability[key]
+    if "text" not in ability:
+        struct.pop("text", None)

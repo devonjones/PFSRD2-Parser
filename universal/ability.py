@@ -622,6 +622,11 @@ def _extract_span_traits(bs, ability):
                 trait = build_object("stat_block_section", "trait", name.strip())
                 if trait_link:
                     trait["link"] = trait_link
+                # Split valued traits like "Additive 1" → name + value
+                m = re.match(r"^(.+?)\s+(\d+)$", trait["name"])
+                if m:
+                    trait["name"] = m.group(1)
+                    trait["value"] = m.group(2)
                 traits.append(trait)
             span.decompose()
     # Also remove letter-spacing separator spans
