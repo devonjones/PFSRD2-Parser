@@ -67,7 +67,6 @@ from universal.utils import (
     extract_pfs_availability,
     extract_pfs_note,
     get_text,
-    get_unique_tag_set,
     is_tag_named,
     log_element,
     normalize_pfs_to_object,
@@ -2055,125 +2054,6 @@ def process_offensive_action(section):
             spell["count"] = 1
         return spell
 
-    def parse_affliction(parent_section):
-        def _handle_affliction_stage(title, text):
-            stage = {
-                "type": "stat_block_section",
-                "subtype": "affliction_stage",
-                "name": title,
-                "text": text,
-            }
-            section.setdefault("stages", []).append(stage)
-
-        text = parent_section["text"]
-        del parent_section["text"]
-        section = {
-            "type": "stat_block_section",
-            "subtype": "ability",
-            "ability_type": "affliction",
-            "name": parent_section["name"],
-        }
-        if "action_type" in parent_section:
-            section["action_type"] = parent_section["action_type"]
-            del parent_section["action_type"]
-        if "traits" in parent_section:
-            section["traits"] = parent_section["traits"]
-            del parent_section["traits"]
-        bs = BeautifulSoup(text, "html.parser")
-        section["links"] = get_links(bs)
-        while bs.a:
-            bs.a.unwrap()
-        text = str(bs)
-        # HTML5 may omit semicolons between affliction section headers;
-        # normalize by inserting semicolons before known <b> headers
-        header_re = re.compile(
-            r"(<b>\s*(?:Saving Throw|Stage\s+\d+|Onset|Maximum Duration"
-            r"|Requirements|Effect|Special)\s*</b>)",
-            re.DOTALL,
-        )
-        for m in reversed(list(header_re.finditer(text))):
-            before = text[: m.start()].rstrip()
-            if before and not before.endswith(";"):
-                text = text[: m.start()] + "; " + text[m.start() :]
-        parts = [p.strip() for p in text.split(";")]
-        first = True
-        for p in parts:
-            bs = BeautifulSoup(p, "html.parser")
-            if bs.b:
-                title = get_text(bs.b.extract()).strip()
-                newtext = get_text(bs).strip()
-                if title == "Saving Throw":
-                    assert "saving_throw" not in section, text
-                    # HTML5: extra text may follow the DC spec (e.g. period,
-                    # curse descriptions). Extract just the DC portion.
-                    dc_match = re.match(
-                        r"(DC\s+\d+\s*"
-                        r"(?:Fortitude|Fort|Reflex|Ref|Will|flat)?"
-                        r"(?:\s+(?:save|check|basic|half|negates))?)",
-                        newtext,
-                    )
-                    if dc_match:
-                        extra = newtext[dc_match.end() :].strip().lstrip(".")
-                        if extra:
-                            section.setdefault("text", []).append(extra)
-                        newtext = dc_match.group(1)
-                    section["saving_throw"] = [universal_handle_save_dc(newtext)]
-                elif title == "Requirements":
-                    assert "requirements" not in section, text
-                    section["requirements"] = newtext
-                elif title == "Onset":
-                    assert "onset" not in section, text
-                    section["onset"] = newtext
-                elif title == "Special":
-                    assert "special" not in section, text
-                    section["special"] = newtext
-                elif title == "Maximum Duration":
-                    assert "maximum_duration" not in section, text
-                    section["maximum_duration"] = newtext
-                elif title == "Effect":
-                    assert "effect" not in section, text
-                    section["effect"] = newtext
-                elif title.startswith("Stage"):
-                    _handle_affliction_stage(title, newtext)
-                else:
-                    raise AssertionError(text)
-            else:
-                if first:
-                    section["context"] = get_text(bs)
-                else:
-                    section.setdefault("text", []).append(get_text(bs))
-            first = False
-        if "text" in section:
-            section["text"] = "; ".join(section["text"])
-            if section["text"] == "":
-                del section["text"]
-            else:
-                assert section["text"].endswith(".") or section["text"].endswith(
-                    ")"
-                ), "Affliction modification fail {}".format(section["text"])
-                addons = [
-                    "Saving Throw",
-                    "Requirements",
-                    "Onset",
-                    "Special",
-                    "Maximum Duration",
-                    "Effect",
-                    "Stage",
-                ]
-                for addon in addons:
-                    assert (
-                        addon not in section["text"]
-                    ), "{} should not be in the text of Affliction: {}".format(
-                        addon,
-                        section["text"],
-                    )
-        parent_section["ability"] = section
-
-    # <b>Mythic Power</b> 3 Mythic Points <ul><li><i>Mythic Skill</i> <span class="action" title="Free Action" role="img" aria-label="Free Action">[free-action]</span> <b>Cost</b> 1 Mythic Point; <a style="text-decoration:underline" href="Skills.aspx?ID=36">Athletics</a> or <a style="text-decoration:underline" href="Skills.aspx?ID=48">Stealth</a> (page 168)</li><li><i>Remove a Condition</i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b>1 Mythic Point; <b>Effect</b> The gogiteth ends one condition affecting it.</li></ul>
-    # <b><a style="text-decoration:underline" href="MonsterTemplates.aspx?ID=32">Mythic Ferocity</a>  <span class="action" title="Reaction" role="img" aria-label="Reaction">[reaction]</span> </b> <b>cost</b> 1 Mythic Point, 65 HP
-    # <b>Mythic Power</b> 3 Mythic Points <ul><li><i>Mythic Skill</i><span class="action" title="Free Action" role="img" aria-label="Free Action">[free-action]</span><b>Cost</b> 1 Mythic Point; <a style="text-decoration:underline" href="Skills.aspx?ID=36">Athletics</a></li></ul>
-    # <b>Mythic Power</b> 3 Mythic Points <ul><li><i><a style="text-decoration:underline" href="MonsterTemplates.aspx?ID=33">Recharge Spell</a></i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b> 1 Mythic Point; <b>Effect</b> The mythic lich regains one spell.</li><li><i>Remove a Condition</i> <span class="action" title="Single Action" role="img" aria-label="Single Action">[one-action]</span> (<a style="text-decoration:underline" href="Traits.aspx?ID=561">concentrate</a>) <b>Cost</b> 1 Mythic Point; <b>Effect</b> The mythic lich ends one condition affecting it.</li></ul>
-
     def parse_mythic_ability(parent_section):
         def _handle_addons(activation, text):
             addons = {}
@@ -2251,105 +2131,47 @@ def process_offensive_action(section):
             )
 
     def parse_offensive_ability(parent_section):
-        def _handle_name(parent_section, new_section):
+        def _clean_name(parent_section):
+            """Clean HTML from ability name — strip action spans, extract links."""
             name_text = parent_section["name"]
+            link = None
             if "<" in name_text:
-                validset = {"a", "b"}
                 bs = BeautifulSoup(name_text, "html.parser")
-                # Strip action icon spans from name
                 for span in bs.find_all("span", class_="action"):
                     span.decompose()
-                name_text = str(bs)
-                parent_section["name"] = name_text
-                tags = get_unique_tag_set(name_text)
-                if not tags:
-                    name_text = get_text(bs).strip()
-                    new_section["name"] = name_text
-                    parent_section["name"] = name_text
-                    return
-                assert tags.issubset(validset), parent_section
-                bs = BeautifulSoup(name_text, "html.parser")
                 if bs.a:
                     name_text, link = extract_link(bs.a)
-                    new_section.setdefault("links", []).append(link)
                 if bs.b:
                     bs.b.unwrap()
-                    name_text = get_text(bs)
-            new_section["name"] = name_text.strip()
-            parent_section["name"] = name_text.strip()
+                name_text = get_text(bs).strip() if not link else name_text
+            name_text = name_text.strip()
+            parent_section["name"] = name_text
+            return name_text, link
 
+        name, name_link = _clean_name(parent_section)
         text = parent_section["text"]
         del parent_section["text"]
-        section = {
-            "type": "stat_block_section",
-            "subtype": "ability",
-            "ability_type": "offensive",
-        }
-        _handle_name(parent_section, section)
-        if "action_type" in parent_section:
-            section["action_type"] = parent_section["action_type"]
-            del parent_section["action_type"]
-        if "traits" in parent_section:
-            section["traits"] = parent_section["traits"]
-            del parent_section["traits"]
-        bs = BeautifulSoup(text, "html.parser")
-        links = get_links(bs)
-        if len(links) > 0:
-            section.setdefault("links", []).extend(links)
-        while bs.a:
-            bs.a.unwrap()
 
-        children = list(bs)
-        addons = {}
-        current = None
-        parts = []
-        addon_names = [
-            "Frequency",
-            "Trigger",
-            "Effect",
-            "Damage",
-            "Duration",
-            "Requirement",
-            "Requirements",
-            "Prerequisite",
-            "Critical Success",
-            "Success",
-            "Failure",
-            "Critical Failure",
-            "Range",
-            "Cost",
-        ]
-        if section["name"] == "Planar Incarnation":
-            parts = [str(c) for c in children]
-        else:
-            while len(children) > 0:
-                child = children.pop(0)
-                if child.name == "b":
-                    current = get_text(child).strip()
-                    if current == "Requirements":
-                        current = "Requirement"
-                    if current == "Prerequisites":
-                        current = "Prerequisite"
-                elif current:
-                    assert current in addon_names, f"{current}, {text}"
-                    addon_text = str(child)
-                    if addon_text.strip().endswith(";"):
-                        addon_text = addon_text.rstrip()[:-1]
-                    addons.setdefault(current.lower().replace(" ", "_"), []).append(addon_text)
-                else:
-                    parts.append(str(child))
-        for k, v in addons.items():
-            if k == "range":
-                assert len(v) == 1, f"Malformed range: {v}"
-                section["range"] = universal_handle_range(v[0])
-            elif k == "damage":
-                assert len(v) == 1, f"Malformed range: {v}"
-                section["damage"] = parse_attack_damage(v[0])
-            else:
-                section[k] = clear_garbage(v)
-        if len(parts) > 0:
-            section["text"] = clear_garbage(parts)
-        parent_section["ability"] = section
+        # Get pre-extracted action_type and traits from parent
+        action_type = parent_section.pop("action_type", None)
+        traits = parent_section.pop("traits", None)
+
+        # Build through unified parser
+        ability = parse_ability_from_html(
+            name,
+            text,
+            ability_type="offensive",
+            action_type=action_type,
+            traits=traits,
+        )
+
+        # Prepend name link if present
+        if name_link:
+            links = ability.setdefault("links", [])
+            links.insert(0, name_link)
+
+        parent_section["name"] = name
+        parent_section["ability"] = ability
 
     def _is_spell(section):
         parts = section["name"].split(" ")
@@ -2388,19 +2210,8 @@ def process_offensive_action(section):
         section["offensive_action_type"] = "mythic_ability"
         parse_mythic_ability(section)
     else:
-        bs = BeautifulSoup(section["text"], "html.parser")
-        titles = [get_text(b) for b in bs.findAll("b")]
-        if bs.b:
-            title = get_text(bs.b)
-            if title.strip() in ["Saving Throw"] or "Stage 1" in titles:
-                section["offensive_action_type"] = "ability"
-                parse_affliction(section)
-            else:
-                section["offensive_action_type"] = "ability"
-                parse_offensive_ability(section)
-        else:
-            section["offensive_action_type"] = "ability"
-            parse_offensive_ability(section)
+        section["offensive_action_type"] = "ability"
+        parse_offensive_ability(section)
     return section
 
 

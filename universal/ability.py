@@ -231,11 +231,16 @@ def parse_ability_from_html(
     # Also extract Stage N fields
     _extract_stage_fields(ability, bs)
 
-    # Convert saving_throw and damage from strings to structured arrays
-    _normalize_structured_fields(ability)
-
     # Extract result blocks
     extract_result_blocks(ability, bs, break_on_any_bold=break_results_on_any_bold)
+
+    # Extract and unwrap links from all field values (addons, results, stages)
+    # Must run BEFORE _normalize_structured_fields so saving_throw/damage
+    # strings are clean when parsed to objects
+    _extract_links_from_addon_fields(ability)
+
+    # Convert saving_throw and damage from strings to structured arrays
+    _normalize_structured_fields(ability)
 
     # Extract links from remaining text
     links = get_links(bs, unwrap=True)
@@ -466,16 +471,80 @@ def _apply_addon(ability, addon_name, addon_nodes):
             ability[key] = value
 
 
-def _normalize_structured_fields(ability):
-    """Convert saving_throw and damage from strings to structured arrays.
+# Fields that may contain HTML with <a> tags from bold-field or result-block extraction
+_HTML_VALUE_FIELDS = {
+    "frequency",
+    "trigger",
+    "effect",
+    "duration",
+    "requirement",
+    "prerequisite",
+    "cost",
+    "critical_success",
+    "success",
+    "failure",
+    "critical_failure",
+    "range",
+    "damage",
+    "saving_throw",
+    "onset",
+    "maximum_duration",
+    "special",
+    "access",
+}
 
-    extract_bold_fields produces strings, but the schema requires arrays
-    of save_dc / attack_damage objects.
+
+def _extract_links_from_addon_fields(ability):
+    """Extract and unwrap links from addon/result/stage field values.
+
+    Bold-field, result-block, and stage extraction store raw HTML including
+    <a> tags. This extracts them to the ability's links array and unwraps
+    the tags, leaving clean text in the field values.
+    """
+    for key in list(ability.keys()):
+        if key not in _HTML_VALUE_FIELDS:
+            continue
+        value = ability[key]
+        if not isinstance(value, str) or "<a" not in value:
+            continue
+        ab_bs = BeautifulSoup(value, "html.parser")
+        links = get_links(ab_bs, unwrap=True)
+        if links:
+            ability.setdefault("links", []).extend(links)
+        ability[key] = str(ab_bs).strip()
+
+    # Also handle stages array — each stage has a "text" field
+    for stage in ability.get("stages", []):
+        text = stage.get("text", "")
+        if "<a" not in text:
+            continue
+        ab_bs = BeautifulSoup(text, "html.parser")
+        links = get_links(ab_bs, unwrap=True)
+        if links:
+            ability.setdefault("links", []).extend(links)
+        stage["text"] = str(ab_bs).strip()
+
+
+def _normalize_structured_fields(ability):
+    """Convert saving_throw, damage, and range from strings to structured objects.
+
+    extract_bold_fields produces strings, but the schema requires
+    structured objects for these fields.
     """
     if "saving_throw" in ability and isinstance(ability["saving_throw"], str):
+        # Links already stripped by _extract_links_from_addon_fields
         ability["saving_throw"] = [_parse_save_dc(ability["saving_throw"])]
     if "damage" in ability and isinstance(ability["damage"], str):
         ability["damage"] = _parse_damage(ability["damage"])
+    if "range" in ability and isinstance(ability["range"], str):
+        range_obj = universal_handle_range(ability["range"])
+        if range_obj:
+            ability["range"] = range_obj
+        else:
+            assert False, (
+                f"Ability '{ability.get('name', '?')}' has unparseable "
+                f"range string: {ability['range']}"
+            )
 
 
 def _parse_save_dc(text):
@@ -612,18 +681,37 @@ def _extract_stage_fields(ability, bs):
 # --------------------------------------------------------------------------- #
 
 
+_AFFLICTION_ADDON_KEYWORDS = {
+    "Saving Throw",
+    "Stage",
+    "Onset",
+    "Maximum Duration",
+    "Effect",
+}
+
+
 def _detect_affliction(ability):
     """Detect if an ability is an affliction and set ability_type.
 
     An ability is an affliction if it has a saving_throw field OR
     at least one stage. When detected, ability_type is set to "affliction".
+
+    IMPORTANT: Also asserts that structural keywords didn't leak into the
+    text field. If they did, a bold field wasn't extracted properly.
     """
     has_saving_throw = "saving_throw" in ability
     has_stages = bool(ability.get("stages"))
 
     if has_saving_throw or has_stages:
-        # Partial affliction — still flag it
         ability["ability_type"] = "affliction"
+        # Assert no structural keywords leaked into text
+        text = ability.get("text", "")
+        if text:
+            for keyword in _AFFLICTION_ADDON_KEYWORDS:
+                assert keyword not in text, (
+                    f"Affliction '{ability.get('name', '?')}' has "
+                    f"unextracted '{keyword}' in text: {text[:100]}"
+                )
 
 
 def _detect_universal_monster_ability(ability):
