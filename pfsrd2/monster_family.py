@@ -477,8 +477,6 @@ def _split_spell_nodes(nodes):
     before a non-spell <b> or end of nodes. The collected nodes become
     the HTML text for parse_spell_block.
     """
-    from universal.utils import get_text
-
     spells = []
     ability_nodes = []
     i = 0
@@ -526,16 +524,8 @@ def _split_spell_nodes(nodes):
                     ]
                 )
                 if spell_text and has_levels:
-                    try:
-                        spell = parse_spell_block(name, spell_text)
-                        spells.append(spell)
-                    except (AssertionError, Exception):
-                        # Can't parse as spell — put back as ability nodes
-                        ability_nodes.append(node)
-                        for part_html in spell_html_parts:
-                            bs_part = BeautifulSoup(part_html, "html.parser")
-                            for child in bs_part.children:
-                                ability_nodes.append(child)
+                    spell = parse_spell_block(name, spell_text)
+                    spells.append(spell)
                 else:
                     # No spell levels — keep as ability
                     ability_nodes.append(node)
