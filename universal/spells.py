@@ -129,14 +129,38 @@ def parse_spell_block(name, text, action_type=None, traits=None):
     if len(remains) > 0:
         parts.insert(0, ", ".join(remains))
 
-    # Parse each remaining part as a spell list
+    # Parse each remaining part as a spell list.
+    # Some parts start with "as young X, plus" referencing another subtype —
+    # strip that prefix and store it as notes.
     spell_lists = []
     assert len(parts) > 0, section
     for p in parts:
-        spell_lists.append(_parse_spell_list(section, p))
+        p_stripped, ref_note = _strip_reference_prefix(p)
+        if ref_note:
+            section.setdefault("notes", []).append(ref_note)
+        if p_stripped.strip():
+            spell_lists.append(_parse_spell_list(section, p_stripped))
     section["spell_list"] = spell_lists
 
     return section
+
+
+def _strip_reference_prefix(part):
+    """Strip 'as young/adult/ancient X, plus' prefix from a spell list part.
+
+    Monster families reference earlier subtypes with phrases like
+    'as young brine dragon, plus <b>5th</b> cone of cold'.
+    Returns (stripped_part, reference_note_or_None).
+    """
+    # Match "as <words>, plus <rest>" or "as <words>; plus <rest>"
+    m = re.match(r"^(as\s+.+?),?\s+plus\s+", part, re.IGNORECASE)
+    if m:
+        return part[m.end() :], m.group(1).strip()
+    # Match "as <words>" with no "plus" (entire part is a reference)
+    m2 = re.match(r"^as\s+.+$", part.strip(), re.IGNORECASE)
+    if m2 and "<b>" not in part:
+        return "", part.strip()
+    return part, None
 
 
 def _handle_traditions(name_parts):

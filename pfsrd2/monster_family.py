@@ -338,14 +338,14 @@ def _consolidate_creation_changes(struct):
             return True
         return any(_has_abilities_anywhere(s) for s in section.get("sections", []))
 
-    # Collect ability sections into subtypes — check both top level and subsections
+    # Collect ability/spell sections into subtypes — check both top level and subsections
     for section in struct.get("sections", []):
         if _has_abilities_anywhere(section):
-            # Section has abilities directly or in subsections
-            if section.get("abilities"):
+            # Section has abilities/spells directly or in subsections
+            if section.get("abilities") or section.get("spells"):
                 subtypes.append(_build_subtype(section))
             else:
-                # Abilities are in subsections only (e.g., "Creating a Vampire"
+                # Abilities/spells are in subsections only (e.g., "Creating a Vampire"
                 # has "Basic Vampire Abilities" as a child)
                 kept_subs = []
                 for sub in section.get("sections", []):
