@@ -12,9 +12,9 @@ from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
 from universal.ability import parse_abilities_from_nodes
 from universal.files import char_replace, makedirs
-from universal.spells import is_spell_name, parse_spell_block
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.monster_ability import monster_ability_db_pass
+from universal.spells import is_spell_name, parse_spell_block
 from universal.universal import (
     aon_pass,
     entity_pass,
@@ -441,7 +441,6 @@ def _extract_abilities_from_bs(bs):
 
     Returns: (abilities_list_or_None, spells_list_or_None)
     """
-    from universal.utils import get_text
 
     first_b = None
     for b in bs.find_all("b"):
@@ -511,9 +510,20 @@ def _split_spell_nodes(nodes):
                 spell_text = "".join(spell_html_parts).strip()
                 has_levels = any(
                     f"<b>{lvl}</b>" in spell_text or f"<b>\n{lvl}</b>" in spell_text
-                    for lvl in ["1st", "2nd", "3rd", "4th", "5th", "6th",
-                                "7th", "8th", "9th", "10th", "Cantrips",
-                                "Constant"]
+                    for lvl in [
+                        "1st",
+                        "2nd",
+                        "3rd",
+                        "4th",
+                        "5th",
+                        "6th",
+                        "7th",
+                        "8th",
+                        "9th",
+                        "10th",
+                        "Cantrips",
+                        "Constant",
+                    ]
                 )
                 if spell_text and has_levels:
                     try:
@@ -553,7 +563,16 @@ def _find_next_b(nodes, start):
 
 
 _SPELL_LEVEL_NAMES = {
-    "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th",
+    "1st",
+    "2nd",
+    "3rd",
+    "4th",
+    "5th",
+    "6th",
+    "7th",
+    "8th",
+    "9th",
+    "10th",
     "Constant",
 }
 
@@ -562,9 +581,7 @@ def _is_spell_level(text):
     """Check if text looks like a spell level name."""
     if text in _SPELL_LEVEL_NAMES:
         return True
-    if text.startswith("Cantrips"):
-        return True
-    return False
+    return bool(text.startswith("Cantrips"))
 
 
 def monster_family_link_pass(struct):

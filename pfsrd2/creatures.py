@@ -29,7 +29,6 @@ from universal.ability import parse_ability_from_html
 from universal.creatures import (
     universal_handle_perception,
     universal_handle_range,
-    universal_handle_save_dc,
     universal_handle_senses,
     universal_handle_special_senses,
     write_creature,
@@ -1891,7 +1890,6 @@ def process_offensive_action(section):
             section["traits"] = traits
         assert len(attack_data) == 0, f"Failed to parse: {text}"
         parent_section["attack"] = section
-
 
     def parse_mythic_ability(parent_section):
         def _handle_addons(activation, text):

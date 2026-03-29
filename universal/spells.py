@@ -17,7 +17,6 @@ from universal.creatures import universal_handle_save_dc
 from universal.universal import extract_link
 from universal.utils import get_text, split_maintain_parens
 
-
 # Class → tradition mapping for auto-inserting tradition from class name
 _CLASS_TRADITIONS = {
     "Wizard": "Arcane",
@@ -131,12 +130,8 @@ def parse_spell_block(name, text, action_type=None, traits=None):
         addons = ["DC", "attack", "Focus"]
         for addon in addons:
             for note in section["notes"]:
-                assert addon not in note, (
-                    f"{addon} should not be in spell notes: {note}"
-                )
-                assert addon.lower() not in note, (
-                    f"{addon} should not be in spell notes: {note}"
-                )
+                assert addon not in note, f"{addon} should not be in spell notes: {note}"
+                assert addon.lower() not in note, f"{addon} should not be in spell notes: {note}"
         remains = []
     if len(remains) > 0:
         parts.insert(0, ", ".join(remains))
