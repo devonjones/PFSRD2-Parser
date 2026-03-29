@@ -231,14 +231,16 @@ def parse_ability_from_html(
     # Also extract Stage N fields
     _extract_stage_fields(ability, bs)
 
-    # Convert saving_throw and damage from strings to structured arrays
-    _normalize_structured_fields(ability)
-
     # Extract result blocks
     extract_result_blocks(ability, bs, break_on_any_bold=break_results_on_any_bold)
 
-    # Extract and unwrap links from addon/result field values
+    # Extract and unwrap links from all field values (addons, results, stages)
+    # Must run BEFORE _normalize_structured_fields so saving_throw/damage
+    # strings are clean when parsed to objects
     _extract_links_from_addon_fields(ability)
+
+    # Convert saving_throw and damage from strings to structured arrays
+    _normalize_structured_fields(ability)
 
     # Extract links from remaining text
     links = get_links(bs, unwrap=True)
@@ -530,25 +532,10 @@ def _normalize_structured_fields(ability):
     structured objects for these fields.
     """
     if "saving_throw" in ability and isinstance(ability["saving_throw"], str):
-        # Strip links before parsing (they may contain condition links)
-        st_text = ability["saving_throw"]
-        if "<a" in st_text:
-            st_bs = BeautifulSoup(st_text, "html.parser")
-            st_links = get_links(st_bs, unwrap=True)
-            if st_links:
-                ability.setdefault("links", []).extend(st_links)
-            st_text = str(st_bs).strip()
-        ability["saving_throw"] = [_parse_save_dc(st_text)]
+        # Links already stripped by _extract_links_from_addon_fields
+        ability["saving_throw"] = [_parse_save_dc(ability["saving_throw"])]
     if "damage" in ability and isinstance(ability["damage"], str):
-        # Strip links before parsing
-        dmg_text = ability["damage"]
-        if "<a" in dmg_text:
-            dmg_bs = BeautifulSoup(dmg_text, "html.parser")
-            dmg_links = get_links(dmg_bs, unwrap=True)
-            if dmg_links:
-                ability.setdefault("links", []).extend(dmg_links)
-            dmg_text = str(dmg_bs).strip()
-        ability["damage"] = _parse_damage(dmg_text)
+        ability["damage"] = _parse_damage(ability["damage"])
     if "range" in ability and isinstance(ability["range"], str):
         range_obj = universal_handle_range(ability["range"])
         if range_obj:
