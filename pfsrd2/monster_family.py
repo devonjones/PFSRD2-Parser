@@ -505,9 +505,17 @@ def _split_spell_nodes(nodes):
                     spell_html_parts.append(str(n))
                     i += 1
 
-                # Parse the spell block
+                # Parse the spell block — but only if it has spell level
+                # indicators (<b>1st</b>, <b>Cantrips</b>, etc.). Narrative
+                # spell descriptions without levels stay as abilities.
                 spell_text = "".join(spell_html_parts).strip()
-                if spell_text:
+                has_levels = any(
+                    f"<b>{lvl}</b>" in spell_text or f"<b>\n{lvl}</b>" in spell_text
+                    for lvl in ["1st", "2nd", "3rd", "4th", "5th", "6th",
+                                "7th", "8th", "9th", "10th", "Cantrips",
+                                "Constant"]
+                )
+                if spell_text and has_levels:
                     try:
                         spell = parse_spell_block(name, spell_text)
                         spells.append(spell)
@@ -518,6 +526,13 @@ def _split_spell_nodes(nodes):
                             bs_part = BeautifulSoup(part_html, "html.parser")
                             for child in bs_part.children:
                                 ability_nodes.append(child)
+                else:
+                    # No spell levels — keep as ability
+                    ability_nodes.append(node)
+                    for part_html in spell_html_parts:
+                        bs_part = BeautifulSoup(part_html, "html.parser")
+                        for child in bs_part.children:
+                            ability_nodes.append(child)
                 continue
 
         ability_nodes.append(node)

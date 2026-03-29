@@ -72,6 +72,11 @@ def parse_spell_block(name, text, action_type=None, traits=None):
     if traits:
         section["traits"] = traits
 
+    # Strip trailing "DC" from name (some family HTML bakes it in)
+    if name.endswith(" DC"):
+        name = name[:-3]
+        section["name"] = name
+
     # Parse tradition and spell type from name
     name_parts = name.split(" ")
     _handle_traditions(name_parts)
@@ -115,7 +120,14 @@ def parse_spell_block(name, text, action_type=None, traits=None):
             return r
 
         remains = [_fix_parens(r) for r in remains]
-        section["notes"] = remains
+        # Strip any HTML tags from notes
+        clean_notes = []
+        for note in remains:
+            if "<" in note:
+                note_bs = BeautifulSoup(note, "html.parser")
+                note = get_text(note_bs).strip()
+            clean_notes.append(note)
+        section["notes"] = clean_notes
         addons = ["DC", "attack", "Focus"]
         for addon in addons:
             for note in section["notes"]:
