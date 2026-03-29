@@ -29,7 +29,6 @@ from universal.ability import parse_ability_from_html
 from universal.creatures import (
     universal_handle_perception,
     universal_handle_range,
-    universal_handle_save_dc,
     universal_handle_senses,
     universal_handle_special_senses,
     write_creature,
@@ -37,6 +36,7 @@ from universal.creatures import (
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass
 from universal.monster_ability import monster_ability_db_pass as universal_monster_ability_db_pass
+from universal.spells import is_spell_name, parse_spell_block
 from universal.universal import (
     aon_pass,
     build_object,
@@ -1891,169 +1891,6 @@ def process_offensive_action(section):
         assert len(attack_data) == 0, f"Failed to parse: {text}"
         parent_section["attack"] = section
 
-    def parse_spells(parent_section):
-        def _handle_traditions(name_parts):
-            tradition = {
-                "Wizard": "Arcane",
-                "Magus": "Arcane",
-                "Bard": "Occult",
-                "Witch": "Occult",
-                "Champion": "Divine",
-                "Cleric": "Divine",
-                "Druid": "Primal",
-            }
-            for caster in tradition:
-                if caster in name_parts:
-                    if tradition[caster] not in name_parts:
-                        name_parts.insert(0, tradition[caster])
-                    return
-
-        def _handle_bloodline(section):
-            if "Bloodline" in section["spell_type"]:
-                parts = section["spell_type"].split(" ")
-                if len(parts) == 4:
-                    # Old format: [class, bloodline_name, "Bloodline", "Spells"]
-                    section["bloodline"] = parts[1]
-                    del parts[1]
-                    section["spell_type"] = " ".join(parts)
-
-        valid_traditions = {"Occult", "Arcane", "Divine", "Primal", "Unique"}
-
-        text = parent_section["text"]
-        del parent_section["text"]
-        section = {
-            "type": "stat_block_section",
-            "subtype": "spells",
-            "name": parent_section["name"],
-        }
-        if "action_type" in parent_section:
-            section["action_type"] = parent_section["action_type"]
-            del parent_section["action_type"]
-        if "traits" in parent_section:
-            section["traits"] = parent_section["traits"]
-            del parent_section["traits"]
-
-        name_parts = section["name"].split(" ")
-        _handle_traditions(name_parts)
-        if name_parts[-1] not in ["Formulas", "Rituals"] and "Monk" not in name_parts:
-            if name_parts[0] in valid_traditions:
-                section["spell_tradition"] = name_parts.pop(0)
-            elif len(name_parts) > 1 and name_parts[1] in valid_traditions:
-                # Class name before tradition (e.g. "Wizard Arcane Spells")
-                section["spell_tradition"] = name_parts.pop(1)
-        if name_parts[-1] == "Rituals" and len(name_parts) > 1:
-            name_parts.pop(0)
-        section["spell_type"] = " ".join(name_parts)
-        _handle_bloodline(section)
-        parts = split_maintain_parens(text, ";")
-        tt_parts = split_maintain_parens(parts.pop(0), ",")
-        remains = []
-        for tt in tt_parts:
-            tt = tt.strip()
-            if tt == "":
-                continue
-            chunks = tt.split(" ")
-            if tt.startswith("DC"):
-                section["saving_throw"] = universal_handle_save_dc(tt)
-            elif tt.startswith("attack") or tt.startswith("spell attack"):
-                section["spell_attack"] = int(chunks.pop())
-            elif tt.endswith("Focus Points"):
-                section["focus_points"] = int(tt.replace(" Focus Points", "").strip())
-            elif tt.endswith("Focus Point"):
-                section["focus_points"] = int(tt.replace(" Focus Point", "").strip())
-            else:
-                remains.append(tt)
-        if len(remains) > 0 and remains != tt_parts:
-
-            def _fix_parens(r):
-                if r.startswith("("):
-                    r = r[1:]
-                if r.endswith(")") and r.find("(") == -1:
-                    r = r[:-1]
-                return r
-
-            remains = [_fix_parens(r) for r in remains]
-            section["notes"] = remains
-            addons = ["DC", "attack", "Focus"]
-            for addon in addons:
-                for note in section["notes"]:
-                    assert addon not in note, f"{addon} should not be in spell notes: {note}"
-                    assert (
-                        addon.lower() not in note
-                    ), f"{addon} should not be in spell notes: {note}"
-            remains = []
-        if len(remains) > 0:
-            parts.insert(0, ", ".join(remains))
-        spell_lists = []
-        assert len(parts) > 0, section
-        for p in parts:
-            spell_lists.append(parse_spell_list(section, p))
-        section["spell_list"] = spell_lists
-        parent_section["spells"] = section
-
-    def parse_spell_list(section, part):
-        try:
-            spell_list = {"type": "stat_block_section", "subtype": "spell_list"}
-            bs = BeautifulSoup(part, "html.parser")
-            if not bs.b and section["name"] == "Alchemical Formulas":
-                pass
-            else:
-                level_text = get_text(bs.b.extract())
-                if level_text == "Constant":
-                    spell_list["constant"] = True
-                    level_text = get_text(bs.b.extract())
-                if level_text == "Cantrips":
-                    spell_list["cantrips"] = True
-                    level_text = get_text(bs.b.extract())
-                m = re.match(r"^\(?(\d*)[snrt][tdh]\)?$", level_text)
-                assert m, f"Failed to parse spells: {part}"
-                spell_list["level"] = int(m.groups()[0])
-                spell_list["level_text"] = level_text
-            spells_html = split_maintain_parens(str(bs), ",")
-            spells = []
-            for html in spells_html:
-                spells.append(parse_spell(html))
-            spell_list["spells"] = spells
-            return spell_list
-        except AttributeError as e:
-            print(section)
-            pprint(part)
-            raise e
-
-    def parse_spell(html):
-        spell = {"type": "stat_block_section", "subtype": "spell"}
-        bsh = BeautifulSoup(html, "html.parser")
-        hrefs = bsh.find_all("a")
-        links = []
-        for a in hrefs:
-            _, link = extract_link(a)
-            links.append(link)
-        spell["links"] = links
-        text = get_text(bsh)
-        if text.find("(") > -1:
-            parts = [t.strip() for t in text.split("(")]
-            assert len(parts) == 2, f"Failed to parse spell: {html}"
-            spell["name"] = parts.pop(0)
-            count_text = parts.pop().replace(")", "")
-            spell["count_text"] = count_text
-            count = None
-            for split in [";", ","]:
-                remainder = []
-                for part in count_text.split(split):
-                    m = re.match(r"^x\d*$", part.strip())
-                    if m:
-                        assert count is None, f"Failed to parse spell: {html}"
-                        count = int(part.strip()[1:])
-                    else:
-                        remainder.append(part)
-                    count_text = split.join(remainder)
-            if count:
-                spell["count"] = count
-        else:
-            spell["name"] = text
-            spell["count"] = 1
-        return spell
-
     def parse_mythic_ability(parent_section):
         def _handle_addons(activation, text):
             addons = {}
@@ -2173,17 +2010,6 @@ def process_offensive_action(section):
         parent_section["name"] = name
         parent_section["ability"] = ability
 
-    def _is_spell(section):
-        parts = section["name"].split(" ")
-        if section["name"] in constants.CREATURE_NOT_SPELLS:
-            return False
-        return bool(
-            "Spells" in parts
-            or section["name"].endswith("Rituals")
-            or section["name"].endswith("Formulas")
-            or section["name"].endswith("Hexes")
-        )
-
     def _is_mythic_ability(section):
         return section["name"] == "Mythic Power"
 
@@ -2203,9 +2029,14 @@ def process_offensive_action(section):
     if section["name"] in ["Melee", "Ranged"]:
         section["offensive_action_type"] = "attack"
         parse_attack_action(section, section["name"].lower())
-    elif _is_spell(section):
+    elif is_spell_name(section["name"]):
         section["offensive_action_type"] = "spells"
-        parse_spells(section)
+        section["spells"] = parse_spell_block(
+            section["name"],
+            section.pop("text"),
+            action_type=section.pop("action_type", None),
+            traits=section.pop("traits", None),
+        )
     elif _is_mythic_ability(section):
         section["offensive_action_type"] = "mythic_ability"
         parse_mythic_ability(section)

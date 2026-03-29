@@ -14,6 +14,7 @@ from universal.ability import parse_abilities_from_nodes
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.monster_ability import monster_ability_db_pass
+from universal.spells import is_spell_name, parse_spell_block
 from universal.universal import (
     aon_pass,
     entity_pass,
@@ -301,47 +302,50 @@ def _consolidate_creation_changes(struct):
         }
         if section.get("text"):
             subtype["text"] = section["text"]
-        if section.get("abilities"):
+        if section.get("abilities") or section.get("spells"):
             change = {
                 "type": "stat_block_section",
                 "subtype": "change",
                 "text": section.get("name", ""),
                 "change_category": "abilities",
-                "abilities": section["abilities"],
-                "effects": [
+            }
+            if section.get("abilities"):
+                change["abilities"] = section["abilities"]
+                change["effects"] = [
                     {
                         "target": "$.defense.automatic_abilities",
                         "operation": "add_items",
                         "source": "$.monster_family.subtypes[*].changes[*].abilities",
                     }
-                ],
-            }
+                ]
+            if section.get("spells"):
+                change["spells"] = section["spells"]
             if section.get("links"):
                 change["links"] = section["links"]
             subtype["changes"] = [change]
         # Recurse into subsections
         child_subtypes = []
         for sub in section.get("sections", []):
-            if sub.get("abilities"):
+            if sub.get("abilities") or sub.get("spells"):
                 child_subtypes.append(_build_subtype(sub))
         if child_subtypes:
             subtype["subtypes"] = child_subtypes
         return subtype
 
     def _has_abilities_anywhere(section):
-        """Check if section or any subsection has abilities."""
-        if section.get("abilities"):
+        """Check if section or any subsection has abilities or spells."""
+        if section.get("abilities") or section.get("spells"):
             return True
         return any(_has_abilities_anywhere(s) for s in section.get("sections", []))
 
-    # Collect ability sections into subtypes — check both top level and subsections
+    # Collect ability/spell sections into subtypes — check both top level and subsections
     for section in struct.get("sections", []):
         if _has_abilities_anywhere(section):
-            # Section has abilities directly or in subsections
-            if section.get("abilities"):
+            # Section has abilities/spells directly or in subsections
+            if section.get("abilities") or section.get("spells"):
                 subtypes.append(_build_subtype(section))
             else:
-                # Abilities are in subsections only (e.g., "Creating a Vampire"
+                # Abilities/spells are in subsections only (e.g., "Creating a Vampire"
                 # has "Basic Vampire Abilities" as a child)
                 kept_subs = []
                 for sub in section.get("sections", []):
@@ -414,10 +418,13 @@ def _extract_section_abilities(struct):
                 bs = BeautifulSoup(text, "html.parser")
                 # Don't extract from text that's purely in tables
                 if bs.find("b") and not (bs.find("table") and not bs.find("b", recursive=False)):
-                    abilities = _extract_abilities_from_bs(bs)
-                    if abilities:
+                    abilities, spells = _extract_abilities_from_bs(bs)
+                    if abilities or spells:
                         section["text"] = str(bs).strip()
+                    if abilities:
                         section.setdefault("abilities", []).extend(abilities)
+                    if spells:
+                        section.setdefault("spells", []).extend(spells)
         for sub in section.get("sections", []):
             _process(sub)
 
@@ -426,30 +433,145 @@ def _extract_section_abilities(struct):
 
 
 def _extract_abilities_from_bs(bs):
-    """Extract abilities from a BS object using the unified parser.
+    """Extract abilities and spells from a BS object.
 
     Finds the first <b> tag not inside a <table> and collects all nodes
-    from there onward, then passes them to the unified ability parser.
+    from there onward. Detects spell blocks (by name) and routes them to
+    the universal spell parser. Remaining nodes go to the ability parser.
+
+    Returns: (abilities_list_or_None, spells_list_or_None)
     """
+
     first_b = None
     for b in bs.find_all("b"):
         if not b.find_parent("table"):
             first_b = b
             break
     if not first_b:
-        return None
+        return None, None
     # If the <b> is inside an <a>, start from the <a> instead
     start_node = first_b
     if first_b.parent and first_b.parent.name == "a":
         start_node = first_b.parent
     # Collect all nodes from the start onward (siblings only)
-    ability_nodes = []
+    all_nodes = []
     node = start_node
     while node:
         next_node = node.next_sibling
-        ability_nodes.append(node.extract())
+        all_nodes.append(node.extract())
         node = next_node
-    return parse_abilities_from_nodes(ability_nodes)
+
+    # Split into spell blocks and ability nodes
+    spells, ability_nodes = _split_spell_nodes(all_nodes)
+
+    abilities = parse_abilities_from_nodes(ability_nodes) if ability_nodes else None
+    return abilities, spells if spells else None
+
+
+def _split_spell_nodes(nodes):
+    """Split nodes into spell blocks and remaining ability nodes.
+
+    Walks through nodes looking for <b> tags whose text matches
+    is_spell_name(). When found, collects that <b> and all following
+    nodes (spell levels like <b>3rd</b>, <b>Cantrips</b>) until a <br>
+    before a non-spell <b> or end of nodes. The collected nodes become
+    the HTML text for parse_spell_block.
+    """
+    spells = []
+    ability_nodes = []
+    i = 0
+
+    while i < len(nodes):
+        node = nodes[i]
+
+        # Check if this node is a <b> with a spell name
+        if isinstance(node, Tag) and node.name == "b":
+            name = get_text(node).strip()
+            if is_spell_name(name):
+                # Collect this spell block — name <b> + all following text/levels
+                spell_html_parts = []
+                i += 1  # skip the name <b>
+                while i < len(nodes):
+                    n = nodes[i]
+                    # Stop at <br> if next significant node is a non-spell <b>
+                    if isinstance(n, Tag) and n.name == "br":
+                        # Peek ahead for next <b>
+                        next_b = _find_next_b(nodes, i + 1)
+                        if next_b is None or not _is_spell_level(get_text(next_b).strip()):
+                            break
+                    spell_html_parts.append(str(n))
+                    i += 1
+
+                # Parse the spell block — but only if it has spell level
+                # indicators (<b>1st</b>, <b>Cantrips</b>, etc.). Narrative
+                # spell descriptions without levels stay as abilities.
+                spell_text = "".join(spell_html_parts).strip()
+                has_levels = any(
+                    f"<b>{lvl}</b>" in spell_text or f"<b>\n{lvl}</b>" in spell_text
+                    for lvl in [
+                        "1st",
+                        "2nd",
+                        "3rd",
+                        "4th",
+                        "5th",
+                        "6th",
+                        "7th",
+                        "8th",
+                        "9th",
+                        "10th",
+                        "Cantrips",
+                        "Constant",
+                    ]
+                )
+                if spell_text and has_levels:
+                    spell = parse_spell_block(name, spell_text)
+                    spells.append(spell)
+                else:
+                    # No spell levels — keep as ability
+                    ability_nodes.append(node)
+                    for part_html in spell_html_parts:
+                        bs_part = BeautifulSoup(part_html, "html.parser")
+                        for child in bs_part.children:
+                            ability_nodes.append(child)
+                continue
+
+        ability_nodes.append(node)
+        i += 1
+
+    return spells, ability_nodes
+
+
+def _find_next_b(nodes, start):
+    """Find the next <b> tag in nodes starting from index start."""
+    for i in range(start, len(nodes)):
+        n = nodes[i]
+        if isinstance(n, Tag) and n.name == "b":
+            return n
+        if isinstance(n, Tag) and n.name == "a" and n.find("b"):
+            return n.find("b")
+    return None
+
+
+_SPELL_LEVEL_NAMES = {
+    "1st",
+    "2nd",
+    "3rd",
+    "4th",
+    "5th",
+    "6th",
+    "7th",
+    "8th",
+    "9th",
+    "10th",
+    "Constant",
+}
+
+
+def _is_spell_level(text):
+    """Check if text looks like a spell level name."""
+    if text in _SPELL_LEVEL_NAMES:
+        return True
+    return bool(text.startswith("Cantrips"))
 
 
 def monster_family_link_pass(struct):
