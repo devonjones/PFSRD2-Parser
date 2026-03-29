@@ -170,10 +170,14 @@ def _parse_spell_list(section, part):
             level_text = get_text(bs.b.extract())
             if level_text == "Constant":
                 spell_list["constant"] = True
-                level_text = get_text(bs.b.extract())
+                level_text = get_text(bs.b.extract()) if bs.b else ""
             if level_text == "Cantrips":
                 spell_list["cantrips"] = True
-                level_text = get_text(bs.b.extract())
+                level_text = get_text(bs.b.extract()) if bs.b else ""
+            elif level_text.startswith("Cantrips"):
+                # Combined format: "Cantrips (3rd)" as single <b> tag
+                spell_list["cantrips"] = True
+                level_text = level_text.replace("Cantrips", "").strip()
             m = re.match(r"^\(?(\d*)[snrt][tdh]\)?$", level_text)
             assert m, f"Failed to parse spells: {part}"
             spell_list["level"] = int(m.groups()[0])
