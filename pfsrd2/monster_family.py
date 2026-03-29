@@ -524,7 +524,7 @@ def _split_spell_nodes(nodes):
                         "Constant",
                         "Rituals",
                     ]
-                ) or bool(re.search(r"<b>\s*Cantrips\s*\(", spell_text))
+                ) or re.search(r"<b>\s*Cantrips\s*\(", spell_text)
                 if spell_text and has_levels:
                     spell = parse_spell_block(name, spell_text)
                     spells.append(spell)

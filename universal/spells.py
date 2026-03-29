@@ -265,7 +265,7 @@ def _parse_spell_list(section, part):
                     section["saving_throw"] = universal_handle_save_dc(dc_text)
                     # Remove DC text from bs
                     bs_str = str(bs)
-                    bs_str = bs_str.split(";", 1)[-1] if ";" in bs_str else bs_str
+                    bs_str = bs_str.partition(";")[2]
                     bs = BeautifulSoup(bs_str, "html.parser")
                 spell_list["level"] = 0
                 spell_list["level_text"] = "Rituals"
