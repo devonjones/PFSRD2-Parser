@@ -67,7 +67,6 @@ from universal.utils import (
     extract_pfs_availability,
     extract_pfs_note,
     get_text,
-    get_unique_tag_set,
     is_tag_named,
     log_element,
     normalize_pfs_to_object,
