@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 
 import pfsrd2.constants as constants
 from universal.creatures import universal_handle_save_dc
-from universal.universal import extract_link
+from universal.universal import extract_link, extract_modifiers
 from universal.utils import get_text, split_maintain_parens
 
 # Class → tradition mapping for auto-inserting tradition from class name
@@ -89,9 +89,24 @@ def parse_spell_block(name, text, action_type=None, traits=None):
     section["spell_type"] = " ".join(name_parts)
     _handle_bloodline(section)
 
-    # Parse header metadata (DC, attack, focus points) from first semicolon part
+    # Parse header metadata (DC, attack, focus points) from first semicolon part.
+    # Some headers use ";" between DC and attack: "DC 24; attack +16; <b>4th</b>"
+    # so also consume subsequent parts that look like header metadata.
     parts = split_maintain_parens(text, ";")
-    tt_parts = split_maintain_parens(parts.pop(0), ",")
+    header_text = parts.pop(0)
+    while parts:
+        next_stripped = parts[0].strip()
+        if next_stripped.startswith("attack") or next_stripped.startswith(
+            "spell attack"
+        ):
+            header_text += ", " + parts.pop(0)
+        elif next_stripped.endswith("Focus Points") or next_stripped.endswith(
+            "Focus Point"
+        ):
+            header_text += ", " + parts.pop(0)
+        else:
+            break
+    tt_parts = split_maintain_parens(header_text, ",")
     remains = []
     for tt in tt_parts:
         tt = tt.strip()
@@ -101,7 +116,18 @@ def parse_spell_block(name, text, action_type=None, traits=None):
         if tt.startswith("DC"):
             section["saving_throw"] = universal_handle_save_dc(tt)
         elif tt.startswith("attack") or tt.startswith("spell attack"):
-            section["spell_attack"] = int(chunks.pop())
+            # Strip parenthesized modifiers: "attack +16 (+10 bosun)"
+            att_text, att_mods = extract_modifiers(tt)
+            att_chunks = att_text.split(" ")
+            att_val = att_chunks.pop()
+            if att_val == "varies":
+                section["spell_attack_text"] = "varies"
+            else:
+                section["spell_attack"] = int(att_val)
+            if att_mods:
+                section.setdefault("notes", []).append(
+                    "spell attack " + tt[tt.index("(") :]
+                )
         elif tt.endswith("Focus Points"):
             section["focus_points"] = int(tt.replace(" Focus Points", "").strip())
         elif tt.endswith("Focus Point"):
@@ -126,22 +152,35 @@ def parse_spell_block(name, text, action_type=None, traits=None):
                 note_bs = BeautifulSoup(note, "html.parser")
                 note = get_text(note_bs).strip()
             clean_notes.append(note)
-        section["notes"] = clean_notes
+        section.setdefault("notes", []).extend(clean_notes)
         addons = ["DC", "attack", "Focus"]
         for addon in addons:
-            for note in section["notes"]:
+            for note in clean_notes:
                 assert addon not in note, f"{addon} should not be in spell notes: {note}"
                 assert addon.lower() not in note, f"{addon} should not be in spell notes: {note}"
         remains = []
     if len(remains) > 0:
         parts.insert(0, ", ".join(remains))
 
+    # Merge parts that have no <b> tag into the previous part.
+    # This handles Rituals where "DC 29" and spell names are separated by ";".
+    merged_parts = []
+    for p in parts:
+        p_stripped = p.strip()
+        if not p_stripped:
+            continue
+        bs_check = BeautifulSoup(p_stripped, "html.parser")
+        if not bs_check.b and merged_parts:
+            merged_parts[-1] += "; " + p_stripped
+        else:
+            merged_parts.append(p_stripped)
+
     # Parse each remaining part as a spell list.
     # Some parts start with "as young X, plus" referencing another subtype —
     # strip that prefix and store it as notes.
     spell_lists = []
-    assert len(parts) > 0, section
-    for p in parts:
+    assert len(merged_parts) > 0, section
+    for p in merged_parts:
         p_stripped, ref_note = _strip_reference_prefix(p)
         if ref_note:
             section.setdefault("notes", []).append(ref_note)
@@ -197,22 +236,84 @@ def _parse_spell_list(section, part):
         bs = BeautifulSoup(part, "html.parser")
         if not bs.b and section["name"] == "Alchemical Formulas":
             pass
+        elif not bs.b:
+            # No <b> tag — may be a bare level like "8th spell, spell"
+            # after "as X, plus 8th ..." reference prefix stripping
+            text_content = get_text(bs).strip()
+            m_bare = re.match(r"^(\d+)[snrt][tdh]\s", text_content)
+            if m_bare:
+                spell_list["level"] = int(m_bare.group(1))
+                spell_list["level_text"] = m_bare.group(0).strip()
+                # Remove the level text from the remaining content
+                bs_str = str(bs)
+                # Find first space after the level ordinal
+                idx = bs_str.find(m_bare.group(0).strip())
+                if idx >= 0:
+                    bs_str = bs_str[idx + len(m_bare.group(0).strip()) :]
+                    bs = BeautifulSoup(bs_str, "html.parser")
+            else:
+                raise AssertionError(
+                    f"No <b> tag in spell list part for"
+                    f" {section['name']}: {part[:200]}"
+                )
         else:
-            level_text = get_text(bs.b.extract())
-            if level_text == "Constant":
-                spell_list["constant"] = True
-                level_text = get_text(bs.b.extract()) if bs.b else ""
-            if level_text == "Cantrips":
-                spell_list["cantrips"] = True
-                level_text = get_text(bs.b.extract()) if bs.b else ""
-            elif level_text.startswith("Cantrips"):
-                # Combined format: "Cantrips (3rd)" as single <b> tag
-                spell_list["cantrips"] = True
-                level_text = level_text.replace("Cantrips", "").strip()
-            m = re.match(r"^\(?(\d*)[snrt][tdh]\)?$", level_text)
-            assert m, f"Failed to parse spells: {part}"
-            spell_list["level"] = int(m.groups()[0])
-            spell_list["level_text"] = level_text
+            level_text = get_text(bs.b.extract()).strip()
+            if level_text == "Rituals":
+                # Rituals have no level — just DC and spell names.
+                # DC may be in the remaining text: "DC 29; <a>plant growth</a>"
+                remaining = get_text(bs).strip()
+                if remaining.startswith("DC"):
+                    dc_text = remaining.split(";")[0].strip()
+                    section["saving_throw"] = universal_handle_save_dc(dc_text)
+                    # Remove DC text from bs
+                    bs_str = str(bs)
+                    bs_str = bs_str.split(";", 1)[-1] if ";" in bs_str else bs_str
+                    bs = BeautifulSoup(bs_str, "html.parser")
+                spell_list["level"] = 0
+                spell_list["level_text"] = "Rituals"
+            else:
+                if level_text == "Constant":
+                    spell_list["constant"] = True
+                    level_text = get_text(bs.b.extract()).strip() if bs.b else ""
+                elif level_text.startswith("Constant"):
+                    # Combined: "Constant (1st)" in single <b> tag
+                    spell_list["constant"] = True
+                    level_text = level_text.replace("Constant", "").strip()
+                if level_text == "Cantrips":
+                    spell_list["cantrips"] = True
+                    level_text = get_text(bs.b.extract()).strip() if bs.b else ""
+                    if not level_text:
+                        # Level outside <b>: "<b>Cantrips</b> (4th) ..."
+                        remaining = get_text(bs).strip()
+                        m_cantrip = re.match(
+                            r"^\((\d+)[snrt][tdh](?:,[^)]+)?\)", remaining
+                        )
+                        if m_cantrip:
+                            level_text = m_cantrip.group(0)
+                            # Remove the level text from bs
+                            bs_str = str(bs)
+                            bs_str = bs_str[bs_str.index(")") + 1 :]
+                            bs = BeautifulSoup(bs_str, "html.parser")
+                elif level_text.startswith("Cantrips"):
+                    # Combined format: "Cantrips (3rd)" as single <b> tag
+                    spell_list["cantrips"] = True
+                    level_text = level_text.replace("Cantrips", "").strip()
+                # Extract primary level from variant formats like
+                # "(2nd, 1st for bosun)" — store variants as note
+                m = re.match(r"^\(?(\d+)[snrt][tdh]\)?$", level_text)
+                if not m:
+                    m_variant = re.match(
+                        r"^\((\d+)[snrt][tdh](,.+)\)$", level_text
+                    )
+                    assert m_variant, f"Failed to parse spells: {part}"
+                    spell_list["level_text"] = level_text
+                    section.setdefault("notes", []).append(
+                        level_text
+                    )
+                    spell_list["level"] = int(m_variant.group(1))
+                else:
+                    spell_list["level"] = int(m.groups()[0])
+                    spell_list["level_text"] = level_text
         spells_html = split_maintain_parens(str(bs), ",")
         spells = []
         for html in spells_html:

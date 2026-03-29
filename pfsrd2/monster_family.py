@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 
 from bs4 import BeautifulSoup, Tag
@@ -521,8 +522,9 @@ def _split_spell_nodes(nodes):
                         "10th",
                         "Cantrips",
                         "Constant",
+                        "Rituals",
                     ]
-                )
+                ) or bool(re.search(r"<b>\s*Cantrips\s*\(", spell_text))
                 if spell_text and has_levels:
                     spell = parse_spell_block(name, spell_text)
                     spells.append(spell)
@@ -571,7 +573,7 @@ def _is_spell_level(text):
     """Check if text looks like a spell level name."""
     if text in _SPELL_LEVEL_NAMES:
         return True
-    return bool(text.startswith("Cantrips"))
+    return bool(text.startswith("Cantrips") or text == "Rituals")
 
 
 def monster_family_link_pass(struct):

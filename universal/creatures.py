@@ -256,6 +256,8 @@ def universal_handle_save_dc(text):
             continue
         elif part.isnumeric():
             save_dc["dc"] = int(part)
+        elif part == "varies":
+            save_dc["dc_text"] = "varies"
         elif part in types:
             save_dc["save_type"] = types[part]
         else:
