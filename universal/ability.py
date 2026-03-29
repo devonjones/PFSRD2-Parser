@@ -541,7 +541,10 @@ def _normalize_structured_fields(ability):
         if range_obj:
             ability["range"] = range_obj
         else:
-            del ability["range"]  # Can't parse — remove rather than leave invalid string
+            assert False, (
+                f"Ability '{ability.get('name', '?')}' has unparseable "
+                f"range string: {ability['range']}"
+            )
 
 
 def _parse_save_dc(text):
