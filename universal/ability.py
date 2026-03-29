@@ -678,18 +678,37 @@ def _extract_stage_fields(ability, bs):
 # --------------------------------------------------------------------------- #
 
 
+_AFFLICTION_ADDON_KEYWORDS = {
+    "Saving Throw",
+    "Stage",
+    "Onset",
+    "Maximum Duration",
+    "Effect",
+}
+
+
 def _detect_affliction(ability):
     """Detect if an ability is an affliction and set ability_type.
 
     An ability is an affliction if it has a saving_throw field OR
     at least one stage. When detected, ability_type is set to "affliction".
+
+    IMPORTANT: Also asserts that structural keywords didn't leak into the
+    text field. If they did, a bold field wasn't extracted properly.
     """
     has_saving_throw = "saving_throw" in ability
     has_stages = bool(ability.get("stages"))
 
     if has_saving_throw or has_stages:
-        # Partial affliction — still flag it
         ability["ability_type"] = "affliction"
+        # Assert no structural keywords leaked into text
+        text = ability.get("text", "")
+        if text:
+            for keyword in _AFFLICTION_ADDON_KEYWORDS:
+                assert keyword not in text, (
+                    f"Affliction '{ability.get('name', '?')}' has "
+                    f"unextracted '{keyword}' in text: {text[:100]}"
+                )
 
 
 def _detect_universal_monster_ability(ability):
