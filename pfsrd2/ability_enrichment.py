@@ -84,9 +84,7 @@ def _try_inline_enrich(curs, ability_id, raw_json):
     if result is None:
         return None
     enriched_json = json.dumps(result, sort_keys=True, ensure_ascii=False)
-    update_enriched_json(
-        curs, ability_id, enriched_json, ENRICHMENT_VERSION, "inline"
-    )
+    update_enriched_json(curs, ability_id, enriched_json, ENRICHMENT_VERSION, "inline")
     return enriched_json
 
 
@@ -334,9 +332,7 @@ def _enrich_abilities(abilities, conn, edition=None):
             existing = fetch_ability_by_hash(curs, identity_hash)
 
             if existing is None:
-                ability_id = insert_ability_record(
-                    curs, ability["name"], identity_hash, raw_json
-                )
+                ability_id = insert_ability_record(curs, ability["name"], identity_hash, raw_json)
                 # Inline enrich new records so enrichment is
                 # available on this same parser run
                 enriched = _try_inline_enrich(curs, ability_id, raw_json)
@@ -344,13 +340,15 @@ def _enrich_abilities(abilities, conn, edition=None):
                     _merge_enrichment(ability, enriched)
             else:
                 ability_id = existing["ability_id"]
+                now_stale = existing["stale"]
                 if existing["raw_json"] != raw_json:
                     mark_stale(curs, ability_id, raw_json)
+                    now_stale = True
 
                 # Apply enrichment
-                if existing["enriched_json"] and not existing["stale"]:
+                if existing["enriched_json"] and not now_stale:
                     _merge_enrichment(ability, existing["enriched_json"])
-                elif existing["stale"] or not existing["enriched_json"]:
+                elif now_stale or not existing["enriched_json"]:
                     # Stale or unenriched — re-enrich inline
                     enriched = _try_inline_enrich(curs, ability_id, raw_json)
                     if enriched:
@@ -412,13 +410,15 @@ def ability_enrichment_pass(struct, conn=None):
                     _merge_enrichment(ability, enriched)
             else:
                 ability_id = existing["ability_id"]
+                now_stale = existing["stale"]
                 if existing["raw_json"] != raw_json:
                     mark_stale(curs, ability_id, raw_json)
+                    now_stale = True
 
                 # Apply enrichment
-                if existing["enriched_json"] and not existing["stale"]:
+                if existing["enriched_json"] and not now_stale:
                     _merge_enrichment(ability, existing["enriched_json"])
-                elif existing["stale"] or not existing["enriched_json"]:
+                elif now_stale or not existing["enriched_json"]:
                     # Stale or unenriched — re-enrich inline (regex + LLM)
                     enriched = _try_inline_enrich(curs, ability_id, raw_json)
                     if enriched:
