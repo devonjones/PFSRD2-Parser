@@ -4,6 +4,7 @@ import sys
 
 from bs4 import BeautifulSoup, Tag
 
+from pfsrd2.action import extract_action_type
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
@@ -91,8 +92,6 @@ _MA_ADDON_LABELS = {
     "Prerequisite",
     "Cost",
     "Range",
-    "Saving Throw",
-    "Damage",
 }
 
 
@@ -146,8 +145,6 @@ def section_pass(struct):
         Must run before _handle_source so the <b>Source</b> tag is the
         first child. Returns extracted action_type or None.
         """
-        from pfsrd2.action import extract_action_type
-
         if "text" not in section:
             return None
         text, action_type = extract_action_type(section["text"])
@@ -183,8 +180,6 @@ def section_pass(struct):
         "duration",
         "cost",
         "range",
-        "saving_throw",
-        "damage",
         "text",
         "links",
         "critical_success",

@@ -625,7 +625,7 @@ def _extract_span_traits(bs, ability):
                 # Split valued traits like "Additive 1" → name + value
                 m = re.match(r"^(.+?)\s+(\d+)$", trait["name"])
                 if m:
-                    trait["name"] = m.group(1)
+                    trait["name"] = m.group(1).strip()
                     trait["value"] = m.group(2)
                 traits.append(trait)
             span.decompose()

@@ -316,9 +316,9 @@ def _extract_spell_name(bs, spell, struct):
     action_spans = bs.find_all("span", {"class": "action"})
     if action_spans:
         title = action_spans[0].get("title", "")
-        if title in _ACTION_TITLE_MAP:
+        if title in ACTION_TITLE_MAP:
             spell["action_type"] = build_object(
-                "stat_block_section", "action_type", _ACTION_TITLE_MAP[title]
+                "stat_block_section", "action_type", ACTION_TITLE_MAP[title]
             )
         for span in action_spans:
             span.decompose()
@@ -348,9 +348,6 @@ def _extract_spell_name(bs, spell, struct):
         if clean_name:
             spell["name"] = clean_name
             struct["name"] = clean_name
-
-
-_ACTION_TITLE_MAP = ACTION_TITLE_MAP  # noqa: F811 — alias for local usage
 
 
 def _extract_traits(bs, spell):

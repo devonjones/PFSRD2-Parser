@@ -8,9 +8,9 @@ from bs4 import BeautifulSoup
 
 from pfsrd2.action import ACTION_TITLE_MAP
 from pfsrd2.license import license_consolidation_pass, license_pass
-from universal.ability import parse_ability_from_html
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.traits import trait_db_pass
+from universal.ability import parse_ability_from_html
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.markdown import md
@@ -263,9 +263,6 @@ def find_feat(struct):
             return section
 
 
-_ACTION_TITLE_MAP = ACTION_TITLE_MAP  # noqa: F811 — alias for local usage
-
-
 def feat_extract_pass(struct):
     """Extract structured fields from the feat stat block text."""
     feat = find_feat(struct)
@@ -372,9 +369,9 @@ def _extract_action_type(feat):
     action_span = bs.find("span", {"class": "action"})
     if action_span:
         title = action_span.get("title", "")
-        assert title in _ACTION_TITLE_MAP, f"Unknown action title: {title}"
+        assert title in ACTION_TITLE_MAP, f"Unknown action title: {title}"
         feat["action_type"] = build_object(
-            "stat_block_section", "action_type", _ACTION_TITLE_MAP[title]
+            "stat_block_section", "action_type", ACTION_TITLE_MAP[title]
         )
 
 
