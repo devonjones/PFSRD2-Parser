@@ -267,11 +267,17 @@ def run_classify(conn, args):
     uncategorized = fetch_uncategorized_abilities(curs)
     print(f"Uncategorized abilities: {len(uncategorized)}")
 
-    # Step 0: Deterministic from action type
+    # Step 0: Deterministic from action type — ALWAYS overrides.
+    # A Reaction is always reactive, 1/2/3 actions always offensive.
+    # Runs against ALL records, not just uncategorized, because
+    # creature link majority vote can produce wrong results for these.
+    all_records = curs.execute(
+        "SELECT ability_id, raw_json, ability_category FROM ability_records"
+    ).fetchall()
     det_classified = 0
-    for record in uncategorized:
+    for record in all_records:
         cat = _deterministic_category_from_raw(record["raw_json"])
-        if cat:
+        if cat and cat != record["ability_category"]:
             if not args.dry_run:
                 update_ability_category(curs, record["ability_id"], cat)
             det_classified += 1
