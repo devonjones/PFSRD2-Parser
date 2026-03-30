@@ -32,9 +32,8 @@ from pfsrd2.sql.enrichment import (
     update_is_uma,
 )
 from pfsrd2.ability_enrichment import _deterministic_category
+from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
-
-ENRICHMENT_VERSION = 2
 
 
 def _format_regex_result(result, ability):

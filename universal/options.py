@@ -2,8 +2,12 @@ import argparse
 import os
 import sys
 
+from pfsrd2.ability_enrichment import set_inline_enrich
+
 
 def exec_main(options, args, function, localdir):
+    if getattr(options, "no_enrich", False):
+        set_inline_enrich(False)
     if not options.output and not options.dryrun:
         sys.stderr.write("-o/--output required")
         sys.exit(1)
@@ -49,6 +53,13 @@ def option_parser(usage):
         default=False,
         action="store_true",
         help="Write json to stdout",
+    )
+    parser.add_argument(
+        "--no-enrich",
+        dest="no_enrich",
+        default=False,
+        action="store_true",
+        help="Skip inline regex enrichment (use for from-scratch rebuilds)",
     )
     parser.add_argument("files", nargs="*", help="Input files to process")
     return parser

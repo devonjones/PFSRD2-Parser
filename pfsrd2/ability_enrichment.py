@@ -8,6 +8,7 @@ import json
 import re
 
 from pfsrd2.ability_identity import ability_to_raw_json, compute_identity_hash
+from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION, extract_all
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import (
     fetch_ability_by_hash,
@@ -15,12 +16,40 @@ from pfsrd2.sql.enrichment import (
     insert_ability_record,
     insert_creature_link,
     mark_stale,
+    update_enriched_json,
 )
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 
 # Fields that enrichment can add to an ability object.
 # These are the structured mechanics extracted from text.
 ENRICHMENT_FIELDS = ("saving_throw", "damage", "area", "range", "frequency")
+
+# Module-level flag: when False, skip inline regex enrichment.
+# Set via --no-enrich CLI flag, passed through to parsers.
+_inline_enrich = True
+
+
+def set_inline_enrich(enabled):
+    """Enable/disable inline regex enrichment during parser runs."""
+    global _inline_enrich
+    _inline_enrich = enabled
+
+
+def _try_inline_enrich(curs, ability_id, raw_json):
+    """Run regex extraction on a new/unenriched record and store the result.
+
+    Called inline during parser enrichment passes so that enrichment
+    is available on the same run, avoiding the parser→enrich→parser cycle.
+    Returns the enriched_json string if enrichment was produced, else None.
+    """
+    if not _inline_enrich:
+        return None
+    result, _missed = extract_all(raw_json)
+    if result is None:
+        return None
+    enriched_json = json.dumps(result, sort_keys=True, ensure_ascii=False)
+    update_enriched_json(curs, ability_id, enriched_json, ENRICHMENT_VERSION, "regex_inline")
+    return enriched_json
 
 
 def _get_creature_metadata(struct):
@@ -267,7 +296,14 @@ def _enrich_abilities(abilities, conn, edition=None):
             existing = fetch_ability_by_hash(curs, identity_hash)
 
             if existing is None:
-                insert_ability_record(curs, ability["name"], identity_hash, raw_json)
+                ability_id = insert_ability_record(
+                    curs, ability["name"], identity_hash, raw_json
+                )
+                # Inline enrich new records so enrichment is
+                # available on this same parser run
+                enriched = _try_inline_enrich(curs, ability_id, raw_json)
+                if enriched:
+                    _merge_enrichment(ability, enriched)
             else:
                 ability_id = existing["ability_id"]
                 if existing["raw_json"] != raw_json:
@@ -276,6 +312,13 @@ def _enrich_abilities(abilities, conn, edition=None):
                 # Apply enrichment if available and not stale
                 if existing["enriched_json"] and not existing["stale"]:
                     _merge_enrichment(ability, existing["enriched_json"])
+                elif not existing["enriched_json"]:
+                    # Existing but unenriched — try inline
+                    enriched = _try_inline_enrich(
+                        curs, ability_id, raw_json
+                    )
+                    if enriched:
+                        _merge_enrichment(ability, enriched)
 
                 # Apply ability_category from DB (skip result blocks/stages,
                 # and skip if already set deterministically above)
@@ -327,6 +370,10 @@ def ability_enrichment_pass(struct, conn=None):
 
             if existing is None:
                 ability_id = insert_ability_record(curs, ability["name"], identity_hash, raw_json)
+                # Inline enrich new records
+                enriched = _try_inline_enrich(curs, ability_id, raw_json)
+                if enriched:
+                    _merge_enrichment(ability, enriched)
             else:
                 ability_id = existing["ability_id"]
                 if existing["raw_json"] != raw_json:
@@ -335,6 +382,11 @@ def ability_enrichment_pass(struct, conn=None):
                 # Apply enrichment if available and not stale
                 if existing["enriched_json"] and not existing["stale"]:
                     _merge_enrichment(ability, existing["enriched_json"])
+                elif not existing["enriched_json"]:
+                    # Existing but unenriched — try inline
+                    enriched = _try_inline_enrich(curs, ability_id, raw_json)
+                    if enriched:
+                        _merge_enrichment(ability, enriched)
 
                 # Wire up UMA from monster abilities DB
                 if existing.get("is_uma"):
