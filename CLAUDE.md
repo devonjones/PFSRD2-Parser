@@ -287,6 +287,16 @@ As pipelines run, errors are recorded in `bin/errors.pf2.<type>.log` files. **AL
 
 **CRITICAL**: The script exit code is 0 even when files fail — errors are logged to the file, not signaled via exit code. You MUST check the log file to know if there were errors. A missing log file means zero errors.
 
+### Zero Errors Policy
+
+**The only acceptable state is 100% of files parsing clean.** There is no such thing as a "pre-existing" error that you can ignore. If a parser run produces errors, those errors must be fixed before committing — even if a prior change caused them. Every error means data loss for that file's content.
+
+- If you find errors after your change: fix them, whether your change caused them or not.
+- If an error requires an HTML fix: fix the HTML in pfsrd2-web.
+- If an error requires a parser fix: fix the parser code.
+- Never commit with known errors. Never dismiss errors as "pre-existing" or "not my problem."
+- The error seed workflow exists for fast iteration, not for accepting partial success.
+
 ### Error Seed Iteration Workflow
 
 **ALWAYS use this workflow when fixing parser errors.** It avoids re-running thousands of files on every iteration.
