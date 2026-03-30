@@ -311,7 +311,8 @@ def _parse_spell_list(section, part):
         spells_html = split_maintain_parens(str(bs), ",")
         spells = []
         for html in spells_html:
-            spells.append(_parse_spell(html))
+            if html.strip():
+                spells.append(_parse_spell(html))
         spell_list["spells"] = spells
         return spell_list
     except AttributeError as e:

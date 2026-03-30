@@ -7,6 +7,10 @@ Each extractor returns a structured object or None.
 import json
 import re
 
+# Version number for tracking which enrichment logic produced the data.
+# Bump when extract_all behavior changes.
+ENRICHMENT_VERSION = 2
+
 # --- Damage type mapping ---
 
 # Single-word damage types that appear in "XdY <type> damage" patterns

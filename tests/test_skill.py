@@ -4,6 +4,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from pfsrd2.skill import (
+    _SKILL_BOLD_LABELS,
     KINGDOM_ATTRIBUTES,
     SKILL_ATTRIBUTES,
     _clean_html_fields,
@@ -11,14 +12,13 @@ from pfsrd2.skill import (
     _convert_skill_text,
     _extract_action_text,
     _extract_action_type_from_name,
-    _extract_bold_fields,
     _extract_key_ability,
     _extract_sample_tasks,
     _promote_skill_fields,
     action_extract_pass,
     find_skill,
 )
-from universal.universal import extract_result_blocks, extract_source_from_bs
+from universal.universal import extract_bold_fields, extract_result_blocks, extract_source_from_bs
 from universal.utils import is_empty, remove_empty_fields, strip_block_tags
 
 
@@ -215,50 +215,50 @@ class TestExtractBoldFields:
     def test_extracts_requirement(self):
         section = {}
         text = "<b>Requirements</b> You have a shield raised."
-        _extract_bold_fields(section, text)
+        extract_bold_fields(section, BeautifulSoup(text, "html.parser"), _SKILL_BOLD_LABELS)
         assert section["requirement"] == "You have a shield raised."
 
     def test_singular_requirement_normalizes(self):
         section = {}
         text = "<b>Requirement</b> You are trained."
-        _extract_bold_fields(section, text)
+        extract_bold_fields(section, BeautifulSoup(text, "html.parser"), _SKILL_BOLD_LABELS)
         assert section["requirement"] == "You are trained."
 
     def test_extracts_trigger(self):
         section = {}
         text = "<b>Trigger</b> An enemy hits you."
-        _extract_bold_fields(section, text)
+        extract_bold_fields(section, BeautifulSoup(text, "html.parser"), _SKILL_BOLD_LABELS)
         assert section["trigger"] == "An enemy hits you."
 
     def test_extracts_frequency(self):
         section = {}
         text = "<b>Frequency</b> once per day"
-        _extract_bold_fields(section, text)
+        extract_bold_fields(section, BeautifulSoup(text, "html.parser"), _SKILL_BOLD_LABELS)
         assert section["frequency"] == "once per day"
 
     def test_extracts_cost(self):
         section = {}
         text = "<b>Cost</b> 1 Focus Point"
-        _extract_bold_fields(section, text)
+        extract_bold_fields(section, BeautifulSoup(text, "html.parser"), _SKILL_BOLD_LABELS)
         assert section["cost"] == "1 Focus Point"
 
     def test_strips_trailing_semicolon(self):
         section = {}
         text = "<b>Requirements</b> You have a shield raised;"
-        _extract_bold_fields(section, text)
+        extract_bold_fields(section, BeautifulSoup(text, "html.parser"), _SKILL_BOLD_LABELS)
         assert section["requirement"] == "You have a shield raised"
 
     def test_multiple_fields(self):
         section = {}
         text = "<b>Requirements</b> trained;<b>Trigger</b> enemy moves"
-        _extract_bold_fields(section, text)
+        extract_bold_fields(section, BeautifulSoup(text, "html.parser"), _SKILL_BOLD_LABELS)
         assert section["requirement"] == "trained"
         assert section["trigger"] == "enemy moves"
 
     def test_ignores_unknown_bold(self):
         section = {}
         text = "<b>Unknown</b> some text"
-        _extract_bold_fields(section, text)
+        extract_bold_fields(section, BeautifulSoup(text, "html.parser"), _SKILL_BOLD_LABELS)
         assert "unknown" not in section
 
 

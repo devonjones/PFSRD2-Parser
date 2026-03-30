@@ -235,7 +235,9 @@ class TestAbilityEnrichmentPass:
         curs = db.cursor()
         counts = count_ability_records(curs)
         assert counts["total"] == 1
-        assert counts["unenriched"] == 1
+        # Inline enrichment now enriches on first run (regex extracts
+        # "12d6 acid damage" → damage field)
+        assert counts["unenriched"] == 0
 
         abilities = fetch_abilities_for_creature(curs, "128")
         assert len(abilities) == 1

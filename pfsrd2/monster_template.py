@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from pfsrd2.ability_enrichment import template_ability_enrichment_pass
 from pfsrd2.change_enrichment import change_enrichment_pass
 from pfsrd2.change_extraction import (
+    collect_ability_nodes,
     parse_adjustments_table,
     parse_change,
 )
@@ -214,25 +215,10 @@ def _try_extract_changes(source_section, mt):
 
 def _extract_abilities_from_bs(bs):
     """Extract abilities from a BS object using the unified parser."""
-    first_b = None
-    for b in bs.find_all("b"):
-        if not b.find_parent("table"):
-            first_b = b
-            break
-    if not first_b:
+    nodes = collect_ability_nodes(bs)
+    if not nodes:
         return None
-    # If the <b> is inside an <a>, start from the <a> instead
-    start_node = first_b
-    if first_b.parent and first_b.parent.name == "a":
-        start_node = first_b.parent
-    # Collect all nodes from the start onward (siblings only)
-    ability_nodes = []
-    node = start_node
-    while node:
-        next_node = node.next_sibling
-        ability_nodes.append(node.extract())
-        node = next_node
-    return parse_abilities_from_nodes(ability_nodes)
+    return parse_abilities_from_nodes(nodes)
 
 
 def _extract_adjustments_pass(struct):
