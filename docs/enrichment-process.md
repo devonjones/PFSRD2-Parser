@@ -17,12 +17,14 @@ Don't use this process when:
 ## Architecture Overview
 
 ```
-Parser run → populates enrichment DB (raw records)
+Parser run → populates enrichment DB + inline regex enrichment → enriched JSON output
+                    ↓ (for classification and LLM tiers)
+Offline enrichment → classify → LLM tier → manual review
                     ↓
-Offline enrichment → regex tier → LLM tier → manual review
-                    ↓
-Next parser run → merges enriched fields into JSON output
+Next parser run → merges classification/LLM enrichment (regex already applied inline)
 ```
+
+**Inline enrichment:** Parsers now run regex extraction inline when inserting new records or finding unenriched existing records. This means a single parser run produces regex-enriched output without a separate enrichment step. The offline `pf2_enrich_abilities` pipeline is still needed for classification (requires creature links from all parsers) and LLM extraction (too slow for inline). Use `--no-enrich` flag to skip inline enrichment during from-scratch rebuilds where classification should happen first.
 
 Two databases in `~/.pfsrd2/`:
 - **`enrichment.db`** — Working state. Ability records, creature links, change records, categories, UMA flags. Can be blown away and rebuilt.
@@ -244,13 +246,17 @@ The LLM tier clears the `needs_review` flag for each type it processes (whether 
 
 ### 11. Apply Enrichments
 
-Re-run the parser to merge enriched data into JSON output:
+**Regex enrichment is applied inline** — the parser's enrichment pass calls `extract_all()` when inserting new records or finding unenriched existing records. No separate step needed for regex-extractable fields.
+
+For **classification and LLM enrichment**, re-run the parser to merge that data into JSON output:
 
 ```bash
 PFSRD2-Parser/bin/pf2_run_creatures.sh
 ```
 
-The enrichment pass checks the DB for each object's identity hash. If enriched data exists and isn't stale, it merges the structured fields into the object.
+The enrichment pass checks the DB for each object's identity hash. If enriched data exists and isn't stale, it merges the structured fields into the object. New records are regex-enriched inline.
+
+Use `--no-enrich` to skip inline enrichment (e.g., during from-scratch rebuilds where you want classification to run first).
 
 ### 12. Review the Output
 
@@ -291,7 +297,7 @@ The `enrichment_version` on each record tracks which version of the extraction c
 
 ### Stale Detection
 
-When the parser re-runs and an object's text has changed (identity hash differs), the old enrichment record is marked `stale`. Stale enrichments are not applied. The offline enrichment process can re-extract them.
+When the parser re-runs and an object's text has changed (identity hash differs), the old enrichment record is marked `stale`. Stale enrichments are not applied. The inline enrichment automatically creates and enriches a new record with the updated content, so the next merge applies the fresh enrichment. The offline enrichment process (`--all`) also re-extracts stale records.
 
 ## Ability Classification
 
