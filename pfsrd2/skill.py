@@ -1,14 +1,15 @@
 import json
 import os
-import re
 import sys
 
 from bs4 import BeautifulSoup
 
+from pfsrd2.action import ACTION_TITLE_MAP
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
 from pfsrd2.sql.traits import trait_db_pass
+from universal.ability import parse_ability_from_html
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.markdown import md
@@ -16,9 +17,6 @@ from universal.universal import (
     aon_pass,
     build_object,
     entity_pass,
-    extract_bold_fields,
-    extract_link,
-    extract_result_blocks,
     extract_source_from_bs,
     game_id_pass,
     get_links,
@@ -182,14 +180,6 @@ def _strip_details_tags(struct):
         _strip(section)
 
 
-_ACTION_TITLE_MAP = {
-    "Single Action": "One Action",
-    "Two Actions": "Two Actions",
-    "Three Actions": "Three Actions",
-    "Reaction": "Reaction",
-    "Free Action": "Free Action",
-}
-
 _RESULT_FIELDS = [
     "Critical Success",
     "Critical Failure",
@@ -316,60 +306,80 @@ def _extract_action_type_from_name(section):
     action_span = bs.find("span", {"class": "action"})
     if action_span:
         title = action_span.get("title", "")
-        assert title in _ACTION_TITLE_MAP, f"Unknown action title: {title}"
+        assert title in ACTION_TITLE_MAP, f"Unknown action title: {title}"
         section["action_type"] = build_object(
-            "stat_block_section", "action_type", _ACTION_TITLE_MAP[title]
+            "stat_block_section", "action_type", ACTION_TITLE_MAP[title]
         )
 
 
 def _extract_action_text(section):
-    """Extract traits, source, requirements, and result blocks from action text."""
+    """Extract traits, source, requirements, and result blocks from action text.
+
+    Delegates to the unified ability parser after extracting the skill-specific
+    source field and splitting on <hr> (pre-hr bold fields stay in the caller
+    because extract_bold_fields needs the <hr> boundary to avoid consuming
+    description text into field values).
+    """
     bs = BeautifulSoup(section["text"], "html.parser")
 
-    # 1. Extract trait spans
-    traits = []
-    for span in bs.find_all("span", {"class": "trait"}):
-        a = span.find("a")
-        if a:
-            name, trait_link = extract_link(a)
-            traits.append(
-                build_object("stat_block_section", "trait", name.strip(), {"link": trait_link})
-            )
-        span.decompose()
-    if traits:
-        section["traits"] = traits
-
-    # 2. Strip letter-spacing spans (trait separators)
-    for span in bs.find_all("span", style=lambda s: s and "letter-spacing" in s):
-        span.decompose()
-
-    # 3. Extract source
+    # Source extraction stays here — skills use singular "source" field
     source = extract_source_from_bs(bs)
     if source:
         section["source"] = source
 
-    # 4. Split on <hr> — pre-hr is stats (requirements etc), post-hr is description
+    # Strip action spans — already extracted from name by
+    # _extract_action_type_from_name
+    for span in bs.find_all("span", {"class": "action"}):
+        span.decompose()
+
+    # Split on <hr>: pre-hr has traits + bold fields (requirement, etc.),
+    # post-hr has description and result blocks.
     hr = bs.find("hr")
     if hr:
-        # Everything before <hr> is the stats area
         pre_hr_parts = []
         for sibling in list(hr.previous_siblings):
             pre_hr_parts.insert(0, str(sibling))
             sibling.extract()
         hr.decompose()
-        pre_hr_text = "".join(pre_hr_parts).strip()
+        pre_hr_html = "".join(pre_hr_parts).strip()
+        # Extract traits and bold fields from pre-hr area
+        pre_ability = parse_ability_from_html(
+            section.get("name", ""),
+            pre_hr_html,
+            action_type=section.get("action_type"),
+            addon_labels=_SKILL_BOLD_LABELS,
+        )
+        for key in (
+            "traits",
+            "requirement",
+            "trigger",
+            "frequency",
+            "cost",
+            "duration",
+            "effect",
+            "links",
+        ):
+            if key in pre_ability:
+                section[key] = pre_ability[key]
 
-        # Extract bold fields from pre-hr area
-        _extract_bold_fields(section, pre_hr_text)
-
-    # 5. Extract result blocks from remaining text (post-hr / description area)
-    extract_result_blocks(section, bs)
-
-    # 6. Clean remaining text
-    text = str(bs).strip()
-    text = re.sub(r"^(<br/?>[\s]*)+", "", text)
-    text = re.sub(r"(<br/?>[\s]*)+$", "", text)
-    section["text"] = text.strip()
+    # Extract result blocks, links, and text from post-hr content
+    post_ability = parse_ability_from_html(
+        section.get("name", ""),
+        str(bs).strip(),
+        action_type=section.get("action_type"),
+        addon_labels=_SKILL_BOLD_LABELS,
+    )
+    for key in ("text", "critical_success", "success", "failure", "critical_failure"):
+        if key in post_ability:
+            section[key] = post_ability[key]
+    # Merge links from post-hr (text links) with pre-hr links (field links)
+    if "links" in post_ability:
+        section.setdefault("links", []).extend(post_ability["links"])
+    # Also pick up traits from post-hr if any (unlikely but safe)
+    if "traits" in post_ability and "traits" not in section:
+        section["traits"] = post_ability["traits"]
+    if "text" not in post_ability:
+        section.pop("text", None)
 
 
 _SKILL_BOLD_LABELS = {
@@ -380,12 +390,6 @@ _SKILL_BOLD_LABELS = {
     "Cost",
     "Duration",
 }
-
-
-def _extract_bold_fields(section, text):
-    """Extract Requirements, Trigger, Frequency, Cost from pre-hr text."""
-    bs = BeautifulSoup(text, "html.parser")
-    extract_bold_fields(section, bs, _SKILL_BOLD_LABELS)
 
 
 def skill_struct_pass(struct):

@@ -6,9 +6,11 @@ import sys
 
 from bs4 import BeautifulSoup
 
+from pfsrd2.action import ACTION_TITLE_MAP
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.traits import trait_db_pass
+from universal.ability import parse_ability_from_html
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.markdown import md
@@ -261,15 +263,6 @@ def find_feat(struct):
             return section
 
 
-_ACTION_TITLE_MAP = {
-    "Single Action": "One Action",
-    "Two Actions": "Two Actions",
-    "Three Actions": "Three Actions",
-    "Reaction": "Reaction",
-    "Free Action": "Free Action",
-}
-
-
 def feat_extract_pass(struct):
     """Extract structured fields from the feat stat block text."""
     feat = find_feat(struct)
@@ -376,9 +369,9 @@ def _extract_action_type(feat):
     action_span = bs.find("span", {"class": "action"})
     if action_span:
         title = action_span.get("title", "")
-        assert title in _ACTION_TITLE_MAP, f"Unknown action title: {title}"
+        assert title in ACTION_TITLE_MAP, f"Unknown action title: {title}"
         feat["action_type"] = build_object(
-            "stat_block_section", "action_type", _ACTION_TITLE_MAP[title]
+            "stat_block_section", "action_type", ACTION_TITLE_MAP[title]
         )
 
 
@@ -606,75 +599,32 @@ def _extract_called_actions_from_section(section):
 
 
 def _parse_called_action(div):
-    """Parse a calledAction div into a structured ability object."""
-    ability = {
-        "type": "stat_block_section",
-        "subtype": "ability",
-        "ability_type": "called",
-        "sections": [],
-    }
+    """Parse a calledAction div into a structured ability object.
 
-    # Extract name from h3 title
+    Extracts name/link from h3, source, and trailing h2 sections (all
+    feat-specific), then delegates trait/bold-field/result/text extraction
+    to the unified ability parser.
+    """
+    # 1. Extract name from h3 title (feat-specific — abilities use <b>)
+    name = ""
+    link = None
     h3 = div.find("h3")
     if h3:
         a = h3.find("a")
         if a:
             name, link = extract_link(a)
-            ability["name"] = name.strip()
-            ability["link"] = link
+            name = name.strip()
         else:
-            ability["name"] = get_text(h3).strip()
+            name = get_text(h3).strip()
         h3.decompose()
 
-    # Extract traits
-    traits = []
-    for span in div.find_all("span", class_=lambda c: c and c.startswith("trait")):
-        a = span.find("a")
-        if a:
-            name, trait_link = extract_link(a)
-            traits.append(
-                build_object("stat_block_section", "trait", name.strip(), {"link": trait_link})
-            )
-        span.decompose()
-    if traits:
-        ability["traits"] = traits
-
-    # Remove letter-spacing separators
-    for span in div.find_all("span", style=lambda s: s and "letter-spacing" in s):
-        span.decompose()
-
-    # Extract source
+    # 2. Extract source before ability parser (stores as sources array)
     source = extract_source_from_bs(div)
-    if source:
-        ability["sources"] = [source]
 
-    # Extract bold fields (Trigger, Requirements, Frequency, etc.) from pre-hr
-    # content, then use post-hr as description text
-    hr = div.find("hr")
-    if hr:
-        pre_hr_parts = []
-        for sibling in list(hr.previous_siblings):
-            pre_hr_parts.insert(0, str(sibling))
-            sibling.extract()
-        hr.decompose()
-        pre_hr_text = "".join(pre_hr_parts).strip()
-        _extract_bold_fields(ability, pre_hr_text)
-
-    # Remove leading br tags from remaining content
-    for child in list(div.children):
-        if getattr(child, "name", None) == "br":
-            child.decompose()
-        elif isinstance(child, str) and not child.strip():
-            child.extract()
-        else:
-            break
-
-    # Extract result blocks from post-hr content
-    extract_result_blocks(ability, div, break_on_any_bold=True)
-
-    # Extract trailing h2 sections (e.g. "Spellstrike Specifics")
+    # 3. Extract trailing h2 sections (e.g. "Spellstrike Specifics")
+    trailing_sections = []
     for h2 in list(div.find_all("h2", class_="title")):
-        name = get_text(h2).strip()
+        sec_name = get_text(h2).strip()
         parts = []
         nodes_to_remove = []
         node = h2.next_sibling
@@ -688,18 +638,71 @@ def _parse_called_action(div):
         for n in nodes_to_remove:
             n.extract()
         h2.decompose()
-        if name or text:
-            section = {"name": name, "type": "section", "sections": []}
+        if sec_name or text:
+            section = {"name": sec_name, "type": "section", "sections": []}
             if text:
                 section["text"] = text
-            ability["sections"].append(section)
+            trailing_sections.append(section)
 
-    # Remaining inner HTML is the description (preserve tags for link extraction)
-    text = "".join(str(c) for c in div.children).strip()
-    text = re.sub(r"^(<br/?>[\s]*)+", "", text)
-    text = re.sub(r"(<br/?>[\s]*)+$", "", text)
-    if text.strip():
-        ability["text"] = text.strip()
+    # 4. Split on <hr> — pre-hr has traits + bold fields, post-hr has
+    #    result blocks + description. Bold fields need the hr boundary
+    #    to avoid consuming description text.
+    hr = div.find("hr")
+    if hr:
+        pre_hr_parts = []
+        for sibling in list(hr.previous_siblings):
+            pre_hr_parts.insert(0, str(sibling))
+            sibling.extract()
+        hr.decompose()
+        pre_hr_html = "".join(pre_hr_parts).strip()
+        # Extract traits and bold fields from pre-hr
+        pre_ability = parse_ability_from_html(
+            name,
+            pre_hr_html,
+            ability_type="called",
+            link=link,
+            addon_labels=_FEAT_BOLD_LABELS,
+        )
+        # Also run archetype extraction on pre-hr bold fields
+        _attach_archetype_note(pre_ability)
+    else:
+        pre_ability = {}
+
+    # 5. Extract result blocks, links, and text from post-hr content
+    post_html = "".join(str(c) for c in div.children).strip()
+    ability = parse_ability_from_html(
+        name,
+        post_html,
+        ability_type="called",
+        link=link,
+        addon_labels=_FEAT_BOLD_LABELS,
+        break_results_on_any_bold=True,
+    )
+
+    # 6. Merge pre-hr fields into ability (pre-hr takes precedence)
+    for key in (
+        "traits",
+        "requirement",
+        "prerequisite",
+        "trigger",
+        "frequency",
+        "cost",
+        "duration",
+        "effect",
+        "access",
+        "special",
+        "archetype",
+    ):
+        if key in pre_ability:
+            ability[key] = pre_ability[key]
+    # Merge links from pre-hr (field links) with post-hr (text links)
+    if "links" in pre_ability:
+        ability.setdefault("links", []).extend(pre_ability["links"])
+
+    # 7. Attach caller-extracted fields
+    if source:
+        ability["sources"] = [source]
+    ability["sections"] = trailing_sections
 
     return ability
 
