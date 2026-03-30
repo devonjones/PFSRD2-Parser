@@ -2,6 +2,8 @@
 
 from bs4 import BeautifulSoup
 
+from pfsrd2.action import extract_action_type
+from pfsrd2.change_extraction import collect_ability_nodes
 from universal.ability import (
     parse_abilities_from_nodes,
     parse_ability_from_html,
@@ -409,7 +411,6 @@ class TestActionTypeFix:
 
     def test_span_without_title_skipped(self):
         """Spans without title attribute should not crash extract_action_type."""
-        from pfsrd2.action import extract_action_type
 
         # A trait span has class="trait" but no title
         html = '<span class="trait"><a>Move</a></span> Some text.'
@@ -418,7 +419,6 @@ class TestActionTypeFix:
 
     def test_action_span_with_title_extracted(self):
         """Normal action spans with title should still work."""
-        from pfsrd2.action import extract_action_type
 
         html = '<span class="action" title="Single Action">[one-action]</span> Some text.'
         text, action = extract_action_type(html)
@@ -430,7 +430,6 @@ class TestCollectAbilityNodes:
     """Tests for the shared collect_ability_nodes utility."""
 
     def test_collects_from_first_bold(self):
-        from pfsrd2.change_extraction import collect_ability_nodes
 
         bs = BeautifulSoup(
             "Intro text <b>Ability</b> description <b>Another</b> more",
@@ -445,11 +444,9 @@ class TestCollectAbilityNodes:
         assert "Intro text" not in text
 
     def test_skips_bold_in_table(self):
-        from pfsrd2.change_extraction import collect_ability_nodes
 
         bs = BeautifulSoup(
-            "<table><tr><td><b>Table Bold</b></td></tr></table>"
-            "<b>Real Ability</b> text",
+            "<table><tr><td><b>Table Bold</b></td></tr></table>" "<b>Real Ability</b> text",
             "html.parser",
         )
         nodes = collect_ability_nodes(bs)
@@ -459,7 +456,6 @@ class TestCollectAbilityNodes:
         assert "Table Bold" not in text
 
     def test_returns_none_without_bold(self):
-        from pfsrd2.change_extraction import collect_ability_nodes
 
         bs = BeautifulSoup("Just some text without bold.", "html.parser")
         nodes = collect_ability_nodes(bs)
@@ -467,7 +463,6 @@ class TestCollectAbilityNodes:
 
     def test_bold_inside_link(self):
         """<a><b>Name</b></a> should start from the <a>, not the <b>."""
-        from pfsrd2.change_extraction import collect_ability_nodes
 
         bs = BeautifulSoup(
             'Intro <a href="test"><b>Linked</b></a> description',

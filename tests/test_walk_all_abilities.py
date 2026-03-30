@@ -64,11 +64,7 @@ class TestWalkAllAbilities:
 
     def test_skips_result_blocks(self):
         """Result block keys should not be recursed into."""
-        struct = {
-            "abilities": [
-                _ability("Trip", critical_success="The target falls prone.")
-            ]
-        }
+        struct = {"abilities": [_ability("Trip", critical_success="The target falls prone.")]}
         result = list(_walk_all_abilities(struct))
         assert len(result) == 1
 
@@ -86,17 +82,7 @@ class TestWalkAllAbilities:
     def test_deeply_nested(self):
         struct = {
             "monster_family": {
-                "subtypes": [
-                    {
-                        "sections": [
-                            {
-                                "changes": [
-                                    {"abilities": [_ability("Deep")]}
-                                ]
-                            }
-                        ]
-                    }
-                ]
+                "subtypes": [{"sections": [{"changes": [{"abilities": [_ability("Deep")]}]}]}]
             }
         }
         result = list(_walk_all_abilities(struct))

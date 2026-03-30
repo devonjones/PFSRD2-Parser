@@ -4,6 +4,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from pfsrd2.skill import (
+    _SKILL_BOLD_LABELS,
     KINGDOM_ATTRIBUTES,
     SKILL_ATTRIBUTES,
     _clean_html_fields,
@@ -14,12 +15,10 @@ from pfsrd2.skill import (
     _extract_key_ability,
     _extract_sample_tasks,
     _promote_skill_fields,
-    _SKILL_BOLD_LABELS,
     action_extract_pass,
     find_skill,
 )
-from universal.universal import extract_bold_fields
-from universal.universal import extract_result_blocks, extract_source_from_bs
+from universal.universal import extract_bold_fields, extract_result_blocks, extract_source_from_bs
 from universal.utils import is_empty, remove_empty_fields, strip_block_tags
 
 
