@@ -14,6 +14,35 @@ from universal.universal import build_object, get_links
 from universal.utils import get_text
 
 
+def collect_ability_nodes(bs):
+    """Collect ability nodes from a BS object.
+
+    Finds the first <b> tag not inside a <table> and collects all sibling
+    nodes from there onward (extracting them from the tree).
+
+    Returns: list of extracted nodes, or None if no <b> tag found.
+    """
+    first_b = None
+    for b in bs.find_all("b"):
+        if not b.find_parent("table"):
+            first_b = b
+            break
+    if not first_b:
+        return None
+    # If the <b> is inside an <a>, start from the <a> instead
+    start_node = first_b
+    if first_b.parent and first_b.parent.name == "a":
+        start_node = first_b.parent
+    # Collect all nodes from the start onward (siblings only)
+    nodes = []
+    node = start_node
+    while node:
+        next_node = node.next_sibling
+        nodes.append(node.extract())
+        node = next_node
+    return nodes
+
+
 def parse_change(li):
     """Parse a single <li> into a change object, extracting abilities if present."""
     change = build_object("stat_block_section", "change", "")

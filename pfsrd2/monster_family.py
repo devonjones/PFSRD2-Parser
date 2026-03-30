@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup, Tag
 
 from pfsrd2.ability_enrichment import template_ability_enrichment_pass
 from pfsrd2.change_enrichment import change_enrichment_pass
-from pfsrd2.change_extraction import parse_change
+from pfsrd2.change_extraction import collect_ability_nodes, parse_change
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
@@ -436,31 +436,14 @@ def _extract_section_abilities(struct):
 def _extract_abilities_from_bs(bs):
     """Extract abilities and spells from a BS object.
 
-    Finds the first <b> tag not inside a <table> and collects all nodes
-    from there onward. Detects spell blocks (by name) and routes them to
-    the universal spell parser. Remaining nodes go to the ability parser.
+    Uses shared collect_ability_nodes to find and extract nodes, then
+    splits into spell blocks and ability nodes.
 
     Returns: (abilities_list_or_None, spells_list_or_None)
     """
-
-    first_b = None
-    for b in bs.find_all("b"):
-        if not b.find_parent("table"):
-            first_b = b
-            break
-    if not first_b:
+    all_nodes = collect_ability_nodes(bs)
+    if not all_nodes:
         return None, None
-    # If the <b> is inside an <a>, start from the <a> instead
-    start_node = first_b
-    if first_b.parent and first_b.parent.name == "a":
-        start_node = first_b.parent
-    # Collect all nodes from the start onward (siblings only)
-    all_nodes = []
-    node = start_node
-    while node:
-        next_node = node.next_sibling
-        all_nodes.append(node.extract())
-        node = next_node
 
     # Split into spell blocks and ability nodes
     spells, ability_nodes = _split_spell_nodes(all_nodes)

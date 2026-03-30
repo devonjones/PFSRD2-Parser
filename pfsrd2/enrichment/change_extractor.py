@@ -14,6 +14,40 @@ ENRICHMENT_VERSION = 17
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
 
+# PF2e creature types — traits that represent fundamental creature classification.
+# These go to $.creature_type.creature_types. All other traits go to $.traits.
+_CREATURE_TYPES = {
+    "Aberration",
+    "Animal",
+    "Astral",
+    "Beast",
+    "Celestial",
+    "Construct",
+    "Dragon",
+    "Dream",
+    "Elemental",
+    "Ethereal",
+    "Fey",
+    "Fiend",
+    "Fungus",
+    "Giant",
+    "Humanoid",
+    "Monitor",
+    "Ooze",
+    "Petitioner",
+    "Plant",
+    "Spirit",
+    "Time",
+    "Undead",
+}
+
+
+def _trait_target(name):
+    """Return the correct JSON path target for a trait name."""
+    if name in _CREATURE_TYPES:
+        return "$.creature_type.creature_types"
+    return "$.traits"
+
 
 def _normalize_dashes(text):
     """Normalize en-dash/em-dash to ASCII hyphen for numeric parsing."""
@@ -374,18 +408,20 @@ def _build_trait_effects(text, links=None):
 
     m = re.search(r"replace the (\w+) trait with the (\w+) trait", t)
     if m:
+        old_name = m.group(1).title()
+        new_name = m.group(2).title()
         effects.append(
             {
-                "target": "$.creature_type.creature_types",
+                "target": _trait_target(old_name),
                 "operation": "remove_item",
-                "name": m.group(1).title(),
+                "name": old_name,
             }
         )
         effects.append(
             {
-                "target": "$.creature_type.creature_types",
+                "target": _trait_target(new_name),
                 "operation": "add_item",
-                "name": m.group(2).title(),
+                "name": new_name,
             }
         )
 
@@ -411,12 +447,13 @@ def _build_trait_effects(text, links=None):
 
         for name in all_trait_names:
             nl = name.lower()
+            tgt = _trait_target(name)
             if nl in choice_traits:
                 continue  # Handled below as a select group
             elif nl in optional_traits:
                 effects.append(
                     {
-                        "target": "$.creature_type.creature_types",
+                        "target": tgt,
                         "operation": "select",
                         "selection": {
                             "type": "select",
@@ -424,7 +461,7 @@ def _build_trait_effects(text, links=None):
                             "max": 1,
                             "options": [
                                 {
-                                    "target": "$.creature_type.creature_types",
+                                    "target": tgt,
                                     "operation": "add_item",
                                     "name": name,
                                 }
@@ -436,7 +473,7 @@ def _build_trait_effects(text, links=None):
             else:
                 effects.append(
                     {
-                        "target": "$.creature_type.creature_types",
+                        "target": tgt,
                         "operation": operation,
                         "name": name,
                     }
@@ -445,9 +482,11 @@ def _build_trait_effects(text, links=None):
         # Add choice group if any (e.g., "either amphibious or aquatic")
         if choice_traits:
             choice_names = [n for n in all_trait_names if n.lower() in choice_traits]
+            # Use first choice name's target for the group
+            group_tgt = _trait_target(choice_names[0])
             effects.append(
                 {
-                    "target": "$.creature_type.creature_types",
+                    "target": group_tgt,
                     "operation": "select",
                     "selection": {
                         "type": "select",
@@ -455,7 +494,7 @@ def _build_trait_effects(text, links=None):
                         "max": 1,
                         "options": [
                             {
-                                "target": "$.creature_type.creature_types",
+                                "target": _trait_target(n),
                                 "operation": "add_item",
                                 "name": n,
                             }
@@ -469,22 +508,24 @@ def _build_trait_effects(text, links=None):
     if not effects:
         m = re.search(r"add the (\w+) trait", t)
         if m:
+            tname = m.group(1).title()
             effects.append(
                 {
-                    "target": "$.creature_type.creature_types",
+                    "target": _trait_target(tname),
                     "operation": "add_item",
-                    "name": m.group(1).title(),
+                    "name": tname,
                 }
             )
 
     m = re.search(r"(?:if .+?has the|remove the) (\w+) trait,?\s*remove", t)
     if m:
+        tname = m.group(1).title()
         effects.append(
             {
-                "target": "$.creature_type.creature_types",
+                "target": _trait_target(tname),
                 "operation": "remove_item",
-                "name": m.group(1).title(),
-                "conditional": f"$.creature_type.creature_types[?(@ == '{m.group(1).title()}')]",
+                "name": tname,
+                "conditional": f"{_trait_target(tname)}[?(@ == '{tname}')]",
             }
         )
 
@@ -509,39 +550,43 @@ def _build_trait_effects(text, links=None):
     m = re.search(r"replace the (.+?) traits? with the$", t)
     if m and not effects:
         for trait in re.split(r"\s+and\s+|,\s*", m.group(1)):
+            tname = trait.strip().title()
             effects.append(
                 {
-                    "target": "$.creature_type.creature_types",
+                    "target": _trait_target(tname),
                     "operation": "remove_item",
-                    "name": trait.strip().title(),
+                    "name": tname,
                 }
             )
 
     m = re.match(r"^-?\s*([\w\s,]+(?:\s+and\s+[\w\s]+)+)\s+traits?\.", t)
     if m and "replace" not in t and "add" not in t and not effects:
         for trait in re.split(r"\s+and\s+|,\s*", m.group(1)):
+            tname = trait.strip().title()
             effects.append(
                 {
-                    "target": "$.creature_type.creature_types",
+                    "target": _trait_target(tname),
                     "operation": "add_item",
-                    "name": trait.strip().title(),
+                    "name": tname,
                 }
             )
 
     m = re.search(r"loses the (\w+) trait.+?gains the (\w+) trait", t)
     if m and not effects:
+        old_name = m.group(1).title()
+        new_name = m.group(2).title()
         effects.append(
             {
-                "target": "$.creature_type.creature_types",
+                "target": _trait_target(old_name),
                 "operation": "remove_item",
-                "name": m.group(1).title(),
+                "name": old_name,
             }
         )
         effects.append(
             {
-                "target": "$.creature_type.creature_types",
+                "target": _trait_target(new_name),
                 "operation": "add_item",
-                "name": m.group(2).title(),
+                "name": new_name,
             }
         )
 
@@ -1159,7 +1204,7 @@ def _build_skill_effects(text):
         return effects
 
     m = re.search(r"reduce.+?(\w+).+?modifier by (\d+)", t)
-    if m:
+    if m and m.group(1).lower() not in ("its", "the", "a", "an", "each", "all"):
         effects.append(
             {
                 "target": f"$.statistics.skills[?(@.name=='{m.group(1).title()}')].value",

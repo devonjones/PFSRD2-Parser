@@ -367,3 +367,114 @@ class TestAuraParsing:
         abilities = parse_abilities_from_nodes(nodes)
         assert "range" not in abilities[0]
         assert "Allies nearby feel at peace" in abilities[0]["text"]
+
+
+class TestValuedTraits:
+    """Tests for valued trait splitting (e.g., 'Additive 1' → name + value)."""
+
+    def test_valued_trait_split(self):
+        """'Additive 1' should split into name='Additive', value='1'."""
+        ability = parse_ability_from_html(
+            "Test",
+            '<span class="trait"><a href="Traits.aspx?ID=1" game-obj="Traits">'
+            "Additive 1</a></span> Some text.",
+        )
+        assert len(ability["traits"]) == 1
+        assert ability["traits"][0]["name"] == "Additive"
+        assert ability["traits"][0]["value"] == "1"
+
+    def test_non_valued_trait_preserved(self):
+        """Regular traits like 'Move' should not be split."""
+        ability = parse_ability_from_html(
+            "Test",
+            '<span class="trait"><a href="Traits.aspx?ID=114" game-obj="Traits">'
+            "Move</a></span> Some text.",
+        )
+        assert ability["traits"][0]["name"] == "Move"
+        assert "value" not in ability["traits"][0]
+
+    def test_multi_digit_value(self):
+        """'Additive 12' should capture multi-digit values."""
+        ability = parse_ability_from_html(
+            "Test",
+            '<span class="trait"><a href="Traits.aspx?ID=1" game-obj="Traits">'
+            "Additive 12</a></span> Some text.",
+        )
+        assert ability["traits"][0]["name"] == "Additive"
+        assert ability["traits"][0]["value"] == "12"
+
+
+class TestActionTypeFix:
+    """Tests for extract_action_type handling of spans without title."""
+
+    def test_span_without_title_skipped(self):
+        """Spans without title attribute should not crash extract_action_type."""
+        from pfsrd2.action import extract_action_type
+
+        # A trait span has class="trait" but no title
+        html = '<span class="trait"><a>Move</a></span> Some text.'
+        text, action = extract_action_type(html)
+        assert action is None
+
+    def test_action_span_with_title_extracted(self):
+        """Normal action spans with title should still work."""
+        from pfsrd2.action import extract_action_type
+
+        html = '<span class="action" title="Single Action">[one-action]</span> Some text.'
+        text, action = extract_action_type(html)
+        assert action is not None
+        assert action["name"] == "One Action"
+
+
+class TestCollectAbilityNodes:
+    """Tests for the shared collect_ability_nodes utility."""
+
+    def test_collects_from_first_bold(self):
+        from pfsrd2.change_extraction import collect_ability_nodes
+
+        bs = BeautifulSoup(
+            "Intro text <b>Ability</b> description <b>Another</b> more",
+            "html.parser",
+        )
+        nodes = collect_ability_nodes(bs)
+        assert nodes is not None
+        text = "".join(str(n) for n in nodes)
+        assert "Ability" in text
+        assert "Another" in text
+        # Intro text should NOT be in collected nodes
+        assert "Intro text" not in text
+
+    def test_skips_bold_in_table(self):
+        from pfsrd2.change_extraction import collect_ability_nodes
+
+        bs = BeautifulSoup(
+            "<table><tr><td><b>Table Bold</b></td></tr></table>"
+            "<b>Real Ability</b> text",
+            "html.parser",
+        )
+        nodes = collect_ability_nodes(bs)
+        assert nodes is not None
+        text = "".join(str(n) for n in nodes)
+        assert "Real Ability" in text
+        assert "Table Bold" not in text
+
+    def test_returns_none_without_bold(self):
+        from pfsrd2.change_extraction import collect_ability_nodes
+
+        bs = BeautifulSoup("Just some text without bold.", "html.parser")
+        nodes = collect_ability_nodes(bs)
+        assert nodes is None
+
+    def test_bold_inside_link(self):
+        """<a><b>Name</b></a> should start from the <a>, not the <b>."""
+        from pfsrd2.change_extraction import collect_ability_nodes
+
+        bs = BeautifulSoup(
+            'Intro <a href="test"><b>Linked</b></a> description',
+            "html.parser",
+        )
+        nodes = collect_ability_nodes(bs)
+        assert nodes is not None
+        text = "".join(str(n) for n in nodes)
+        assert "Linked" in text
+        assert "<a" in text  # The <a> tag should be included
