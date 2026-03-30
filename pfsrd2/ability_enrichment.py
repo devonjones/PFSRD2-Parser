@@ -36,7 +36,7 @@ def set_inline_enrich(enabled):
 
 
 def _try_inline_enrich(curs, ability_id, raw_json):
-    """Run regex extraction on a new/unenriched record and store the result.
+    """Run regex + LLM extraction on a new/unenriched record and store the result.
 
     Called inline during parser enrichment passes so that enrichment
     is available on the same run, avoiding the parser→enrich→parser cycle.
@@ -44,11 +44,49 @@ def _try_inline_enrich(curs, ability_id, raw_json):
     """
     if not _inline_enrich:
         return None
-    result, _missed = extract_all(raw_json)
+
+    # Phase 1: Regex extraction
+    result, missed = extract_all(raw_json)
+
+    # Phase 2: LLM extraction for missed keywords (cached, so fast after first run)
+    if missed:
+        from pfsrd2.enrichment.llm_extractor import (
+            extract_area_llm,
+            extract_damage_llm,
+            extract_dc_llm,
+            extract_frequency_llm,
+        )
+
+        ability = json.loads(raw_json)
+        name = ability.get("name", "")
+        text = ability.get("text", "")
+        effect = ability.get("effect", "")
+        combined = f"{text} {effect}".strip()
+
+        if result is None:
+            result = dict(ability)
+
+        _LLM_EXTRACTORS = {
+            "frequency": (extract_frequency_llm, "frequency"),
+            "dc": (extract_dc_llm, "saving_throw"),
+            "area": (extract_area_llm, "area"),
+            "damage": (extract_damage_llm, "damage"),
+        }
+
+        for keyword in missed:
+            if keyword in _LLM_EXTRACTORS and combined:
+                extractor_fn, field_name = _LLM_EXTRACTORS[keyword]
+                if not result.get(field_name):
+                    llm_result = extractor_fn(name, combined)
+                    if llm_result:
+                        result[field_name] = llm_result
+
     if result is None:
         return None
     enriched_json = json.dumps(result, sort_keys=True, ensure_ascii=False)
-    update_enriched_json(curs, ability_id, enriched_json, ENRICHMENT_VERSION, "regex_inline")
+    update_enriched_json(
+        curs, ability_id, enriched_json, ENRICHMENT_VERSION, "inline"
+    )
     return enriched_json
 
 
@@ -381,7 +419,7 @@ def ability_enrichment_pass(struct, conn=None):
                 if existing["enriched_json"] and not existing["stale"]:
                     _merge_enrichment(ability, existing["enriched_json"])
                 elif existing["stale"] or not existing["enriched_json"]:
-                    # Stale or unenriched — re-enrich inline with current raw_json
+                    # Stale or unenriched — re-enrich inline (regex + LLM)
                     enriched = _try_inline_enrich(curs, ability_id, raw_json)
                     if enriched:
                         _merge_enrichment(ability, enriched)
