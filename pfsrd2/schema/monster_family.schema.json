@@ -872,6 +872,13 @@
         "sources": {
           "$ref": "#/definitions/sources"
         },
+        "spells": {
+          "additionalItems": false,
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
         "text": {
           "type": "string"
         },
