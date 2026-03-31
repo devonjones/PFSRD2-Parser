@@ -386,8 +386,11 @@ def _extract_image(details):
 
     Returns an image dict or None.
     """
-    if not details or not isinstance(details[0], dict):
+    if not details:
         return None
+    assert isinstance(details[0], dict), f"Expected dict, got {type(details[0])}"
+    name_html = details[0].get("name", "")
+    family_name = get_text(BeautifulSoup(name_html, "html.parser")).strip()
     text = details[0].get("text", "")
     bs = BeautifulSoup(text, "html.parser")
     for a in bs.find_all("a"):
@@ -398,8 +401,8 @@ def _extract_image(details):
             details[0]["text"] = str(bs).strip()
             return {
                 "type": "image",
-                "name": "MonsterFamily",
-                "game-obj": "MonsterFamily",
+                "name": family_name,
+                "game-obj": "MonsterFamilies",
                 "image": image_file,
             }
     return None
