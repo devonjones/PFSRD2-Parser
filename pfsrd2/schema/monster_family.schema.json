@@ -556,6 +556,31 @@
       ],
       "type": "object"
     },
+    "image": {
+      "additionalProperties": false,
+      "properties": {
+        "game-obj": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "image"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "image"
+      ],
+      "type": "object"
+    },
     "license": {
       "additionalProperties": false,
       "properties": {
@@ -1327,6 +1352,9 @@
       "enum": [
         "MonsterFamilies"
       ]
+    },
+    "image": {
+      "$ref": "#/definitions/image"
     },
     "license": {
       "$ref": "#/definitions/license"
