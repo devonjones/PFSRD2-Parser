@@ -289,6 +289,7 @@ def _consolidate_creation_changes(struct):
 
     def _section_path_filter(name):
         """Build a JSONPath name filter for a section."""
+        assert name, "Section name must not be empty for JSONPath filter"
         escaped = name.replace("'", "\\'")
         return f"[?(@.name=='{escaped}')]"
 
@@ -337,7 +338,7 @@ def _consolidate_creation_changes(struct):
         # Recurse into subsections
         child_subtypes = []
         for sub in section.get("sections", []):
-            if sub.get("abilities") or sub.get("spells"):
+            if _has_abilities_anywhere(sub):
                 sub_path = f"{section_path}.sections{_section_path_filter(sub.get('name', ''))}"
                 child_subtypes.append(_build_subtype(sub, sub_path))
         if child_subtypes:
@@ -407,9 +408,10 @@ def _valid_tags(struct, name, path, validset):
     # t from malformed HTML in Lich family
     validset.update({"h2", "h3", "t"})
     # Sections with extracted abilities preserve the original HTML text
-    # (with <b>Name</b>, <br/>, and action <span> tags) for display.
+    # which includes action <span> tags (e.g., [one-action]). The <b> and
+    # <br> tags are already in the default validset.
     if struct.get("abilities") or struct.get("spells"):
-        validset.update({"b", "br", "span"})
+        validset.add("span")
 
 
 def _extract_section_abilities(struct):
