@@ -270,13 +270,13 @@ def _consolidate_creation_changes(struct):
     Pulls changes from creation sections into monster_family.changes, and
     collects ability sections (e.g., "Basic Vampire Abilities",
     "True Vampire Abilities") into monster_family.subtypes. Each subtype
-    is itself a monster_family object with name, text, and abilities.
+    references abilities via JSONPath back to the sections tree rather
+    than copying them — sections remain the source of truth for display.
     """
     mf = struct.get("monster_family")
     assert mf is not None, f"No monster_family in struct: {struct.get('name')}"
     all_changes = []
     subtypes = []
-    remaining = []
 
     def _collect_changes(sections):
         for section in sections:
@@ -287,22 +287,26 @@ def _consolidate_creation_changes(struct):
 
     _collect_changes(struct.get("sections", []))
 
-    def _build_subtype(section):
-        """Convert a section with abilities into a monster_family subtype.
+    def _section_path_filter(name):
+        """Build a JSONPath name filter for a section."""
+        assert name, "Section name must not be empty for JSONPath filter"
+        escaped = name.replace("'", "\\'")
+        return f"[?(@.name=='{escaped}')]"
 
-        The abilities are wrapped in a change object with
-        change_category="abilities" so they follow the same pattern as
-        monster_template changes. The raw abilities list needs further
-        processing (PFSRD2-Parser-alj) to separate true abilities from
-        stat modifications like Immunities, Speed, etc.
+    def _build_subtype(section, section_path):
+        """Build a monster_family subtype that references section abilities.
+
+        Instead of copying abilities into the subtype, the effects use
+        JSONPath source references back to the sections tree. This keeps
+        sections as the single source of truth for display while giving
+        the template engine the structured change objects it needs.
         """
         subtype = {
             "name": section.get("name", ""),
             "type": "stat_block_section",
             "subtype": "monster_family",
         }
-        if section.get("text"):
-            subtype["text"] = section["text"]
+        # Text stays in sections (source of truth for display), not duplicated here.
         if section.get("abilities") or section.get("spells"):
             change = {
                 "type": "stat_block_section",
@@ -311,24 +315,32 @@ def _consolidate_creation_changes(struct):
                 "change_category": "abilities",
             }
             if section.get("abilities"):
-                change["abilities"] = section["abilities"]
                 change["effects"] = [
                     {
                         "target": "$.defense.automatic_abilities",
                         "operation": "add_items",
-                        "source": "$.monster_family.subtypes[*].changes[*].abilities",
+                        "source": f"{section_path}.abilities",
                     }
                 ]
             if section.get("spells"):
-                change["spells"] = section["spells"]
+                if "effects" not in change:
+                    change["effects"] = []
+                change["effects"].append(
+                    {
+                        "target": "$.offense.offensive_actions",
+                        "operation": "add_items",
+                        "source": f"{section_path}.spells",
+                    }
+                )
             if section.get("links"):
                 change["links"] = section["links"]
             subtype["changes"] = [change]
         # Recurse into subsections
         child_subtypes = []
         for sub in section.get("sections", []):
-            if sub.get("abilities") or sub.get("spells"):
-                child_subtypes.append(_build_subtype(sub))
+            if _has_abilities_anywhere(sub):
+                sub_path = f"{section_path}.sections{_section_path_filter(sub.get('name', ''))}"
+                child_subtypes.append(_build_subtype(sub, sub_path))
         if child_subtypes:
             subtype["subtypes"] = child_subtypes
         return subtype
@@ -339,27 +351,21 @@ def _consolidate_creation_changes(struct):
             return True
         return any(_has_abilities_anywhere(s) for s in section.get("sections", []))
 
-    # Collect ability/spell sections into subtypes — check both top level and subsections
+    # Collect ability/spell sections into subtypes — sections stay in the tree
     for section in struct.get("sections", []):
         if _has_abilities_anywhere(section):
-            # Section has abilities/spells directly or in subsections
+            sec_filter = _section_path_filter(section.get("name", ""))
+            sec_path = f"$.sections{sec_filter}"
             if section.get("abilities") or section.get("spells"):
-                subtypes.append(_build_subtype(section))
+                subtypes.append(_build_subtype(section, sec_path))
             else:
-                # Abilities/spells are in subsections only (e.g., "Creating a Vampire"
-                # has "Basic Vampire Abilities" as a child)
-                kept_subs = []
+                # Abilities are in subsections only
                 for sub in section.get("sections", []):
                     if _has_abilities_anywhere(sub):
-                        subtypes.append(_build_subtype(sub))
-                    else:
-                        kept_subs.append(sub)
-                section["sections"] = kept_subs
-                remaining.append(section)
-        else:
-            remaining.append(section)
+                        sub_path = f"{sec_path}.sections{_section_path_filter(sub.get('name', ''))}"
+                        subtypes.append(_build_subtype(sub, sub_path))
 
-    struct["sections"] = remaining
+    # Sections are NOT removed — they stay intact for display
     if all_changes:
         mf["changes"] = all_changes
     if subtypes:
@@ -401,6 +407,11 @@ def _valid_tags(struct, name, path, validset):
     # h2/h3 from embedded headings in creation sections
     # t from malformed HTML in Lich family
     validset.update({"h2", "h3", "t"})
+    # Sections with extracted abilities preserve the original HTML text
+    # which includes action <span> tags (e.g., [one-action]). The <b> and
+    # <br> tags are already in the default validset.
+    if struct.get("abilities") or struct.get("spells"):
+        validset.add("span")
 
 
 def _extract_section_abilities(struct):
@@ -416,12 +427,12 @@ def _extract_section_abilities(struct):
             text = section["text"]
             # Only process if there are <b> tags (potential abilities)
             if "<b>" in text or "<b " in text:
+                # Parse a COPY — collect_ability_nodes mutates the tree via
+                # extract(), but we want section text to stay intact for display.
                 bs = BeautifulSoup(text, "html.parser")
                 # Don't extract from text that's purely in tables
                 if bs.find("b") and not (bs.find("table") and not bs.find("b", recursive=False)):
                     abilities, spells = _extract_abilities_from_bs(bs)
-                    if abilities or spells:
-                        section["text"] = str(bs).strip()
                     if abilities:
                         section.setdefault("abilities", []).extend(abilities)
                     if spells:
