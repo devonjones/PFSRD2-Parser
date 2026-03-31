@@ -45,9 +45,12 @@ def parse_monster_family(filename, options):
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
     alternate_link = handle_alternate_link(details)
+    image = _extract_image(details)
     struct = restructure_monster_family_pass(details)
     if alternate_link:
         struct["alternate_link"] = alternate_link
+    if image:
+        struct["image"] = image
     monster_family_struct_pass(struct)
     _strip_empty_text(struct)
     source_pass(struct, find_monster_family)
@@ -113,7 +116,10 @@ def _content_filter(soup):
     for a in main.find_all("a"):
         if not a.string and not a.contents:
             a.decompose()
-    # Decompose sidebar images in headings (icons)
+    # Decompose sidebar images in headings (icons).
+    # Thumbnail artwork (<img class="thumbnail">) is inside an <a> wrapper;
+    # decomposing the <img> leaves the <a href="Images\Monsters\X.png"> in the
+    # tree, which _extract_image picks up later from the details text.
     for img in main.find_all("img"):
         img.decompose()
     # Keep action spans intact — the unified ability parser extracts them.
@@ -370,6 +376,33 @@ def _consolidate_creation_changes(struct):
         mf["changes"] = all_changes
     if subtypes:
         mf["subtypes"] = subtypes
+
+
+def _extract_image(details):
+    """Extract thumbnail image from first detail's text.
+
+    The content filter decomposes <img> tags but leaves the <a> wrapper
+    with href pointing to the image file. Extract and remove it.
+
+    Returns an image dict or None.
+    """
+    if not details or not isinstance(details[0], dict):
+        return None
+    text = details[0].get("text", "")
+    bs = BeautifulSoup(text, "html.parser")
+    for a in bs.find_all("a"):
+        href = a.get("href", "")
+        if "Images" in href and "Monsters" in href and href.endswith(".png"):
+            image_file = href.replace("\\", "/").split("/")[-1]
+            a.decompose()
+            details[0]["text"] = str(bs).strip()
+            return {
+                "type": "image",
+                "name": "MonsterFamily",
+                "game-obj": "MonsterFamily",
+                "image": image_file,
+            }
+    return None
 
 
 def _strip_empty_text(struct):
