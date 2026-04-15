@@ -46,14 +46,14 @@ def ability_target(ability):
     """Pick the schema target for an ability using action_type, then DB history.
 
     Returns a JSONPath string from CATEGORY_TARGETS, or DEFAULT_TARGET if the
-    ability's category can't be determined.
+    ability's category can't be determined. A nameless ability is a parser
+    bug — assert rather than silently return a default.
     """
     category = deterministic_ability_category(ability)
     if category:
         return CATEGORY_TARGETS.get(category, DEFAULT_TARGET)
     name = ability.get("name")
-    if not name:
-        return DEFAULT_TARGET
+    assert name, f"Ability missing required 'name' field: {ability!r}"
     _, target = lookup_ability_category(name)
     return target
 

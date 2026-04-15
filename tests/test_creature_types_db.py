@@ -84,6 +84,29 @@ class TestTraitTargetDBLookup:
         assert _trait_target("VAMPIRE") == "$.creature_type.creature_types"
 
 
+class TestEmptyTableWarning:
+    def test_empty_table_warns_to_stderr_and_returns_empty_set(self, monkeypatch, capsys):
+        """If the table exists but has no rows, _get_creature_types must emit
+        a stderr warning and return an empty set so trait routing sends
+        everything to $.traits."""
+        conn = get_enrichment_db_connection(db_path=":memory:")
+        # Don't seed anything — table is empty
+        wrapper = _KeepOpenConn(conn)
+        monkeypatch.setattr(change_extractor, "get_enrichment_db_connection", lambda: wrapper)
+        change_extractor.reset_creature_types_cache()
+        try:
+            result = change_extractor._get_creature_types()
+            assert result == frozenset()
+            err = capsys.readouterr().err
+            assert "creature_types table is empty" in err
+            assert "pf2_seed_creature_types" in err
+            # Confirm routing falls back to $.traits for any name
+            assert _trait_target("Undead") == "$.traits"
+        finally:
+            change_extractor.reset_creature_types_cache()
+            conn.close()
+
+
 class TestCreatureTypeDBPass:
     def test_upserts_every_creature_type(self, db_with_types, monkeypatch):
         from pfsrd2 import creatures
@@ -132,4 +155,14 @@ class TestCreatureTypeDBPass:
         )
         struct = {"stat_block": {"creature_type": {"creature_types": [None]}}}
         with pytest.raises(AssertionError):
+            creatures.creature_type_db_pass(struct)
+
+    def test_asserts_on_whitespace(self, db_with_types, monkeypatch):
+        from pfsrd2 import creatures
+
+        monkeypatch.setattr(
+            creatures, "get_enrichment_db_connection", lambda: _KeepOpenConn(db_with_types)
+        )
+        struct = {"stat_block": {"creature_type": {"creature_types": [" Undead "]}}}
+        with pytest.raises(AssertionError, match="whitespace"):
             creatures.creature_type_db_pass(struct)

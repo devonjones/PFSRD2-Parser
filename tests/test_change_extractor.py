@@ -528,8 +528,9 @@ class TestAbilityTarget:
         ability = {"name": "Anything", "action_type": {"name": "Reaction"}}
         assert ability_placement.ability_target(ability) == "$.defense.reactive_abilities"
 
-    def test_missing_name_returns_default(self):
-        assert ability_placement.ability_target({}) == ability_placement.DEFAULT_TARGET
+    def test_missing_name_asserts(self):
+        with pytest.raises(AssertionError):
+            ability_placement.ability_target({})
 
 
 class TestBuildSpeedEffectsRemoveAll:

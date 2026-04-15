@@ -36,7 +36,10 @@ def _iter_creature_type_names(data_dir):
             try:
                 with open(path) as fp:
                     d = json.load(fp)
-            except (OSError, json.JSONDecodeError):
+            except (OSError, json.JSONDecodeError) as e:
+                # Surface the failure so corrupt parser output is visible,
+                # but keep going so one bad file doesn't abort the whole seed.
+                print(f"warning: skipping {path}: {e}", file=sys.stderr)
                 continue
             sb = d.get("stat_block", {})
             ct = sb.get("creature_type", {})

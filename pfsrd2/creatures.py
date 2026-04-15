@@ -640,6 +640,7 @@ def creature_type_db_pass(struct):
         curs = conn.cursor()
         for name in names:
             assert isinstance(name, str) and name, f"Invalid creature_type entry: {name!r}"
+            assert name == name.strip(), f"creature_type has leading/trailing whitespace: {name!r}"
             upsert_creature_type(curs, name)
         conn.commit()
     finally:
