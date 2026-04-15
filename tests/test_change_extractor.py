@@ -1,6 +1,10 @@
 import json
 
+import pytest
+
+from pfsrd2 import ability_placement
 from pfsrd2.enrichment.change_extractor import (
+    _build_ability_effects,
     _build_combat_stat_effects,
     _build_damage_effects,
     _build_hit_points_effects,
@@ -440,6 +444,92 @@ class TestBuildDamageEffects:
         ]
         assert len(notes_effects) == 1
         assert notes_effects[0]["item"] == "-4 damage (Weak, limited use)"
+
+
+class TestBuildAbilityEffects:
+    def test_empty_abilities_falls_back_to_blanket_target(self):
+        effects = _build_ability_effects(None)
+        assert effects == [
+            {
+                "target": "$.defense.automatic_abilities",
+                "operation": "add_items",
+                "source": "$.changes[*].abilities",
+            }
+        ]
+
+    def test_empty_list_falls_back(self):
+        assert _build_ability_effects([]) == _build_ability_effects(None)
+
+    def test_routes_per_ability_by_action_type(self):
+        """One-action → offensive, reaction → reactive, three actions → offensive."""
+        abilities = [
+            {"name": "A", "action_type": {"name": "One Action"}},
+            {"name": "B", "action_type": {"name": "Reaction"}},
+            {"name": "C", "action_type": {"name": "Three Actions"}},
+        ]
+        effects = _build_ability_effects(abilities)
+        assert len(effects) == 3
+        by_name = {e["source"].split("'")[1]: e["target"] for e in effects}
+        assert by_name["A"] == "$.offense.offensive_actions"
+        assert by_name["B"] == "$.defense.reactive_abilities"
+        assert by_name["C"] == "$.offense.offensive_actions"
+
+    def test_escapes_quotes_and_backslashes_in_source(self):
+        abilities = [{"name": "Bob's \\Backslash", "action_type": {"name": "Reaction"}}]
+        effects = _build_ability_effects(abilities)
+        assert len(effects) == 1
+        # Single-quote escaped and backslash escaped so JSONPath stays valid
+        assert r"Bob\'s \\Backslash" in effects[0]["source"]
+        assert effects[0]["target"] == "$.defense.reactive_abilities"
+
+    def test_asserts_on_unnamed_ability(self):
+        """Strategic fragility — parser bug should not be swallowed."""
+        abilities = [{"action_type": {"name": "One Action"}}]
+        with pytest.raises(AssertionError):
+            _build_ability_effects(abilities)
+
+
+class TestDeterministicAbilityCategory:
+    def test_reaction(self):
+        assert (
+            ability_placement.deterministic_ability_category({"action_type": {"name": "Reaction"}})
+            == "reactive"
+        )
+
+    def test_one_two_three_action_offensive(self):
+        for n in ("One Action", "Two Actions", "Three Actions"):
+            assert (
+                ability_placement.deterministic_ability_category({"action_type": {"name": n}})
+                == "offensive"
+            )
+
+    def test_free_action_with_trigger_is_reactive(self):
+        ability = {"action_type": {"name": "Free Action"}, "trigger": "something"}
+        assert ability_placement.deterministic_ability_category(ability) == "reactive"
+
+    def test_free_action_without_trigger_is_none(self):
+        assert (
+            ability_placement.deterministic_ability_category(
+                {"action_type": {"name": "Free Action"}}
+            )
+            is None
+        )
+
+    def test_missing_or_non_dict_action_type(self):
+        assert ability_placement.deterministic_ability_category({}) is None
+        assert ability_placement.deterministic_ability_category({"action_type": None}) is None
+        assert (
+            ability_placement.deterministic_ability_category({"action_type": "One Action"}) is None
+        )
+
+
+class TestAbilityTarget:
+    def test_uses_deterministic_category_when_available(self):
+        ability = {"name": "Anything", "action_type": {"name": "Reaction"}}
+        assert ability_placement.ability_target(ability) == "$.defense.reactive_abilities"
+
+    def test_missing_name_returns_default(self):
+        assert ability_placement.ability_target({}) == ability_placement.DEFAULT_TARGET
 
 
 class TestBuildSpeedEffectsRemoveAll:

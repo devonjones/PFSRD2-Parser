@@ -39,9 +39,7 @@ def db_with_types(monkeypatch):
     conn.commit()
     wrapper = _KeepOpenConn(conn)
 
-    import pfsrd2.sql.enrichment as enrichment_pkg
-
-    monkeypatch.setattr(enrichment_pkg, "get_enrichment_db_connection", lambda: wrapper)
+    monkeypatch.setattr(change_extractor, "get_enrichment_db_connection", lambda: wrapper)
     change_extractor.reset_creature_types_cache()
     yield conn
     change_extractor.reset_creature_types_cache()
@@ -78,3 +76,60 @@ class TestTraitTargetDBLookup:
         db_with_types.commit()
         change_extractor.reset_creature_types_cache()
         assert _trait_target("Newtype") == "$.creature_type.creature_types"
+
+    def test_case_insensitive_lookup(self, db_with_types):
+        """COLLATE NOCASE on the DB column + lowercased cache lets a change
+        referring to 'undead' route the same as the canonical 'Undead'."""
+        assert _trait_target("undead") == "$.creature_type.creature_types"
+        assert _trait_target("VAMPIRE") == "$.creature_type.creature_types"
+
+
+class TestCreatureTypeDBPass:
+    def test_upserts_every_creature_type(self, db_with_types, monkeypatch):
+        from pfsrd2 import creatures
+
+        monkeypatch.setattr(
+            creatures, "get_enrichment_db_connection", lambda: _KeepOpenConn(db_with_types)
+        )
+        struct = {
+            "stat_block": {
+                "creature_type": {"creature_types": ["Human", "Humanoid"]},
+            }
+        }
+        creatures.creature_type_db_pass(struct)
+        names = fetch_all_creature_types(db_with_types.cursor())
+        assert "Human" in names
+        assert "Humanoid" in names
+
+    def test_no_creature_types_is_noop(self, db_with_types, monkeypatch):
+        from pfsrd2 import creatures
+
+        called = []
+        monkeypatch.setattr(
+            creatures,
+            "get_enrichment_db_connection",
+            lambda: (called.append(True) or _KeepOpenConn(db_with_types)),
+        )
+        creatures.creature_type_db_pass({"stat_block": {"creature_type": {}}})
+        creatures.creature_type_db_pass({"stat_block": {"creature_type": {"creature_types": []}}})
+        assert called == []  # short-circuits before opening a connection
+
+    def test_asserts_on_empty_string(self, db_with_types, monkeypatch):
+        from pfsrd2 import creatures
+
+        monkeypatch.setattr(
+            creatures, "get_enrichment_db_connection", lambda: _KeepOpenConn(db_with_types)
+        )
+        struct = {"stat_block": {"creature_type": {"creature_types": [""]}}}
+        with pytest.raises(AssertionError):
+            creatures.creature_type_db_pass(struct)
+
+    def test_asserts_on_non_string(self, db_with_types, monkeypatch):
+        from pfsrd2 import creatures
+
+        monkeypatch.setattr(
+            creatures, "get_enrichment_db_connection", lambda: _KeepOpenConn(db_with_types)
+        )
+        struct = {"stat_block": {"creature_type": {"creature_types": [None]}}}
+        with pytest.raises(AssertionError):
+            creatures.creature_type_db_pass(struct)

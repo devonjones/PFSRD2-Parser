@@ -639,6 +639,7 @@ def creature_type_db_pass(struct):
     try:
         curs = conn.cursor()
         for name in names:
+            assert isinstance(name, str) and name, f"Invalid creature_type entry: {name!r}"
             upsert_creature_type(curs, name)
         conn.commit()
     finally:

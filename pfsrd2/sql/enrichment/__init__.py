@@ -181,6 +181,24 @@ def _create_db_v_6(conn, curs, ver):
     return ver
 
 
+def _create_db_v_7(conn, curs, ver):
+    """Version 7: Rebuild creature_types with COLLATE NOCASE on name.
+
+    The v6 table stored names case-sensitively; trait links in template
+    text sometimes lowercase names, causing misrouting. Rebuild the table
+    with case-insensitive uniqueness and re-seed via bin/pf2_seed_creature_types
+    (or a creature parse) after migration.
+    """
+    if ver >= 7:
+        return ver
+    ver = 7
+    curs.execute("DROP TABLE IF EXISTS creature_types")
+    create_creature_types_table(curs)
+    _set_version(curs, ver)
+    conn.commit()
+    return ver
+
+
 # --- Connection ---
 
 
@@ -205,6 +223,7 @@ def get_enrichment_db_connection(db_path=None):
         ver = _create_db_v_4(conn, curs, ver)
         ver = _create_db_v_5(conn, curs, ver)
         ver = _create_db_v_6(conn, curs, ver)
+        ver = _create_db_v_7(conn, curs, ver)
     finally:
         curs.close()
     conn.row_factory = _dict_factory

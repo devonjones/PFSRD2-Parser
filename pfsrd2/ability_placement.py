@@ -22,6 +22,42 @@ CATEGORY_TARGETS = {
 DEFAULT_TARGET = "$.defense.automatic_abilities"
 
 
+def deterministic_ability_category(ability):
+    """Infer an ability's category from its action_type alone.
+
+    Reactions are always reactive. 1/2/3-action abilities are always
+    offensive. Free actions with a trigger are reactive. Returns the
+    category string, or None if it can't be determined from action_type.
+    """
+    action_type = ability.get("action_type")
+    if not isinstance(action_type, dict):
+        return None
+    action_name = action_type.get("name", "")
+    if action_name == "Reaction":
+        return "reactive"
+    if action_name in ("One Action", "Two Actions", "Three Actions"):
+        return "offensive"
+    if action_name == "Free Action" and ability.get("trigger"):
+        return "reactive"
+    return None
+
+
+def ability_target(ability):
+    """Pick the schema target for an ability using action_type, then DB history.
+
+    Returns a JSONPath string from CATEGORY_TARGETS, or DEFAULT_TARGET if the
+    ability's category can't be determined.
+    """
+    category = deterministic_ability_category(ability)
+    if category:
+        return CATEGORY_TARGETS.get(category, DEFAULT_TARGET)
+    name = ability.get("name")
+    if not name:
+        return DEFAULT_TARGET
+    _, target = lookup_ability_category(name)
+    return target
+
+
 def lookup_ability_category(ability_name, conn=None):
     """Look up the most common category for an ability by name.
 

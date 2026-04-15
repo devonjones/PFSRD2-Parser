@@ -9,6 +9,9 @@ import json
 import re
 import sys
 
+from pfsrd2.ability_placement import CATEGORY_TARGETS, ability_target
+from pfsrd2.sql.enrichment import fetch_all_creature_types, get_enrichment_db_connection
+
 ENRICHMENT_VERSION = 19
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
@@ -27,17 +30,29 @@ def reset_creature_types_cache():
 
 
 def _get_creature_types():
-    """Return the set of known creature types from the enrichment DB."""
+    """Return the lowercased set of known creature types from the enrichment DB.
+
+    Lowercased to mirror the table's COLLATE NOCASE and to give case-insensitive
+    membership testing in Python. Emits a warning to stderr if the table is
+    empty — this means the seed script never ran or the DB was wiped, and
+    trait routing will regress to $.traits-only for every name. Caller must
+    run bin/pf2_seed_creature_types or a full creature parse to populate.
+    """
     global _CREATURE_TYPES_CACHE
     if _CREATURE_TYPES_CACHE is not None:
         return _CREATURE_TYPES_CACHE
-    from pfsrd2.sql.enrichment import fetch_all_creature_types, get_enrichment_db_connection
-
     conn = get_enrichment_db_connection()
     try:
-        _CREATURE_TYPES_CACHE = fetch_all_creature_types(conn.cursor())
+        names = fetch_all_creature_types(conn.cursor())
     finally:
         conn.close()
+    _CREATURE_TYPES_CACHE = frozenset(n.lower() for n in names)
+    if not _CREATURE_TYPES_CACHE:
+        sys.stderr.write(
+            "WARNING: creature_types table is empty — template/family trait "
+            "routing will send every name to $.traits. "
+            "Run bin/pf2_seed_creature_types or the creature parser to populate.\n"
+        )
     return _CREATURE_TYPES_CACHE
 
 
@@ -46,8 +61,9 @@ def _trait_target(name):
 
     Creature types (per the enrichment DB, populated by the creature parser)
     go to $.creature_type.creature_types. All other traits go to $.traits.
+    Match is case-insensitive.
     """
-    if name in _get_creature_types():
+    if name.lower() in _get_creature_types():
         return "$.creature_type.creature_types"
     return "$.traits"
 
@@ -85,9 +101,7 @@ def enrich_change(raw_json_str, source_name):
 
     links = change.get("links")
     abilities = change.get("abilities")
-    effects = _build_effects(
-        text, category, source_name, adjustments, links, abilities=abilities
-    )
+    effects = _build_effects(text, category, source_name, adjustments, links, abilities=abilities)
     if effects:
         enriched["effects"] = effects
 
@@ -245,43 +259,7 @@ def _build_effects(text, category, source_name, adjustments=None, links=None, ab
     return []
 
 
-_ABILITIES_FALLBACK_TARGET = "$.defense.automatic_abilities"
-
-
-def _deterministic_ability_category(ability):
-    """Infer ability_category from the ability's action_type alone.
-
-    Mirrors pfsrd2.ability_enrichment._deterministic_category so enrichment
-    can route template-added abilities without needing the DB.
-    """
-    action_type = ability.get("action_type")
-    if not isinstance(action_type, dict):
-        return None
-    action_name = action_type.get("name", "")
-    if action_name == "Reaction":
-        return "reactive"
-    if action_name in ("One Action", "Two Actions", "Three Actions"):
-        return "offensive"
-    if action_name == "Free Action" and ability.get("trigger"):
-        return "reactive"
-    return None
-
-
-def _ability_target(ability):
-    """Pick the schema target for an ability using action_type, then DB history."""
-    from pfsrd2.ability_placement import CATEGORY_TARGETS, lookup_ability_category
-
-    category = _deterministic_ability_category(ability)
-    if category:
-        return CATEGORY_TARGETS.get(category, _ABILITIES_FALLBACK_TARGET)
-    name = ability.get("name")
-    if not name:
-        return _ABILITIES_FALLBACK_TARGET
-    try:
-        _, target = lookup_ability_category(name)
-    except Exception:
-        target = _ABILITIES_FALLBACK_TARGET
-    return target
+_ABILITIES_FALLBACK_TARGET = CATEGORY_TARGETS["automatic"]
 
 
 def _build_ability_effects(abilities):
@@ -301,9 +279,8 @@ def _build_ability_effects(abilities):
     effects = []
     for ability in abilities:
         name = ability.get("name")
-        if not name:
-            continue
-        target = _ability_target(ability)
+        assert name, f"Ability missing required 'name' field: {ability!r}"
+        target = ability_target(ability)
         escaped = name.replace("\\", "\\\\").replace("'", "\\'")
         effects.append(
             {
