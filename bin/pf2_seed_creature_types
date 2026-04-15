@@ -34,7 +34,7 @@ def _iter_creature_type_names(data_dir):
     for pattern in patterns:
         for path in glob.glob(pattern):
             try:
-                with open(path) as fp:
+                with open(path, encoding="utf-8") as fp:
                     d = json.load(fp)
             except (OSError, json.JSONDecodeError) as e:
                 # Surface the failure so corrupt parser output is visible,

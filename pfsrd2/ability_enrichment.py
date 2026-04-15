@@ -280,9 +280,6 @@ def _is_stage_name(name):
     return bool(re.match(r"^Stage \d+$", name))
 
 
-_deterministic_category = deterministic_ability_category
-
-
 def _enrich_abilities(abilities, conn, edition=None):
     """Core enrichment loop: insert/update records and merge enriched data.
 
@@ -306,7 +303,7 @@ def _enrich_abilities(abilities, conn, edition=None):
                 continue
 
             # Deterministic category from action type — no DB/LLM needed
-            det_cat = _deterministic_category(ability)
+            det_cat = deterministic_ability_category(ability)
             if det_cat:
                 ability["ability_category"] = det_cat
 

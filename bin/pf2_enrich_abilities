@@ -31,7 +31,7 @@ from pfsrd2.sql.enrichment import (
     update_enriched_json,
     update_is_uma,
 )
-from pfsrd2.ability_enrichment import _deterministic_category
+from pfsrd2.ability_placement import deterministic_ability_category
 from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 
@@ -248,7 +248,7 @@ def run_llm(conn, args):
 
 def _deterministic_category_from_raw(raw_json):
     """Determine category from action type in raw JSON."""
-    return _deterministic_category(json.loads(raw_json))
+    return deterministic_ability_category(json.loads(raw_json))
 
 
 def run_classify(conn, args):

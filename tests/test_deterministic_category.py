@@ -1,6 +1,6 @@
-"""Tests for _deterministic_category in ability_enrichment.py."""
+"""Tests for deterministic_ability_category in ability_placement.py."""
 
-from pfsrd2.ability_enrichment import _deterministic_category
+from pfsrd2.ability_placement import deterministic_ability_category
 
 
 class TestDeterministicCategory:
@@ -12,7 +12,7 @@ class TestDeterministicCategory:
                 "name": "Reaction",
             }
         }
-        assert _deterministic_category(ability) == "reactive"
+        assert deterministic_ability_category(ability) == "reactive"
 
     def test_one_action_is_offensive(self):
         ability = {
@@ -22,7 +22,7 @@ class TestDeterministicCategory:
                 "name": "One Action",
             }
         }
-        assert _deterministic_category(ability) == "offensive"
+        assert deterministic_ability_category(ability) == "offensive"
 
     def test_two_actions_is_offensive(self):
         ability = {
@@ -32,7 +32,7 @@ class TestDeterministicCategory:
                 "name": "Two Actions",
             }
         }
-        assert _deterministic_category(ability) == "offensive"
+        assert deterministic_ability_category(ability) == "offensive"
 
     def test_three_actions_is_offensive(self):
         ability = {
@@ -42,7 +42,7 @@ class TestDeterministicCategory:
                 "name": "Three Actions",
             }
         }
-        assert _deterministic_category(ability) == "offensive"
+        assert deterministic_ability_category(ability) == "offensive"
 
     def test_free_action_with_trigger_is_reactive(self):
         ability = {
@@ -53,7 +53,7 @@ class TestDeterministicCategory:
             },
             "trigger": "An enemy enters your reach.",
         }
-        assert _deterministic_category(ability) == "reactive"
+        assert deterministic_ability_category(ability) == "reactive"
 
     def test_free_action_without_trigger_is_none(self):
         ability = {
@@ -63,15 +63,15 @@ class TestDeterministicCategory:
                 "name": "Free Action",
             }
         }
-        assert _deterministic_category(ability) is None
+        assert deterministic_ability_category(ability) is None
 
     def test_no_action_type_returns_none(self):
         ability = {"name": "Darkvision", "text": "Can see in the dark."}
-        assert _deterministic_category(ability) is None
+        assert deterministic_ability_category(ability) is None
 
     def test_action_type_not_dict_returns_none(self):
         ability = {"action_type": "One Action"}
-        assert _deterministic_category(ability) is None
+        assert deterministic_ability_category(ability) is None
 
     def test_empty_ability_returns_none(self):
-        assert _deterministic_category({}) is None
+        assert deterministic_ability_category({}) is None
