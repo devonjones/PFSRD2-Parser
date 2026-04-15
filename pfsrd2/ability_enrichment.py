@@ -8,6 +8,7 @@ import json
 import re
 
 from pfsrd2.ability_identity import ability_to_raw_json, compute_identity_hash
+from pfsrd2.ability_placement import deterministic_ability_category
 from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION, extract_all
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import (
@@ -279,26 +280,6 @@ def _is_stage_name(name):
     return bool(re.match(r"^Stage \d+$", name))
 
 
-def _deterministic_category(ability):
-    """Determine ability_category from action type alone.
-
-    Reactions are always reactive. 1/2/3 action abilities are always
-    offensive. Free actions with a trigger are always reactive.
-    Returns the category string, or None if it can't be determined.
-    """
-    action_type = ability.get("action_type")
-    if not isinstance(action_type, dict):
-        return None
-    action_name = action_type.get("name", "")
-    if action_name == "Reaction":
-        return "reactive"
-    if action_name in ("One Action", "Two Actions", "Three Actions"):
-        return "offensive"
-    if action_name == "Free Action" and ability.get("trigger"):
-        return "reactive"
-    return None
-
-
 def _enrich_abilities(abilities, conn, edition=None):
     """Core enrichment loop: insert/update records and merge enriched data.
 
@@ -322,7 +303,7 @@ def _enrich_abilities(abilities, conn, edition=None):
                 continue
 
             # Deterministic category from action type — no DB/LLM needed
-            det_cat = _deterministic_category(ability)
+            det_cat = deterministic_ability_category(ability)
             if det_cat:
                 ability["ability_category"] = det_cat
 

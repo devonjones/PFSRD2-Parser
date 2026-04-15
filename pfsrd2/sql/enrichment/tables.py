@@ -97,3 +97,22 @@ def create_change_records_index(curs):
         "CREATE INDEX change_records_enrichment_version ON change_records (enrichment_version)"
     )
     curs.execute("CREATE INDEX change_records_needs_review ON change_records (needs_review)")
+
+
+# --- Creature types (source of truth for trait routing) ---
+
+
+def create_creature_types_table(curs):
+    # COLLATE NOCASE so lookups and uniqueness are case-insensitive — template
+    # link text may lowercase trait names while the canonical creature data
+    # uses title case.
+    sql = "\n".join(
+        [
+            "CREATE TABLE creature_types (",
+            "  creature_type_id INTEGER PRIMARY KEY,",
+            "  name TEXT NOT NULL UNIQUE COLLATE NOCASE,",
+            "  created_at TEXT NOT NULL",
+            ")",
+        ]
+    )
+    curs.execute(sql)

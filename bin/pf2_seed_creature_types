@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""Seed the enrichment DB's creature_types table from existing pfsrd2-data output.
+
+One-shot bootstrap so template/family enrichment can route trait additions
+correctly without requiring a full creature re-parse first. After this runs,
+the creature parser keeps the table updated on every run via
+creatures.creature_type_db_pass.
+
+Usage:
+    pf2_seed_creature_types                    # read from $PF2_DATA_DIR
+    pf2_seed_creature_types /path/to/data      # explicit data dir
+"""
+
+import glob
+import json
+import os
+import sys
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(script_dir, ".."))
+
+from pfsrd2.sql.enrichment import (  # noqa: E402
+    fetch_all_creature_types,
+    get_enrichment_db_connection,
+    upsert_creature_type,
+)
+
+
+def _iter_creature_type_names(data_dir):
+    patterns = [
+        os.path.join(data_dir, "monsters", "*", "*.json"),
+        os.path.join(data_dir, "npcs", "*", "*.json"),
+    ]
+    for pattern in patterns:
+        for path in glob.glob(pattern):
+            try:
+                with open(path, encoding="utf-8") as fp:
+                    d = json.load(fp)
+            except (OSError, json.JSONDecodeError) as e:
+                # Surface the failure so corrupt parser output is visible,
+                # but keep going so one bad file doesn't abort the whole seed.
+                print(f"warning: skipping {path}: {e}", file=sys.stderr)
+                continue
+            sb = d.get("stat_block", {})
+            ct = sb.get("creature_type", {})
+            for name in ct.get("creature_types", []):
+                if isinstance(name, dict):
+                    name = name.get("name")
+                if isinstance(name, str) and name.strip():
+                    yield name.strip()
+
+
+def main():
+    if len(sys.argv) > 1:
+        data_dir = sys.argv[1]
+    else:
+        data_dir = os.environ.get("PF2_DATA_DIR")
+    if not data_dir or not os.path.isdir(data_dir):
+        print(
+            "error: data directory not found. Pass as argument or set $PF2_DATA_DIR.",
+            file=sys.stderr,
+        )
+        return 2
+
+    conn = get_enrichment_db_connection()
+    try:
+        curs = conn.cursor()
+        before = fetch_all_creature_types(curs)
+        seen = set()
+        for name in _iter_creature_type_names(data_dir):
+            if name in seen:
+                continue
+            seen.add(name)
+            upsert_creature_type(curs, name)
+        conn.commit()
+        after = fetch_all_creature_types(curs)
+    finally:
+        conn.close()
+
+    added = sorted(after - before)
+    print(f"Scanned {len(seen)} unique names from {data_dir}")
+    print(f"Creature types in DB: {len(before)} → {len(after)} (+{len(added)})")
+    if added:
+        print("Added:", ", ".join(added))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

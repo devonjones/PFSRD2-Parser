@@ -1,6 +1,10 @@
 import json
 
+import pytest
+
+from pfsrd2 import ability_placement
 from pfsrd2.enrichment.change_extractor import (
+    _build_ability_effects,
     _build_combat_stat_effects,
     _build_damage_effects,
     _build_hit_points_effects,
@@ -316,6 +320,14 @@ class TestBuildCombatStatEffects:
         for eff in effects:
             assert eff["value"] == -2
 
+    def test_attack_emits_spell_attack_target(self):
+        """pfsrd2-j7ko: 'attack modifiers' must bump strike attack AND spell attack."""
+        text = "Increase attack modifiers by 2."
+        effects = _build_combat_stat_effects(text)
+        targets = [e["target"] for e in effects]
+        assert "$.offense.offensive_actions[*].attack.bonus.bonuses" in targets
+        assert "$.offense.offensive_actions[*].spells.spell_attack" in targets
+
 
 class TestBuildHitPointsEffects:
     def test_with_adjustments(self):
@@ -398,6 +410,127 @@ class TestBuildDamageEffects:
         effects = _build_damage_effects(text, "Ghost")
         magical = [e for e in effects if e.get("operation") == "add_item"]
         assert len(magical) == 0
+
+    def test_limited_use_emits_spell_notes_annotation(self):
+        """pfsrd2-97fv: 'increase damage by N instead' (limited use) annotates spells.notes.
+
+        Spells have no integer damage field — individual spells may or may not deal
+        damage — so the +N instead bump is communicated as a string note.
+        """
+        text = (
+            "Increase the damage of its Strikes and other offensive abilities by 2. "
+            "If the creature has limits on how many times or how often it can use an ability "
+            "(such as a spellcaster's spells or a dragon's Breath Weapon), "
+            "increase the damage by 4 instead."
+        )
+        effects = _build_damage_effects(text, "Elite")
+        notes_effects = [
+            e for e in effects if e.get("target") == "$.offense.offensive_actions[*].spells.notes"
+        ]
+        assert len(notes_effects) == 1
+        assert notes_effects[0]["operation"] == "add_item"
+        assert notes_effects[0]["item"] == "+4 damage (Elite, limited use)"
+
+    def test_limited_use_negative_spell_notes(self):
+        """Weak template: -2 base, -4 limited use → notes string uses bare '-4'."""
+        text = (
+            "Decrease the damage of its Strikes and other offensive abilities by 2. "
+            "If the creature has limits on how many times or how often it can use an ability, "
+            "decrease the damage by 4 instead."
+        )
+        effects = _build_damage_effects(text, "Weak")
+        notes_effects = [
+            e for e in effects if e.get("target") == "$.offense.offensive_actions[*].spells.notes"
+        ]
+        assert len(notes_effects) == 1
+        assert notes_effects[0]["item"] == "-4 damage (Weak, limited use)"
+
+
+class TestBuildAbilityEffects:
+    def test_empty_abilities_falls_back_to_blanket_target(self):
+        effects = _build_ability_effects(None)
+        assert effects == [
+            {
+                "target": "$.defense.automatic_abilities",
+                "operation": "add_items",
+                "source": "$.changes[*].abilities",
+            }
+        ]
+
+    def test_empty_list_falls_back(self):
+        assert _build_ability_effects([]) == _build_ability_effects(None)
+
+    def test_routes_per_ability_by_action_type(self):
+        """One-action → offensive, reaction → reactive, three actions → offensive."""
+        abilities = [
+            {"name": "A", "action_type": {"name": "One Action"}},
+            {"name": "B", "action_type": {"name": "Reaction"}},
+            {"name": "C", "action_type": {"name": "Three Actions"}},
+        ]
+        effects = _build_ability_effects(abilities)
+        assert len(effects) == 3
+        by_name = {e["source"].split("'")[1]: e["target"] for e in effects}
+        assert by_name["A"] == "$.offense.offensive_actions"
+        assert by_name["B"] == "$.defense.reactive_abilities"
+        assert by_name["C"] == "$.offense.offensive_actions"
+
+    def test_escapes_quotes_and_backslashes_in_source(self):
+        abilities = [{"name": "Bob's \\Backslash", "action_type": {"name": "Reaction"}}]
+        effects = _build_ability_effects(abilities)
+        assert len(effects) == 1
+        # Single-quote escaped and backslash escaped so JSONPath stays valid
+        assert r"Bob\'s \\Backslash" in effects[0]["source"]
+        assert effects[0]["target"] == "$.defense.reactive_abilities"
+
+    def test_asserts_on_unnamed_ability(self):
+        """Strategic fragility — parser bug should not be swallowed."""
+        abilities = [{"action_type": {"name": "One Action"}}]
+        with pytest.raises(AssertionError):
+            _build_ability_effects(abilities)
+
+
+class TestDeterministicAbilityCategory:
+    def test_reaction(self):
+        assert (
+            ability_placement.deterministic_ability_category({"action_type": {"name": "Reaction"}})
+            == "reactive"
+        )
+
+    def test_one_two_three_action_offensive(self):
+        for n in ("One Action", "Two Actions", "Three Actions"):
+            assert (
+                ability_placement.deterministic_ability_category({"action_type": {"name": n}})
+                == "offensive"
+            )
+
+    def test_free_action_with_trigger_is_reactive(self):
+        ability = {"action_type": {"name": "Free Action"}, "trigger": "something"}
+        assert ability_placement.deterministic_ability_category(ability) == "reactive"
+
+    def test_free_action_without_trigger_is_none(self):
+        assert (
+            ability_placement.deterministic_ability_category(
+                {"action_type": {"name": "Free Action"}}
+            )
+            is None
+        )
+
+    def test_missing_or_non_dict_action_type(self):
+        assert ability_placement.deterministic_ability_category({}) is None
+        assert ability_placement.deterministic_ability_category({"action_type": None}) is None
+        assert (
+            ability_placement.deterministic_ability_category({"action_type": "One Action"}) is None
+        )
+
+
+class TestAbilityTarget:
+    def test_uses_deterministic_category_when_available(self):
+        ability = {"name": "Anything", "action_type": {"name": "Reaction"}}
+        assert ability_placement.ability_target(ability) == "$.defense.reactive_abilities"
+
+    def test_missing_name_asserts(self):
+        with pytest.raises(AssertionError):
+            ability_placement.ability_target({})
 
 
 class TestBuildSpeedEffectsRemoveAll:

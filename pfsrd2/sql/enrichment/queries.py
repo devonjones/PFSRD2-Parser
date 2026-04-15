@@ -422,3 +422,18 @@ def fetch_majority_category_for_name(curs, name):
         return None
     total = sum(r["cnt"] for r in rows)
     return rows[0]["ability_category"], rows[0]["cnt"], total
+
+
+# --- Creature types ---
+
+
+def upsert_creature_type(curs, name):
+    """Insert a creature type name if not already present. Idempotent."""
+    sql = "INSERT OR IGNORE INTO creature_types (name, created_at) VALUES (?, ?)"
+    curs.execute(sql, (name, _now()))
+
+
+def fetch_all_creature_types(curs):
+    """Return the set of known creature type names."""
+    curs.execute("SELECT name FROM creature_types")
+    return {row["name"] for row in curs.fetchall()}
