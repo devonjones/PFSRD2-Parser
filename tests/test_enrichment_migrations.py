@@ -1,4 +1,4 @@
-"""Tests for the enrichment DB migration chain, especially v6/v7 creature_types."""
+"""Tests for the enrichment DB migration chain, especially v6 creature_types."""
 
 import sqlite3
 
@@ -11,7 +11,6 @@ from pfsrd2.sql.enrichment import (
     _create_db_v_4,
     _create_db_v_5,
     _create_db_v_6,
-    _create_db_v_7,
     get_enrichment_db_connection,
 )
 
@@ -24,10 +23,10 @@ def fresh_conn():
 
 
 class TestFullMigrationChain:
-    def test_fresh_db_ends_at_v7(self, fresh_conn):
+    def test_fresh_db_ends_at_v6(self, fresh_conn):
         curs = fresh_conn.cursor()
         curs.execute("SELECT MAX(version) AS v FROM enrichment_db_version")
-        assert curs.fetchone()["v"] == 7
+        assert curs.fetchone()["v"] == 6
 
     def test_creature_types_table_exists_and_is_nocase(self, fresh_conn):
         curs = fresh_conn.cursor()
@@ -60,61 +59,11 @@ class TestMigrationIdempotency:
         conn = self._raw_conn()
         curs = conn.cursor()
         ver = _create_db_v_1(conn, curs)
-        ver = _create_db_v_2(conn, curs, ver)
-        ver = _create_db_v_3(conn, curs, ver)
-        ver = _create_db_v_4(conn, curs, ver)
-        ver = _create_db_v_5(conn, curs, ver)
+        for fn in (_create_db_v_2, _create_db_v_3, _create_db_v_4, _create_db_v_5):
+            ver = fn(conn, curs, ver)
         ver = _create_db_v_6(conn, curs, ver)
         assert ver == 6
         # Re-running v6 should be a no-op
         again = _create_db_v_6(conn, curs, ver)
         assert again == 6
-        conn.close()
-
-    def test_v7_idempotent_when_already_applied(self):
-        conn = self._raw_conn()
-        curs = conn.cursor()
-        ver = _create_db_v_1(conn, curs)
-        for fn in (_create_db_v_2, _create_db_v_3, _create_db_v_4, _create_db_v_5):
-            ver = fn(conn, curs, ver)
-        ver = _create_db_v_6(conn, curs, ver)
-        ver = _create_db_v_7(conn, curs, ver)
-        assert ver == 7
-        again = _create_db_v_7(conn, curs, ver)
-        assert again == 7
-        conn.close()
-
-
-class TestV7DropsAndRecreates:
-    def _build_v6_db(self):
-        """Build a raw DB stopped at v6 (no v7 applied), with a case-sensitive
-        creature_types table containing a seeded row."""
-        conn = sqlite3.connect(":memory:")
-        curs = conn.cursor()
-        ver = _create_db_v_1(conn, curs)
-        for fn in (_create_db_v_2, _create_db_v_3, _create_db_v_4, _create_db_v_5):
-            ver = fn(conn, curs, ver)
-        ver = _create_db_v_6(conn, curs, ver)
-        assert ver == 6
-        curs.execute("INSERT INTO creature_types (name, created_at) VALUES ('Undead', 'now')")
-        conn.commit()
-        return conn, curs
-
-    def test_v7_drops_rows_and_enforces_nocase(self):
-        conn, curs = self._build_v6_db()
-        # Before v7, the table has 1 row
-        curs.execute("SELECT COUNT(*) FROM creature_types")
-        assert curs.fetchone()[0] == 1
-
-        ver = _create_db_v_7(conn, curs, 6)
-        assert ver == 7
-
-        # Rows dropped by the rebuild (documented behavior — re-seed required)
-        curs.execute("SELECT COUNT(*) FROM creature_types")
-        assert curs.fetchone()[0] == 0
-
-        # New table is case-insensitive
-        curs.execute("INSERT INTO creature_types (name, created_at) VALUES ('Undead', 'now')")
-        with pytest.raises(sqlite3.IntegrityError):
-            curs.execute("INSERT INTO creature_types (name, created_at) VALUES ('undead', 'now')")
         conn.close()

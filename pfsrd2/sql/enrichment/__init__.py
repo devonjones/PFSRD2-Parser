@@ -166,33 +166,17 @@ def _create_db_v_5(conn, curs, ver):
 
 
 def _create_db_v_6(conn, curs, ver):
-    """Version 6: Creature types table.
+    """Version 6: Creature types table (case-insensitive name).
 
     Source of truth for "is this name a creature type?" — populated by the
     creature parser as it encounters types, and queried by the template/family
-    enrichment code to decide trait vs creature_type routing.
+    enrichment code to decide trait vs creature_type routing. The name column
+    is COLLATE NOCASE so trait links that lowercase names still match the
+    canonical title-cased form stored by the creature parser.
     """
     if ver >= 6:
         return ver
     ver = 6
-    create_creature_types_table(curs)
-    _set_version(curs, ver)
-    conn.commit()
-    return ver
-
-
-def _create_db_v_7(conn, curs, ver):
-    """Version 7: Rebuild creature_types with COLLATE NOCASE on name.
-
-    The v6 table stored names case-sensitively; trait links in template
-    text sometimes lowercase names, causing misrouting. Rebuild the table
-    with case-insensitive uniqueness and re-seed via bin/pf2_seed_creature_types
-    (or a creature parse) after migration.
-    """
-    if ver >= 7:
-        return ver
-    ver = 7
-    curs.execute("DROP TABLE IF EXISTS creature_types")
     create_creature_types_table(curs)
     _set_version(curs, ver)
     conn.commit()
@@ -223,7 +207,6 @@ def get_enrichment_db_connection(db_path=None):
         ver = _create_db_v_4(conn, curs, ver)
         ver = _create_db_v_5(conn, curs, ver)
         ver = _create_db_v_6(conn, curs, ver)
-        ver = _create_db_v_7(conn, curs, ver)
     finally:
         curs.close()
     conn.row_factory = _dict_factory
