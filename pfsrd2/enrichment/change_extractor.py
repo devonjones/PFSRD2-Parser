@@ -9,42 +9,45 @@ import json
 import re
 import sys
 
-ENRICHMENT_VERSION = 17
+ENRICHMENT_VERSION = 19
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
 
-# PF2e creature types — traits that represent fundamental creature classification.
-# These go to $.creature_type.creature_types. All other traits go to $.traits.
-_CREATURE_TYPES = {
-    "Aberration",
-    "Animal",
-    "Astral",
-    "Beast",
-    "Celestial",
-    "Construct",
-    "Dragon",
-    "Dream",
-    "Elemental",
-    "Ethereal",
-    "Fey",
-    "Fiend",
-    "Fungus",
-    "Giant",
-    "Humanoid",
-    "Monitor",
-    "Ooze",
-    "Petitioner",
-    "Plant",
-    "Spirit",
-    "Time",
-    "Undead",
-}
+# Cache of known creature types loaded from the enrichment DB.
+# Populated lazily on first call; cleared by reset_creature_types_cache() for tests.
+_CREATURE_TYPES_CACHE = None
+
+
+def reset_creature_types_cache():
+    """Drop the cached creature-type set. Used by tests and by long-running
+    enrichment processes that want to pick up newly-registered types."""
+    global _CREATURE_TYPES_CACHE
+    _CREATURE_TYPES_CACHE = None
+
+
+def _get_creature_types():
+    """Return the set of known creature types from the enrichment DB."""
+    global _CREATURE_TYPES_CACHE
+    if _CREATURE_TYPES_CACHE is not None:
+        return _CREATURE_TYPES_CACHE
+    from pfsrd2.sql.enrichment import fetch_all_creature_types, get_enrichment_db_connection
+
+    conn = get_enrichment_db_connection()
+    try:
+        _CREATURE_TYPES_CACHE = fetch_all_creature_types(conn.cursor())
+    finally:
+        conn.close()
+    return _CREATURE_TYPES_CACHE
 
 
 def _trait_target(name):
-    """Return the correct JSON path target for a trait name."""
-    if name in _CREATURE_TYPES:
+    """Return the correct JSON path target for a trait name.
+
+    Creature types (per the enrichment DB, populated by the creature parser)
+    go to $.creature_type.creature_types. All other traits go to $.traits.
+    """
+    if name in _get_creature_types():
         return "$.creature_type.creature_types"
     return "$.traits"
 
@@ -81,7 +84,10 @@ def enrich_change(raw_json_str, source_name):
     }
 
     links = change.get("links")
-    effects = _build_effects(text, category, source_name, adjustments, links)
+    abilities = change.get("abilities")
+    effects = _build_effects(
+        text, category, source_name, adjustments, links, abilities=abilities
+    )
     if effects:
         enriched["effects"] = effects
 
@@ -192,16 +198,10 @@ def _categorize_change_text(text):
     return "unknown"
 
 
-def _build_effects(text, category, source_name, adjustments=None, links=None):
+def _build_effects(text, category, source_name, adjustments=None, links=None, abilities=None):
     """Build effects for a categorized change."""
     if category == "abilities":
-        return [
-            {
-                "target": "$.defense.automatic_abilities",
-                "operation": "add_items",
-                "source": "$.changes[*].abilities",
-            }
-        ]
+        return _build_ability_effects(abilities)
     elif category == "immunities":
         return _build_immunity_effects(text)
     elif category == "languages":
@@ -243,6 +243,76 @@ def _build_effects(text, category, source_name, adjustments=None, links=None):
             }
         ]
     return []
+
+
+_ABILITIES_FALLBACK_TARGET = "$.defense.automatic_abilities"
+
+
+def _deterministic_ability_category(ability):
+    """Infer ability_category from the ability's action_type alone.
+
+    Mirrors pfsrd2.ability_enrichment._deterministic_category so enrichment
+    can route template-added abilities without needing the DB.
+    """
+    action_type = ability.get("action_type")
+    if not isinstance(action_type, dict):
+        return None
+    action_name = action_type.get("name", "")
+    if action_name == "Reaction":
+        return "reactive"
+    if action_name in ("One Action", "Two Actions", "Three Actions"):
+        return "offensive"
+    if action_name == "Free Action" and ability.get("trigger"):
+        return "reactive"
+    return None
+
+
+def _ability_target(ability):
+    """Pick the schema target for an ability using action_type, then DB history."""
+    from pfsrd2.ability_placement import CATEGORY_TARGETS, lookup_ability_category
+
+    category = _deterministic_ability_category(ability)
+    if category:
+        return CATEGORY_TARGETS.get(category, _ABILITIES_FALLBACK_TARGET)
+    name = ability.get("name")
+    if not name:
+        return _ABILITIES_FALLBACK_TARGET
+    try:
+        _, target = lookup_ability_category(name)
+    except Exception:
+        target = _ABILITIES_FALLBACK_TARGET
+    return target
+
+
+def _build_ability_effects(abilities):
+    """Emit one effect per ability, routed by category.
+
+    Without parsed abilities we keep the legacy blanket target so callers
+    that only have the raw text still get some placement.
+    """
+    if not abilities:
+        return [
+            {
+                "target": _ABILITIES_FALLBACK_TARGET,
+                "operation": "add_items",
+                "source": "$.changes[*].abilities",
+            }
+        ]
+    effects = []
+    for ability in abilities:
+        name = ability.get("name")
+        if not name:
+            continue
+        target = _ability_target(ability)
+        escaped = name.replace("\\", "\\\\").replace("'", "\\'")
+        effects.append(
+            {
+                "target": target,
+                "operation": "add_items",
+                "source": f"$.changes[*].abilities[?(@.name=='{escaped}')]",
+            }
+        )
+    return effects
 
 
 def _extract_names_from_text(text, after_marker):
@@ -710,6 +780,13 @@ def _build_combat_stat_effects(text):
                 "value": val,
             }
         )
+        effects.append(
+            {
+                "target": "$.offense.offensive_actions[*].spells.spell_attack",
+                "operation": "adjustment",
+                "value": val,
+            }
+        )
     if "dc" in t:
         effects.append(
             {
@@ -802,6 +879,15 @@ def _build_damage_effects(text, source_name=""):
                     "target": "$.offense.offensive_actions[*].ability.damage",
                     "operation": "add_item",
                     "item": limited_item,
+                }
+            )
+            sign = "+" if limited_val >= 0 else ""
+            spell_note = f"{sign}{limited_val} damage ({limited_notes})"
+            effects.append(
+                {
+                    "target": "$.offense.offensive_actions[*].spells.notes",
+                    "operation": "add_item",
+                    "item": spell_note,
                 }
             )
         return effects

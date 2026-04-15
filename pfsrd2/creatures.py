@@ -12,6 +12,7 @@ from pfsrd2.action import build_action_type, extract_action_type
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
+from pfsrd2.sql.enrichment import get_enrichment_db_connection, upsert_creature_type
 from pfsrd2.sql.monster_families import (
     fetch_monster_family_by_aonid,
     fetch_monster_family_by_link,
@@ -150,6 +151,7 @@ def parse_creature(filename, options):
     restructure_pass(struct, "stat_block", find_stat_block)
     recall_knowledge_pass(struct)
     trait_pass(struct)
+    creature_type_db_pass(struct)
     section_pass(struct)
     monster_family_db_pass(struct)
     universal_trait_db_pass(struct, pre_process=_creature_trait_pre_process)
@@ -621,6 +623,26 @@ def trait_pass(struct):
         raise AssertionError("Has no creature types")
     if "size" not in sb["creature_type"]:
         raise AssertionError("Has no size")
+
+
+def creature_type_db_pass(struct):
+    """Register every creature_type name this creature has into the enrichment DB.
+
+    Makes the DB the source of truth for 'is this name a creature type?' —
+    used by template/family enrichment to route trait additions correctly.
+    """
+    sb = struct["stat_block"]
+    names = sb.get("creature_type", {}).get("creature_types", [])
+    if not names:
+        return
+    conn = get_enrichment_db_connection()
+    try:
+        curs = conn.cursor()
+        for name in names:
+            upsert_creature_type(curs, name)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def creature_stat_block_pass(struct):

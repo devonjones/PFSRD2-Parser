@@ -316,6 +316,14 @@ class TestBuildCombatStatEffects:
         for eff in effects:
             assert eff["value"] == -2
 
+    def test_attack_emits_spell_attack_target(self):
+        """pfsrd2-j7ko: 'attack modifiers' must bump strike attack AND spell attack."""
+        text = "Increase attack modifiers by 2."
+        effects = _build_combat_stat_effects(text)
+        targets = [e["target"] for e in effects]
+        assert "$.offense.offensive_actions[*].attack.bonus.bonuses" in targets
+        assert "$.offense.offensive_actions[*].spells.spell_attack" in targets
+
 
 class TestBuildHitPointsEffects:
     def test_with_adjustments(self):
@@ -398,6 +406,40 @@ class TestBuildDamageEffects:
         effects = _build_damage_effects(text, "Ghost")
         magical = [e for e in effects if e.get("operation") == "add_item"]
         assert len(magical) == 0
+
+    def test_limited_use_emits_spell_notes_annotation(self):
+        """pfsrd2-97fv: 'increase damage by N instead' (limited use) annotates spells.notes.
+
+        Spells have no integer damage field — individual spells may or may not deal
+        damage — so the +N instead bump is communicated as a string note.
+        """
+        text = (
+            "Increase the damage of its Strikes and other offensive abilities by 2. "
+            "If the creature has limits on how many times or how often it can use an ability "
+            "(such as a spellcaster's spells or a dragon's Breath Weapon), "
+            "increase the damage by 4 instead."
+        )
+        effects = _build_damage_effects(text, "Elite")
+        notes_effects = [
+            e for e in effects if e.get("target") == "$.offense.offensive_actions[*].spells.notes"
+        ]
+        assert len(notes_effects) == 1
+        assert notes_effects[0]["operation"] == "add_item"
+        assert notes_effects[0]["item"] == "+4 damage (Elite, limited use)"
+
+    def test_limited_use_negative_spell_notes(self):
+        """Weak template: -2 base, -4 limited use → notes string uses bare '-4'."""
+        text = (
+            "Decrease the damage of its Strikes and other offensive abilities by 2. "
+            "If the creature has limits on how many times or how often it can use an ability, "
+            "decrease the damage by 4 instead."
+        )
+        effects = _build_damage_effects(text, "Weak")
+        notes_effects = [
+            e for e in effects if e.get("target") == "$.offense.offensive_actions[*].spells.notes"
+        ]
+        assert len(notes_effects) == 1
+        assert notes_effects[0]["item"] == "-4 damage (Weak, limited use)"
 
 
 class TestBuildSpeedEffectsRemoveAll:

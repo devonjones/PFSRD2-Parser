@@ -16,6 +16,7 @@ from pfsrd2.sql.enrichment.queries import (  # noqa: F401
     fetch_abilities_for_creature,
     fetch_ability_by_hash,
     fetch_ability_by_id,
+    fetch_all_creature_types,
     fetch_change_by_hash,
     fetch_changes_for_source,
     fetch_changes_needing_enrichment,
@@ -40,6 +41,7 @@ from pfsrd2.sql.enrichment.queries import (  # noqa: F401
     update_enriched_json,
     update_identity_hash,
     update_is_uma,
+    upsert_creature_type,
 )
 from pfsrd2.sql.enrichment.tables import (
     create_ability_creature_links_index,
@@ -48,6 +50,7 @@ from pfsrd2.sql.enrichment.tables import (
     create_ability_records_table,
     create_change_records_index,
     create_change_records_table,
+    create_creature_types_table,
 )
 
 DB_NAME = "enrichment.db"
@@ -162,6 +165,22 @@ def _create_db_v_5(conn, curs, ver):
     return ver
 
 
+def _create_db_v_6(conn, curs, ver):
+    """Version 6: Creature types table.
+
+    Source of truth for "is this name a creature type?" — populated by the
+    creature parser as it encounters types, and queried by the template/family
+    enrichment code to decide trait vs creature_type routing.
+    """
+    if ver >= 6:
+        return ver
+    ver = 6
+    create_creature_types_table(curs)
+    _set_version(curs, ver)
+    conn.commit()
+    return ver
+
+
 # --- Connection ---
 
 
@@ -185,6 +204,7 @@ def get_enrichment_db_connection(db_path=None):
         ver = _create_db_v_3(conn, curs, ver)
         ver = _create_db_v_4(conn, curs, ver)
         ver = _create_db_v_5(conn, curs, ver)
+        ver = _create_db_v_6(conn, curs, ver)
     finally:
         curs.close()
     conn.row_factory = _dict_factory
