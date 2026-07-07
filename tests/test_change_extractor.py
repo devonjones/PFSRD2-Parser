@@ -3,6 +3,7 @@ import json
 import pytest
 
 from pfsrd2 import ability_placement
+from pfsrd2.enrichment import change_extractor
 from pfsrd2.enrichment.change_extractor import (
     _build_ability_effects,
     _build_combat_stat_effects,
@@ -223,7 +224,10 @@ class TestBuildTraitEffects:
         assert "Undead" in names
         assert "Vampire" in names
 
-    def test_replace_trait(self):
+    def test_replace_trait(self, monkeypatch):
+        # Pin the creature-type set so the test is deterministic regardless
+        # of the local enrichment DB state (empty in CI).
+        monkeypatch.setattr(change_extractor, "_CREATURE_TYPES_CACHE", frozenset({"human"}))
         effects = _build_trait_effects("Replace the human trait with the dwarf trait.")
         remove_effects = [e for e in effects if e["operation"] == "remove_item"]
         add_effects = [e for e in effects if e["operation"] == "add_item"]
