@@ -339,14 +339,52 @@
       "source_name": "Miniature",
       "source_type": "monster_template",
       "change_text": "- Reduce the reach of the creature's lowest-reach melee Strikes to 0 feet. If it has melee Strikes with notable reach (often a tail, tentacle, or similar long appendage), reduce the reach of these Strikes to 5 feet.",
-      "note": "set_reach reduction for Tiny; encodes the notable-reach->5ft half only — the 0ft reduction for baseline strikes needs engine support (no Reach trait to lower), tracked in beads",
+      "note": "set_reach baseline form: melee strikes without a Reach trait gain the canonical Reach trait at 0 ft (Tiny), notable-reach strikes drop to 5 ft (engine only ever lowers); closes the 0-ft half deferred as u0w4",
       "enriched": {
         "change_category": "strikes",
         "effects": [
           {
+            "item": {
+              "alternate_link": {
+                "alternate_type": "legacy",
+                "aonid": 192,
+                "game-obj": "Traits",
+                "type": "alternate_link"
+              },
+              "edition": "remastered",
+              "game-id": "1d6143e399ba5d4085ca236a97cf860c",
+              "game-obj": "Traits",
+              "name": "Reach",
+              "sources": [
+                {
+                  "errata": {
+                    "alt": "2.0",
+                    "aonid": 216,
+                    "game-obj": "Sources",
+                    "name": "2.0",
+                    "type": "link"
+                  },
+                  "link": {
+                    "alt": "Player Core pg. 283",
+                    "aonid": 216,
+                    "game-obj": "Sources",
+                    "name": "Player Core pg. 283",
+                    "type": "link"
+                  },
+                  "name": "Player Core",
+                  "page": 283,
+                  "type": "source"
+                }
+              ],
+              "text": "This weapon can be used to attack enemies up to 10 feet away instead of only adjacent enemies. For creatures with reach, the weapon increases their reach by 5 feet.",
+              "type": "trait"
+            },
             "operation": "set_reach",
             "target": "$.offense.offensive_actions[*].attack",
-            "value": 5
+            "value": {
+              "baseline": 0,
+              "notable": 5
+            }
           }
         ]
       }
