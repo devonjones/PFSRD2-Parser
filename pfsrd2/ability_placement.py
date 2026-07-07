@@ -12,7 +12,7 @@ CATEGORY_TARGETS = {
     "automatic": "$.defense.automatic_abilities",
     "reactive": "$.defense.reactive_abilities",
     "hp_automatic": "$.defense.hitpoints[*].automatic_abilities",
-    "interaction": "$.stat_block.interaction_abilities",
+    "interaction": "$.interaction_abilities",
     "communication": "$.statistics.languages.communication_abilities",
     "offensive": "$.offense.offensive_actions",
     "special_sense": "$.senses.special_senses",

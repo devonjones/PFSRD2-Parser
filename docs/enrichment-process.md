@@ -602,6 +602,19 @@ bin/pf2_enrich_changes --unknown      # Show records that couldn't be categorize
 bin/pf2_enrich_changes --sample 5     # Show sample enriched records
 ```
 
+### Hand-Verified Overrides (git-stored)
+
+Rules text that regex cannot faithfully encode (conditional level chains,
+level-banded resistances, optional `select` grants, `add_strike` derivations)
+is enriched by hand and stored in git — `overrides/change_overrides.json` and
+`overrides/ability_overrides.json`. `bin/pf2_seed_change_overrides` seeds them
+into the DB as `extraction_method='manual'`, `human_verified=1`, which every
+re-enrichment query excludes (including `--force`). Seeding is idempotent and
+loud on misses: if a change's source text drifts (errata, HTML fix), the
+identity hash stops matching and the seeder exits nonzero so the entry gets
+re-reviewed. Run it after `pf2_enrich_changes`, before the final parser pass.
+See `docs/monster-templates.md` → "Hand-Verified Overrides".
+
 ## Files Reference
 
 ### Ability Enrichment
@@ -665,7 +678,8 @@ When rebuilding from scratch (see also `rebuild-enrichment` skill in `.claude/sk
 2. **Phase 2**: Enrich abilities: `bin/pf2_enrich_abilities --all`
 3. **Phase 3**: Re-run families + templates (merges enriched abilities into change data)
 4. **Phase 4**: Enrich changes: `bin/pf2_enrich_changes`
-5. **Phase 5**: Re-run all parsers (final merge of all enrichment into JSON)
-6. **Phase 6**: Verify (check error logs, enrichment stats, diff review)
+5. **Phase 5**: Seed hand-verified overrides: `bin/pf2_seed_change_overrides` (must exit 0 — a nonzero exit means stale overrides that need re-review)
+6. **Phase 6**: Re-run all parsers (final merge of all enrichment into JSON)
+7. **Phase 7**: Verify (check error logs, enrichment stats, diff review)
 
-**Order matters**: abilities must be enriched before changes (changes contain abilities). Three parser runs for families/templates, two for creatures/NPCs.
+**Order matters**: abilities must be enriched before changes (changes contain abilities), and overrides seed after regex enrichment so `manual` rows are never re-derived. Three parser runs for families/templates, two for creatures/NPCs.

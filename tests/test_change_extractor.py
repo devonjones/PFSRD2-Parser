@@ -3,6 +3,7 @@ import json
 import pytest
 
 from pfsrd2 import ability_placement
+from pfsrd2.enrichment import change_extractor
 from pfsrd2.enrichment.change_extractor import (
     _build_ability_effects,
     _build_combat_stat_effects,
@@ -14,6 +15,7 @@ from pfsrd2.enrichment.change_extractor import (
     _damage_adjustment_item,
     _extract_names_from_text,
     _level_text_to_conditional,
+    _mirror_creature_type_removals,
     _normalize_movement_type,
     enrich_change,
 )
@@ -222,14 +224,79 @@ class TestBuildTraitEffects:
         assert "Undead" in names
         assert "Vampire" in names
 
-    def test_replace_trait(self):
+    def test_replace_trait(self, monkeypatch):
+        # Pin the creature-type set so the test is deterministic regardless
+        # of the local enrichment DB state (empty in CI).
+        monkeypatch.setattr(change_extractor, "_CREATURE_TYPES_CACHE", frozenset({"human"}))
         effects = _build_trait_effects("Replace the human trait with the dwarf trait.")
         remove_effects = [e for e in effects if e["operation"] == "remove_item"]
         add_effects = [e for e in effects if e["operation"] == "add_item"]
-        assert len(remove_effects) == 1
-        assert remove_effects[0]["name"] == "Human"
+        # Removing a creature type also removes its badge copy from
+        # $.creature_type.traits (mirrored removal).
+        assert len(remove_effects) == 2
+        assert all(e["name"] == "Human" for e in remove_effects)
+        assert [e["target"] for e in remove_effects] == [
+            "$.creature_type.creature_types",
+            "$.creature_type.traits",
+        ]
         assert len(add_effects) == 1
         assert add_effects[0]["name"] == "Dwarf"
+
+    def test_mirror_inserts_traits_removal_after_type_removal(self):
+        effects = _mirror_creature_type_removals(
+            [
+                {
+                    "name": "Human",
+                    "operation": "remove_item",
+                    "target": "$.creature_type.creature_types",
+                },
+                {
+                    "name": "Orc",
+                    "operation": "add_item",
+                    "target": "$.creature_type.creature_types",
+                },
+            ]
+        )
+        assert effects == [
+            {
+                "name": "Human",
+                "operation": "remove_item",
+                "target": "$.creature_type.creature_types",
+            },
+            {
+                "name": "Human",
+                "operation": "remove_item",
+                "target": "$.creature_type.traits",
+            },
+            {
+                "name": "Orc",
+                "operation": "add_item",
+                "target": "$.creature_type.creature_types",
+            },
+        ]
+
+    def test_mirror_conditional_removal_carries_conditional(self):
+        conditional = "$.creature_type.creature_types[?(@ == 'Aquatic')]"
+        effects = _mirror_creature_type_removals(
+            [
+                {
+                    "name": "Aquatic",
+                    "operation": "remove_item",
+                    "target": "$.creature_type.creature_types",
+                    "conditional": conditional,
+                }
+            ]
+        )
+        assert len(effects) == 2
+        mirror = effects[1]
+        assert mirror["target"] == "$.creature_type.traits"
+        assert mirror["conditional"] == conditional
+
+    def test_mirror_skips_plain_trait_removals(self):
+        effects = _mirror_creature_type_removals(
+            [{"name": "Mindless", "operation": "remove_item", "target": "$.traits"}]
+        )
+        assert len(effects) == 1
 
     def test_link_based_extraction_avoids_fragments(self):
         """pfsrd2-bfy: use Traits links instead of regex to avoid sentence fragments."""
@@ -531,6 +598,31 @@ class TestAbilityTarget:
     def test_missing_name_asserts(self):
         with pytest.raises(AssertionError):
             ability_placement.ability_target({})
+
+    def test_interaction_category_targets_top_level_path(self):
+        # Regression: CATEGORY_TARGETS["interaction"] used to point at
+        # $.stat_block.interaction_abilities — a path that doesn't exist in
+        # the creature schema (interaction_abilities lives directly on the
+        # stat block), so interaction abilities (e.g. Zombie's Slow) were
+        # routed to a dead path and silently vanished on template apply.
+        from pfsrd2.sql.enrichment import (
+            get_enrichment_db_connection,
+            insert_ability_record,
+            insert_creature_link,
+        )
+
+        conn = get_enrichment_db_connection(db_path=":memory:")
+        try:
+            curs = conn.cursor()
+            ability_id = insert_ability_record(curs, "Slow", "hash_slow", "{}")
+            insert_creature_link(
+                curs, ability_id, "1234", "Zombie Shambler", 1, "[]", "Bestiary", "interaction"
+            )
+            category, target = ability_placement.lookup_ability_category("Slow", conn=conn)
+            assert category == "interaction"
+            assert target == "$.interaction_abilities"
+        finally:
+            conn.close()
 
 
 class TestBuildSpeedEffectsRemoveAll:

@@ -9,6 +9,7 @@ import sqlite3
 
 # Re-export queries for convenient access
 from pfsrd2.sql.enrichment.queries import (  # noqa: F401
+    clear_change_needs_review,
     clear_needs_review,
     count_ability_records,
     count_change_records,

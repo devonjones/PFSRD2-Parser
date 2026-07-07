@@ -354,6 +354,19 @@ def mark_change_needs_review(curs, change_id, reason):
     curs.execute(sql, (reason, _now(), change_id))
 
 
+def clear_change_needs_review(curs, change_id):
+    sql = "\n".join(
+        [
+            "UPDATE change_records",
+            " SET needs_review = 0,",
+            "     review_reason = NULL,",
+            "     updated_at = ?",
+            " WHERE change_id = ?",
+        ]
+    )
+    curs.execute(sql, (_now(), change_id))
+
+
 def count_change_records(curs):
     """Return counts for reporting."""
     curs.execute("SELECT COUNT(*) FROM change_records")

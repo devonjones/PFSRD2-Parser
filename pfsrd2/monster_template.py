@@ -67,6 +67,7 @@ def parse_monster_template(filename, options):
     strip_block_tags(struct)
     universal_markdown_pass(struct, struct["name"], "")
     change_enrichment_pass(struct, "monster_template")
+    reorder_changes_pass(struct)
     template_ability_enrichment_pass(struct)
     remove_empty_fields(struct)
     if not options.skip_schema:
@@ -299,6 +300,32 @@ def monster_template_cleanup_pass(struct):
     if "sections" in mt:
         del mt["sections"]
     _clean_html_fields(struct)
+
+
+def reorder_changes_pass(struct):
+    """Move hit_points changes ahead of the level change in changes[].
+
+    Change effects apply sequentially, and hit_points band conditionals
+    ("2-4 -> +15" etc.) reference $.creature_type.level, so they must
+    evaluate against the creature's starting level — before a level change
+    mutates it. Templates without a level change keep their source order.
+    Requires change_category, so this runs after change_enrichment_pass.
+    """
+    mt = struct.get("monster_template")
+    if not mt:
+        return
+    changes = mt.get("changes")
+    if not changes:
+        return
+    cats = [c.get("change_category") for c in changes]
+    if "level" not in cats or "hit_points" not in cats:
+        return
+    hp_changes = [c for c in changes if c.get("change_category") == "hit_points"]
+    rest = [c for c in changes if c.get("change_category") != "hit_points"]
+    # Reinsert all hit_points changes immediately before the first level
+    # change, preserving relative order within both groups.
+    insert_at = next(i for i, c in enumerate(rest) if c.get("change_category") == "level")
+    mt["changes"] = rest[:insert_at] + hp_changes + rest[insert_at:]
 
 
 def _clean_html_fields(struct):

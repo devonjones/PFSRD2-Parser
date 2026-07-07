@@ -1,0 +1,983 @@
+{
+  "description": "Human-verified enrichments for template/family change records that regex extraction cannot produce (hand-encoded rules text: conditional chains, level-banded values, add_strike/select encodings, trait-object replaces). Seeded into ~/.pfsrd2/enrichment.db by bin/pf2_seed_change_overrides as extraction_method='manual', human_verified=1. Keyed by (source_name, source_type, change_text) -> identity hash; a seed failure means the source text changed and the override needs re-review.",
+  "overrides": [
+    {
+      "source_name": "Vampire",
+      "source_type": "monster_template",
+      "change_text": "- Add a fangs Strike. It deals damage equal to the creature's lowest melee Strike and can be used to Feed. If the creature already has a jaws or fangs Strike, just add the Feed ability.",
+      "note": "derived natural Strike (add_strike) with skip_if_weapons guard against existing jaws/fangs",
+      "enriched": {
+        "change_category": "damage",
+        "effects": [
+          {
+            "item": {
+              "damage_type": "piercing",
+              "skip_if_weapons": [
+                "jaws",
+                "fangs"
+              ],
+              "weapon": "fangs"
+            },
+            "operation": "add_strike",
+            "target": "$.offense.offensive_actions"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Amphibious",
+      "source_type": "monster_template",
+      "change_text": "- Add the amphibious trait. If the creature has the aquatic trait, remove it.",
+      "note": "adds its own trait (regex read it as a removal), unconditional Aquatic swap with badge-array mirror; deliberate deviation: template-fixes lacks the mirror",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Amphibious",
+            "operation": "add_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Aquatic",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Aquatic",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Frostbound",
+      "source_type": "monster_template",
+      "change_text": "- Add a resistance to cold and a weakness to fire, value dependent on the creature's level (see table below).",
+      "note": "level-banded resistance+weakness pairs from adjustments table prose",
+      "enriched": {
+        "change_category": "weaknesses",
+        "effects": [
+          {
+            "conditional": "$.creature_type.level <= 3",
+            "item": {
+              "name": "cold",
+              "subtype": "resistance",
+              "type": "stat_block_section",
+              "value": 3
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].resistances"
+          },
+          {
+            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+            "item": {
+              "name": "cold",
+              "subtype": "resistance",
+              "type": "stat_block_section",
+              "value": 5
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].resistances"
+          },
+          {
+            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+            "item": {
+              "name": "cold",
+              "subtype": "resistance",
+              "type": "stat_block_section",
+              "value": 10
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].resistances"
+          },
+          {
+            "conditional": "$.creature_type.level >= 14",
+            "item": {
+              "name": "cold",
+              "subtype": "resistance",
+              "type": "stat_block_section",
+              "value": 15
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].resistances"
+          },
+          {
+            "conditional": "$.creature_type.level <= 3",
+            "item": {
+              "name": "fire",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 3
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+            "item": {
+              "name": "fire",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 5
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+            "item": {
+              "name": "fire",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 10
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 14",
+            "item": {
+              "name": "fire",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 15
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Miniature",
+      "source_type": "monster_template",
+      "change_text": "- Reduce the creature's size to Tiny.",
+      "note": "size trait badge replacement with full trait objects",
+      "enriched": {
+        "change_category": "size",
+        "effects": [
+          {
+            "operation": "replace",
+            "target": "$.creature_type.size",
+            "value": "Tiny"
+          },
+          {
+            "operation": "replace",
+            "target": "$.creature_type.traits[?(@.name=='Small')]",
+            "value": {
+              "classes": [
+                "size"
+              ],
+              "edition": "legacy",
+              "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
+              "game-obj": "Traits",
+              "name": "Tiny",
+              "sources": [
+                {
+                  "errata": {
+                    "alt": "2.0",
+                    "game-obj": "Sources",
+                    "name": "2.0",
+                    "type": "link"
+                  },
+                  "link": {
+                    "alt": "Core Rulebook pg. 474",
+                    "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
+                    "name": "Core Rulebook pg. 474",
+                    "type": "link"
+                  },
+                  "name": "Core Rulebook",
+                  "page": 474,
+                  "type": "source"
+                }
+              ],
+              "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
+              "type": "trait"
+            }
+          },
+          {
+            "operation": "replace",
+            "target": "$.creature_type.traits[?(@.name=='Medium')]",
+            "value": {
+              "classes": [
+                "size"
+              ],
+              "edition": "legacy",
+              "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
+              "game-obj": "Traits",
+              "name": "Tiny",
+              "sources": [
+                {
+                  "errata": {
+                    "alt": "2.0",
+                    "game-obj": "Sources",
+                    "name": "2.0",
+                    "type": "link"
+                  },
+                  "link": {
+                    "alt": "Core Rulebook pg. 474",
+                    "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
+                    "name": "Core Rulebook pg. 474",
+                    "type": "link"
+                  },
+                  "name": "Core Rulebook",
+                  "page": 474,
+                  "type": "source"
+                }
+              ],
+              "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
+              "type": "trait"
+            }
+          },
+          {
+            "operation": "replace",
+            "target": "$.creature_type.traits[?(@.name=='Large')]",
+            "value": {
+              "classes": [
+                "size"
+              ],
+              "edition": "legacy",
+              "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
+              "game-obj": "Traits",
+              "name": "Tiny",
+              "sources": [
+                {
+                  "errata": {
+                    "alt": "2.0",
+                    "game-obj": "Sources",
+                    "name": "2.0",
+                    "type": "link"
+                  },
+                  "link": {
+                    "alt": "Core Rulebook pg. 474",
+                    "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
+                    "name": "Core Rulebook pg. 474",
+                    "type": "link"
+                  },
+                  "name": "Core Rulebook",
+                  "page": 474,
+                  "type": "source"
+                }
+              ],
+              "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
+              "type": "trait"
+            }
+          },
+          {
+            "operation": "replace",
+            "target": "$.creature_type.traits[?(@.name=='Huge')]",
+            "value": {
+              "classes": [
+                "size"
+              ],
+              "edition": "legacy",
+              "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
+              "game-obj": "Traits",
+              "name": "Tiny",
+              "sources": [
+                {
+                  "errata": {
+                    "alt": "2.0",
+                    "game-obj": "Sources",
+                    "name": "2.0",
+                    "type": "link"
+                  },
+                  "link": {
+                    "alt": "Core Rulebook pg. 474",
+                    "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
+                    "name": "Core Rulebook pg. 474",
+                    "type": "link"
+                  },
+                  "name": "Core Rulebook",
+                  "page": 474,
+                  "type": "source"
+                }
+              ],
+              "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
+              "type": "trait"
+            }
+          },
+          {
+            "operation": "replace",
+            "target": "$.creature_type.traits[?(@.name=='Gargantuan')]",
+            "value": {
+              "classes": [
+                "size"
+              ],
+              "edition": "legacy",
+              "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
+              "game-obj": "Traits",
+              "name": "Tiny",
+              "sources": [
+                {
+                  "errata": {
+                    "alt": "2.0",
+                    "game-obj": "Sources",
+                    "name": "2.0",
+                    "type": "link"
+                  },
+                  "link": {
+                    "alt": "Core Rulebook pg. 474",
+                    "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
+                    "name": "Core Rulebook pg. 474",
+                    "type": "link"
+                  },
+                  "name": "Core Rulebook",
+                  "page": 474,
+                  "type": "source"
+                }
+              ],
+              "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
+              "type": "trait"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Miniature",
+      "source_type": "monster_template",
+      "change_text": "- Reduce the reach of the creature's lowest-reach melee Strikes to 0 feet. If it has melee Strikes with notable reach (often a tail, tentacle, or similar long appendage), reduce the reach of these Strikes to 5 feet.",
+      "note": "set_reach reduction for Tiny; encodes the notable-reach->5ft half only — the 0ft reduction for baseline strikes needs engine support (no Reach trait to lower), tracked in beads",
+      "enriched": {
+        "change_category": "strikes",
+        "effects": [
+          {
+            "operation": "set_reach",
+            "target": "$.offense.offensive_actions[*].attack",
+            "value": 5
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Sandbound",
+      "source_type": "monster_template",
+      "change_text": "- Add a resistance to fire and a weakness to cold, value dependent on the creature's level (see table below).",
+      "note": "level-banded resistance+weakness pairs from adjustments table prose",
+      "enriched": {
+        "change_category": "weaknesses",
+        "effects": [
+          {
+            "conditional": "$.creature_type.level <= 3",
+            "item": {
+              "name": "fire",
+              "subtype": "resistance",
+              "type": "stat_block_section",
+              "value": 3
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].resistances"
+          },
+          {
+            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+            "item": {
+              "name": "fire",
+              "subtype": "resistance",
+              "type": "stat_block_section",
+              "value": 5
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].resistances"
+          },
+          {
+            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+            "item": {
+              "name": "fire",
+              "subtype": "resistance",
+              "type": "stat_block_section",
+              "value": 10
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].resistances"
+          },
+          {
+            "conditional": "$.creature_type.level >= 14",
+            "item": {
+              "name": "fire",
+              "subtype": "resistance",
+              "type": "stat_block_section",
+              "value": 15
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].resistances"
+          },
+          {
+            "conditional": "$.creature_type.level <= 3",
+            "item": {
+              "name": "cold",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 3
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+            "item": {
+              "name": "cold",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 5
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+            "item": {
+              "name": "cold",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 10
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 14",
+            "item": {
+              "name": "cold",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 15
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Sandbound",
+      "source_type": "monster_template",
+      "change_text": "- If the creature doesn't have a burrow Speed, add a burrow Speed equal to half its fastest speed.",
+      "note": "tiered speed grants with presence guards from rules text",
+      "enriched": {
+        "change_category": "speed",
+        "effects": [
+          {
+            "conditional": "$.offense.speed.movement[?(@.movement_type=='burrow')] == null",
+            "item": {
+              "movement_type": "burrow",
+              "name": "burrow",
+              "subtype": "speed",
+              "type": "stat_block_section"
+            },
+            "operation": "add_item",
+            "target": "$.offense.speed.movement",
+            "value_from": "$.offense.speed.movement[*].value | max / 2"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Winged",
+      "source_type": "monster_template",
+      "change_text": "- Add a fly Speed equ al to its highest Speed.",
+      "note": "tiered speed grants with presence guards from rules text",
+      "enriched": {
+        "change_category": "speed",
+        "effects": [
+          {
+            "conditional": "$.offense.speed.movement[?(@.movement_type=='fly')].value == null",
+            "item": {
+              "movement_type": "fly",
+              "name": "fly",
+              "subtype": "speed",
+              "type": "stat_block_section"
+            },
+            "operation": "add_item",
+            "target": "$.offense.speed.movement",
+            "value_from": "$.offense.speed.movement[*].value | max"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Elite",
+      "source_type": "monster_template",
+      "change_text": "- Increase the creature’s level by 1; if the creature is level –1 or 0, instead increase its level by 2.",
+      "note": "conditional level chain from rules text (level <=0 -> +2 / lvl 1 -> -2, default branch)",
+      "enriched": {
+        "change_category": "level",
+        "effects": [
+          {
+            "conditional": "$.creature_type.level <= 0",
+            "operation": "adjustment",
+            "target": "$.creature_type.level",
+            "value": 2
+          },
+          {
+            "conditional": "default",
+            "operation": "adjustment",
+            "target": "$.creature_type.level",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Weak",
+      "source_type": "monster_template",
+      "change_text": "- Decrease the creature’s level by 1; if the creature is level 1, instead decrease its level by 2.",
+      "note": "conditional level chain from rules text (level <=0 -> +2 / lvl 1 -> -2, default branch)",
+      "enriched": {
+        "change_category": "level",
+        "effects": [
+          {
+            "conditional": "$.creature_type.level == 1",
+            "operation": "adjustment",
+            "target": "$.creature_type.level",
+            "value": -2
+          },
+          {
+            "conditional": "default",
+            "operation": "adjustment",
+            "target": "$.creature_type.level",
+            "value": -1
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Dwarf",
+      "source_type": "monster_template",
+      "change_text": "- Add a clan dagger to their items. Optionally, add a clan dagger melee Strike that deals damage equal to the creature's lowest melee Strike.",
+      "note": "clan dagger gear grant + optional (select min 0) clan dagger add_strike with trait objects",
+      "enriched": {
+        "change_category": "strikes",
+        "effects": [
+          {
+            "item": {
+              "name": "clan dagger",
+              "subtype": "gear",
+              "type": "stat_block_section"
+            },
+            "operation": "add_item",
+            "target": "$.gear"
+          },
+          {
+            "operation": "select",
+            "selection": {
+              "description": "Optionally, add a clan dagger melee Strike that deals damage equal to the creature's lowest melee Strike.",
+              "max": 1,
+              "min": 0,
+              "options": [
+                {
+                  "item": {
+                    "damage_type": "piercing",
+                    "traits": [
+                      "Agile",
+                      "Parry",
+                      {
+                        "name": "Versatile",
+                        "value": "B"
+                      }
+                    ],
+                    "weapon": "clan dagger"
+                  },
+                  "name": "Clan Dagger Strike",
+                  "operation": "add_strike",
+                  "target": "$.offense.offensive_actions"
+                }
+              ],
+              "type": "select"
+            },
+            "target": "$.offense.offensive_actions"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Guerrilla",
+      "source_type": "monster_template",
+      "change_text": "- If the creature has the Athletics skill, reduce its modifier by 2.",
+      "note": "conditional skill adjustment from prose",
+      "enriched": {
+        "change_category": "skills",
+        "effects": [
+          {
+            "conditional": "$.statistics.skills[?(@.name=='Athletics')].value != null",
+            "operation": "adjustment",
+            "target": "$.statistics.skills[?(@.name=='Athletics')].value",
+            "value": -2
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Kholo",
+      "source_type": "monster_template",
+      "change_text": "- Add a jaws Strike. It deals damage equal to the creature's lowest melee Strike.",
+      "note": "derived natural Strike (add_strike) encoding rules text",
+      "enriched": {
+        "change_category": "strikes",
+        "effects": [
+          {
+            "item": {
+              "damage_type": "piercing",
+              "weapon": "jaws"
+            },
+            "operation": "add_strike",
+            "target": "$.offense.offensive_actions"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Ratfolk",
+      "source_type": "monster_template",
+      "change_text": "- Add a jaws Strike. It deals damage equal to the creature's lowest melee Strike and has the agile and finesse traits.",
+      "note": "derived natural Strike (add_strike) encoding rules text",
+      "enriched": {
+        "change_category": "strikes",
+        "effects": [
+          {
+            "item": {
+              "damage_type": "piercing",
+              "traits": [
+                "Agile",
+                "Finesse"
+              ],
+              "weapon": "jaws"
+            },
+            "operation": "add_strike",
+            "target": "$.offense.offensive_actions"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Tengu",
+      "source_type": "monster_template",
+      "change_text": "- Add a beak Strike. It deals damage equal to the creature's lowest melee Strike and has the finesse trait.",
+      "note": "derived natural Strike (add_strike) encoding rules text",
+      "enriched": {
+        "change_category": "strikes",
+        "effects": [
+          {
+            "item": {
+              "damage_type": "piercing",
+              "traits": [
+                "Finesse"
+              ],
+              "weapon": "beak"
+            },
+            "operation": "add_strike",
+            "target": "$.offense.offensive_actions"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Air",
+      "source_type": "monster_template",
+      "change_text": "- If the creature is 8th level or higher, give it a fly Speed of 25 feet. If its level is lower than that, you can give it this fly Speed if it either doesn't have ranged attacks or you remove its ranged attacks; use discretion.",
+      "note": "tiered speed grants with presence guards from rules text",
+      "enriched": {
+        "change_category": "speed",
+        "effects": [
+          {
+            "conditional": "$.creature_type.level >= 8 && $.offense.speed.movement[?(@.movement_type=='fly')].value == null",
+            "item": {
+              "movement_type": "fly",
+              "name": "fly 25 feet",
+              "subtype": "speed",
+              "type": "stat_block_section",
+              "value": 25
+            },
+            "operation": "add_item",
+            "target": "$.offense.speed.movement"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Earth",
+      "source_type": "monster_template",
+      "change_text": "- Add tremorsense 60 feet (imprecise).",
+      "note": "sense with parenthetical modifier (imprecise)",
+      "enriched": {
+        "change_category": "senses",
+        "effects": [
+          {
+            "item": {
+              "modifiers": [
+                {
+                  "name": "imprecise",
+                  "subtype": "modifier",
+                  "type": "stat_block_section"
+                }
+              ],
+              "name": "tremorsense",
+              "range": {
+                "range": 60,
+                "subtype": "range",
+                "text": "60 feet",
+                "type": "stat_block_section",
+                "unit": "feet"
+              },
+              "subtype": "special_sense",
+              "type": "stat_block_section"
+            },
+            "operation": "add_item",
+            "target": "$.senses.special_senses"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Earth",
+      "source_type": "monster_template",
+      "change_text": "- Add a burrow Speed of 20 feet, or 40 feet if the creature is 8th level or higher.",
+      "note": "tiered speed grants with presence guards from rules text",
+      "enriched": {
+        "change_category": "speed",
+        "effects": [
+          {
+            "conditional": "$.creature_type.level >= 8 && $.offense.speed.movement[?(@.movement_type=='burrow')].value == null",
+            "item": {
+              "movement_type": "burrow",
+              "name": "burrow 40 feet",
+              "subtype": "speed",
+              "type": "stat_block_section",
+              "value": 40
+            },
+            "operation": "add_item",
+            "target": "$.offense.speed.movement"
+          },
+          {
+            "conditional": "$.creature_type.level <= 7 && $.offense.speed.movement[?(@.movement_type=='burrow')].value == null",
+            "item": {
+              "movement_type": "burrow",
+              "name": "burrow 20 feet",
+              "subtype": "speed",
+              "type": "stat_block_section",
+              "value": 20
+            },
+            "operation": "add_item",
+            "target": "$.offense.speed.movement"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Fire",
+      "source_type": "monster_template",
+      "change_text": "- If the creature's Strikes deal more than one die of damage, change one die to fire damage. If not, add 1 fire damage to its Strikes.",
+      "note": "replace_one_die per RoE elemental rule; no flat-damage fallback",
+      "enriched": {
+        "change_category": "damage",
+        "effects": [
+          {
+            "operation": "replace_one_die",
+            "target": "$.offense.offensive_actions[*].attack.damage",
+            "value": "fire"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Water",
+      "source_type": "monster_template",
+      "change_text": "- Add a swim Speed of 25 feet, or 40 feet if the creature is 8th level or higher.",
+      "note": "tiered speed grants with presence guards from rules text",
+      "enriched": {
+        "change_category": "speed",
+        "effects": [
+          {
+            "conditional": "$.creature_type.level >= 8 && $.offense.speed.movement[?(@.movement_type=='swim')].value == null",
+            "item": {
+              "movement_type": "swim",
+              "name": "swim 40 feet",
+              "subtype": "speed",
+              "type": "stat_block_section",
+              "value": 40
+            },
+            "operation": "add_item",
+            "target": "$.offense.speed.movement"
+          },
+          {
+            "conditional": "$.creature_type.level <= 7 && $.offense.speed.movement[?(@.movement_type=='swim')].value == null",
+            "item": {
+              "movement_type": "swim",
+              "name": "swim 25 feet",
+              "subtype": "speed",
+              "type": "stat_block_section",
+              "value": 25
+            },
+            "operation": "add_item",
+            "target": "$.offense.speed.movement"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Wood",
+      "source_type": "monster_template",
+      "change_text": "- Add the wood trait. If the creature is a growing plant, you can also add the plant trait.",
+      "note": "GM-discretionary selection / compound add-remove prose",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Wood",
+            "operation": "add_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "operation": "select",
+            "selection": {
+              "description": "If the creature is a growing plant, you can also add the plant trait",
+              "max": 1,
+              "min": 0,
+              "options": [
+                {
+                  "name": "Plant",
+                  "operation": "add_item",
+                  "target": "$.creature_type.creature_types"
+                }
+              ],
+              "type": "select"
+            },
+            "target": "$.creature_type.creature_types"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Wood",
+      "source_type": "monster_template",
+      "change_text": "- Add weaknesses to fire and to damage from axes depending on its level.",
+      "note": "level-banded resistance+weakness pairs from adjustments table prose",
+      "enriched": {
+        "change_category": "weaknesses",
+        "effects": [
+          {
+            "conditional": "$.creature_type.level <= 3",
+            "item": {
+              "name": "fire",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 3
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level <= 3",
+            "item": {
+              "name": "axes",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 3
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+            "item": {
+              "name": "fire",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 5
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+            "item": {
+              "name": "axes",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 5
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+            "item": {
+              "name": "fire",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 10
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+            "item": {
+              "name": "axes",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 10
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 14",
+            "item": {
+              "name": "fire",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 15
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          },
+          {
+            "conditional": "$.creature_type.level >= 14",
+            "item": {
+              "name": "axes",
+              "subtype": "weakness",
+              "type": "stat_block_section",
+              "value": 15
+            },
+            "operation": "add_item",
+            "target": "$.defense.hitpoints[*].weaknesses"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Tengu",
+      "source_type": "monster_template",
+      "change_text": "- Add the following abilities.  **Low-Light Vision**",
+      "note": "route change-attached abilities into the pool; engine diverts known senses at apply time",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_items",
+            "source": "$.changes[*].abilities",
+            "target": "$.defense.automatic_abilities"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Corrupt",
+      "source_type": "monster_template",
+      "change_text": "- Choose an Intelligence-, Wisdom-, or Charisma-based skill that's thematically important to the creature's office, such as Legal Lore for a judge. The creature gains the official bully ability for that skill.",
+      "note": "deliberate deviation from template-fixes: replaces the junk 'Official Bully Ability For That' skill artifact with the ability routing the fabricated block carried",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_items",
+            "source": "$.abilities[?(@.name=='Official Bully')]",
+            "target": "$.interaction_abilities"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "description": "Human-verified ability_category corrections for ability_records, keyed by ability name (case-insensitive). Seeded by bin/pf2_seed_change_overrides as human_verified=1 so classification passes never overwrite them. A seed failure (no matching record) means the ability was renamed or never parsed.",
+  "overrides": [
+    {
+      "name": "Cold Stasis",
+      "ability_category": "automatic",
+      "note": "Classifier reads 'vulnerable to cold' as a sense-like passive; it is an always-on automatic ability (Broodpiercer host)."
+    },
+    {
+      "name": "Mythic Power (Recharge Spell)",
+      "ability_category": "offensive",
+      "note": "No action_type in source and no creature links to vote with; it recharges spell slots and belongs with offensive actions (Mythic Caster)."
+    }
+  ]
+}
