@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Seed git-stored enrichment overrides into the enrichment DB.
+
+Reads overrides/change_overrides.json and overrides/ability_overrides.json
+and upserts them into ~/.pfsrd2/enrichment.db as extraction_method='manual',
+human_verified=1. See pfsrd2/enrichment/overrides.py for the model.
+
+Usage:
+    pf2_seed_change_overrides             # Seed all overrides
+    pf2_seed_change_overrides --stats     # Show seeded/verified counts
+
+Exits nonzero if any override no longer matches a record (stale override).
+"""
+
+import argparse
+import os
+import sys
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(script_dir, ".."))
+
+from pfsrd2.enrichment.overrides import (
+    load_overrides,
+    seed_ability_overrides,
+    seed_change_overrides,
+)
+from pfsrd2.sql.enrichment import get_enrichment_db_connection
+
+
+def show_stats(curs):
+    curs.execute(
+        "SELECT COUNT(*) AS cnt FROM change_records"
+        " WHERE extraction_method = 'manual' AND human_verified = 1"
+    )
+    print(f"change_records seeded manual+verified: {curs.fetchone()['cnt']}")
+    curs.execute("SELECT COUNT(*) AS cnt FROM ability_records WHERE human_verified = 1")
+    print(f"ability_records human_verified: {curs.fetchone()['cnt']}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Seed enrichment overrides from git")
+    parser.add_argument("--stats", action="store_true", help="Show seeded counts")
+    args = parser.parse_args()
+
+    conn = get_enrichment_db_connection()
+    try:
+        curs = conn.cursor()
+        if args.stats:
+            show_stats(curs)
+            return 0
+
+        change_overrides = load_overrides("change_overrides.json")
+        ability_overrides = load_overrides("ability_overrides.json")
+
+        changes_seeded, change_misses = seed_change_overrides(curs, change_overrides)
+        abilities_seeded, ability_misses = seed_ability_overrides(curs, ability_overrides)
+        conn.commit()
+
+        print(f"Change overrides seeded: {changes_seeded}/{len(change_overrides)}")
+        print(f"Ability overrides seeded: {abilities_seeded}/{len(ability_overrides)}")
+
+        if change_misses or ability_misses:
+            print(
+                "\nERROR: stale overrides — no matching record. The source text "
+                "changed (or was never parsed); re-review these entries:",
+                file=sys.stderr,
+            )
+            for ov in change_misses:
+                print(
+                    f"  change: {ov['source_name']} ({ov['source_type']}): "
+                    f"{ov['change_text'][:70]!r}",
+                    file=sys.stderr,
+                )
+            for ov in ability_misses:
+                print(f"  ability: {ov['name']!r}", file=sys.stderr)
+            return 1
+        return 0
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -12,6 +12,7 @@ from pfsrd2.sql.enrichment.queries import (  # noqa: F401
     clear_needs_review,
     count_ability_records,
     count_change_records,
+    clear_change_needs_review,
     fetch_abilities_by_name,
     fetch_abilities_for_creature,
     fetch_ability_by_hash,
