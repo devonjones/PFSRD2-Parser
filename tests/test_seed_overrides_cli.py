@@ -66,6 +66,38 @@ def _populate_records(db_path, change_overrides, ability_overrides):
             os.environ["PFSRD2_ENRICHMENT_DB"] = env_backup
 
 
+class TestDBPathEnvOverride:
+    def test_env_var_set_overrides_path(self, monkeypatch, tmp_path):
+        from pfsrd2.sql import enrichment
+
+        override = str(tmp_path / "other.db")
+        monkeypatch.setenv(enrichment.DB_PATH_ENV_VAR, override)
+        assert enrichment._get_db_path() == override
+
+    def test_env_var_unset_uses_default(self, monkeypatch):
+        from pfsrd2.sql import enrichment
+
+        monkeypatch.delenv(enrichment.DB_PATH_ENV_VAR, raising=False)
+        assert enrichment._get_db_path().endswith(os.path.join(".pfsrd2", enrichment.DB_NAME))
+
+    def test_env_var_empty_string_behaves_as_unset(self, monkeypatch):
+        # Pin the truthiness check: an empty override must not redirect the
+        # DB to the current directory.
+        from pfsrd2.sql import enrichment
+
+        monkeypatch.setenv(enrichment.DB_PATH_ENV_VAR, "")
+        assert enrichment._get_db_path().endswith(os.path.join(".pfsrd2", enrichment.DB_NAME))
+
+    def test_override_announces_on_stderr(self, monkeypatch, tmp_path, capsys):
+        # A leaked/typo'd override silently creating a fresh empty DB is the
+        # failure mode — the redirect must be visible.
+        from pfsrd2.sql import enrichment
+
+        monkeypatch.setenv(enrichment.DB_PATH_ENV_VAR, str(tmp_path / "o.db"))
+        enrichment._get_db_path()
+        assert enrichment.DB_PATH_ENV_VAR in capsys.readouterr().err
+
+
 class TestSeedCLIExitCodes:
     def test_stale_overrides_exit_nonzero(self, tmp_path):
         # Fresh migrated DB with no change records: every committed change

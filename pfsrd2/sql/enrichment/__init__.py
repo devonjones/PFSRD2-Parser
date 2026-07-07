@@ -6,6 +6,7 @@ main DB rebuilds. It has its own migration chain.
 
 import os
 import sqlite3
+import sys
 
 # Re-export queries for convenient access
 from pfsrd2.sql.enrichment.queries import (  # noqa: F401
@@ -64,6 +65,9 @@ DB_PATH_ENV_VAR = "PFSRD2_ENRICHMENT_DB"
 def _get_db_path():
     env_path = os.environ.get(DB_PATH_ENV_VAR)
     if env_path:
+        # Announce the redirect: a leaked/typo'd override would otherwise
+        # silently create a fresh empty DB and drop all seeded enrichment.
+        sys.stderr.write(f"NOTE: {DB_PATH_ENV_VAR} overrides enrichment DB path: {env_path}\n")
         return env_path
     path = os.path.expanduser("~/.pfsrd2")
     if not os.path.exists(path):
