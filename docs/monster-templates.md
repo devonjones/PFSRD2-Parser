@@ -144,9 +144,17 @@ Conditionals are JSONPath predicates evaluated against the creature being modifi
 {"conditional": "$.creature_type.level >= 8 && $.offense.speed.movement[?(@.movement_type=='fly')].value == null", ...}
 ```
 
-`"default"` means "apply this effect if no other conditional in the same change matched."
+`"default"` means "apply this effect if no other conditional in the same chain matched."
 
-When multiple effects in the same change have conditionals, they form a conditional chain — evaluate in order, apply the first match, or fall through to `"default"`.
+Conditional effects in the same change form a first-match chain **only when
+they share both a target and an operation** (e.g. the rarity pair: Common→
+Uncommon / Uncommon→Rare `replace` effects on `$.creature_type.rarity` —
+evaluate in order, apply the first match, or fall through to `"default"`).
+Effects with different targets or operations evaluate their conditionals
+independently — a type-list removal and its badge-array mirror carry the same
+conditional and both fire. Item-accumulating operations (`add_item`,
+`add_items`) on a shared target also all apply rather than first-match.
+This matches the pfsrd2-data-api template engine's implemented semantics.
 
 Compound predicates join comparisons with `&&`. Comparing a filtered path
 `== null` is a presence guard — true when no element matches the filter

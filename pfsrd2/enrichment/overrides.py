@@ -17,6 +17,7 @@ be re-reviewed — never silently skipped.
 import json
 import os
 
+from pfsrd2.ability_placement import CATEGORY_TARGETS
 from pfsrd2.change_identity import compute_change_hash
 from pfsrd2.enrichment.change_extractor import ENRICHMENT_VERSION
 from pfsrd2.sql.enrichment import (
@@ -52,7 +53,7 @@ def seed_change_overrides(curs, overrides):
         if record is None:
             misses.append(ov)
             continue
-        enriched_json = json.dumps(ov["enriched"], sort_keys=True)
+        enriched_json = json.dumps(ov["enriched"], sort_keys=True, ensure_ascii=False)
         update_change_enriched_json(
             curs, record["change_id"], enriched_json, ENRICHMENT_VERSION, "manual"
         )
@@ -72,6 +73,11 @@ def seed_ability_overrides(curs, overrides):
     seeded = 0
     misses = []
     for ov in overrides:
+        category = ov["ability_category"]
+        assert category in CATEGORY_TARGETS, (
+            f"Invalid ability category {category!r} for override {ov['name']!r}. "
+            f"Must be one of: {sorted(CATEGORY_TARGETS)}"
+        )
         curs.execute(
             "SELECT ability_id FROM ability_records WHERE LOWER(name) = LOWER(?)",
             (ov["name"],),
@@ -81,7 +87,7 @@ def seed_ability_overrides(curs, overrides):
             misses.append(ov)
             continue
         for row in rows:
-            update_ability_category(curs, row["ability_id"], ov["ability_category"])
+            update_ability_category(curs, row["ability_id"], category)
             mark_human_verified(curs, row["ability_id"])
         seeded += 1
     return seeded, misses

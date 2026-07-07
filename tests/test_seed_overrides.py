@@ -186,3 +186,11 @@ class TestSeedAbilityOverrides:
 
         assert seeded == 0
         assert misses == [override]
+
+    def test_invalid_category_asserts(self, db):
+        curs = db.cursor()
+        insert_ability_record(curs, "Cold Stasis", "hash1", "{}")
+        override = {"name": "Cold Stasis", "ability_category": "automatc"}
+
+        with pytest.raises(AssertionError, match="Invalid ability category"):
+            seed_ability_overrides(curs, [override])
