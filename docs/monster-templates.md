@@ -94,7 +94,8 @@ Each effect is a single instruction for the patch generator:
 | `value` | no | Literal value for the operation |
 | `value_from` | no | JSONPath expression to compute the value |
 | `conditional` | no | JSONPath predicate — skip if false |
-| `item` | no | Object to add (for `add_item`) |
+| `item` | no | Object to add (for `add_item`/`add_strike`) |
+| `source` | no | JSONPath to items to copy (for `add_items`) |
 | `modifier` | no | Modifier object to append (for `add_modifier`) |
 | `selection` | no | Selection descriptor (for `select`) |
 | `minimum` | no | Floor value when `value_from` uses division |
@@ -107,12 +108,30 @@ Each effect is a single instruction for the patch generator:
 | `add_item` | Append `item` to the target array |
 | `add_items` | Append multiple items (from `source` path) |
 | `add_modifier` | Append `modifier` to the target's modifiers array |
+| `add_strike` | Derive a natural Strike from the creature's lowest melee Strike (see below) |
+| `no_op` | Explicitly no mechanical effect (flavor-only change) |
 | `replace` | Replace the target's value with `value` |
 | `replace_one_die` | Change one damage die's type to `value` |
 | `replace_highest_with` | Replace the highest speed with a new movement type |
 | `remove_item` | Remove item matching `name` from the target array |
-| `set_reach` | Set Strike reach to `value` |
+| `remove_all_except` | Remove every item except those in `names` |
+| `set_reach` | Lower Strike reach to `value` (adjusts the Reach trait value; never raises it) |
+| `size_increment` | Step the creature's size up/down by `value` categories |
 | `select` | Requires human input (see Selection Framework) |
+
+**`add_strike`** encodes the recurring "Add a jaws/beak/fangs Strike. It deals
+damage equal to the creature's lowest melee Strike" rules text. The `item`
+carries:
+
+| Item field | Description |
+|------------|-------------|
+| `weapon` | Name of the new Strike (e.g. `"beak"`) |
+| `damage_type` | Damage type of the derived Strike |
+| `traits` | Optional Strike traits — strings or `{"name": ..., "value": ...}` objects (e.g. Versatile B) |
+| `skip_if_weapons` | Optional list — skip the effect if the creature already has a matching Strike |
+
+The consumer copies the lowest melee Strike's primary damage (dice and
+modifier, not riders) and applies the listed traits.
 
 ### Conditionals
 
@@ -122,11 +141,16 @@ Conditionals are JSONPath predicates evaluated against the creature being modifi
 {"conditional": "$.creature_type.level <= 0", ...}
 {"conditional": "default", ...}
 {"conditional": "$.offense.speed.movement[?(@.movement_type=='land')].value > 20", ...}
+{"conditional": "$.creature_type.level >= 8 && $.offense.speed.movement[?(@.movement_type=='fly')].value == null", ...}
 ```
 
 `"default"` means "apply this effect if no other conditional in the same change matched."
 
 When multiple effects in the same change have conditionals, they form a conditional chain — evaluate in order, apply the first match, or fall through to `"default"`.
+
+Compound predicates join comparisons with `&&`. Comparing a filtered path
+`== null` is a presence guard — true when no element matches the filter
+(e.g. "add a fly Speed *unless the creature already has one*").
 
 ### Computed Values
 
@@ -143,14 +167,18 @@ Some effects derive their value from the creature's existing stats:
 }
 ```
 
-The `value_from` field is a JSONPath expression with optional operators (`/ 2`, `| max`, `| min`). The `minimum` field sets a floor.
+The `value_from` field is a JSONPath expression with optional operators (`/ 2`, `| max`, `| min`, `| max / 2`). The `minimum` field sets a floor.
 
 | Expression | Meaning |
 |------------|---------|
 | `$.skills[*].value \| max` | Highest skill modifier |
 | `$.offense.speed.movement[*].value \| max` | Fastest speed |
 | `$.offense.speed.movement[?(@.movement_type=='land')].value / 2` | Half land speed |
+| `$.offense.speed.movement[*].value \| max / 2` | Half the fastest speed |
 | `$.skills \| high_for_level` | High skill value from the building rules table |
+
+Speed divisions round down to the nearest 5-foot increment, per the halved-Speed
+convention in the building rules.
 
 ## Selection Framework
 
@@ -366,6 +394,38 @@ PFSRD2-Parser/bin/pf2_monster_template_parse -d --stdout \
 ```
 
 Output goes to `pfsrd2-data/monster_templates/<source_name>/`.
+
+### Full Enrichment Cycle
+
+Change effects come from the enrichment DB, so a cold start (or any run after
+extractor changes) is a two-pass cycle with an override seed in between:
+
+```bash
+PFSRD2-Parser/bin/pf2_run_monster_templates.sh   # 1. stage raw change records
+PFSRD2-Parser/bin/pf2_enrich_changes             # 2. regex categorize + build effects
+PFSRD2-Parser/bin/pf2_seed_change_overrides      # 3. seed hand-verified overrides
+PFSRD2-Parser/bin/pf2_run_monster_templates.sh   # 4. merge effects into output JSON
+```
+
+## Hand-Verified Overrides
+
+Some rules text encodes mechanics no regex should be contorted to produce —
+conditional level chains ("if the creature is level –1 or 0, instead increase
+by 2"), level-banded resistance values, optional `select` grants, size-trait
+object replacement. These live in git as `overrides/change_overrides.json`
+(change enrichments) and `overrides/ability_overrides.json` (ability_category
+corrections), keyed by `(source_name, source_type, change_text)` and ability
+name respectively.
+
+`bin/pf2_seed_change_overrides` seeds them into the enrichment DB as
+`extraction_method='manual'`, `human_verified=1` — which excludes them from
+every re-enrichment pass, including `pf2_enrich_changes --force`. Seeding is
+idempotent; the enrichment DB stays disposable.
+
+**Staleness is loud by design**: the identity hash covers the change's source
+text, so when AoN errata (or an HTML fix) alters the prose, the override stops
+matching and the seeder exits nonzero listing the stale entries. Re-review the
+rules text, update the entry, re-seed. Never silently skip a miss.
 
 ## Downstream Patch Generation (Planned)
 
