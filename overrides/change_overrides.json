@@ -5,7 +5,7 @@
       "source_name": "Vampire",
       "source_type": "monster_template",
       "change_text": "- Add a fangs Strike. It deals damage equal to the creature's lowest melee Strike and can be used to Feed. If the creature already has a jaws or fangs Strike, just add the Feed ability.",
-      "note": "replace_one_die per RoE elemental rule; no flat-damage fallback",
+      "note": "derived natural Strike (add_strike) with skip_if_weapons guard against existing jaws/fangs",
       "enriched": {
         "change_category": "damage",
         "effects": [
@@ -28,7 +28,7 @@
       "source_name": "Amphibious",
       "source_type": "monster_template",
       "change_text": "- Add the amphibious trait. If the creature has the aquatic trait, remove it.",
-      "note": "GM-discretionary selection / compound add-remove prose",
+      "note": "adds its own trait (regex read it as a removal), unconditional Aquatic swap with badge-array mirror; deliberate deviation: template-fixes lacks the mirror",
       "enriched": {
         "change_category": "traits",
         "effects": [
@@ -41,6 +41,11 @@
             "name": "Aquatic",
             "operation": "remove_item",
             "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Aquatic",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
           }
         ]
       }
@@ -334,7 +339,7 @@
       "source_name": "Miniature",
       "source_type": "monster_template",
       "change_text": "- Reduce the reach of the creature's lowest-reach melee Strikes to 0 feet. If it has melee Strikes with notable reach (often a tail, tentacle, or similar long appendage), reduce the reach of these Strikes to 5 feet.",
-      "note": "derived natural Strike (add_strike) encoding rules text",
+      "note": "set_reach reduction for Tiny; encodes the notable-reach->5ft half only — the 0ft reduction for baseline strikes needs engine support (no Reach trait to lower), tracked in beads",
       "enriched": {
         "change_category": "strikes",
         "effects": [
@@ -541,7 +546,7 @@
       "source_name": "Dwarf",
       "source_type": "monster_template",
       "change_text": "- Add a clan dagger to their items. Optionally, add a clan dagger melee Strike that deals damage equal to the creature's lowest melee Strike.",
-      "note": "derived natural Strike (add_strike) encoding rules text",
+      "note": "clan dagger gear grant + optional (select min 0) clan dagger add_strike with trait objects",
       "enriched": {
         "change_category": "strikes",
         "effects": [

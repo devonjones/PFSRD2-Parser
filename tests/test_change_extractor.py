@@ -275,18 +275,22 @@ class TestBuildTraitEffects:
             },
         ]
 
-    def test_mirror_skips_conditional_removals(self):
+    def test_mirror_conditional_removal_carries_conditional(self):
+        conditional = "$.creature_type.creature_types[?(@ == 'Aquatic')]"
         effects = _mirror_creature_type_removals(
             [
                 {
                     "name": "Aquatic",
                     "operation": "remove_item",
                     "target": "$.creature_type.creature_types",
-                    "conditional": "$.creature_type.creature_types[?(@ == 'Aquatic')]",
+                    "conditional": conditional,
                 }
             ]
         )
-        assert len(effects) == 1
+        assert len(effects) == 2
+        mirror = effects[1]
+        assert mirror["target"] == "$.creature_type.traits"
+        assert mirror["conditional"] == conditional
 
     def test_mirror_skips_plain_trait_removals(self):
         effects = _mirror_creature_type_removals(
@@ -594,6 +598,31 @@ class TestAbilityTarget:
     def test_missing_name_asserts(self):
         with pytest.raises(AssertionError):
             ability_placement.ability_target({})
+
+    def test_interaction_category_targets_top_level_path(self):
+        # Regression: CATEGORY_TARGETS["interaction"] used to point at
+        # $.stat_block.interaction_abilities — a path that doesn't exist in
+        # the creature schema (interaction_abilities lives directly on the
+        # stat block), so interaction abilities (e.g. Zombie's Slow) were
+        # routed to a dead path and silently vanished on template apply.
+        from pfsrd2.sql.enrichment import (
+            get_enrichment_db_connection,
+            insert_ability_record,
+            insert_creature_link,
+        )
+
+        conn = get_enrichment_db_connection(db_path=":memory:")
+        try:
+            curs = conn.cursor()
+            ability_id = insert_ability_record(curs, "Slow", "hash_slow", "{}")
+            insert_creature_link(
+                curs, ability_id, "1234", "Zombie Shambler", 1, "[]", "Bestiary", "interaction"
+            )
+            category, target = ability_placement.lookup_ability_category("Slow", conn=conn)
+            assert category == "interaction"
+            assert target == "$.interaction_abilities"
+        finally:
+            conn.close()
 
 
 class TestBuildSpeedEffectsRemoveAll:

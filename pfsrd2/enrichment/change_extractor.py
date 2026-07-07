@@ -646,11 +646,11 @@ def _mirror_creature_type_removals(effects):
     Creature types appear in two arrays in the creature schema: the type list
     ($.creature_type.creature_types) and the displayed trait badges
     ($.creature_type.traits). A removal that only touches the type list leaves
-    a stale badge on the rendered stat block, so every unconditional
-    remove_item on the type list gets a mirrored remove_item on the badge
-    array. Additions are not mirrored — the display layer sources new badges
-    from the type list. Conditional removals are not mirrored because the
-    conditional references the type-list path and would need rewriting.
+    a stale badge on the rendered stat block, so every remove_item on the type
+    list gets a mirrored remove_item on the badge array. A conditional removal
+    carries the same conditional — parsed creatures keep the two arrays in
+    lockstep, so both fire (or don't) under the same predicate. Additions are
+    not mirrored — the display layer sources new badges from the type list.
     """
     mirrored = []
     for eff in effects:
@@ -658,15 +658,15 @@ def _mirror_creature_type_removals(effects):
         if (
             eff.get("operation") == "remove_item"
             and eff.get("target") == "$.creature_type.creature_types"
-            and "conditional" not in eff
         ):
-            mirrored.append(
-                {
-                    "name": eff["name"],
-                    "operation": "remove_item",
-                    "target": "$.creature_type.traits",
-                }
-            )
+            mirror = {
+                "name": eff["name"],
+                "operation": "remove_item",
+                "target": "$.creature_type.traits",
+            }
+            if "conditional" in eff:
+                mirror["conditional"] = eff["conditional"]
+            mirrored.append(mirror)
     return mirrored
 
 

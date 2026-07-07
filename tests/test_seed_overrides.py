@@ -4,7 +4,11 @@ import pytest
 
 from pfsrd2.change_identity import compute_change_hash
 from pfsrd2.enrichment.change_extractor import ENRICHMENT_VERSION
-from pfsrd2.enrichment.overrides import seed_ability_overrides, seed_change_overrides
+from pfsrd2.enrichment.overrides import (
+    load_overrides,
+    seed_ability_overrides,
+    seed_change_overrides,
+)
 from pfsrd2.sql.enrichment import (
     fetch_ability_by_id,
     fetch_change_by_hash,
@@ -119,6 +123,29 @@ class TestSeedChangeOverrides:
 
         assert seeded == 0
         assert misses == [edited]
+
+
+class TestLoadOverrides:
+    def test_loads_overrides_list(self, tmp_path):
+        doc = {"description": "test", "overrides": [{"name": "X"}]}
+        (tmp_path / "change_overrides.json").write_text(json.dumps(doc))
+        assert load_overrides("change_overrides.json", overrides_dir=tmp_path) == [{"name": "X"}]
+
+    def test_missing_file_raises(self, tmp_path):
+        # A silent [] here would no-op the whole seeding step on a broken
+        # checkout or typo'd filename — must fail loudly.
+        with pytest.raises(FileNotFoundError):
+            load_overrides("nope.json", overrides_dir=tmp_path)
+
+    def test_missing_overrides_key_raises(self, tmp_path):
+        (tmp_path / "bad.json").write_text("{}")
+        with pytest.raises(KeyError):
+            load_overrides("bad.json", overrides_dir=tmp_path)
+
+    def test_committed_override_files_load(self):
+        # The real committed files must always parse and be non-empty.
+        assert load_overrides("change_overrides.json")
+        assert load_overrides("ability_overrides.json")
 
 
 class TestSeedAbilityOverrides:

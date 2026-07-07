@@ -23,6 +23,8 @@ from pfsrd2.sql.enrichment import (
     clear_change_needs_review,
     fetch_change_by_hash,
     mark_change_human_verified,
+    mark_human_verified,
+    update_ability_category,
     update_change_enriched_json,
 )
 
@@ -32,8 +34,11 @@ OVERRIDES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "overrides")
 def load_overrides(filename, overrides_dir=None):
     path = os.path.join(overrides_dir or OVERRIDES_DIR, filename)
     if not os.path.exists(path):
-        return []
-    with open(path) as fp:
+        # Both override files are committed and loaded by hardcoded name — a
+        # missing file means a broken checkout or a typo'd name, and silently
+        # returning [] would no-op the entire hand-verified seeding step.
+        raise FileNotFoundError(f"Overrides file missing: {path}")
+    with open(path, encoding="utf-8") as fp:
         return json.load(fp)["overrides"]
 
 
@@ -76,11 +81,7 @@ def seed_ability_overrides(curs, overrides):
             misses.append(ov)
             continue
         for row in rows:
-            curs.execute(
-                "UPDATE ability_records"
-                " SET ability_category = ?, human_verified = 1"
-                " WHERE ability_id = ?",
-                (ov["ability_category"], row["ability_id"]),
-            )
+            update_ability_category(curs, row["ability_id"], ov["ability_category"])
+            mark_human_verified(curs, row["ability_id"])
         seeded += 1
     return seeded, misses
