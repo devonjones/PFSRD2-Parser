@@ -14,6 +14,7 @@ from pfsrd2.enrichment.change_extractor import (
     _damage_adjustment_item,
     _extract_names_from_text,
     _level_text_to_conditional,
+    _mirror_creature_type_removals,
     _normalize_movement_type,
     enrich_change,
 )
@@ -226,10 +227,68 @@ class TestBuildTraitEffects:
         effects = _build_trait_effects("Replace the human trait with the dwarf trait.")
         remove_effects = [e for e in effects if e["operation"] == "remove_item"]
         add_effects = [e for e in effects if e["operation"] == "add_item"]
-        assert len(remove_effects) == 1
-        assert remove_effects[0]["name"] == "Human"
+        # Removing a creature type also removes its badge copy from
+        # $.creature_type.traits (mirrored removal).
+        assert len(remove_effects) == 2
+        assert all(e["name"] == "Human" for e in remove_effects)
+        assert [e["target"] for e in remove_effects] == [
+            "$.creature_type.creature_types",
+            "$.creature_type.traits",
+        ]
         assert len(add_effects) == 1
         assert add_effects[0]["name"] == "Dwarf"
+
+    def test_mirror_inserts_traits_removal_after_type_removal(self):
+        effects = _mirror_creature_type_removals(
+            [
+                {
+                    "name": "Human",
+                    "operation": "remove_item",
+                    "target": "$.creature_type.creature_types",
+                },
+                {
+                    "name": "Orc",
+                    "operation": "add_item",
+                    "target": "$.creature_type.creature_types",
+                },
+            ]
+        )
+        assert effects == [
+            {
+                "name": "Human",
+                "operation": "remove_item",
+                "target": "$.creature_type.creature_types",
+            },
+            {
+                "name": "Human",
+                "operation": "remove_item",
+                "target": "$.creature_type.traits",
+            },
+            {
+                "name": "Orc",
+                "operation": "add_item",
+                "target": "$.creature_type.creature_types",
+            },
+        ]
+
+    def test_mirror_skips_conditional_removals(self):
+        effects = _mirror_creature_type_removals(
+            [
+                {
+                    "name": "Aquatic",
+                    "operation": "remove_item",
+                    "target": "$.creature_type.creature_types",
+                    "conditional": "$.creature_type.creature_types[?(@ == 'Aquatic')]",
+                }
+            ]
+        )
+        assert len(effects) == 1
+
+    def test_mirror_skips_plain_trait_removals(self):
+        effects = _mirror_creature_type_removals(
+            [{"name": "Mindless", "operation": "remove_item", "target": "$.traits"}]
+        )
+        assert len(effects) == 1
 
     def test_link_based_extraction_avoids_fragments(self):
         """pfsrd2-bfy: use Traits links instead of regex to avoid sentence fragments."""
