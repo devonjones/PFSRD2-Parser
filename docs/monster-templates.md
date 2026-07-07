@@ -115,7 +115,7 @@ Each effect is a single instruction for the patch generator:
 | `replace_highest_with` | Replace the highest speed with a new movement type |
 | `remove_item` | Remove item matching `name` from the target array |
 | `remove_all_except` | Remove every item except those in `names` |
-| `set_reach` | Lower Strike reach to `value` (adjusts the Reach trait value; never raises it) |
+| `set_reach` | Lower Strike reach (adjusts Reach trait values; never raises). Numeric `value` lowers existing Reach traits; `value: {"baseline": B, "notable": N}` additionally gives baseline melee strikes (no Reach trait) a copy of `item` — the canonical Reach trait — at B feet, while trait-bearing strikes drop to N |
 | `size_increment` | Step the creature's size up/down by `value` categories |
 | `select` | Requires human input (see Selection Framework) |
 
@@ -153,8 +153,9 @@ evaluate in order, apply the first match, or fall through to `"default"`).
 Effects with different targets or operations evaluate their conditionals
 independently — a type-list removal and its badge-array mirror carry the same
 conditional and both fire. Item-accumulating operations (`add_item`,
-`add_items`) on a shared target also all apply rather than first-match.
-This matches the pfsrd2-data-api template engine's implemented semantics.
+`add_items`, `remove_item`, `add_modifier`) on a shared target also all apply
+rather than first-match. This matches the pfsrd2-data-api template engine's
+implemented semantics (`isAccumulatingOp`).
 
 Compound predicates join comparisons with `&&`. Comparing a filtered path
 `== null` is a presence guard — true when no element matches the filter
