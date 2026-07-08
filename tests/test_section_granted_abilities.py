@@ -94,3 +94,17 @@ class TestSectionGrantedAbilities:
         assert _try_extract_changes(section, mt)
         assert "changes" not in mt
         assert mt["abilities"][0]["name"] == "Optional Thing"
+
+    def test_choice_abilities_section_becomes_change(self):
+        # Choose-from ability pools become changes too — enrichment encodes
+        # them as select effects the engine surfaces but never auto-applies.
+        mt = {"name": "Rumored Cryptid"}
+        section = _section(
+            "The rumored cryptid might have one or both of the following "
+            "optional abilities.<br/><b>Hybrid Form</b> Something.<br/>"
+            "<b>Howl</b> Something else."
+        )
+        assert _try_extract_changes(section, mt)
+        assert "abilities" not in mt
+        change = mt["changes"][0]
+        assert [a["name"] for a in change["abilities"]] == ["Hybrid Form", "Howl"]

@@ -12,6 +12,7 @@ from pfsrd2.change_extraction import (
     parse_adjustments_table,
     parse_change,
 )
+from pfsrd2.enrichment.change_extractor import choice_bounds
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
@@ -231,7 +232,10 @@ def _try_extract_changes(source_section, mt):
         # following") and plain ability sections stay at mt.abilities —
         # the engine only auto-applies those when the template has no
         # changes at all, which is exactly the ability-only case.
-        if source_section is not mt and _GRANTS_ABILITIES.search(get_text(bs)):
+        section_text = get_text(bs)
+        if source_section is not mt and (
+            _GRANTS_ABILITIES.search(section_text) or choice_bounds(section_text) is not None
+        ):
             # Mirror parse_change: links must be extracted before the text
             # is captured — raw <a> in change text fails markdown validation.
             links = get_links(bs, unwrap=True)
