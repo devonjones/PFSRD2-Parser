@@ -301,3 +301,31 @@ class TestCounts:
         assert counts["unenriched"] == 1
         assert counts["stale"] == 1
         assert counts["verified"] == 1
+
+
+class TestNonIdentityDriftDoesNotStale:
+    def test_refresh_raw_json_keeps_enrichment_live(self):
+        # Two sources (legacy + remastered family files) share a record via
+        # the identity hash but differ in link targets. Marking stale on
+        # raw-byte drift oscillated forever and disabled the merge for both
+        # (ghost/skeleton/nosferatu lost frequency/range).
+        from pfsrd2.sql.enrichment import (
+            fetch_ability_by_id,
+            get_enrichment_db_connection,
+            insert_ability_record,
+            refresh_raw_json,
+            update_enriched_json,
+        )
+
+        conn = get_enrichment_db_connection(db_path=":memory:")
+        try:
+            curs = conn.cursor()
+            aid = insert_ability_record(curs, "Inhabit Object", "hash-x", '{"links": [1]}')
+            update_enriched_json(curs, aid, '{"frequency": "1d4 rounds"}', 2, "regex")
+            refresh_raw_json(curs, aid, '{"links": [2]}')
+            row = fetch_ability_by_id(curs, aid)
+            assert row["stale"] == 0
+            assert row["raw_json"] == '{"links": [2]}'
+            assert "1d4 rounds" in row["enriched_json"]
+        finally:
+            conn.close()

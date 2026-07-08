@@ -105,6 +105,26 @@ def mark_stale(curs, ability_id, new_raw_json):
     curs.execute(sql, (new_raw_json, _now(), ability_id))
 
 
+def refresh_raw_json(curs, ability_id, new_raw_json):
+    """Update raw_json WITHOUT marking stale.
+
+    Used when the identity hash still matches: identity fields are
+    unchanged, so existing enrichment remains valid — only non-identity
+    bytes (links, whitespace) drifted. Marking stale here caused permanent
+    oscillation when two sources (e.g. legacy + remastered family files)
+    share a record but differ in link targets: each parse re-staled the
+    record with its own bytes, disabling enrichment merge for both."""
+    sql = "\n".join(
+        [
+            "UPDATE ability_records",
+            " SET raw_json = ?,",
+            "     updated_at = ?",
+            " WHERE ability_id = ?",
+        ]
+    )
+    curs.execute(sql, (new_raw_json, _now(), ability_id))
+
+
 def mark_human_verified(curs, ability_id, verified=True):
     sql = "\n".join(
         [

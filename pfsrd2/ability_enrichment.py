@@ -17,6 +17,7 @@ from pfsrd2.sql.enrichment import (
     insert_ability_record,
     insert_creature_link,
     mark_stale,
+    refresh_raw_json,
     update_enriched_json,
 )
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
@@ -205,6 +206,30 @@ def _merge_list_field(ability, enriched, field, key_fn):
         ability[field] = existing
 
 
+def _raws_equivalent(raw_a, raw_b):
+    """True when two raw serializations differ only in links or whitespace.
+
+    The identity hash covers the enrichment-extraction inputs (name/text/
+    effect/frequency/...) with whitespace normalization, but the raw also
+    carries fields the hash excludes: links (edition-specific targets) AND
+    parser-written mechanics (saving_throw, damage, stages, ...). Errata to
+    a hash-excluded mechanics field must still stale the record — otherwise
+    _merge_list_field appends the outdated enriched copy alongside the new
+    parsed value forever. Only links/whitespace drift is merge-safe.
+    """
+
+    def canon(v):
+        if isinstance(v, dict):
+            return {k: canon(x) for k, x in v.items() if k != "links"}
+        if isinstance(v, list):
+            return [canon(x) for x in v]
+        if isinstance(v, str):
+            return " ".join(v.split())
+        return v
+
+    return canon(json.loads(raw_a)) == canon(json.loads(raw_b))
+
+
 def _merge_enrichment(ability, enriched_json):
     """Merge enriched fields into the ability object in-place.
 
@@ -323,8 +348,21 @@ def _enrich_abilities(abilities, conn, edition=None):
                 ability_id = existing["ability_id"]
                 now_stale = existing["stale"]
                 if existing["raw_json"] != raw_json:
-                    mark_stale(curs, ability_id, raw_json)
-                    now_stale = True
+                    if _raws_equivalent(existing["raw_json"], raw_json):
+                        # Links/whitespace-only drift: identity AND mechanics
+                        # unchanged, enrichment stays valid. Refresh without
+                        # staling — two sources sharing a record (legacy +
+                        # remastered family files with different link
+                        # targets) otherwise re-stale it on every parse,
+                        # permanently disabling the merge for both
+                        # (ghost/skeleton/nosferatu lost frequency/range).
+                        refresh_raw_json(curs, ability_id, raw_json)
+                    else:
+                        # Hash-excluded mechanics drifted (e.g. errata to an
+                        # addon-line saving throw DC): the enriched copy is
+                        # genuinely outdated — stale it for re-enrichment.
+                        mark_stale(curs, ability_id, raw_json)
+                        now_stale = True
 
                 # Apply enrichment
                 if existing["enriched_json"] and not now_stale:
@@ -393,8 +431,21 @@ def ability_enrichment_pass(struct, conn=None):
                 ability_id = existing["ability_id"]
                 now_stale = existing["stale"]
                 if existing["raw_json"] != raw_json:
-                    mark_stale(curs, ability_id, raw_json)
-                    now_stale = True
+                    if _raws_equivalent(existing["raw_json"], raw_json):
+                        # Links/whitespace-only drift: identity AND mechanics
+                        # unchanged, enrichment stays valid. Refresh without
+                        # staling — two sources sharing a record (legacy +
+                        # remastered family files with different link
+                        # targets) otherwise re-stale it on every parse,
+                        # permanently disabling the merge for both
+                        # (ghost/skeleton/nosferatu lost frequency/range).
+                        refresh_raw_json(curs, ability_id, raw_json)
+                    else:
+                        # Hash-excluded mechanics drifted (e.g. errata to an
+                        # addon-line saving throw DC): the enriched copy is
+                        # genuinely outdated — stale it for re-enrichment.
+                        mark_stale(curs, ability_id, raw_json)
+                        now_stale = True
 
                 # Apply enrichment
                 if existing["enriched_json"] and not now_stale:
