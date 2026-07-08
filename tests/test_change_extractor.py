@@ -857,3 +857,59 @@ class TestChoiceAbilityEffects:
         ):
             assert choice_bounds(text) is not None
             assert not _GRANTS_ABILITIES.search(text)
+
+
+class TestSpellScopedCombatStats:
+    """v24: spell-scoped stat phrases must not fan out to melee attacks,
+    AC, or non-spell ability DCs (Lich: 'Increase spell DCs and spell
+    attack roll by 2')."""
+
+    def test_spell_only_line_emits_exactly_spell_targets(self):
+        for text in (
+            "Increase spell DCs and spell attack roll by 2.",
+            "It increases spell DCs and spell attack modifier by 2.",
+        ):
+            effects = _build_combat_stat_effects(text)
+            targets = sorted(e["target"] for e in effects)
+            assert targets == [
+                "$.offense.offensive_actions[*].spells.saving_throw.dc",
+                "$.offense.offensive_actions[*].spells.spell_attack",
+            ], text
+            assert all(e["value"] == 2 for e in effects)
+
+    def test_generic_line_keeps_full_fanout(self):
+        text = "Increase AC, attack bonuses, DCs, saving throws, and skill modifiers by 1."
+        effects = _build_combat_stat_effects(text)
+        targets = [e["target"] for e in effects]
+        assert "$.defense.ac.value" in targets
+        assert "$.offense.offensive_actions[*].attack.bonus.bonuses" in targets
+        assert "$.offense.offensive_actions[*].spells.spell_attack" in targets
+        assert "$.defense.saves.fort.value" in targets
+        assert "$.statistics.skills[*].value" in targets
+        # spell targets not duplicated by the scoped pass
+        assert len(targets) == len(set(targets))
+
+    def test_ac_requires_word_boundary(self):
+        # 'reACh' fired the substring gate: Primeval Cryptid grew a bogus
+        # AC+5 from 'increase the reach of all its Strikes by 5 feet'.
+        text = (
+            "Increase the creature's size by one size. If this makes the "
+            "creature Huge or Gargantuan, increase the reach of all its "
+            "Strikes by 5 feet."
+        )
+        effects = _build_combat_stat_effects(text)
+        assert not any(e["target"] == "$.defense.ac.value" for e in effects)
+
+
+class TestGeneralizedLevelSubject:
+    def test_any_possessive_subject_categorizes_and_builds(self):
+        from pfsrd2.enrichment.change_extractor import (
+            _build_level_effects,
+            _categorize_change_text,
+        )
+
+        text = "Increase the dragon’s level by 2 and change their statistics as follows."
+        assert _categorize_change_text(text) == "level"
+        assert _build_level_effects(text) == [
+            {"target": "$.creature_type.level", "operation": "adjustment", "value": 2}
+        ]
