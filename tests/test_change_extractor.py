@@ -210,23 +210,42 @@ class TestBuildSpeedEffects:
         assert "walk" in effects[0]["value_from"]
 
 
+def _type_adds(effects):
+    """add_item effects on the creature-type list (badge mirrors excluded)."""
+    return [
+        e
+        for e in effects
+        if e["operation"] == "add_item" and e["target"] == "$.creature_type.creature_types"
+    ]
+
+
+def _badge_adds(effects):
+    return [
+        e
+        for e in effects
+        if e["operation"] == "add_item" and e["target"] == "$.creature_type.traits"
+    ]
+
+
 class TestBuildTraitEffects:
     def test_add_multiple_traits(self):
         effects = _build_trait_effects("Add the ghost, spirit, and undead traits.")
-        add_effects = [e for e in effects if e["operation"] == "add_item"]
-        assert len(add_effects) == 3
-        names = {e["name"] for e in add_effects}
-        assert "Ghost" in names
-        assert "Spirit" in names
-        assert "Undead" in names
+        adds = _type_adds(effects)
+        assert len(adds) == 3
+        names = {e["name"] for e in adds}
+        assert names == {"Ghost", "Spirit", "Undead"}
+        # every type-list add mirrors into the badge array (v25)
+        badge_names = {e["item"]["name"] for e in _badge_adds(effects)}
+        assert names <= badge_names
 
     def test_gains_traits(self):
         effects = _build_trait_effects("The creature gains the undead and vampire traits.")
-        add_effects = [e for e in effects if e["operation"] == "add_item"]
-        assert len(add_effects) == 2
-        names = {e["name"] for e in add_effects}
-        assert "Undead" in names
-        assert "Vampire" in names
+        adds = _type_adds(effects)
+        assert len(adds) == 2
+        names = {e["name"] for e in adds}
+        assert names == {"Undead", "Vampire"}
+        badge_names = {e["item"]["name"] for e in _badge_adds(effects)}
+        assert names <= badge_names
 
     def test_replace_trait(self, monkeypatch):
         # Pin the creature-type set so the test is deterministic regardless
@@ -317,8 +336,10 @@ class TestBuildTraitEffects:
         ]
         effects = _build_trait_effects(text, links)
         # Skeleton and Undead are mandatory add_item
-        mandatory = {e["name"] for e in effects if e["operation"] == "add_item"}
-        assert mandatory == {"Skeleton", "Undead"}
+        mandatory = {e["name"] for e in _type_adds(effects)} | {
+            e["item"]["name"] for e in _badge_adds(effects)
+        }
+        assert {"Skeleton", "Undead"} <= mandatory
         # Mindless is optional (select with min=0)
         selects = [e for e in effects if e["operation"] == "select"]
         assert len(selects) == 1
@@ -344,7 +365,11 @@ class TestBuildTraitEffects:
         ]
         effects = _build_trait_effects(text, links)
         # Water is mandatory
-        mandatory = {e["name"] for e in effects if e["operation"] == "add_item"}
+        mandatory = {
+            e.get("name") or (e.get("item") or {}).get("name")
+            for e in effects
+            if e["operation"] == "add_item"
+        }
         assert mandatory == {"Water"}
         # Amphibious/Aquatic is a choice (select with min=1, max=1)
         selects = [e for e in effects if e["operation"] == "select"]
@@ -366,7 +391,7 @@ class TestBuildTraitEffects:
             {"type": "link", "name": "Bestiary", "game-obj": "Sources", "aonid": 2},
         ]
         effects = _build_trait_effects(text, links)
-        names = {e["name"] for e in effects}
+        names = {e.get("name") or (e.get("item") or {}).get("name") for e in effects}
         assert "Undead" in names
         assert "Bestiary" not in names
 
@@ -913,3 +938,91 @@ class TestGeneralizedLevelSubject:
         assert _build_level_effects(text) == [
             {"target": "$.creature_type.level", "operation": "adjustment", "value": 2}
         ]
+
+
+class TestTraitAddBadgeMirror:
+    """v25: creature-type adds mirror into the badge array (display renders
+    badges — Catfolk/Amphibious/Athamaru adds were invisible without it)."""
+
+    def test_type_list_add_gains_badge_mirror(self):
+        from pfsrd2.enrichment.change_extractor import canonicalize_trait_effects
+
+        effects = canonicalize_trait_effects(
+            [
+                {
+                    "target": "$.creature_type.creature_types",
+                    "operation": "add_item",
+                    "name": "Catfolk",
+                }
+            ]
+        )
+        badge = [
+            e
+            for e in effects
+            if e["target"] == "$.creature_type.traits" and e["operation"] == "add_item"
+        ]
+        assert len(badge) == 1
+        assert badge[0]["item"]["name"] == "Catfolk"
+
+    def test_name_only_badge_add_upgraded_to_item(self):
+        from pfsrd2.enrichment.change_extractor import canonicalize_trait_effects
+
+        effects = canonicalize_trait_effects(
+            [
+                {
+                    "target": "$.creature_type.traits",
+                    "operation": "add_item",
+                    "name": "Amphibious",
+                }
+            ]
+        )
+        assert "name" not in effects[0]
+        assert effects[0]["item"]["name"] == "Amphibious"
+
+    def test_no_double_badge_when_already_present(self):
+        from pfsrd2.enrichment.change_extractor import canonicalize_trait_effects
+
+        effects = canonicalize_trait_effects(
+            [
+                {
+                    "target": "$.creature_type.creature_types",
+                    "operation": "add_item",
+                    "name": "Catfolk",
+                },
+                {
+                    "target": "$.creature_type.traits",
+                    "operation": "add_item",
+                    "name": "Catfolk",
+                },
+            ]
+        )
+        badges = [
+            e
+            for e in effects
+            if e["target"] == "$.creature_type.traits" and e["operation"] == "add_item"
+        ]
+        assert len(badges) == 1
+
+    def test_replace_with_added_trait_tail(self):
+        # Athamaru: "Replace the human trait with the athamaru trait and add
+        # the amphibious trait."
+        from pfsrd2.enrichment.change_extractor import enrich_change
+        import json as _json
+
+        raw = _json.dumps(
+            {
+                "text": "- Replace the human trait with the athamaru trait "
+                "and add the amphibious trait.",
+                "subtype": "change",
+                "type": "stat_block_section",
+            }
+        )
+        enriched_json, method = enrich_change(raw, "Athamaru")
+        eff = _json.loads(enriched_json)["effects"]
+        added = {
+            (e.get("name") or (e.get("item") or {}).get("name"))
+            for e in eff
+            if e["operation"] == "add_item"
+        }
+        assert "Athamaru" in added or "athamaru" in {str(a).lower() for a in added}
+        assert any(str(a).lower() == "amphibious" for a in added)
