@@ -39,7 +39,11 @@ _LEVEL_SENTENCE = re.compile(
 # aberration and swarm traits. ... typically have the following abilities.")
 # or uses transform phrasing (Phantom: "by trading their usual traits for
 # the ethereal, incorporeal, and spirit traits").
-_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+|(?<=[a-z][.!?])(?=[A-Z])")
+# also split after a sentence-ending punctuation followed by a closing
+# paren/quote — "(These changes reflect a werecreature in its hybrid
+# form.) Increase the creature's level by 1..." must split so the
+# parenthetical exclusion can't swallow the instruction that follows
+_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+|(?<=[a-z][.!?])(?=[A-Z])|(?<=[.!?][)\"\u201d])\s+")
 _SENT_VERB = re.compile(r"\b(?:gains?|loses?|trades?|trading)\b", re.I)
 _SENT_NOUN = re.compile(r"\b(?:trait|abilit|statistic|immunit|resistance|weakness)", re.I)
 # "has/have" is too weak a verb for the broad noun set — only trait adds

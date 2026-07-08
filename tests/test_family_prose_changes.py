@@ -136,3 +136,19 @@ class TestTemplateProseChanges:
         texts = [c["text"] for c in mt["changes"]]
         assert texts[0].startswith("Increase the creature's level by 1")
         assert "AC by 1" in texts[1]
+
+    def test_parenthetical_before_instruction_splits(self):
+        # Legacy werecreature: "(These changes reflect a werecreature in its
+        # hybrid form.) Increase the creature's level by 1..." — the split
+        # must break after ".)" so the paren exclusion can't swallow the
+        # level instruction (user-reported: level text on page, absent from
+        # the rules).
+        s = _section(
+            "You can turn a living creature into a werecreature by "
+            "completing the following steps. (These changes reflect a "
+            "werecreature in its hybrid form.) Increase the creature's "
+            "level by 1 and change its statistics as follows."
+        )
+        _extract_changes_from_section(s)
+        texts = [c["text"] for c in s["changes"]]
+        assert any(t.startswith("Increase the creature's level by 1") for t in texts)
