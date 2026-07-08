@@ -627,9 +627,12 @@ def _build_trait_effects(text, links=None):
         effects.append(_trait_effect(new_name, "add_item"))
         # "...and add the amphibious trait" tail (Athamaru) — every extra
         # trait added in the same sentence
+        seen_tail = {new_name, old_name}
         for extra in re.findall(r"and adds? the (\w+) trait", t):
-            if extra.title() != new_name:
-                effects.append(_trait_effect(extra.title(), "add_item"))
+            name = extra.title()
+            if name not in seen_tail:
+                seen_tail.add(name)
+                effects.append(_trait_effect(name, "add_item"))
 
     if not effects and ("add" in t or "gain" in t):
         # Collect all trait names from links + regex
@@ -834,11 +837,17 @@ def _mirror_creature_type_removals(effects):
     _trait_effect, and type-list adds are handled downstream.
     """
     mirrored = []
+    badge_removes = {
+        str(e.get("name", "")).lower()
+        for e in effects
+        if e.get("operation") == "remove_item" and e.get("target") == "$.creature_type.traits"
+    }
     for eff in effects:
         mirrored.append(eff)
         if (
             eff.get("operation") == "remove_item"
             and eff.get("target") == "$.creature_type.creature_types"
+            and str(eff.get("name", "")).lower() not in badge_removes
         ):
             mirror = {
                 "name": eff["name"],
@@ -848,6 +857,7 @@ def _mirror_creature_type_removals(effects):
             if "conditional" in eff:
                 mirror["conditional"] = eff["conditional"]
             mirrored.append(mirror)
+            badge_removes.add(str(eff.get("name", "")).lower())
     return mirrored
 
 
