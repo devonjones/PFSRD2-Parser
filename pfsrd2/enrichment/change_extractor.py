@@ -741,7 +741,19 @@ def _build_attribute_effects(text):
         # as plain numbers — $.creature_type.{attr}_modifier exists on no
         # creature, so effects targeting it could never fire (caught by
         # clause verification: Broodpiercer/cryptid Int floors were dead).
-        attr = m.group(1).lower()[:3]
+        word = m.group(1).lower()
+        # (\w+) captures any word before "modifier" — validate the FULL
+        # word before truncating, or "internal" maps to the valid-but-wrong
+        # $.statistics.int. Fail fast on anything but the six stats.
+        assert word in {
+            "strength",
+            "dexterity",
+            "constitution",
+            "intelligence",
+            "wisdom",
+            "charisma",
+        }, f"attribute threshold clause names unknown stat {m.group(1)!r}: {text!r}"
+        attr = word[:3]
         threshold = -int(m.group(2))
         new_val = -int(m.group(3))
         return [

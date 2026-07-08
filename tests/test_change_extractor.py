@@ -664,3 +664,27 @@ class TestBuildAttributeEffects:
     def test_plain_modifier_form_unchanged(self):
         effects = _build_attribute_effects("It has a Strength modifier of +5.")
         assert effects == [{"target": "$.statistics.str", "operation": "replace", "value": 5}]
+
+    def test_threshold_variants(self):
+        # ASCII hyphen, "set it to" wording, non-int attribute
+        effects = _build_attribute_effects(
+            "If the creature's Wisdom modifier is -2 or lower, set it to -1."
+        )
+        assert effects == [
+            {
+                "conditional": "$.statistics.wis <= -2",
+                "target": "$.statistics.wis",
+                "operation": "replace",
+                "value": -1,
+            }
+        ]
+
+    def test_threshold_unknown_attribute_asserts(self):
+        # Blind [:3] truncation must never map an unknown word onto a valid
+        # stat path ("internal" -> int).
+        import pytest as _pytest
+
+        with _pytest.raises(AssertionError, match="unknown stat"):
+            _build_attribute_effects(
+                "If the creature's Internal modifier is -4 or lower, increase it to -3."
+            )
