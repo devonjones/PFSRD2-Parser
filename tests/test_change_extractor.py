@@ -1006,8 +1006,9 @@ class TestTraitAddBadgeMirror:
     def test_replace_with_added_trait_tail(self):
         # Athamaru: "Replace the human trait with the athamaru trait and add
         # the amphibious trait."
-        from pfsrd2.enrichment.change_extractor import enrich_change
         import json as _json
+
+        from pfsrd2.enrichment.change_extractor import enrich_change
 
         raw = _json.dumps(
             {

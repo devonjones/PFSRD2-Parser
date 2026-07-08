@@ -67,7 +67,7 @@ def page_lines(path):
 
 # map aonid -> json doc
 docs = {}
-for kind, tdir, key in (
+for kind, tdir, _key in (
     ("monster_templates", "MonsterTemplates", "monster_template"),
     ("monster_families", "MonsterFamilies", "monster_family"),
 ):
