@@ -18,7 +18,7 @@ from pfsrd2.sql.traits import (
     strip_nested_metadata,
 )
 
-ENRICHMENT_VERSION = 22
+ENRICHMENT_VERSION = 23
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -310,7 +310,7 @@ def _categorize_change_text(text):
 def _build_effects(text, category, source_name, adjustments=None, links=None, abilities=None):
     """Build effects for a categorized change."""
     if category == "abilities":
-        return _build_ability_effects(abilities)
+        return _build_ability_effects(abilities, text)
     elif category == "immunities":
         return _build_immunity_effects(text)
     elif category == "languages":
@@ -357,8 +357,31 @@ def _build_effects(text, category, source_name, adjustments=None, links=None, ab
 _ABILITIES_FALLBACK_TARGET = CATEGORY_TARGETS["automatic"]
 
 
-def _build_ability_effects(abilities):
-    """Emit one effect per ability, routed by category.
+# Choose-from pool phrasings -> (min, max) bounds; max None = pool size.
+# Descriptions carry the verbatim rules text, so nuances like Mutant's
+# "not including unusual bane" reach the person making the choice.
+_CHOICE_BOUNDS = (
+    (re.compile(r"one or both of the following(?:\s+optional)?\s+abilit", re.I), (0, 2)),
+    (re.compile(r"either have all \w+ the following abilit", re.I), (2, None)),
+    (re.compile(r"gains? two abilit\w* from the list below", re.I), (2, None)),
+    (re.compile(r"gains? one abilit\w* from the list below", re.I), (1, 1)),
+)
+
+
+def _choice_bounds(text):
+    for pat, bounds in _CHOICE_BOUNDS:
+        if pat.search(text or ""):
+            return bounds
+    return None
+
+
+def _build_ability_effects(abilities, text=None):
+    """Emit placement effects for a change's abilities.
+
+    Granting changes get one add_items per ability, routed by category.
+    Choose-from pools (see _CHOICE_BOUNDS) get a single select effect whose
+    options are those same add_items — the engine surfaces selects as
+    user-choice descriptors and never auto-applies them.
 
     Without parsed abilities we keep the legacy blanket target so callers
     that only have the raw text still get some placement.
@@ -382,9 +405,26 @@ def _build_ability_effects(abilities):
                 "target": target,
                 "operation": "add_items",
                 "source": f"$.changes[*].abilities[?(@.name=='{escaped}')]",
+                "names": [name],
             }
         )
-    return effects
+    bounds = _choice_bounds(text)
+    if bounds is None:
+        return effects
+    lo, hi = bounds
+    return [
+        {
+            "target": _ABILITIES_FALLBACK_TARGET,
+            "operation": "select",
+            "selection": {
+                "type": "select",
+                "min": lo,
+                "max": hi if hi is not None else len(effects),
+                "options": effects,
+                "description": (text or "").strip(),
+            },
+        }
+    ]
 
 
 def _extract_names_from_text(text, after_marker):

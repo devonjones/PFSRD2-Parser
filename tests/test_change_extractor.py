@@ -791,3 +791,45 @@ class _FakeConn:
 
     def close(self):
         pass
+
+
+class TestChoiceAbilityEffects:
+    ABILITIES = [
+        {"name": "Hybrid Form", "action_type": {"name": "One Action"}},
+        {"name": "Howl", "action_type": {"name": "Two Actions"}},
+    ]
+
+    def test_choice_pool_builds_select(self):
+        effects = _build_ability_effects(
+            self.ABILITIES,
+            "The rumored cryptid might have one or both of the following " "optional abilities.",
+        )
+        assert len(effects) == 1
+        sel = effects[0]["selection"]
+        assert effects[0]["operation"] == "select"
+        assert (sel["min"], sel["max"]) == (0, 2)
+        assert len(sel["options"]) == 2
+        assert sel["options"][0]["operation"] == "add_items"
+        assert sel["options"][0]["names"] == ["Hybrid Form"]
+        assert "one or both" in sel["description"]
+
+    def test_all_or_two_pool_maxes_at_pool_size(self):
+        effects = _build_ability_effects(
+            self.ABILITIES
+            + [
+                {"name": "A", "action_type": {"name": "Reaction"}},
+                {"name": "B", "action_type": {"name": "Reaction"}},
+            ],
+            "A mutant cryptid should typically either have all four the "
+            "following abilities or just two abilities, not including "
+            "unusual bane.",
+        )
+        sel = effects[0]["selection"]
+        assert (sel["min"], sel["max"]) == (2, 4)
+        assert "not including unusual bane" in sel["description"]
+
+    def test_granting_text_stays_flat(self):
+        effects = _build_ability_effects(
+            self.ABILITIES, "All host creatures gain the following abilities."
+        )
+        assert [e["operation"] for e in effects] == ["add_items", "add_items"]

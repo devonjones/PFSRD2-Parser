@@ -43,6 +43,16 @@ _GRANTS_ABILITIES = re.compile(
     re.IGNORECASE,
 )
 
+# Choose-from pools become changes too — enrichment encodes them as select
+# effects (the engine surfaces selects as user-choice descriptors, never
+# auto-applies them). Phrasings from the Dark Archive cryptid sections.
+_CHOOSES_ABILITIES = re.compile(
+    r"one or both of the following(?:\s+optional)?\s+abilit"
+    r"|either have all \w+ the following abilit"
+    r"|gains? (?:one|two|three|four) abilit\w* from the list below",
+    re.IGNORECASE,
+)
+
 
 def parse_monster_template(filename, options):
     basename = os.path.basename(filename)
@@ -231,7 +241,10 @@ def _try_extract_changes(source_section, mt):
         # following") and plain ability sections stay at mt.abilities —
         # the engine only auto-applies those when the template has no
         # changes at all, which is exactly the ability-only case.
-        if source_section is not mt and _GRANTS_ABILITIES.search(get_text(bs)):
+        section_text = get_text(bs)
+        if source_section is not mt and (
+            _GRANTS_ABILITIES.search(section_text) or _CHOOSES_ABILITIES.search(section_text)
+        ):
             # Mirror parse_change: links must be extracted before the text
             # is captured — raw <a> in change text fails markdown validation.
             links = get_links(bs, unwrap=True)
