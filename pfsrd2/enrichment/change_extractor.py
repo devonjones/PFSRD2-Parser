@@ -12,7 +12,7 @@ import sys
 from pfsrd2.ability_placement import CATEGORY_TARGETS, ability_target
 from pfsrd2.sql.enrichment import fetch_all_creature_types, get_enrichment_db_connection
 
-ENRICHMENT_VERSION = 21
+ENRICHMENT_VERSION = 22
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -50,7 +50,7 @@ def _get_creature_types():
     if not _CREATURE_TYPES_CACHE:
         sys.stderr.write(
             "WARNING: creature_types table is empty — template/family trait "
-            "routing will send every name to $.traits. "
+            "routing will send every name to $.creature_type.traits. "
             "Run bin/pf2_seed_creature_types or the creature parser to populate.\n"
         )
     return _CREATURE_TYPES_CACHE
@@ -60,12 +60,16 @@ def _trait_target(name):
     """Return the correct JSON path target for a trait name.
 
     Creature types (per the enrichment DB, populated by the creature parser)
-    go to $.creature_type.creature_types. All other traits go to $.traits.
+    go to $.creature_type.creature_types. All other traits go to
+    $.creature_type.traits — the displayed badge array, which is the only
+    trait array that exists on creatures ($.traits appears on zero of 4,565
+    creature files; effects targeting it are dead — caught by clause
+    verification on the Dark Archive rarity-badge removals).
     Match is case-insensitive.
     """
     if name.lower() in _get_creature_types():
         return "$.creature_type.creature_types"
-    return "$.traits"
+    return "$.creature_type.traits"
 
 
 def _normalize_dashes(text):
@@ -1452,16 +1456,21 @@ def _build_strike_effects(text):
     if m:
         old_weapon = m.group(1)
         new_weapon = m.group(2)
+        # Effects apply sequentially and filters resolve live: the weapon
+        # replace invalidates the =='{old}' filter, so every sibling that
+        # filters on the old weapon must run first (the damage effect below
+        # already filters on the NEW weapon for the same reason). Caught by
+        # clause verification: Lizardfolk's name replace never fired.
         effects = [
-            {
-                "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.weapon",
-                "operation": "replace",
-                "value": new_weapon,
-            },
             {
                 "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.name",
                 "operation": "replace",
                 "value": new_weapon.title(),
+            },
+            {
+                "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.weapon",
+                "operation": "replace",
+                "value": new_weapon,
             },
         ]
         m2 = re.search(r"deal (\w+) damage instead of (\w+)", t)
@@ -1479,7 +1488,7 @@ def _build_strike_effects(text):
     if m:
         return [
             {
-                "target": "$.offense.offensive_actions[?(@.attack.attack_type=='melee')].attack.bonus",
+                "target": "$.offense.offensive_actions[?(@.attack.attack_type=='melee')].attack",
                 "operation": "set_reach",
                 "value": int(m.group(1)),
             }

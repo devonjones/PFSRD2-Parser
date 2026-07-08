@@ -20,6 +20,9 @@ from pfsrd2.enrichment.change_extractor import (
     _normalize_movement_type,
     enrich_change,
 )
+from pfsrd2.enrichment.change_extractor import (
+    _build_strike_effects as _build_strike_effects_public,
+)
 
 
 class TestCategorizeChangeText:
@@ -694,3 +697,36 @@ class TestBuildAttributeEffects:
             "It has a Strength modifier of +5 and a Perception modifier of +10."
         )
         assert effects == [{"target": "$.statistics.str", "operation": "replace", "value": 5}]
+
+
+class TestTraitTargetFallback:
+    def test_non_creature_type_routes_to_badge_array(self, monkeypatch):
+        # $.traits exists on zero creatures — the badge array is the only
+        # trait array a remove/add can actually hit.
+        monkeypatch.setattr(change_extractor, "_CREATURE_TYPES_CACHE", frozenset({"undead"}))
+        from pfsrd2.enrichment.change_extractor import _trait_target
+
+        assert _trait_target("Undead") == "$.creature_type.creature_types"
+        assert _trait_target("Uncommon") == "$.creature_type.traits"
+
+
+class TestStrikeRenameOrdering:
+    def test_name_replace_precedes_weapon_replace(self):
+        # Sequential application: the weapon replace kills the =='fist'
+        # filter, so the name replace must come first (Lizardfolk's Claw
+        # rename silently never fired).
+        effects = _build_strike_effects_public(
+            "Replace any fist attacks with claw attacks. They deal slashing "
+            "damage instead of bludgeoning."
+        )
+        targets = [e["target"] for e in effects]
+        assert targets[0].endswith(".attack.name")
+        assert targets[1].endswith(".attack.weapon")
+        assert "=='claw'" in targets[2]
+
+    def test_set_reach_targets_attack(self):
+        effects = _build_strike_effects_public(
+            "Reduce the reach of the creature's melee Strikes to 5 feet."
+        )
+        assert effects[0]["operation"] == "set_reach"
+        assert effects[0]["target"].endswith(".attack")

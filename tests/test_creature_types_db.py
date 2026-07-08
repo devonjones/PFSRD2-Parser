@@ -66,12 +66,12 @@ class TestTraitTargetDBLookup:
         assert _trait_target("Aquatic") == "$.creature_type.creature_types"
 
     def test_unknown_name_routes_to_traits(self, db_with_types):
-        assert _trait_target("Rare") == "$.traits"
-        assert _trait_target("Uncommon") == "$.traits"
-        assert _trait_target("SomeNewAncestry") == "$.traits"
+        assert _trait_target("Rare") == "$.creature_type.traits"
+        assert _trait_target("Uncommon") == "$.creature_type.traits"
+        assert _trait_target("SomeNewAncestry") == "$.creature_type.traits"
 
     def test_cache_refreshes_after_reset(self, db_with_types):
-        assert _trait_target("Newtype") == "$.traits"
+        assert _trait_target("Newtype") == "$.creature_type.traits"
         upsert_creature_type(db_with_types.cursor(), "Newtype")
         db_with_types.commit()
         change_extractor.reset_creature_types_cache()
@@ -101,7 +101,7 @@ class TestEmptyTableWarning:
             assert "creature_types table is empty" in err
             assert "pf2_seed_creature_types" in err
             # Confirm routing falls back to $.traits for any name
-            assert _trait_target("Undead") == "$.traits"
+            assert _trait_target("Undead") == "$.creature_type.traits"
         finally:
             change_extractor.reset_creature_types_cache()
             conn.close()
