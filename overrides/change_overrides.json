@@ -1967,6 +1967,58 @@
           }
         ]
       }
+    },
+    {
+      "source_name": "Nymph",
+      "source_type": "monster_family",
+      "change_text": "She gains the Inspiration ability, allowing her to bestow a gift of inspiration on those who catch her fancy, and the Change Shape ability to change her form.",
+      "note": "queen ability grant: source points at the 'Nymph Queen Abilities' section pool (was $.changes[*].abilities, empty)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_items",
+            "target": "$.defense.automatic_abilities",
+            "source": "$.sections[?(@.name=='Nymph Queen Abilities')].abilities"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Nymph",
+      "source_type": "monster_family",
+      "change_text": "She gains the Inspiration ability, allowing her to bestow a gift of inspiration on those who catch her fancy, and the Change Shape ability to change her form.",
+      "note": "queen ability grant: source points at the 'Nymph Queen Abilities' section pool (was $.changes[*].abilities, empty)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_items",
+            "target": "$.defense.automatic_abilities",
+            "source": "$.sections[?(@.name=='Nymph Queen Abilities')].abilities"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Werecreature",
+      "source_type": "monster_family",
+      "change_text": "<li>Increase its size by one category if the animal is a larger size than the base humanoid.</li>",
+      "note": "deliberately effect-less: conditional_on_choice — see matching quarantine entry",
+      "enriched": {
+        "change_category": "size",
+        "effects": []
+      }
+    },
+    {
+      "source_name": "Woodblessed",
+      "source_type": "monster_family",
+      "change_text": "<li>It gains a splinter ranged Strike that deals piercing damage, is in the brawling group, and has a range increment of 30 feet.</li>",
+      "note": "deliberately effect-less: add_strike_ranged_pending — see matching quarantine entry",
+      "enriched": {
+        "change_category": "strikes",
+        "effects": []
+      }
     }
   ],
   "quarantines": [
@@ -2113,6 +2165,18 @@
       "source_type": "monster_family",
       "change_text": "A divine warden retains any abilities it had previously, and it gains the abilities listed below.",
       "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
+    },
+    {
+      "source_name": "Werecreature",
+      "source_type": "monster_family",
+      "change_text": "<li>Increase its size by one category if the animal is a larger size than the base humanoid.</li>",
+      "reason": "conditional_on_choice: size bump depends on the chosen animal being larger than the base humanoid — engine cannot know the animal"
+    },
+    {
+      "source_name": "Woodblessed",
+      "source_type": "monster_family",
+      "change_text": "<li>It gains a splinter ranged Strike that deals piercing damage, is in the brawling group, and has a range increment of 30 feet.</li>",
+      "reason": "add_strike_ranged_pending: engine add_strike derives from melee Strikes only; ranged derivation is a documented shortfall"
     }
   ]
 }
