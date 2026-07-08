@@ -23,6 +23,7 @@ from pfsrd2.enrichment.overrides import (
     load_overrides,
     seed_ability_overrides,
     seed_change_overrides,
+    seed_change_quarantines,
 )
 from pfsrd2.sql.enrichment import get_enrichment_db_connection
 
@@ -52,13 +53,18 @@ def main():
         change_overrides = load_overrides("change_overrides.json")
         ability_overrides = load_overrides("ability_overrides.json")
 
+        quarantines = load_overrides("change_overrides.json", key="quarantines")
+
         changes_seeded, change_misses = seed_change_overrides(curs, change_overrides)
         abilities_seeded, ability_misses = seed_ability_overrides(curs, ability_overrides)
+        quarantined, quarantine_misses = seed_change_quarantines(curs, quarantines)
         conn.commit()
 
         print(f"Change overrides seeded: {changes_seeded}/{len(change_overrides)}")
         print(f"Ability overrides seeded: {abilities_seeded}/{len(ability_overrides)}")
+        print(f"Quarantines seeded: {quarantined}/{len(quarantines)}")
 
+        change_misses = change_misses + quarantine_misses
         if change_misses or ability_misses:
             print(
                 "\nERROR: stale overrides — no matching record. The source text "

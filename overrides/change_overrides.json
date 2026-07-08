@@ -1522,6 +1522,597 @@
           }
         ]
       }
+    },
+    {
+      "source_name": "Lich",
+      "source_type": "monster_family",
+      "change_text": "Liches lose all abilities that come from being a living creature. They also lose any traits that represented their life as a living creature, such as human and humanoid.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment; abilities-loss half of the sentence is GM judgment (documented shortfall)",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Ghoul",
+      "source_type": "monster_family",
+      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire",
+      "source_type": "monster_family",
+      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Vrykolakas",
+      "source_type": "monster_family",
+      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Phantom",
+      "source_type": "monster_family",
+      "change_text": "You can turn an existing living creature into a phantom by trading their usual traits for the ethereal, incorporeal, and spirit traits.",
+      "note": "phantom transform: adds encoded; 'usual traits' removal is GM judgment (documented shortfall)",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Ethereal",
+            "operation": "add_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Incorporeal",
+            "operation": "add_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Spirit",
+            "operation": "add_item",
+            "target": "$.creature_type.creature_types"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Nosferatu",
+      "source_type": "monster_family",
+      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Jiang-Shi",
+      "source_type": "monster_family",
+      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Vetalarana",
+      "source_type": "monster_family",
+      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Strigoi",
+      "source_type": "monster_family",
+      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Blackfrost Dead",
+      "source_type": "monster_family",
+      "change_text": "As blackfrost dead stem from blackfrost itself, all blackfrost dead have the rare trait.",
+      "note": "universal rarity add",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Rare",
+            "operation": "add_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Ghost",
+      "source_type": "monster_family",
+      "change_text": "The base creature loses any traits that represented its life as a living creature, such as human and humanoid, and any abilities or traits that rely on it being a living, corporeal creature.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment; abilities-loss half of the sentence is GM judgment (documented shortfall)",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Ghoul",
+      "source_type": "monster_family",
+      "change_text": "It also loses any traits that represent its life as a living creature, such as human and humanoid.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Floodslain Creature",
+      "source_type": "monster_family",
+      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Failed Prophet",
+      "source_type": "monster_family",
+      "change_text": "It also loses any traits that represented its life prior to the transformation, such as human or humanoid.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Swarm Strider",
+      "source_type": "monster_family",
+      "change_text": "They lose any traits that represent their former life, such as human and humanoid, though they usually remain the same size, keep the same items, and use the same weapons as they did before their rebirth.",
+      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+      "enriched": {
+        "change_category": "traits",
+        "effects": [
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Human",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.creature_types"
+          },
+          {
+            "name": "Humanoid",
+            "operation": "remove_item",
+            "target": "$.creature_type.traits"
+          }
+        ]
+      }
+    }
+  ],
+  "quarantines": [
+    {
+      "source_name": "Ravener",
+      "source_type": "monster_family",
+      "change_text": "<li><b>10th</b> <i>wish</i></li>",
+      "reason": "spell_list_encoding: innate spell rank lists pending spells-op support"
+    },
+    {
+      "source_name": "Ravener",
+      "source_type": "monster_family",
+      "change_text": "<li><b>9th</b> <i>power word kill</i>, <i>telepathic demand</i>, <i>weird</i></li>",
+      "reason": "spell_list_encoding: innate spell rank lists pending spells-op support"
+    },
+    {
+      "source_name": "Ravener",
+      "source_type": "monster_family",
+      "change_text": "<li><b>8th</b> <i>disappearance</i>, <i>maze</i>, <i>mind blank</i></li>",
+      "reason": "spell_list_encoding: innate spell rank lists pending spells-op support"
+    },
+    {
+      "source_name": "Ghoul",
+      "source_type": "monster_family",
+      "change_text": "If the base creature has any abilities that come from it being a living creature, it loses them.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Nymph",
+      "source_type": "monster_family",
+      "change_text": "Nymph queens are not dependent on their wards and lose the corresponding ability (such as a dryad’s tree dependent ability); instead, they gain the tied to the land ability, as described below.",
+      "reason": "gm_judgment_loss: removes a per-creature named ward ability (e.g. dryad's tree dependent)"
+    },
+    {
+      "source_name": "Vampire",
+      "source_type": "monster_family",
+      "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Vampire, Vrykolakas",
+      "source_type": "monster_family",
+      "change_text": "If the base creature becoming a vrykolakas has any abilities that specifically come from it being a living creature, it loses them.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Vampire, Nosferatu",
+      "source_type": "monster_family",
+      "change_text": "If the base creature becoming a nosferatu has any abilities that specifically come from it being a living creature, it loses them.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Vampire, Jiang-Shi",
+      "source_type": "monster_family",
+      "change_text": "If the base creature becoming a jiang-shi has any abilities that specifically come from it being a living creature, it loses them.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Vampire, Vetalarana",
+      "source_type": "monster_family",
+      "change_text": "If the base creature has any abilities that specifically come from being a living creature, it loses them.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Vampire, Strigoi",
+      "source_type": "monster_family",
+      "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Nymph",
+      "source_type": "monster_family",
+      "change_text": "Nymph queens are not dependent on their wards and lose the corresponding ability (such as a dryad's tree dependent ability); instead, they gain the tied to the land ability, as described below.",
+      "reason": "gm_judgment_loss: removes a per-creature named ward ability (e.g. dryad's tree dependent)"
+    },
+    {
+      "source_name": "Floodslain Creature",
+      "source_type": "monster_family",
+      "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Failed Prophet",
+      "source_type": "monster_family",
+      "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Lich",
+      "source_type": "monster_family",
+      "change_text": "Liches lose all abilities that come from being a living creature.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Worm That Walks",
+      "source_type": "monster_family",
+      "change_text": "A worm that walks loses any abilities that came from its previous physical form and any traits that represent its life, such as human and humanoid.",
+      "reason": "gm_judgment_loss: non-enumerable loss/transform prose"
+    },
+    {
+      "source_name": "Graveknight",
+      "source_type": "monster_family",
+      "change_text": "It loses any abilities that come from it being a living creature and any traits that represent its life, such as human and humanoid.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Siabrae",
+      "source_type": "monster_family",
+      "change_text": "Siabraes lose all abilities that specifically come from being a living creature of their original kind.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Graveknight",
+      "source_type": "monster_family",
+      "change_text": "They lose any abilities that come from being a living creature and any traits that represent their life, such as human and humanoid.",
+      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+    },
+    {
+      "source_name": "Nymph",
+      "source_type": "monster_family",
+      "change_text": "<b>Change Shape</b> [one-action]  (polymorph, primal, transmutation) Nymph queens can transform between their original form, which looks much like a typical nymph of their kind, and any Small or Medium humanoid form, typically choosing a more humanoid-looking version of their natural form.",
+      "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
+    },
+    {
+      "source_name": "Vampire, Jiang-Shi",
+      "source_type": "monster_family",
+      "change_text": "Ministers gain additional jiang-shi abilities, as detailed below. A creature below level 13 is not significant enough to become a minister—you should instead simply make such a creature into a regular jiang-shi or rebuild the creature so that it's at least level 13 before becoming a minister.",
+      "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
+    },
+    {
+      "source_name": "Vampire, Vetalarana",
+      "source_type": "monster_family",
+      "change_text": "Vetalarana manipulators gain additional abilities, as detailed below. A creature below 10th level isn't powerful enough to become a vetalarana manipulator; instead, make such a creature into a regular vetalarana or rebuild the creature so that it's at least 10th level before making it a vetalarana manipulator.",
+      "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
+    },
+    {
+      "source_name": "Nymph",
+      "source_type": "monster_family",
+      "change_text": "<b>Change Shape</b> [one-action]  (polymorph, primal) Nymph queens can transform between their original form, which looks much like a typical nymph of their kind, and any Small or Medium humanoid form, typically choosing a more humanoid-looking version of their natural form.",
+      "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
+    },
+    {
+      "source_name": "Divine Warden",
+      "source_type": "monster_family",
+      "change_text": "A divine warden retains any abilities it had previously, and it gains the abilities listed below.",
+      "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
     }
   ]
 }

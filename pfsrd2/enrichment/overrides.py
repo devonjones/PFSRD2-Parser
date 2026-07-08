@@ -32,7 +32,7 @@ from pfsrd2.sql.enrichment import (
 OVERRIDES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "overrides")
 
 
-def load_overrides(filename, overrides_dir=None):
+def load_overrides(filename, overrides_dir=None, key="overrides"):
     path = os.path.join(overrides_dir or OVERRIDES_DIR, filename)
     if not os.path.exists(path):
         # Both override files are committed and loaded by hardcoded name — a
@@ -40,7 +40,12 @@ def load_overrides(filename, overrides_dir=None):
         # returning [] would no-op the entire hand-verified seeding step.
         raise FileNotFoundError(f"Overrides file missing: {path}")
     with open(path, encoding="utf-8") as fp:
-        return json.load(fp)["overrides"]
+        doc = json.load(fp)
+    if key == "overrides":
+        # mandatory: a file without it is malformed, not empty
+        return doc["overrides"]
+    # secondary keys ("quarantines") are optional — absent means none defined
+    return doc.get(key, [])
 
 
 def seed_change_overrides(curs, overrides):
@@ -59,6 +64,30 @@ def seed_change_overrides(curs, overrides):
         )
         mark_change_human_verified(curs, record["change_id"])
         clear_change_needs_review(curs, record["change_id"])
+        seeded += 1
+    return seeded, misses
+
+
+def seed_change_quarantines(curs, quarantines):
+    """Seed documented quarantines: rules text that is deliberately NOT
+    machine-encoded (GM-judgment removals, spell-list encodings pending).
+
+    Sets needs_review=1 with the override's distinct reason so the review
+    queue shows an audited disposition instead of a raw unknown_category.
+    Returns (seeded_count, misses).
+    """
+    seeded = 0
+    misses = []
+    for qv in quarantines:
+        identity_hash = compute_change_hash(qv["source_name"], qv["source_type"], qv["change_text"])
+        record = fetch_change_by_hash(curs, identity_hash)
+        if record is None:
+            misses.append(qv)
+            continue
+        curs.execute(
+            "UPDATE change_records SET needs_review = 1, review_reason = ?" " WHERE change_id = ?",
+            (f"quarantine: {qv['reason']}", record["change_id"]),
+        )
         seeded += 1
     return seeded, misses
 
