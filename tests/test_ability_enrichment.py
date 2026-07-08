@@ -530,6 +530,23 @@ class TestDriftClassification:
             ab_b = self._struct([{"name": "x", "game-obj": "Rituals", "aonid": 1, "type": "link"}])[
                 "abilities_holder"
             ]
+            # edition-specific trait link aonids: nested "link" (singular)
+            # inside trait objects, not the ability-level "links" array
+            # (legacy auditory=541, remastered=16 — the Screaming Skull case)
+            for ab, aonid in ((ab_a, 541), (ab_b, 16)):
+                ab[0]["traits"] = [
+                    {
+                        "name": "auditory",
+                        "subtype": "trait",
+                        "type": "stat_block_section",
+                        "link": {
+                            "name": "auditory",
+                            "aonid": aonid,
+                            "game-obj": "Traits",
+                            "type": "link",
+                        },
+                    }
+                ]
             h = compute_identity_hash(ab_a[0])
 
             ae._enrich_abilities(list(ab_a), conn)  # insert
