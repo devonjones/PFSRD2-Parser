@@ -21,7 +21,11 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(script_dir, ".."))
 sys.path.insert(0, os.path.join(script_dir, "..", "lib"))
 
-from pfsrd2.enrichment.change_extractor import ENRICHMENT_VERSION, enrich_change
+from pfsrd2.enrichment.change_extractor import (
+    ENRICHMENT_VERSION,
+    TraitLookupError,
+    enrich_change,
+)
 from pfsrd2.sql.enrichment import (
     count_change_records,
     fetch_changes_needing_enrichment,
@@ -65,7 +69,14 @@ def main():
         enriched_count = 0
         unknown_count = 0
         for record in records:
-            enriched_json, method = enrich_change(record["raw_json"], record["source_name"])
+            try:
+                enriched_json, method = enrich_change(record["raw_json"], record["source_name"])
+            except TraitLookupError as exc:
+                # Upstream extraction produced a non-trait name ("Revulsion");
+                # distinct reason so triage doesn't conflate it with regex gaps.
+                mark_change_needs_review(curs, record["change_id"], f"unknown_trait: {exc}")
+                unknown_count += 1
+                continue
             if enriched_json:
                 update_change_enriched_json(
                     curs, record["change_id"], enriched_json, ENRICHMENT_VERSION, method

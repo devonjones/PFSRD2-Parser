@@ -10,9 +10,15 @@ import re
 import sys
 
 from pfsrd2.ability_placement import CATEGORY_TARGETS, ability_target
+from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import fetch_all_creature_types, get_enrichment_db_connection
+from pfsrd2.sql.traits import (
+    EXPECTED_TRAIT_SCHEMA_VERSION,
+    fetch_trait_by_name_preferring_edition,
+    strip_nested_metadata,
+)
 
-ENRICHMENT_VERSION = 21
+ENRICHMENT_VERSION = 22
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -23,10 +29,11 @@ _CREATURE_TYPES_CACHE = None
 
 
 def reset_creature_types_cache():
-    """Drop the cached creature-type set. Used by tests and by long-running
-    enrichment processes that want to pick up newly-registered types."""
+    """Drop the cached creature-type set and trait items. Used by tests and
+    by long-running enrichment processes that want fresh DB state."""
     global _CREATURE_TYPES_CACHE
     _CREATURE_TYPES_CACHE = None
+    _TRAIT_ITEM_CACHE.clear()
 
 
 def _get_creature_types():
@@ -35,7 +42,7 @@ def _get_creature_types():
     Lowercased to mirror the table's COLLATE NOCASE and to give case-insensitive
     membership testing in Python. Emits a warning to stderr if the table is
     empty — this means the seed script never ran or the DB was wiped, and
-    trait routing will regress to $.traits-only for every name. Caller must
+    trait routing will regress to badge-array-only for every name. Caller must
     run bin/pf2_seed_creature_types or a full creature parse to populate.
     """
     global _CREATURE_TYPES_CACHE
@@ -50,7 +57,7 @@ def _get_creature_types():
     if not _CREATURE_TYPES_CACHE:
         sys.stderr.write(
             "WARNING: creature_types table is empty — template/family trait "
-            "routing will send every name to $.traits. "
+            "routing will send every name to $.creature_type.traits. "
             "Run bin/pf2_seed_creature_types or the creature parser to populate.\n"
         )
     return _CREATURE_TYPES_CACHE
@@ -60,12 +67,96 @@ def _trait_target(name):
     """Return the correct JSON path target for a trait name.
 
     Creature types (per the enrichment DB, populated by the creature parser)
-    go to $.creature_type.creature_types. All other traits go to $.traits.
+    go to $.creature_type.creature_types. All other traits go to
+    $.creature_type.traits — the displayed badge array, which is the only
+    trait array that exists on creatures ($.traits appears on zero of 4,565
+    creature files; effects targeting it are dead — caught by clause
+    verification on the Dark Archive rarity-badge removals).
     Match is case-insensitive.
     """
     if name.lower() in _get_creature_types():
         return "$.creature_type.creature_types"
-    return "$.traits"
+    return "$.creature_type.traits"
+
+
+class TraitLookupError(Exception):
+    """A badge-array add names a trait the traits DB does not know.
+
+    Usually means upstream extraction produced a sentence fragment
+    ("Revulsion", "Condition") rather than a real trait — the change is
+    marked needs_review instead of shipping a display-crashing badge."""
+
+
+_TRAIT_ITEM_CACHE = {}
+
+# Keys the creature schema's badge-trait definition accepts
+# (additionalProperties: false).
+_BADGE_TRAIT_KEYS = frozenset(
+    {
+        "alternate_link",
+        "classes",
+        "edition",
+        "game-id",
+        "game-obj",
+        "links",
+        "name",
+        "sources",
+        "text",
+        "type",
+        "value",
+    }
+)
+
+_RARITY_TRAITS = frozenset({"common", "uncommon", "rare", "unique"})
+
+
+def _trait_item(name):
+    """Full canonical trait object for a badge-array add.
+
+    The badge array ($.creature_type.traits) holds full trait objects and
+    the display layers call trait.classes.includes(...) unconditionally —
+    a name-only badge crashes rendering. Mirrors the creature parser's
+    _creature_handle_alignment: traits DB blob, aonid stripped, metadata
+    normalized.
+    """
+    key = name.lower()
+    if key in _TRAIT_ITEM_CACHE:
+        return json.loads(_TRAIT_ITEM_CACHE[key])
+    conn = get_db_connection(get_db_path("pfsrd2.db"))
+    try:
+        data = fetch_trait_by_name_preferring_edition(conn.cursor(), key)
+    finally:
+        conn.close()
+    if not data:
+        raise TraitLookupError(name)
+    db_trait = json.loads(data["trait"])
+    if "aonid" in db_trait:
+        del db_trait["aonid"]
+    strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
+    # The blob is a full trait FILE (license block etc.); the badge-array
+    # trait definition is additionalProperties:false, so keep only the
+    # keys the creature schema's trait allows.
+    db_trait = {k: v for k, v in db_trait.items() if k in _BADGE_TRAIT_KEYS}
+    classes = db_trait.get("classes") or json.loads(data["classes"] or "[]")
+    if not classes:
+        # Parse-time badges get classes from HTML span styling, which the
+        # traits table doesn't carry; rarity is the one group enrichment
+        # adds today and its styling class is derivable.
+        classes = ["rarity"] if key in _RARITY_TRAITS else []
+    db_trait["classes"] = classes
+    _TRAIT_ITEM_CACHE[key] = json.dumps(db_trait)
+    return json.loads(_TRAIT_ITEM_CACHE[key])
+
+
+def _trait_effect(name, operation):
+    """Effect dict for a trait add/remove at the right target and shape.
+
+    Removes match by name everywhere. Adds to the badge array must carry
+    the full canonical trait object (see _trait_item)."""
+    tgt = _trait_target(name)
+    if operation == "add_item" and tgt == "$.creature_type.traits":
+        return {"target": tgt, "operation": "add_item", "item": _trait_item(name)}
+    return {"target": tgt, "operation": operation, "name": name}
 
 
 def _normalize_dashes(text):
@@ -101,6 +192,10 @@ def enrich_change(raw_json_str, source_name):
 
     links = change.get("links")
     abilities = change.get("abilities")
+    # TraitLookupError propagates to the caller (bin/pf2_enrich_changes),
+    # which records the distinct unknown_trait review reason — a garbage
+    # badge must never ship, and the triage reason must not be conflated
+    # with unknown_category regex gaps.
     effects = _build_effects(text, category, source_name, adjustments, links, abilities=abilities)
     if effects:
         enriched["effects"] = effects
@@ -464,13 +559,7 @@ def _build_trait_effects(text, links=None):
                 "name": old_name,
             }
         )
-        effects.append(
-            {
-                "target": _trait_target(new_name),
-                "operation": "add_item",
-                "name": new_name,
-            }
-        )
+        effects.append(_trait_effect(new_name, "add_item"))
 
     if not effects and ("add" in t or "gain" in t):
         # Collect all trait names from links + regex
@@ -506,25 +595,13 @@ def _build_trait_effects(text, links=None):
                             "type": "select",
                             "min": 0,
                             "max": 1,
-                            "options": [
-                                {
-                                    "target": tgt,
-                                    "operation": "add_item",
-                                    "name": name,
-                                }
-                            ],
+                            "options": [_trait_effect(name, "add_item")],
                             "description": f"optionally add {name}",
                         },
                     }
                 )
             else:
-                effects.append(
-                    {
-                        "target": tgt,
-                        "operation": operation,
-                        "name": name,
-                    }
-                )
+                effects.append(_trait_effect(name, operation))
 
         # Add choice group if any (e.g., "either amphibious or aquatic")
         if choice_traits:
@@ -539,14 +616,7 @@ def _build_trait_effects(text, links=None):
                         "type": "select",
                         "min": 1,
                         "max": 1,
-                        "options": [
-                            {
-                                "target": _trait_target(n),
-                                "operation": "add_item",
-                                "name": n,
-                            }
-                            for n in choice_names
-                        ],
+                        "options": [_trait_effect(n, "add_item") for n in choice_names],
                         "description": f"choose one of: {', '.join(choice_names)}",
                     },
                 }
@@ -555,14 +625,7 @@ def _build_trait_effects(text, links=None):
     if not effects:
         m = re.search(r"add the (\w+) trait", t)
         if m:
-            tname = m.group(1).title()
-            effects.append(
-                {
-                    "target": _trait_target(tname),
-                    "operation": "add_item",
-                    "name": tname,
-                }
-            )
+            effects.append(_trait_effect(m.group(1).title(), "add_item"))
 
     m = re.search(r"(?:if .+?has the|remove the) (\w+) trait,?\s*remove", t)
     if m:
@@ -629,13 +692,7 @@ def _build_trait_effects(text, links=None):
                 "name": old_name,
             }
         )
-        effects.append(
-            {
-                "target": _trait_target(new_name),
-                "operation": "add_item",
-                "name": new_name,
-            }
-        )
+        effects.append(_trait_effect(new_name, "add_item"))
 
     return _mirror_creature_type_removals(effects)
 
@@ -649,8 +706,9 @@ def _mirror_creature_type_removals(effects):
     a stale badge on the rendered stat block, so every remove_item on the type
     list gets a mirrored remove_item on the badge array. A conditional removal
     carries the same conditional — parsed creatures keep the two arrays in
-    lockstep, so both fire (or don't) under the same predicate. Additions are
-    not mirrored — the display layer sources new badges from the type list.
+    lockstep, so both fire (or don't) under the same predicate. Additions
+    are not mirrored here: badge-array adds carry full trait objects via
+    _trait_effect, and type-list adds are handled downstream.
     """
     mirrored = []
     for eff in effects:
@@ -1452,16 +1510,21 @@ def _build_strike_effects(text):
     if m:
         old_weapon = m.group(1)
         new_weapon = m.group(2)
+        # Effects apply sequentially and filters resolve live: the weapon
+        # replace invalidates the =='{old}' filter, so every sibling that
+        # filters on the old weapon must run first (the damage effect below
+        # already filters on the NEW weapon for the same reason). Caught by
+        # clause verification: Lizardfolk's name replace never fired.
         effects = [
-            {
-                "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.weapon",
-                "operation": "replace",
-                "value": new_weapon,
-            },
             {
                 "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.name",
                 "operation": "replace",
                 "value": new_weapon.title(),
+            },
+            {
+                "target": f"$.offense.offensive_actions[?(@.attack.weapon=='{old_weapon}')].attack.weapon",
+                "operation": "replace",
+                "value": new_weapon,
             },
         ]
         m2 = re.search(r"deal (\w+) damage instead of (\w+)", t)
@@ -1479,7 +1542,7 @@ def _build_strike_effects(text):
     if m:
         return [
             {
-                "target": "$.offense.offensive_actions[?(@.attack.attack_type=='melee')].attack.bonus",
+                "target": "$.offense.offensive_actions[?(@.attack.attack_type=='melee')].attack",
                 "operation": "set_reach",
                 "value": int(m.group(1)),
             }
