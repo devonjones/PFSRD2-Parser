@@ -38,6 +38,7 @@ from pfsrd2.sql.enrichment.queries import (  # noqa: F401
     mark_human_verified,
     mark_needs_review,
     mark_stale,
+    refresh_raw_json,
     update_ability_category,
     update_change_enriched_json,
     update_enriched_json,

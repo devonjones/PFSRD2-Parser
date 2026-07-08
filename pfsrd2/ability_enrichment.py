@@ -16,7 +16,7 @@ from pfsrd2.sql.enrichment import (
     get_enrichment_db_connection,
     insert_ability_record,
     insert_creature_link,
-    mark_stale,
+    refresh_raw_json,
     update_enriched_json,
 )
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
@@ -323,8 +323,14 @@ def _enrich_abilities(abilities, conn, edition=None):
                 ability_id = existing["ability_id"]
                 now_stale = existing["stale"]
                 if existing["raw_json"] != raw_json:
-                    mark_stale(curs, ability_id, raw_json)
-                    now_stale = True
+                    # The identity hash matched, so identity fields are
+                    # unchanged — only non-identity bytes drifted (links,
+                    # whitespace). Refresh raw WITHOUT staling: two sources
+                    # sharing a record (legacy + remastered family files
+                    # with different link targets) otherwise re-stale it on
+                    # every parse, permanently disabling the merge for both
+                    # (ghost/skeleton/nosferatu lost frequency/range).
+                    refresh_raw_json(curs, ability_id, raw_json)
 
                 # Apply enrichment
                 if existing["enriched_json"] and not now_stale:
@@ -393,8 +399,14 @@ def ability_enrichment_pass(struct, conn=None):
                 ability_id = existing["ability_id"]
                 now_stale = existing["stale"]
                 if existing["raw_json"] != raw_json:
-                    mark_stale(curs, ability_id, raw_json)
-                    now_stale = True
+                    # The identity hash matched, so identity fields are
+                    # unchanged — only non-identity bytes drifted (links,
+                    # whitespace). Refresh raw WITHOUT staling: two sources
+                    # sharing a record (legacy + remastered family files
+                    # with different link targets) otherwise re-stale it on
+                    # every parse, permanently disabling the merge for both
+                    # (ghost/skeleton/nosferatu lost frequency/range).
+                    refresh_raw_json(curs, ability_id, raw_json)
 
                 # Apply enrichment
                 if existing["enriched_json"] and not now_stale:
