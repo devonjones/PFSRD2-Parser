@@ -36,7 +36,12 @@ from universal.utils import get_text, remove_empty_fields, strip_block_tags
 
 # Section intros that unconditionally grant their abilities (vs choose-from
 # pools, which the engine must never auto-apply).
-_GRANTS_ABILITIES = re.compile(r"\bgains?\s+the\s+following\s+abilit", re.IGNORECASE)
+_GRANTS_ABILITIES = re.compile(
+    # Unconditional grants only: modal wording ("may/can/might gain the
+    # following abilities") is a choice, not a grant, and must stay pooled.
+    r"(?<!\bmay )(?<!\bcan )(?<!\bmight )\bgains?\s+the\s+following\s+abilit",
+    re.IGNORECASE,
+)
 
 
 def parse_monster_template(filename, options):

@@ -83,3 +83,14 @@ class TestSectionGrantedAbilities:
         texts = [c["text"] for c in mt["changes"]]
         assert "Increase the creature's level" in texts[0]
         assert texts[1].startswith("All host creatures gain")
+
+    def test_modal_grant_stays_pool(self):
+        # "may gain the following abilities" is a choice, not a grant.
+        mt = {"name": "X"}
+        section = _section(
+            "The creature may gain the following abilities.<br/>"
+            "<b>Optional Thing</b> Something optional."
+        )
+        assert _try_extract_changes(section, mt)
+        assert "changes" not in mt
+        assert mt["abilities"][0]["name"] == "Optional Thing"
