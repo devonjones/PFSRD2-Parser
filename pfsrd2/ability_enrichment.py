@@ -220,7 +220,9 @@ def _raws_equivalent(raw_a, raw_b):
 
     def canon(v):
         if isinstance(v, dict):
-            return {k: canon(x) for k, x in v.items() if k != "links"}
+            # "links" (ability-level) and "link" (inside trait/action
+            # objects) both carry edition-specific aonid targets.
+            return {k: canon(x) for k, x in v.items() if k not in ("links", "link")}
         if isinstance(v, list):
             return [canon(x) for x in v]
         if isinstance(v, str):

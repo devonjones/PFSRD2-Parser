@@ -6,6 +6,7 @@ import json
 import re
 import sys
 
+from pfsrd2.ability_placement import deterministic_ability_category
 from pfsrd2.enrichment.llm_extractor import (
     DEFAULT_MODEL,
     classify_ability_category_llm,
@@ -14,7 +15,7 @@ from pfsrd2.enrichment.llm_extractor import (
     extract_dc_llm,
     extract_frequency_llm,
 )
-from pfsrd2.enrichment.regex_extractor import extract_all
+from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION, extract_all
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import (
     clear_needs_review,
@@ -27,12 +28,11 @@ from pfsrd2.sql.enrichment import (
     fetch_unenriched,
     get_enrichment_db_connection,
     mark_needs_review,
+    refresh_raw_json,
     update_ability_category,
     update_enriched_json,
     update_is_uma,
 )
-from pfsrd2.ability_placement import deterministic_ability_category
-from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
 
 
@@ -65,6 +65,64 @@ def _format_missed_reason(missed):
         else:
             parts.append(f"{kw}({ext}/{det})")
     return "unextracted: " + ", ".join(parts)
+
+
+def run_heal_stale(conn, args):
+    """One-time drain of the legacy stale backlog (pre-oscillation-fix flags).
+
+    A record's enriched_json embeds the ability it was extracted from, so
+    when compute_identity_hash(enriched) still equals the record's stored
+    identity_hash, the extraction inputs are unchanged and the enrichment
+    is provably valid — the stale flag is stale-era noise. Records with no
+    enrichment and no extractable mechanics get their flag cleared too
+    (raw_json is current; there is nothing to re-extract).
+    """
+    from pfsrd2.ability_identity import compute_identity_hash
+
+    curs = conn.cursor()
+    stale = fetch_stale(curs)
+    healed_valid = healed_empty = still_stale = 0
+    for record in stale:
+        if record["enriched_json"]:
+            try:
+                enriched = json.loads(record["enriched_json"])
+            except json.JSONDecodeError:
+                still_stale += 1
+                continue
+            if compute_identity_hash(enriched) == record["identity_hash"]:
+                update_enriched_json(
+                    curs,
+                    record["ability_id"],
+                    record["enriched_json"],
+                    record["enrichment_version"] or ENRICHMENT_VERSION,
+                    record["extraction_method"] or "regex",
+                )
+                healed_valid += 1
+            else:
+                still_stale += 1
+            continue
+        result, _missed = extract_all(record["raw_json"])
+        if result is not None:
+            update_enriched_json(
+                curs,
+                record["ability_id"],
+                json.dumps(result, sort_keys=True, ensure_ascii=False),
+                ENRICHMENT_VERSION,
+                "regex",
+            )
+            healed_valid += 1
+        else:
+            # no mechanics to extract; raw is current — flag is meaningless
+            refresh_raw_json(curs, record["ability_id"], record["raw_json"])
+            curs.execute(
+                "UPDATE ability_records SET stale = 0 WHERE ability_id = ?",
+                (record["ability_id"],),
+            )
+            healed_empty += 1
+    conn.commit()
+    print(f"Healed (enrichment still valid or re-extracted): {healed_valid}")
+    print(f"Cleared (no mechanics, raw current): {healed_empty}")
+    print(f"Still stale (identity genuinely drifted): {still_stale}")
 
 
 def run_regex(conn, args):
@@ -557,6 +615,11 @@ def main():
         help="Run Tier 3 LLM classification on uncategorized abilities",
     )
     parser.add_argument(
+        "--heal-stale",
+        action="store_true",
+        help="Drain legacy stale flags: clear records whose enrichment is provably still valid",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="Run everything: UMA + classify + LLM classify + regex + all LLM types",
@@ -577,6 +640,10 @@ def main():
             print(f"Stale:            {counts['stale']}")
             print(f"Human verified:   {counts['verified']}")
             print(f"Needs review:     {counts['needs_review']}")
+            return
+
+        if args.heal_stale:
+            run_heal_stale(conn, args)
             return
 
         if args.all:
