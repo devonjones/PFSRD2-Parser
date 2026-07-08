@@ -767,6 +767,19 @@ def _build_attribute_effects(text):
     effects = []
     for m in re.finditer(r"(\w+) modifier of [+–-]?(\d+)", t):
         attr = m.group(1).lower()
+        # This branch SCANS mixed prose, so non-attribute modifiers
+        # ("Perception modifier of +10") are expected — skip them rather
+        # than truncating into a bogus $.statistics.per (same failure
+        # class as the threshold branch's dead path).
+        if attr not in {
+            "strength",
+            "dexterity",
+            "constitution",
+            "intelligence",
+            "wisdom",
+            "charisma",
+        }:
+            continue
         prefix = t[max(0, m.start() - 3) : m.start() + len(m.group(0))]
         val = int(m.group(2))
         if "–" in prefix or "-" in prefix[: prefix.find(m.group(2))]:

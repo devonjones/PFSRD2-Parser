@@ -682,9 +682,15 @@ class TestBuildAttributeEffects:
     def test_threshold_unknown_attribute_asserts(self):
         # Blind [:3] truncation must never map an unknown word onto a valid
         # stat path ("internal" -> int).
-        import pytest as _pytest
-
-        with _pytest.raises(AssertionError, match="unknown stat"):
+        with pytest.raises(AssertionError, match="unknown stat"):
             _build_attribute_effects(
                 "If the creature's Internal modifier is -4 or lower, increase it to -3."
             )
+
+    def test_plain_form_skips_non_attribute_modifiers(self):
+        # The scanning branch must skip prose mentioning non-attribute
+        # modifiers instead of emitting a bogus $.statistics.per.
+        effects = _build_attribute_effects(
+            "It has a Strength modifier of +5 and a Perception modifier of +10."
+        )
+        assert effects == [{"target": "$.statistics.str", "operation": "replace", "value": 5}]
