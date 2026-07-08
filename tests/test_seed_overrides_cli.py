@@ -107,16 +107,20 @@ class TestSeedCLIExitCodes:
         result = _run_cli(db_path)
         assert result.returncode == 1, result.stdout + result.stderr
         assert "stale overrides" in result.stderr
-        # Every change override should be listed as a miss.
-        assert len(load_overrides("change_overrides.json")) == result.stderr.count("  change: ")
+        # Every change override AND quarantine should be listed as a miss.
+        expected = len(load_overrides("change_overrides.json")) + len(
+            load_overrides("change_overrides.json", key="quarantines")
+        )
+        assert expected == result.stderr.count("  change: ")
 
     def test_clean_seed_exits_zero(self, tmp_path):
         # With a matching record staged for every committed override, the CLI
         # seeds cleanly and exits 0.
         db_path = tmp_path / "enrichment.db"
         change_overrides = load_overrides("change_overrides.json")
+        quarantines = load_overrides("change_overrides.json", key="quarantines")
         ability_overrides = load_overrides("ability_overrides.json")
-        _populate_records(db_path, change_overrides, ability_overrides)
+        _populate_records(db_path, change_overrides + quarantines, ability_overrides)
 
         result = _run_cli(db_path)
         assert result.returncode == 0, result.stdout + result.stderr
