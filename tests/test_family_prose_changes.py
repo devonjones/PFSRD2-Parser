@@ -30,15 +30,44 @@ class TestProseChanges:
 
     def test_gains_trait_line_with_link(self):
         s = _section(
-            'A lich gains the <a aonid="160" game-obj="Traits">undead</a> '
-            "trait and becomes evil. Liches lose all abilities that come "
-            "from being a living creature."
+            'A siabrae gains the <a aonid="160" game-obj="Traits">undead</a> '
+            "trait and becomes evil."
         )
         _extract_changes_from_section(s)
         change = s["changes"][0]
         assert "undead" in change["text"]
         assert "<a" not in change["text"]
         assert change["links"][0]["name"] == "undead"
+
+    def test_mixed_polarity_line_splits_per_sentence(self):
+        # One change per polarity — a combined gain+lose change made the
+        # enrichment assign a single polarity (graveknight shipped add_item
+        # Human/Humanoid from the "such as human and humanoid" lose clause).
+        s = _section(
+            "A graveknight gains the graveknight, undead, and unholy traits. "
+            "They lose any abilities that come from being a living creature "
+            "and any traits that represent their life, such as human and "
+            "humanoid."
+        )
+        _extract_changes_from_section(s)
+        texts = [c["text"] for c in s["changes"]]
+        assert len(texts) == 2
+        assert texts[0].startswith("A graveknight gains")
+        assert texts[1].startswith("They lose")
+
+    def test_level_sentence_inside_excluded_line(self):
+        # Ghoul: the level instruction shares a line with a "following
+        # steps" marker and leads with "First," — sentence-level rescue.
+        s = _section(
+            "You can turn a living creature into a ghoul by completing the "
+            "following steps. First, increase the creature's level by 1 and "
+            "change its statistics as follows."
+        )
+        _extract_changes_from_section(s)
+        texts = [c["text"] for c in s["changes"]]
+        assert texts == [
+            "First, increase the creature's level by 1 and change its statistics as follows."
+        ]
 
     def test_level_sentence_buried_in_intro(self):
         # Remastered Lich: level bump mid-sentence before the <ul>
