@@ -1016,6 +1016,512 @@
           }
         ]
       }
+    },
+    {
+      "source_name": "Vampire",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Compulsions</b> Vampires are creatures of strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless it is transported while it hides within its coffin, nor can it enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome its compulsion just as it does its revulsion (see below).</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Compulsions",
+              "text": "Vampires are creatures of strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless it is transported while it hides within its coffin, nor can it enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome its compulsion just as it does its revulsion (see below)."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Revulsion</b> A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of its revulsion, it gains the fleeing condition, running from the object of its revulsion until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Revulsion",
+              "text": "A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of its revulsion, it gains the fleeing condition, running from the object of its revulsion until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success)."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Sunlight</b> If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends its turn in sunlight. If the vampire loses all its actions in this way, it is destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Sunlight",
+              "text": "If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends its turn in sunlight. If the vampire loses all its actions in this way, it is destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Vrykolakas",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Vulnerable to Decapitation</b> A vrykolakas that is beheaded can't use its Feral Possession, and a beheaded corpse cannot rise as a vrykolakas.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Vulnerable to Decapitation",
+              "text": "A vrykolakas that is beheaded can't use its Feral Possession, and a beheaded corpse cannot rise as a vrykolakas."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Nosferatu",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Revulsion</b> A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raise a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Revulsion",
+              "text": "A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raise a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Nosferatu",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Sunlight</b> If exposed to direct sunlight, a nosferatu immediately becomes slowed 1. The slowed value increases by 1 each time the nosferatu ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the nosferatu loses all their actions in this way, they're destroyed.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Sunlight",
+              "text": "If exposed to direct sunlight, a nosferatu immediately becomes slowed 1. The slowed value increases by 1 each time the nosferatu ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the nosferatu loses all their actions in this way, they're destroyed."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Jiang-Shi",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Revulsion</b> A jiang-shi can't voluntarily come within 10 feet of a brandished mirror or the sound of ringing handbells. A creature can Interact with a mirror or handbell to brandish or ring that item for 1 round (similar to Raising a Shield). If the jiang-shi involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they are 10 feet or farther from the object. After 1 round of being exposed to the object of their revulsion, a jiang-shi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Revulsion",
+              "text": "A jiang-shi can't voluntarily come within 10 feet of a brandished mirror or the sound of ringing handbells. A creature can Interact with a mirror or handbell to brandish or ring that item for 1 round (similar to Raising a Shield). If the jiang-shi involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they are 10 feet or farther from the object. After 1 round of being exposed to the object of their revulsion, a jiang-shi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Jiang-Shi",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Bitter Epiphany</b> A jiang-shi is afflicted by severe melancholia when reminded of their debased nature and the truth of their existential disconnection from living beings. When a jiang-shi sees an altar with at least 1 Bulk of food offerings to ancestor spirits, they must attempt a DC 25 Will save. They are then temporarily immune to bitter epiphany for 1 minute.<br/><b>Critical Success</b> The jiang-shi is unaffected.<br/><b>Success</b> The jiang-shi is stupefied 1 for 1 round.<br/><b>Failure</b> The jiang-shi is stupefied 2 for 1 minute.<br/><b>Critical Failure</b> The jiang-shi is stupefied 2 and confused for 1 minute. </li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Bitter Epiphany",
+              "text": "A jiang-shi is afflicted by severe melancholia when reminded of their debased nature and the truth of their existential disconnection from living beings. When a jiang-shi sees an altar with at least 1 Bulk of food offerings to ancestor spirits, they must attempt a DC 25 Will save. They are then temporarily immune to bitter epiphany for 1 minute.Critical Success The jiang-shi is unaffected.Success The jiang-shi is stupefied 1 for 1 round.Failure The jiang-shi is stupefied 2 for 1 minute.Critical Failure The jiang-shi is stupefied 2 and confused for 1 minute."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Vetalarana",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Barred Senses</b> A vetalarana can't see or sense through force effects or cold iron, and their mind can't penetrate force effects or cold iron. Such barriers can prevent the transference of a vetalarana's mind through Mental Rebirth.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Barred Senses",
+              "text": "A vetalarana can't see or sense through force effects or cold iron, and their mind can't penetrate force effects or cold iron. Such barriers can prevent the transference of a vetalarana's mind through Mental Rebirth."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Vetalarana",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Revulsion</b> A vetalarana delights in consuming memories and secrets, and is disgusted by those who share such sensitive tidbits openly. A vetalarana can't voluntarily come within 10 feet of a creature loudly voicing their intimate personal secrets or most cherished memories aloud. Speaking such information aloud with conviction is a single action that has the auditory, concentrate, and linguistic traits, and protects the creature until the start of its next turn. A vetalarana that involuntarily comes within 10 feet of a creature sharing such information gains the fleeing condition until they're 10 feet or farther from the creature. After 1 round of being exposed to the secrets of a creature, a vetalarana can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Revulsion",
+              "text": "A vetalarana delights in consuming memories and secrets, and is disgusted by those who share such sensitive tidbits openly. A vetalarana can't voluntarily come within 10 feet of a creature loudly voicing their intimate personal secrets or most cherished memories aloud. Speaking such information aloud with conviction is a single action that has the auditory, concentrate, and linguistic traits, and protects the creature until the start of its next turn. A vetalarana that involuntarily comes within 10 feet of a creature sharing such information gains the fleeing condition until they're 10 feet or farther from the creature. After 1 round of being exposed to the secrets of a creature, a vetalarana can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Strigoi",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Revulsion</b> Strigoi are uncomfortable near mirrors or sources of bright light. Only a strigoi's shadow reflects in a mirror, and this often compels them to cover or destroy mirrors in their presence rather than risk their true nature being displayed. A strigoi can't voluntarily come within 10 feet of a brandished mirror or source of bright light. To brandish a mirror or light source, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the strigoi involuntarily comes within 10 feet of a brandished mirror or light source, it gains the fleeing condition, running from the brandished object until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a strigoi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success). A strigoi can move normally around mirrors or bright light sources that are not brandished, although doing so causes them discomfort that can be noticed with a successful Perception check to Sense Motive.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Revulsion",
+              "text": "Strigoi are uncomfortable near mirrors or sources of bright light. Only a strigoi's shadow reflects in a mirror, and this often compels them to cover or destroy mirrors in their presence rather than risk their true nature being displayed. A strigoi can't voluntarily come within 10 feet of a brandished mirror or source of bright light. To brandish a mirror or light source, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the strigoi involuntarily comes within 10 feet of a brandished mirror or light source, it gains the fleeing condition, running from the brandished object until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a strigoi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success). A strigoi can move normally around mirrors or bright light sources that are not brandished, although doing so causes them discomfort that can be noticed with a successful Perception check to Sense Motive."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Strigoi",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Water Revulsion</b> A strigoi cannot cross a significant source of running water (such as a creek, river, or waves on a seashore). A strigoi capable of flight can cross running water provided it approaches no closer than 10 feet to the liquid's surface. If forced into running water against its will, the strigoi becomes slowed 2 and gains the fleeing condition as long as it remains in the water. At the end of any turn in which the strigoi remains in running water, it must succeed at a DC 5 flat check or be destroyed.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Water Revulsion",
+              "text": "A strigoi cannot cross a significant source of running water (such as a creek, river, or waves on a seashore). A strigoi capable of flight can cross running water provided it approaches no closer than 10 feet to the liquid's surface. If forced into running water against its will, the strigoi becomes slowed 2 and gains the fleeing condition as long as it remains in the water. At the end of any turn in which the strigoi remains in running water, it must succeed at a DC 5 flat check or be destroyed."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Harrowkin",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Hammers</b> The harrowkin gains a +2 status bonus to damage rolls.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Hammers",
+              "text": "The harrowkin gains a +2 status bonus to damage rolls."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Harrowkin",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Keys</b> The harrowkin gains a +1 status bonus to AC.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Keys",
+              "text": "The harrowkin gains a +1 status bonus to AC."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Harrowkin",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Shields</b> The harrowkin gains fast healing 5.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Shields",
+              "text": "The harrowkin gains fast healing 5."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Harrowkin",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Stars</b> The harrowkin gains a +1 status bonus to saving throws.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Stars",
+              "text": "The harrowkin gains a +1 status bonus to saving throws."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Harrowkin",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Crown</b> The harrowkin can reroll 1 check within the next minute and take the higher result. This is a fortune effect.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Crown",
+              "text": "The harrowkin can reroll 1 check within the next minute and take the higher result. This is a fortune effect."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Dragon, Omen",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Assured Fate</b> (fortune) When the omen dragon rolls initiative, instead of rolling, they can choose to have a result equal to 13 + their initiative modifier.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Assured Fate",
+              "text": "(fortune) When the omen dragon rolls initiative, instead of rolling, they can choose to have a result equal to 13 + their initiative modifier."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Dragon, Omen",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Instinctive Challenge</b> During an encounter, the fortune dragon gains an additional reaction at the start of their turn that can be used only for Challenge Fate.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Instinctive Challenge",
+              "text": "During an encounter, the fortune dragon gains an additional reaction at the start of their turn that can be used only for Challenge Fate."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Compulsions</b> Vampires are creatures with strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless they're transported while they hide within their coffin, nor can they enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome their compulsion just as they do their revulsion (see below).</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Compulsions",
+              "text": "Vampires are creatures with strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless they're transported while they hide within their coffin, nor can they enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome their compulsion just as they do their revulsion (see below)."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Revulsion</b> A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so, and it remains brandished for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Revulsion",
+              "text": "A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so, and it remains brandished for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Sunlight</b> If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the vampire loses all their actions in this way, they're destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors.</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Sunlight",
+              "text": "If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the vampire loses all their actions in this way, they're destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "source_name": "Vampire, Nosferatu",
+      "source_type": "monster_family",
+      "change_text": "<li><b>Revulsion</b> A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+      "enriched": {
+        "change_category": "abilities",
+        "effects": [
+          {
+            "operation": "add_item",
+            "target": "$.defense.automatic_abilities",
+            "item": {
+              "type": "stat_block_section",
+              "subtype": "ability",
+              "ability_type": "automatic",
+              "name": "Revulsion",
+              "text": "A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
+            }
+          }
+        ]
+      }
     }
   ]
 }
