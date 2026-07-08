@@ -11,7 +11,7 @@ Two entry points:
 
 import re
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, NavigableString, Tag
 
 from pfsrd2.action import extract_action_type
 from pfsrd2.trait import extract_starting_traits
@@ -290,6 +290,17 @@ def _split_nodes(nodes):
                 current = None
             continue
 
+        if current is None and entries and _is_continuation(node):
+            # A <br>-separated line that does NOT start a new <b>Name</b>
+            # ability is a continuation paragraph of the previous one
+            # (Experimental Cryptid's Power Surge: "...Energy Wave.<br><br>
+            # This additional damage increases to 2d6 at 9th level...").
+            # Dropping it loses published rules text.
+            current = entries.pop()
+            current[2].append(NavigableString(" "))
+            current[2].append(node)
+            continue
+
         if isinstance(node, Tag) and node.name == "a" and node.find("b"):
             b = node.find("b")
             name = get_text(b).strip()
@@ -326,6 +337,17 @@ def _split_nodes(nodes):
     if current:
         entries.append(current)
     return entries
+
+
+def _is_continuation(node):
+    """True for substantive non-ability-start content after a <br>."""
+    if isinstance(node, Tag) and node.name in ("b", "a") and (node.name == "b" or node.find("b")):
+        return False
+    if isinstance(node, NavigableString):
+        return bool(str(node).strip())
+    if isinstance(node, Tag):
+        return bool(get_text(node).strip())
+    return False
 
 
 def _merge_addons(entries, labels, fxn_is_addon=None):
