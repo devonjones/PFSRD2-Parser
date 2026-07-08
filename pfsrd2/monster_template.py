@@ -36,7 +36,7 @@ from universal.utils import get_text, remove_empty_fields, strip_block_tags
 
 # Section intros that unconditionally grant their abilities (vs choose-from
 # pools, which the engine must never auto-apply).
-_GRANTS_ABILITIES = re.compile(r"gains? the following abilit", re.IGNORECASE)
+_GRANTS_ABILITIES = re.compile(r"\bgains?\s+the\s+following\s+abilit", re.IGNORECASE)
 
 
 def parse_monster_template(filename, options):
@@ -198,7 +198,7 @@ def _try_extract_changes(source_section, mt):
     bs = BeautifulSoup(source_section["text"], "html.parser")
     found = False
     ul = bs.find("ul")
-    if ul and "changes" not in mt:
+    if ul and not mt.get("_ul_changes_extracted"):
         changes = []
         for li in ul.find_all("li", recursive=False):
             if not get_text(li).strip():
@@ -207,7 +207,10 @@ def _try_extract_changes(source_section, mt):
             changes.append(change)
         ul.decompose()
         source_section["text"] = str(bs).strip()
-        mt["changes"] = changes
+        # granting ability sections may have appended changes already —
+        # the <li> changes are the template's primary list and go first
+        mt["changes"] = changes + mt.get("changes", [])
+        mt["_ul_changes_extracted"] = True
         found = True
     # Check for inline abilities — either when there's no <ul>, or in
     # remaining text after the <ul> was removed (ancestry templates put
@@ -224,9 +227,16 @@ def _try_extract_changes(source_section, mt):
         # the engine only auto-applies those when the template has no
         # changes at all, which is exactly the ability-only case.
         if source_section is not mt and _GRANTS_ABILITIES.search(get_text(bs)):
+            # Mirror parse_change: links must be extracted before the text
+            # is captured — raw <a> in change text fails markdown validation.
+            links = get_links(bs, unwrap=True)
+            remaining = str(bs).strip()
+            source_section["text"] = remaining
             change = build_object("stat_block_section", "change", "")
             del change["name"]
             change["text"] = remaining
+            if links:
+                change["links"] = links
             change["abilities"] = abilities
             mt.setdefault("changes", []).append(change)
         else:
@@ -320,6 +330,7 @@ def monster_template_cleanup_pass(struct):
         del mt["links"]
     if "sections" in mt:
         del mt["sections"]
+    mt.pop("_ul_changes_extracted", None)
     _clean_html_fields(struct)
 
 

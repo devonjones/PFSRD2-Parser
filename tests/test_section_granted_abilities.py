@@ -53,3 +53,33 @@ class TestSectionGrantedAbilities:
         assert _try_extract_changes(mt, mt)
         assert "changes" not in mt
         assert len(mt["abilities"]) == 2
+
+    def test_granting_with_links_extracts_links(self):
+        mt = {"name": "Experimental Cryptid"}
+        html = (
+            'A cryptid gains the <a aonid="6" game-obj="Traits">alchemical</a> '
+            "trait. An experimental cryptid gains the following abilities.<br/>"
+            "<b>Augmented</b> Body parts replaced."
+        )
+        section = _section(html)
+        assert _try_extract_changes(section, mt)
+        change = mt["changes"][0]
+        assert "<a" not in change["text"]
+        assert change["links"][0]["name"] == "alchemical"
+
+    def test_granting_with_no_parseable_abilities_is_noop(self):
+        mt = {"name": "X"}
+        section = _section("All hosts gain the following abilities. Nothing here.")
+        assert not _try_extract_changes(section, mt)
+        assert "changes" not in mt
+
+    def test_grant_before_ul_keeps_li_changes_first(self):
+        # A granting section processed before the <ul> section must neither
+        # block <li> extraction nor displace the primary change list.
+        mt = {"name": "X"}
+        assert _try_extract_changes(_section(GRANTING), mt)
+        ul_section = _section("<ul><li>Increase the creature's level by 1.</li></ul>")
+        assert _try_extract_changes(ul_section, mt)
+        texts = [c["text"] for c in mt["changes"]]
+        assert "Increase the creature's level" in texts[0]
+        assert texts[1].startswith("All host creatures gain")
