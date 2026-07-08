@@ -735,3 +735,50 @@ class TestStrikeRenameOrdering:
         )
         assert effects[0]["operation"] == "set_reach"
         assert effects[0]["target"].endswith(".attack")
+
+
+# Bound at import time, before the autouse stub_trait_items fixture patches
+# the module attribute — these tests exercise the real lookup.
+_REAL_TRAIT_ITEM = change_extractor._trait_item
+
+
+class TestTraitItem:
+    def test_unknown_trait_raises(self, monkeypatch):
+        monkeypatch.setattr(change_extractor, "_TRAIT_ITEM_CACHE", {})
+        monkeypatch.setattr(change_extractor, "fetch_trait_by_name", lambda c, n: None)
+        monkeypatch.setattr(change_extractor, "get_db_connection", lambda p: _FakeConn())
+        with pytest.raises(change_extractor.TraitLookupError):
+            _REAL_TRAIT_ITEM("Revulsion")
+
+    def test_known_trait_builds_full_object(self, monkeypatch):
+        row = {
+            "trait": json.dumps(
+                {
+                    "name": "Uncommon",
+                    "game-id": "f317",
+                    "game-obj": "Traits",
+                    "aonid": 99,
+                    "schema_version": 1.1,
+                    "type": "trait",
+                }
+            ),
+            "classes": json.dumps(["rarity"]),
+        }
+        monkeypatch.setattr(change_extractor, "_TRAIT_ITEM_CACHE", {})
+        monkeypatch.setattr(change_extractor, "fetch_trait_by_name", lambda c, n: row)
+        monkeypatch.setattr(change_extractor, "get_db_connection", lambda p: _FakeConn())
+        item = _REAL_TRAIT_ITEM("Uncommon")
+        assert item["name"] == "Uncommon"
+        assert item["classes"] == ["rarity"]
+        assert "aonid" not in item
+        # cached second call takes the no-DB path and returns a fresh copy
+        item2 = _REAL_TRAIT_ITEM("Uncommon")
+        assert item2 == item and item2 is not item
+
+
+class _FakeConn:
+    def cursor(self):
+        return None
+
+    def close(self):
+        pass
