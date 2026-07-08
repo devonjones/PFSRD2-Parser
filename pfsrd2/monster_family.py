@@ -18,6 +18,7 @@ from universal.monster_ability import monster_ability_db_pass
 from universal.spells import is_spell_name, parse_spell_block
 from universal.universal import (
     aon_pass,
+    build_object,
     entity_pass,
     extract_source_from_bs,
     game_id_pass,
@@ -247,21 +248,114 @@ def _extract_creation_changes(struct):
         _process_section(section)
 
 
+# Prose lines in creation sections that are stat instructions, not flavor.
+# Legacy families (pre-remaster) often carry their "change its statistics"
+# steps as <br>-separated prose instead of a <ul> (e.g. Bestiary Lich).
+_PROSE_IMPERATIVE = re.compile(r"^\s*(?:increase|decrease|change)\b", re.I)
+# "A lich gains the undead trait and becomes evil." / "Liches lose all
+# abilities that come from being a living creature." — requires a mechanics
+# noun so flavor sentences ("ghouls gain sustenance...") don't match.
+_PROSE_GAIN_LOSE = re.compile(
+    r"^\s*(?:it|they|a|an|the|[a-z][\w']*s?)\b[\w' ]{0,30}?" r"\b(?:also\s+)?(?:gains?|loses?)\b",
+    re.I,
+)
+_PROSE_MECHANICS_NOUN = re.compile(r"\b(?:trait|abilit|statistic)", re.I)
+# Level-change instruction buried mid-sentence in intro prose:
+# "To create a lich, increase the spellcaster's level by 1 and ..."
+_LEVEL_SENTENCE = re.compile(
+    r"[^.]*\b(?:increase|decrease)[^.]*?\blevel by (?:\d+|one|two)\b[^.]*\.",
+    re.I,
+)
+
+
+def _prose_change_from_html(line_html):
+    """Build a change object from a prose line's HTML fragment."""
+    wrapper = BeautifulSoup(f"<div>{line_html}</div>", "html.parser").div
+    change = build_object("stat_block_section", "change", "")
+    links = get_links(wrapper, unwrap=True)
+    if links:
+        change["links"] = links
+    for span in wrapper.find_all("span", {"class": "action"}):
+        span.unwrap()
+    change["text"] = wrapper.decode_contents().strip()
+    del change["name"]
+    return change
+
+
+def _prose_change_for_line(line_html):
+    """Return a change for a prose line if it is a stat instruction.
+
+    Grant/choice markers ("...the following abilities") are handled by the
+    ability parsing path, never here.
+    """
+    # Bold-led lines are ability/name-entry definitions ("<b>Change Shape</b>
+    # ..."), owned by the ability parsing path — never prose changes, even
+    # when the ability name starts with an imperative verb ("Change ...").
+    if re.match(r"\s*<b>", line_html, re.I):
+        return None
+    plain = get_text(BeautifulSoup(line_html, "html.parser")).strip()
+    if not plain or "following" in plain.lower():
+        return None
+    lowered = plain.lower()
+    # Narrative pointers and GM-conditionals are display text, not
+    # auto-applicable changes.
+    if "as detailed below" in lowered or "if you " in lowered:
+        return None
+    if _PROSE_IMPERATIVE.match(plain):
+        return _prose_change_from_html(line_html)
+    if _PROSE_GAIN_LOSE.match(plain) and _PROSE_MECHANICS_NOUN.search(plain):
+        return _prose_change_from_html(line_html)
+    m = _LEVEL_SENTENCE.search(plain)
+    if m:
+        change = build_object("stat_block_section", "change", "")
+        change["text"] = m.group(0).strip()
+        del change["name"]
+        return change
+    return None
+
+
 def _extract_changes_from_section(section, all_sections=None):
-    """Extract <ul><li> changes from a creation section's text."""
+    """Extract changes from a creation section's text.
+
+    <ul><li> lists are the primary form (each li is a change, destructively
+    removed from the display text). Prose stat instructions — legacy families
+    that predate the <ul> convention, or level changes buried in intro
+    sentences — are additionally extracted in document order, but stay in
+    the display text (sections remain the source of truth for reading).
+    """
 
     text = section.get("text", "")
     bs = BeautifulSoup(text, "html.parser")
-    ul = bs.find("ul")
-    if not ul:
-        return
     changes = []
-    for li in ul.find_all("li", recursive=False):
-        if not get_text(li).strip():
-            continue
-        change = parse_change(li)
-        changes.append(change)
-    ul.decompose()
+    # Walk top-level nodes in document order, splitting prose into lines on
+    # <br>, so intro-prose changes land before the <ul> changes they precede.
+    line_nodes = []
+
+    def _flush_line():
+        if not line_nodes:
+            return
+        line_html = "".join(str(n) for n in line_nodes)
+        line_nodes.clear()
+        change = _prose_change_for_line(line_html)
+        if change:
+            changes.append(change)
+
+    ul_found = False
+    for node in list(bs.children):
+        if isinstance(node, Tag) and node.name == "ul" and not ul_found:
+            ul_found = True
+            _flush_line()
+            for li in node.find_all("li", recursive=False):
+                if not get_text(li).strip():
+                    continue
+                changes.append(parse_change(li))
+            node.decompose()
+        elif isinstance(node, Tag) and node.name == "br":
+            _flush_line()
+        else:
+            line_nodes.append(node)
+    _flush_line()
+
     section["text"] = str(bs).strip()
     if not changes:
         return
