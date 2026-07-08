@@ -43,10 +43,16 @@ def _populate_records(db_path, change_overrides, ability_overrides):
         conn = get_enrichment_db_connection()
         try:
             curs = conn.cursor()
+            seen_hashes = set()
             for ov in change_overrides:
                 identity_hash = compute_change_hash(
                     ov["source_name"], ov["source_type"], ov["change_text"]
                 )
+                # overrides and quarantines may share a record (effect-less
+                # override + quarantine reason on the same rules text)
+                if identity_hash in seen_hashes:
+                    continue
+                seen_hashes.add(identity_hash)
                 insert_change_record(
                     curs,
                     ov["source_name"],
