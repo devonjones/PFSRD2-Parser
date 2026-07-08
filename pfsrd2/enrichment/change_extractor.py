@@ -12,7 +12,7 @@ import sys
 from pfsrd2.ability_placement import CATEGORY_TARGETS, ability_target
 from pfsrd2.sql.enrichment import fetch_all_creature_types, get_enrichment_db_connection
 
-ENRICHMENT_VERSION = 20
+ENRICHMENT_VERSION = 21
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -737,13 +737,29 @@ def _build_attribute_effects(text):
     t = text.lower()
     m = re.search(r"(\w+) modifier is [–-]?(\d+) or lower.+?(?:increase|set) it to [–-]?(\d+)", t)
     if m:
-        attr = m.group(1).lower()
+        # Attribute modifiers live at $.statistics.{str,dex,con,int,wis,cha}
+        # as plain numbers — $.creature_type.{attr}_modifier exists on no
+        # creature, so effects targeting it could never fire (caught by
+        # clause verification: Broodpiercer/cryptid Int floors were dead).
+        word = m.group(1).lower()
+        # (\w+) captures any word before "modifier" — validate the FULL
+        # word before truncating, or "internal" maps to the valid-but-wrong
+        # $.statistics.int. Fail fast on anything but the six stats.
+        assert word in {
+            "strength",
+            "dexterity",
+            "constitution",
+            "intelligence",
+            "wisdom",
+            "charisma",
+        }, f"attribute threshold clause names unknown stat {m.group(1)!r}: {text!r}"
+        attr = word[:3]
         threshold = -int(m.group(2))
         new_val = -int(m.group(3))
         return [
             {
-                "conditional": f"$.creature_type.{attr}_modifier <= {threshold}",
-                "target": f"$.creature_type.{attr}_modifier",
+                "conditional": f"$.statistics.{attr} <= {threshold}",
+                "target": f"$.statistics.{attr}",
                 "operation": "replace",
                 "value": new_val,
             }
@@ -751,6 +767,19 @@ def _build_attribute_effects(text):
     effects = []
     for m in re.finditer(r"(\w+) modifier of [+–-]?(\d+)", t):
         attr = m.group(1).lower()
+        # This branch SCANS mixed prose, so non-attribute modifiers
+        # ("Perception modifier of +10") are expected — skip them rather
+        # than truncating into a bogus $.statistics.per (same failure
+        # class as the threshold branch's dead path).
+        if attr not in {
+            "strength",
+            "dexterity",
+            "constitution",
+            "intelligence",
+            "wisdom",
+            "charisma",
+        }:
+            continue
         prefix = t[max(0, m.start() - 3) : m.start() + len(m.group(0))]
         val = int(m.group(2))
         if "–" in prefix or "-" in prefix[: prefix.find(m.group(2))]:
