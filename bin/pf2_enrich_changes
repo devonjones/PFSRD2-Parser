@@ -27,6 +27,7 @@ from pfsrd2.enrichment.change_extractor import (
     enrich_change,
 )
 from pfsrd2.sql.enrichment import (
+    clear_change_needs_review,
     count_change_records,
     fetch_changes_needing_enrichment,
     get_enrichment_db_connection,
@@ -67,8 +68,30 @@ def main():
         print(f"Processing {len(records)} change records (version {ENRICHMENT_VERSION})...")
 
         enriched_count = 0
+        parser_count = 0
         unknown_count = 0
         for record in records:
+            raw = json.loads(record["raw_json"])
+            if raw.get("effects") and raw.get("change_category"):
+                # Parser-built structural change (subtype JSONPath add_items,
+                # section-name text): already encoded — regex categorization
+                # of a section name is meaningless and was flooding the
+                # review queue with unknown_category (433 of 498 family
+                # flags).
+                enriched = {
+                    "change_category": raw["change_category"],
+                    "effects": raw["effects"],
+                }
+                update_change_enriched_json(
+                    curs,
+                    record["change_id"],
+                    json.dumps(enriched, sort_keys=True, ensure_ascii=False),
+                    ENRICHMENT_VERSION,
+                    "parser",
+                )
+                clear_change_needs_review(curs, record["change_id"])
+                parser_count += 1
+                continue
             try:
                 enriched_json, method = enrich_change(record["raw_json"], record["source_name"])
             except TraitLookupError as exc:
@@ -87,7 +110,10 @@ def main():
                 unknown_count += 1
 
         conn.commit()
-        print(f"Enriched: {enriched_count}, Unknown: {unknown_count}")
+        print(
+            f"Enriched: {enriched_count}, Parser-encoded: {parser_count}, "
+            f"Unknown: {unknown_count}"
+        )
     finally:
         conn.close()
 
