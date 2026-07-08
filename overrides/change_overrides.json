@@ -2177,6 +2177,30 @@
       "source_type": "monster_family",
       "change_text": "<li>It gains a splinter ranged Strike that deals piercing damage, is in the brawling group, and has a range increment of 30 feet.</li>",
       "reason": "add_strike_ranged_pending: engine add_strike derives from melee Strikes only; ranged derivation is a documented shortfall"
+    },
+    {
+      "source_name": "Skeleton",
+      "source_type": "monster_family",
+      "change_text": "(Gargantuan skeletons can use skeletal hulk with the elite template, Gargantuan size, and 5 feet more reach.) Add Strikes, Speeds, or other abilities it would gain from its shape.",
+      "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
+    },
+    {
+      "source_name": "Zombie",
+      "source_type": "monster_family",
+      "change_text": "Then add any Strikes, Speeds, or other abilities it would gain from its shape.",
+      "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
+    },
+    {
+      "source_name": "Skeleton",
+      "source_type": "monster_family",
+      "change_text": "(Gargantuan skeletons can use skeletal hulk with the elite adjustments, Gargantuan size, and 5 feet more reach.) Add Strikes, Speeds, or other abilities it would gain from its shape.",
+      "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
+    },
+    {
+      "source_name": "Skeleton",
+      "source_type": "monster_family",
+      "change_text": "Add Strikes, Speeds, or other abilities it would gain from its shape.",
+      "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
     }
   ]
 }
