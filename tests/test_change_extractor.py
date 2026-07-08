@@ -745,7 +745,9 @@ _REAL_TRAIT_ITEM = change_extractor._trait_item
 class TestTraitItem:
     def test_unknown_trait_raises(self, monkeypatch):
         monkeypatch.setattr(change_extractor, "_TRAIT_ITEM_CACHE", {})
-        monkeypatch.setattr(change_extractor, "fetch_trait_by_name", lambda c, n: None)
+        monkeypatch.setattr(
+            change_extractor, "fetch_trait_by_name_preferring_edition", lambda c, n: None
+        )
         monkeypatch.setattr(change_extractor, "get_db_connection", lambda p: _FakeConn())
         with pytest.raises(change_extractor.TraitLookupError):
             _REAL_TRAIT_ITEM("Revulsion")
@@ -759,18 +761,25 @@ class TestTraitItem:
                     "game-obj": "Traits",
                     "aonid": 99,
                     "schema_version": 1.1,
+                    "license": {"name": "OGL"},
                     "type": "trait",
                 }
             ),
-            "classes": json.dumps(["rarity"]),
+            "classes": json.dumps([]),
         }
         monkeypatch.setattr(change_extractor, "_TRAIT_ITEM_CACHE", {})
-        monkeypatch.setattr(change_extractor, "fetch_trait_by_name", lambda c, n: row)
+        monkeypatch.setattr(
+            change_extractor, "fetch_trait_by_name_preferring_edition", lambda c, n: row
+        )
         monkeypatch.setattr(change_extractor, "get_db_connection", lambda p: _FakeConn())
         item = _REAL_TRAIT_ITEM("Uncommon")
         assert item["name"] == "Uncommon"
+        # rarity class derived; license/schema noise stripped — the badge
+        # trait definition is additionalProperties: false
         assert item["classes"] == ["rarity"]
         assert "aonid" not in item
+        assert "license" not in item
+        assert "schema_version" not in item
         # cached second call takes the no-DB path and returns a fresh copy
         item2 = _REAL_TRAIT_ITEM("Uncommon")
         assert item2 == item and item2 is not item

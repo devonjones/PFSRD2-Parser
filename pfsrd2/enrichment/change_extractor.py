@@ -14,7 +14,7 @@ from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import fetch_all_creature_types, get_enrichment_db_connection
 from pfsrd2.sql.traits import (
     EXPECTED_TRAIT_SCHEMA_VERSION,
-    fetch_trait_by_name,
+    fetch_trait_by_name_preferring_edition,
     strip_nested_metadata,
 )
 
@@ -29,10 +29,11 @@ _CREATURE_TYPES_CACHE = None
 
 
 def reset_creature_types_cache():
-    """Drop the cached creature-type set. Used by tests and by long-running
-    enrichment processes that want to pick up newly-registered types."""
+    """Drop the cached creature-type set and trait items. Used by tests and
+    by long-running enrichment processes that want fresh DB state."""
     global _CREATURE_TYPES_CACHE
     _CREATURE_TYPES_CACHE = None
+    _TRAIT_ITEM_CACHE.clear()
 
 
 def _get_creature_types():
@@ -41,7 +42,7 @@ def _get_creature_types():
     Lowercased to mirror the table's COLLATE NOCASE and to give case-insensitive
     membership testing in Python. Emits a warning to stderr if the table is
     empty — this means the seed script never ran or the DB was wiped, and
-    trait routing will regress to $.traits-only for every name. Caller must
+    trait routing will regress to badge-array-only for every name. Caller must
     run bin/pf2_seed_creature_types or a full creature parse to populate.
     """
     global _CREATURE_TYPES_CACHE
@@ -88,6 +89,26 @@ class TraitLookupError(Exception):
 
 _TRAIT_ITEM_CACHE = {}
 
+# Keys the creature schema's badge-trait definition accepts
+# (additionalProperties: false).
+_BADGE_TRAIT_KEYS = frozenset(
+    {
+        "alternate_link",
+        "classes",
+        "edition",
+        "game-id",
+        "game-obj",
+        "links",
+        "name",
+        "sources",
+        "text",
+        "type",
+        "value",
+    }
+)
+
+_RARITY_TRAITS = frozenset({"common", "uncommon", "rare", "unique"})
+
 
 def _trait_item(name):
     """Full canonical trait object for a badge-array add.
@@ -103,16 +124,26 @@ def _trait_item(name):
         return json.loads(_TRAIT_ITEM_CACHE[key])
     conn = get_db_connection(get_db_path("pfsrd2.db"))
     try:
-        data = fetch_trait_by_name(conn.cursor(), key)
+        data = fetch_trait_by_name_preferring_edition(conn.cursor(), key)
     finally:
         conn.close()
     if not data:
         raise TraitLookupError(name)
     db_trait = json.loads(data["trait"])
-    db_trait.setdefault("classes", json.loads(data["classes"] or "[]"))
     if "aonid" in db_trait:
         del db_trait["aonid"]
     strip_nested_metadata(db_trait, EXPECTED_TRAIT_SCHEMA_VERSION)
+    # The blob is a full trait FILE (license block etc.); the badge-array
+    # trait definition is additionalProperties:false, so keep only the
+    # keys the creature schema's trait allows.
+    db_trait = {k: v for k, v in db_trait.items() if k in _BADGE_TRAIT_KEYS}
+    classes = db_trait.get("classes") or json.loads(data["classes"] or "[]")
+    if not classes:
+        # Parse-time badges get classes from HTML span styling, which the
+        # traits table doesn't carry; rarity is the one group enrichment
+        # adds today and its styling class is derivable.
+        classes = ["rarity"] if key in _RARITY_TRAITS else []
+    db_trait["classes"] = classes
     _TRAIT_ITEM_CACHE[key] = json.dumps(db_trait)
     return json.loads(_TRAIT_ITEM_CACHE[key])
 
@@ -161,17 +192,11 @@ def enrich_change(raw_json_str, source_name):
 
     links = change.get("links")
     abilities = change.get("abilities")
-    try:
-        effects = _build_effects(
-            text, category, source_name, adjustments, links, abilities=abilities
-        )
-    except TraitLookupError as exc:
-        # Upstream extraction produced a non-trait name ("Revulsion"); a
-        # display-crashing badge must never ship — send to review instead.
-        sys.stderr.write(
-            f"WARNING: {source_name}: unknown trait {exc} in {text[:60]!r} — needs review\n"
-        )
-        return None, None
+    # TraitLookupError propagates to the caller (bin/pf2_enrich_changes),
+    # which records the distinct unknown_trait review reason — a garbage
+    # badge must never ship, and the triage reason must not be conflated
+    # with unknown_category regex gaps.
+    effects = _build_effects(text, category, source_name, adjustments, links, abilities=abilities)
     if effects:
         enriched["effects"] = effects
 

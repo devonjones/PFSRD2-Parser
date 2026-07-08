@@ -186,6 +186,23 @@ SELECT t.*
     return curs.fetchone()
 
 
+def fetch_trait_by_name_preferring_edition(curs, name, edition="remastered"):
+    """Fetch a trait by name, preferring the given edition.
+
+    Nearly every trait exists as both legacy and remastered rows; without
+    an ORDER BY the row returned is arbitrary, which makes embedded
+    game-id/sources nondeterministic."""
+    sql = """
+SELECT t.*
+ FROM traits t
+ WHERE t.name = ?
+ ORDER BY CASE WHEN t.edition = ? THEN 0 ELSE 1 END
+ LIMIT 1
+"""
+    curs.execute(sql, [name.lower(), edition])
+    return curs.fetchone()
+
+
 def fetch_trait_by_id(curs, trait_id):
     sql = """
 SELECT *
