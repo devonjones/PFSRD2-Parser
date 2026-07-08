@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup, Tag
 from pfsrd2.ability_enrichment import template_ability_enrichment_pass
 from pfsrd2.change_enrichment import change_enrichment_pass
 from pfsrd2.change_extraction import collect_ability_nodes, parse_change
+from pfsrd2.equivalents import equivalent_link_pass
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
@@ -64,6 +65,7 @@ def parse_monster_family(filename, options):
     change_enrichment_pass(struct, "monster_family")
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
+    equivalent_link_pass(struct)
     monster_family_cleanup_pass(struct)
     set_edition_from_db_pass(struct)
     monster_ability_db_pass(struct)

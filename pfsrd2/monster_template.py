@@ -13,6 +13,7 @@ from pfsrd2.change_extraction import (
     parse_change,
 )
 from pfsrd2.enrichment.change_extractor import choice_bounds
+from pfsrd2.equivalents import equivalent_link_pass
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
@@ -71,6 +72,7 @@ def parse_monster_template(filename, options):
     restructure_pass(struct, "monster_template", find_monster_template)
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
+    equivalent_link_pass(struct)
     monster_template_cleanup_pass(struct)
     set_edition_from_db_pass(struct)
     monster_ability_db_pass(struct)

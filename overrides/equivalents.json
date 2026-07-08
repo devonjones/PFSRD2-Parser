@@ -1,0 +1,20 @@
+{
+  "description": "Curated cross-type edition equivalence pairs. AoN alternate links connect same-type pages across editions; these pairs connect a transformation whose rules CARRIER changed type across editions (Book of the Dead undead templates vs Monster Core creation-rules families). Emitted into both documents as equivalent_link by pfsrd2/equivalents.py, indexed into the equivalents table, and used by the engine as an edition-resolution fallback after alternates. Hand-curated: there is no AoN data source for these.",
+  "equivalents": [
+    {
+      "a": {"game_id": "c3f766c1fb2f2d3a127c6b5059e29eef", "entry_type": "monster_templates", "name": "Ghost", "edition": "legacy"},
+      "b": {"game_id": "03e8544746de64ca7b79b2bcd87a9481", "entry_type": "monster_families", "name": "Ghost", "edition": "remastered"},
+      "note": "Book of the Dead ghost template (legacy) <-> Monster Core ghost family creation rules (remastered)"
+    },
+    {
+      "a": {"game_id": "d3b4f731598ea8ac7297c168c40ad65c", "entry_type": "monster_templates", "name": "Ghoul", "edition": "legacy"},
+      "b": {"game_id": "a81c7e0d4c5156fe62702aa87b6d4a96", "entry_type": "monster_families", "name": "Ghoul", "edition": "remastered"},
+      "note": "Book of the Dead ghoul template (legacy) <-> Monster Core ghoul family creation rules (remastered)"
+    },
+    {
+      "a": {"game_id": "e96b1d87dbf9181eaec11c2bafd06e80", "entry_type": "monster_templates", "name": "Vampire", "edition": "legacy"},
+      "b": {"game_id": "0e2de8d70aa9291cc1e1a95e26ebeba4", "entry_type": "monster_families", "name": "Vampire", "edition": "remastered"},
+      "note": "Book of the Dead vampire template (legacy) <-> Monster Core vampire family creation rules (remastered)"
+    }
+  ]
+}
