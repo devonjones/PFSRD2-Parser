@@ -484,3 +484,105 @@ class TestAbilityEnrichmentPass:
         oa = struct2["stat_block"]["offense"]["offensive_actions"][0]
         ab = oa["ability"]
         assert "saving_throw" not in ab
+
+
+class TestDriftClassification:
+    """Oscillation fix (PR #121): links/whitespace drift refreshes without
+    staling; hash-excluded mechanics drift still stales."""
+
+    def _struct(self, links):
+        return {
+            "name": "T",
+            "monster_template": {},
+            "sections": [],
+            "abilities_holder": [
+                {
+                    "name": "Inhabit Object",
+                    "subtype": "ability",
+                    "type": "stat_block_section",
+                    "text": "The ghost possesses an object within 20 feet.",
+                    "action_type": {
+                        "name": "One Action",
+                        "subtype": "action_type",
+                        "type": "stat_block_section",
+                    },
+                    "links": links,
+                }
+            ],
+        }
+
+    def test_links_drift_oscillation_does_not_stale(self, monkeypatch):
+        from pfsrd2 import ability_enrichment as ae
+        from pfsrd2.ability_identity import compute_identity_hash
+        from pfsrd2.sql.enrichment import (
+            fetch_ability_by_hash,
+            get_enrichment_db_connection,
+            update_enriched_json,
+        )
+
+        monkeypatch.setattr(ae, "_inline_enrich", False)
+        conn = get_enrichment_db_connection(db_path=":memory:")
+        try:
+            curs = conn.cursor()
+            ab_a = self._struct(
+                [{"name": "x", "game-obj": "MonsterFamilies", "aonid": 4, "type": "link"}]
+            )["abilities_holder"]
+            ab_b = self._struct([{"name": "x", "game-obj": "Rituals", "aonid": 1, "type": "link"}])[
+                "abilities_holder"
+            ]
+            h = compute_identity_hash(ab_a[0])
+
+            ae._enrich_abilities(list(ab_a), conn)  # insert
+            row = fetch_ability_by_hash(curs, h)
+            update_enriched_json(curs, row["ability_id"], '{"frequency": "1d4 rounds"}', 2, "regex")
+
+            # source B parses: links differ, identity same -> no stale, merge live
+            b = list(ab_b)
+            ae._enrich_abilities(b, conn)
+            row = fetch_ability_by_hash(curs, h)
+            assert row["stale"] == 0
+            assert b[0].get("frequency") == "1d4 rounds"
+
+            # source A parses again: still no stale (the old oscillation)
+            a = list(ab_a)
+            ae._enrich_abilities(a, conn)
+            assert fetch_ability_by_hash(curs, h)["stale"] == 0
+            assert a[0].get("frequency") == "1d4 rounds"
+        finally:
+            conn.close()
+
+    def test_mechanics_drift_still_stales(self, monkeypatch):
+        from pfsrd2 import ability_enrichment as ae
+        from pfsrd2.ability_identity import compute_identity_hash
+        from pfsrd2.sql.enrichment import (
+            fetch_ability_by_hash,
+            get_enrichment_db_connection,
+            update_enriched_json,
+        )
+
+        monkeypatch.setattr(ae, "_inline_enrich", False)
+        conn = get_enrichment_db_connection(db_path=":memory:")
+        try:
+            curs = conn.cursor()
+            base = self._struct([])["abilities_holder"]
+            h = compute_identity_hash(base[0])
+            ae._enrich_abilities(list(base), conn)
+            row = fetch_ability_by_hash(curs, h)
+            update_enriched_json(
+                curs, row["ability_id"], '{"saving_throw": [{"dc": 24}]}', 2, "regex"
+            )
+
+            # errata: hash-excluded mechanics field changes (addon-line DC)
+            errata = self._struct([])["abilities_holder"]
+            errata[0]["saving_throw"] = [
+                {"dc": 26, "save_type": "Will", "subtype": "save_dc", "type": "stat_block_section"}
+            ]
+            e = list(errata)
+            ae._enrich_abilities(e, conn)
+            row = fetch_ability_by_hash(curs, h)
+            assert row["stale"] == 1
+            # stale gate: outdated DC 24 copy must NOT merge in
+            dcs = [sd.get("dc") for sd in e[0].get("saving_throw", [])]
+            assert 24 not in dcs
+        finally:
+            conn.close()
