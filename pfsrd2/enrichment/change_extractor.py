@@ -360,18 +360,40 @@ _ABILITIES_FALLBACK_TARGET = CATEGORY_TARGETS["automatic"]
 # Choose-from pool phrasings -> (min, max) bounds; max None = pool size.
 # Descriptions carry the verbatim rules text, so nuances like Mutant's
 # "not including unusual bane" reach the person making the choice.
+_WORD_NUMBERS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
+
 _CHOICE_BOUNDS = (
-    (re.compile(r"one or both of the following(?:\s+optional)?\s+abilit", re.I), (0, 2)),
-    (re.compile(r"either have all \w+ the following abilit", re.I), (2, None)),
-    (re.compile(r"gains? two abilit\w* from the list below", re.I), (2, None)),
-    (re.compile(r"gains? one abilit\w* from the list below", re.I), (1, 1)),
+    (
+        re.compile(r"one or both of the following(?:\s+optional)?\s+abilit", re.I),
+        lambda m: (0, 2),
+    ),
+    (
+        re.compile(r"either have all \w+ the following abilit", re.I),
+        lambda m: (2, None),
+    ),
+    (
+        re.compile(r"gains? (one|two|three|four|five) abilit\w* from the list below", re.I),
+        lambda m: (
+            _WORD_NUMBERS[m.group(1).lower()],
+            1 if _WORD_NUMBERS[m.group(1).lower()] == 1 else None,
+        ),
+    ),
 )
 
 
-def _choice_bounds(text):
+def choice_bounds(text):
+    """(min, max) for a choose-from ability pool intro, or None.
+
+    THE single source of truth for choice detection: the parser's
+    section-to-change conversion delegates here, so a section can only
+    become a choice change if enrichment can bound it — a detector/bounds
+    mismatch (a choice pool falling through to flat, auto-applied
+    add_items) is impossible by construction. max None = pool size.
+    """
     for pat, bounds in _CHOICE_BOUNDS:
-        if pat.search(text or ""):
-            return bounds
+        m = pat.search(text or "")
+        if m:
+            return bounds(m)
     return None
 
 
@@ -408,7 +430,7 @@ def _build_ability_effects(abilities, text=None):
                 "names": [name],
             }
         )
-    bounds = _choice_bounds(text)
+    bounds = choice_bounds(text)
     if bounds is None:
         return effects
     lo, hi = bounds

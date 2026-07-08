@@ -12,6 +12,7 @@ from pfsrd2.change_extraction import (
     parse_adjustments_table,
     parse_change,
 )
+from pfsrd2.enrichment.change_extractor import choice_bounds
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
@@ -40,16 +41,6 @@ _GRANTS_ABILITIES = re.compile(
     # Unconditional grants only: modal wording ("may/can/might gain the
     # following abilities") is a choice, not a grant, and must stay pooled.
     r"(?<!\bmay )(?<!\bcan )(?<!\bmight )\bgains?\s+the\s+following\s+abilit",
-    re.IGNORECASE,
-)
-
-# Choose-from pools become changes too — enrichment encodes them as select
-# effects (the engine surfaces selects as user-choice descriptors, never
-# auto-applies them). Phrasings from the Dark Archive cryptid sections.
-_CHOOSES_ABILITIES = re.compile(
-    r"one or both of the following(?:\s+optional)?\s+abilit"
-    r"|either have all \w+ the following abilit"
-    r"|gains? (?:one|two|three|four) abilit\w* from the list below",
     re.IGNORECASE,
 )
 
@@ -243,7 +234,7 @@ def _try_extract_changes(source_section, mt):
         # changes at all, which is exactly the ability-only case.
         section_text = get_text(bs)
         if source_section is not mt and (
-            _GRANTS_ABILITIES.search(section_text) or _CHOOSES_ABILITIES.search(section_text)
+            _GRANTS_ABILITIES.search(section_text) or choice_bounds(section_text) is not None
         ):
             # Mirror parse_change: links must be extracted before the text
             # is captured — raw <a> in change text fails markdown validation.
