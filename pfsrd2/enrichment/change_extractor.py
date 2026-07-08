@@ -18,7 +18,7 @@ from pfsrd2.sql.traits import (
     strip_nested_metadata,
 )
 
-ENRICHMENT_VERSION = 24
+ENRICHMENT_VERSION = 25
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -625,6 +625,11 @@ def _build_trait_effects(text, links=None):
             }
         )
         effects.append(_trait_effect(new_name, "add_item"))
+        # "...and add the amphibious trait" tail (Athamaru) — every extra
+        # trait added in the same sentence
+        for extra in re.findall(r"and adds? the (\w+) trait", t):
+            if extra.title() != new_name:
+                effects.append(_trait_effect(extra.title(), "add_item"))
 
     if not effects and ("add" in t or "gain" in t):
         # Collect all trait names from links + regex
@@ -759,7 +764,60 @@ def _build_trait_effects(text, links=None):
         )
         effects.append(_trait_effect(new_name, "add_item"))
 
-    return _mirror_creature_type_removals(effects)
+    return canonicalize_trait_effects(effects)
+
+
+def canonicalize_trait_effects(effects):
+    """Shared trait-effect canonicalizer: mirror + badge objects.
+
+    - Every remove_item on the type list gets a mirrored badge removal
+      (delegates to _mirror_creature_type_removals).
+    - Every add_item on the type list gets a mirrored badge ADD carrying the
+      full canonical trait object (_trait_item) — parsed creatures keep the
+      two arrays in lockstep, and the badge row is what the display renders:
+      without the mirror, Catfolk/Amphibious/Athamaru adds were invisible.
+    - A badge-array add_item written with only a name (hand-written
+      overrides) is upgraded to carry the canonical item.
+
+    Applied by the regex extractor AND by override seeding, so both
+    encoding channels produce identical shapes.
+    """
+    upgraded = []
+    for eff in effects:
+        if (
+            eff.get("operation") == "add_item"
+            and eff.get("target") == "$.creature_type.traits"
+            and eff.get("name")
+            and not eff.get("item")
+        ):
+            eff = dict(eff)
+            eff["item"] = _trait_item(eff.pop("name"))
+        upgraded.append(eff)
+
+    mirrored = []
+    badge_adds = {
+        (e.get("item") or {}).get("name", "").lower()
+        for e in upgraded
+        if e.get("operation") == "add_item" and e.get("target") == "$.creature_type.traits"
+    }
+    for eff in upgraded:
+        mirrored.append(eff)
+        if (
+            eff.get("operation") == "add_item"
+            and eff.get("target") == "$.creature_type.creature_types"
+            and eff.get("name")
+            and eff["name"].lower() not in badge_adds
+        ):
+            mirror = {
+                "target": "$.creature_type.traits",
+                "operation": "add_item",
+                "item": _trait_item(eff["name"]),
+            }
+            if "conditional" in eff:
+                mirror["conditional"] = eff["conditional"]
+            mirrored.append(mirror)
+            badge_adds.add(eff["name"].lower())
+    return _mirror_creature_type_removals(mirrored)
 
 
 def _mirror_creature_type_removals(effects):

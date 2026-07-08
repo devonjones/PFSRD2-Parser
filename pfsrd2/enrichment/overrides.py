@@ -19,6 +19,7 @@ import os
 
 from pfsrd2.ability_placement import CATEGORY_TARGETS
 from pfsrd2.change_identity import compute_change_hash
+from pfsrd2.enrichment.change_extractor import canonicalize_trait_effects
 from pfsrd2.enrichment.change_extractor import ENRICHMENT_VERSION
 from pfsrd2.sql.enrichment import (
     clear_change_needs_review,
@@ -58,7 +59,13 @@ def seed_change_overrides(curs, overrides):
         if record is None:
             misses.append(ov)
             continue
-        enriched_json = json.dumps(ov["enriched"], sort_keys=True, ensure_ascii=False)
+        enriched = dict(ov["enriched"])
+        if enriched.get("effects"):
+            # same trait canonicalization as the regex extractor: type-list
+            # adds mirror into the badge array with canonical trait objects,
+            # name-only badge adds get upgraded (see canonicalize_trait_effects)
+            enriched["effects"] = canonicalize_trait_effects(enriched["effects"])
+        enriched_json = json.dumps(enriched, sort_keys=True, ensure_ascii=False)
         update_change_enriched_json(
             curs, record["change_id"], enriched_json, ENRICHMENT_VERSION, "manual"
         )
