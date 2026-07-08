@@ -142,7 +142,7 @@ def parse_abilities_from_nodes(
     labels = addon_labels if addon_labels is not None else DEFAULT_ADDON_LABELS
 
     # Phase 1: Split into raw entries
-    raw_entries = _split_nodes(nodes)
+    raw_entries = _split_nodes(nodes, labels)
     if not raw_entries:
         return None
 
@@ -274,28 +274,47 @@ def parse_ability_from_html(
 # --------------------------------------------------------------------------- #
 
 
-def _split_nodes(nodes):
+_LEAD_IN_RE = re.compile(r"(?:the\s+)?following(?:\s+abilit\w+)?\s*[.:]?\s*$", re.IGNORECASE)
+
+
+def _split_nodes(nodes, labels=None):
     """Split BS4 nodes into raw (name, link, text_nodes) tuples.
 
     Abilities are delimited by <br> tags. Each starts with <b>Name</b>
     or <a><b>Name</b></a>.
     """
+    labels = labels if labels is not None else DEFAULT_ADDON_LABELS
     entries = []
     current = None  # (name, link, text_nodes)
+    # Track whether a continuation may glue backward: only onto a REAL
+    # ability entry (never an addon/affliction label, whose value would
+    # silently absorb the prose), and never a lead-in line that introduces
+    # the NEXT ability ("To make a dragon with this ability, replace X
+    # with the following." belongs to the section, not the previous
+    # ability — it already lives in the sections text).
+    glue_blocked = False
+
+    def _is_label(name):
+        return name in labels or bool(_STAGE_RE.match(name)) or name in _NOT_ABILITY_NAMES
 
     for node in nodes:
         if isinstance(node, Tag) and node.name == "br":
             if current:
                 entries.append(current)
+                glue_blocked = _is_label(current[0])
                 current = None
             continue
 
-        if current is None and entries and _is_continuation(node):
+        if current is None and entries and not glue_blocked and _is_continuation(node):
             # A <br>-separated line that does NOT start a new <b>Name</b>
             # ability is a continuation paragraph of the previous one
             # (Experimental Cryptid's Power Surge: "...Energy Wave.<br><br>
             # This additional damage increases to 2d6 at 9th level...").
             # Dropping it loses published rules text.
+            text = get_text(node) if isinstance(node, Tag) else str(node)
+            if _LEAD_IN_RE.search(text.strip()):
+                glue_blocked = True
+                continue
             current = entries.pop()
             current[2].append(NavigableString(" "))
             current[2].append(node)
@@ -307,6 +326,9 @@ def _split_nodes(nodes):
             if name in _NOT_ABILITY_NAMES:
                 if current:
                     current[2].append(node)
+                else:
+                    # dropped label: its value line must not glue backward
+                    glue_blocked = True
                 continue
             if current:
                 entries.append(current)
@@ -319,6 +341,8 @@ def _split_nodes(nodes):
             if name in _NOT_ABILITY_NAMES:
                 if current:
                     current[2].append(node)
+                else:
+                    glue_blocked = True
                 continue
             if current:
                 entries.append(current)
@@ -398,8 +422,11 @@ def _build_ability_from_entry(entry, ability_type, labels):
     if entry["link"]:
         ability["link"] = entry["link"]
 
-    # Reconstruct HTML from text nodes for processing
+    # Reconstruct HTML from text nodes for processing. Collapse runs of
+    # spaces at continuation joins (AoN text nodes end with a space before
+    # <br>, and the continuation splice inserts another).
     raw_html = "".join(str(n) for n in entry["text_nodes"]).strip()
+    raw_html = re.sub(r" {2,}", " ", raw_html)
 
     if raw_html:
         # Extract traits — may appear before OR after the action span
