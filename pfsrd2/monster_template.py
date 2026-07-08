@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 
 from bs4 import BeautifulSoup
@@ -20,6 +21,7 @@ from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.monster_ability import monster_ability_db_pass
 from universal.universal import (
     aon_pass,
+    build_object,
     entity_pass,
     extract_source_from_bs,
     game_id_pass,
@@ -31,6 +33,10 @@ from universal.universal import (
     source_pass,
 )
 from universal.utils import get_text, remove_empty_fields, strip_block_tags
+
+# Section intros that unconditionally grant their abilities (vs choose-from
+# pools, which the engine must never auto-apply).
+_GRANTS_ABILITIES = re.compile(r"gains? the following abilit", re.IGNORECASE)
 
 
 def parse_monster_template(filename, options):
@@ -208,8 +214,23 @@ def _try_extract_changes(source_section, mt):
     # abilities after the </ul>)
     abilities = _extract_abilities_from_bs(bs)
     if abilities:
-        source_section["text"] = str(bs).strip()
-        mt.setdefault("abilities", []).extend(abilities)
+        remaining = str(bs).strip()
+        source_section["text"] = remaining
+        # A section that GRANTS its abilities unconditionally ("All host
+        # creatures gain the following abilities.") is a construction
+        # instruction like any <li>: emit it as a change so enrichment
+        # builds placement effects. Choose-from pools ("one of the
+        # following") and plain ability sections stay at mt.abilities —
+        # the engine only auto-applies those when the template has no
+        # changes at all, which is exactly the ability-only case.
+        if source_section is not mt and _GRANTS_ABILITIES.search(get_text(bs)):
+            change = build_object("stat_block_section", "change", "")
+            del change["name"]
+            change["text"] = remaining
+            change["abilities"] = abilities
+            mt.setdefault("changes", []).append(change)
+        else:
+            mt.setdefault("abilities", []).extend(abilities)
         found = True
     return found
 
