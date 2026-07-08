@@ -244,7 +244,12 @@ class TestBuildTraitEffects:
             "$.creature_type.traits",
         ]
         assert len(add_effects) == 1
-        assert add_effects[0]["name"] == "Dwarf"
+        # Badge-array adds carry the full canonical trait object (a
+        # name-only badge crashes the display's trait.classes access).
+        item = add_effects[0]["item"]
+        assert item["name"].lower() == "dwarf"
+        assert item["game-id"]
+        assert "classes" in item
 
     def test_mirror_inserts_traits_removal_after_type_removal(self):
         effects = _mirror_creature_type_removals(
