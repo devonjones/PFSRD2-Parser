@@ -28,6 +28,7 @@ from pfsrd2.sql.enrichment import (
     fetch_unenriched,
     get_enrichment_db_connection,
     mark_needs_review,
+    mark_stale,
     refresh_raw_json,
     update_ability_category,
     update_enriched_json,
@@ -70,14 +71,19 @@ def _format_missed_reason(missed):
 def run_heal_stale(conn, args):
     """One-time drain of the legacy stale backlog (pre-oscillation-fix flags).
 
-    A record's enriched_json embeds the ability it was extracted from, so
-    when compute_identity_hash(enriched) still equals the record's stored
-    identity_hash, the extraction inputs are unchanged and the enrichment
-    is provably valid — the stale flag is stale-era noise. Records with no
+    A record's enriched_json embeds the raw ability it was extracted from
+    plus the extraction-added mechanics fields. Reconstruct that embedded
+    raw (drop ENRICHMENT_FIELDS keys absent from the current raw — those
+    are extraction-added; keep ones the parser wrote, so drift in them is
+    still visible) and require _raws_equivalent against the current raw:
+    the same merge-safety condition the parse path uses. Identity-hash
+    comparison is NOT sufficient here — records are fetched BY identity
+    hash, so it is true by construction even when hash-excluded parser
+    mechanics (saving throw DCs, damage) have drifted. Records with no
     enrichment and no extractable mechanics get their flag cleared too
     (raw_json is current; there is nothing to re-extract).
     """
-    from pfsrd2.ability_identity import compute_identity_hash
+    from pfsrd2.ability_enrichment import ENRICHMENT_FIELDS, _raws_equivalent
 
     curs = conn.cursor()
     stale = fetch_stale(curs)
@@ -89,7 +95,15 @@ def run_heal_stale(conn, args):
             except json.JSONDecodeError:
                 still_stale += 1
                 continue
-            if compute_identity_hash(enriched) == record["identity_hash"]:
+            try:
+                raw = json.loads(record["raw_json"])
+            except json.JSONDecodeError:
+                still_stale += 1
+                continue
+            embedded_raw = {
+                k: v for k, v in enriched.items() if not (k in ENRICHMENT_FIELDS and k not in raw)
+            }
+            if _raws_equivalent(json.dumps(embedded_raw), record["raw_json"]):
                 update_enriched_json(
                     curs,
                     record["ability_id"],
@@ -123,6 +137,45 @@ def run_heal_stale(conn, args):
     print(f"Healed (enrichment still valid or re-extracted): {healed_valid}")
     print(f"Cleared (no mechanics, raw current): {healed_empty}")
     print(f"Still stale (identity genuinely drifted): {still_stale}")
+
+
+def run_audit_enriched(conn, args):
+    """Re-verify every enriched, non-stale record with the heal criterion.
+
+    Corrective sweep for flags cleared under a weaker criterion: any record
+    whose embedded raw is no longer merge-equivalent to the current raw is
+    re-marked stale so the enrichment pipeline re-extracts it. Human-verified
+    records are left alone.
+    """
+    from pfsrd2.ability_enrichment import ENRICHMENT_FIELDS, _raws_equivalent
+
+    curs = conn.cursor()
+    curs.execute(
+        "SELECT * FROM ability_records"
+        " WHERE stale = 0 AND enriched_json IS NOT NULL AND human_verified = 0"
+    )
+    records = curs.fetchall()
+    ok = restaled = unparseable = 0
+    for record in records:
+        try:
+            enriched = json.loads(record["enriched_json"])
+            raw = json.loads(record["raw_json"])
+        except json.JSONDecodeError:
+            unparseable += 1
+            continue
+        embedded_raw = {
+            k: v for k, v in enriched.items() if not (k in ENRICHMENT_FIELDS and k not in raw)
+        }
+        if _raws_equivalent(json.dumps(embedded_raw), record["raw_json"]):
+            ok += 1
+        else:
+            mark_stale(curs, record["ability_id"], record["raw_json"])
+            restaled += 1
+    conn.commit()
+    print(f"Enrichment still merge-valid: {ok}")
+    print(f"Re-marked stale (embedded raw drifted): {restaled}")
+    if unparseable:
+        print(f"Unparseable JSON (left untouched): {unparseable}")
 
 
 def run_regex(conn, args):
@@ -615,6 +668,11 @@ def main():
         help="Run Tier 3 LLM classification on uncategorized abilities",
     )
     parser.add_argument(
+        "--audit-enriched",
+        action="store_true",
+        help="Re-verify enriched records against current raw; re-stale drifted ones",
+    )
+    parser.add_argument(
         "--heal-stale",
         action="store_true",
         help="Drain legacy stale flags: clear records whose enrichment is provably still valid",
@@ -640,6 +698,10 @@ def main():
             print(f"Stale:            {counts['stale']}")
             print(f"Human verified:   {counts['verified']}")
             print(f"Needs review:     {counts['needs_review']}")
+            return
+
+        if args.audit_enriched:
+            run_audit_enriched(conn, args)
             return
 
         if args.heal_stale:
