@@ -12,7 +12,7 @@ import sys
 from pfsrd2.ability_placement import CATEGORY_TARGETS, ability_target
 from pfsrd2.sql.enrichment import fetch_all_creature_types, get_enrichment_db_connection
 
-ENRICHMENT_VERSION = 20
+ENRICHMENT_VERSION = 21
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -737,13 +737,17 @@ def _build_attribute_effects(text):
     t = text.lower()
     m = re.search(r"(\w+) modifier is [–-]?(\d+) or lower.+?(?:increase|set) it to [–-]?(\d+)", t)
     if m:
-        attr = m.group(1).lower()
+        # Attribute modifiers live at $.statistics.{str,dex,con,int,wis,cha}
+        # as plain numbers — $.creature_type.{attr}_modifier exists on no
+        # creature, so effects targeting it could never fire (caught by
+        # clause verification: Broodpiercer/cryptid Int floors were dead).
+        attr = m.group(1).lower()[:3]
         threshold = -int(m.group(2))
         new_val = -int(m.group(3))
         return [
             {
-                "conditional": f"$.creature_type.{attr}_modifier <= {threshold}",
-                "target": f"$.creature_type.{attr}_modifier",
+                "conditional": f"$.statistics.{attr} <= {threshold}",
+                "target": f"$.statistics.{attr}",
                 "operation": "replace",
                 "value": new_val,
             }

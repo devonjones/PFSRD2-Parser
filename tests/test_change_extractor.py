@@ -6,6 +6,7 @@ from pfsrd2 import ability_placement
 from pfsrd2.enrichment import change_extractor
 from pfsrd2.enrichment.change_extractor import (
     _build_ability_effects,
+    _build_attribute_effects,
     _build_combat_stat_effects,
     _build_damage_effects,
     _build_hit_points_effects,
@@ -641,3 +642,25 @@ class TestBuildSpeedEffectsRemoveAll:
         effects = _build_speed_effects(text)
         assert len(effects) == 1
         assert effects[0]["operation"] == "replace_highest_with"
+
+
+class TestBuildAttributeEffects:
+    def test_threshold_floor_targets_statistics(self):
+        # Regression: the threshold form targeted
+        # $.creature_type.intelligence_modifier — a path that exists on no
+        # creature, so Broodpiercer/cryptid Int floors never fired.
+        effects = _build_attribute_effects(
+            "If the creature's Intelligence modifier is –4 or lower, increase it to –3."
+        )
+        assert effects == [
+            {
+                "conditional": "$.statistics.int <= -4",
+                "target": "$.statistics.int",
+                "operation": "replace",
+                "value": -3,
+            }
+        ]
+
+    def test_plain_modifier_form_unchanged(self):
+        effects = _build_attribute_effects("It has a Strength modifier of +5.")
+        assert effects == [{"target": "$.statistics.str", "operation": "replace", "value": 5}]
