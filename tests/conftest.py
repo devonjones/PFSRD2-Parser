@@ -23,3 +23,40 @@ def stub_trait_items(monkeypatch):
         }
 
     monkeypatch.setattr(change_extractor, "_trait_item", fake_trait_item)
+
+
+@pytest.fixture(autouse=True)
+def seeded_creature_types(monkeypatch):
+    """Deterministic trait routing regardless of the local/CI DB state.
+
+    The creature_types table is empty in CI and environment-specific
+    locally; unit tests pin a known set so effect shapes are stable.
+    Tests that need different routing monkeypatch the cache themselves
+    (their patch wins — fixtures apply first).
+    """
+    monkeypatch.setattr(
+        change_extractor,
+        "_CREATURE_TYPES_CACHE",
+        frozenset(
+            {
+                "aquatic",
+                "amphibious",
+                "beast",
+                "animal",
+                "dragon",
+                "elemental",
+                "ghost",
+                "human",
+                "humanoid",
+                "mindless",
+                "plant",
+                "skeleton",
+                "spirit",
+                "undead",
+                "vampire",
+                "water",
+                "wood",
+                "zombie",
+            }
+        ),
+    )
