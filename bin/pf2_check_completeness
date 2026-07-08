@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""Check parsed template/family JSON covers every rules line of the cached
+AoN HTML. Exit 1 on non-exempt gaps. See pfsrd2/qa/completeness.py."""
+import os
+import sys
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(script_dir, ".."))
+
+from pfsrd2.qa import completeness  # noqa: E402,F401 — module runs at import
+
+sys.exit(completeness.main())
