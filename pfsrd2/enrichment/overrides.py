@@ -16,14 +16,15 @@ be re-reviewed — never silently skipped.
 
 import json
 import os
+import sys
 
 from pfsrd2.ability_placement import CATEGORY_TARGETS
 from pfsrd2.change_identity import compute_change_hash
 from pfsrd2.enrichment.change_extractor import (
+    ENRICHMENT_VERSION,
     TraitLookupError,
     canonicalize_trait_effects,
 )
-from pfsrd2.enrichment.change_extractor import ENRICHMENT_VERSION
 from pfsrd2.sql.enrichment import (
     clear_change_needs_review,
     fetch_change_by_hash,
@@ -52,6 +53,24 @@ def load_overrides(filename, overrides_dir=None, key="overrides"):
     return doc.get(key, [])
 
 
+def _traits_db_empty():
+    """True when the main pfsrd2.db has no traits (CI / fresh checkout)."""
+    try:
+        from universal.universal import get_db_connection, get_db_path
+
+        conn = get_db_connection(get_db_path("pfsrd2.db"))
+        try:
+            curs = conn.cursor()
+            curs.execute("SELECT COUNT(*) AS n FROM traits")
+            row = curs.fetchone()
+            n = row["n"] if isinstance(row, dict) else row[0]
+            return not n
+        finally:
+            conn.close()
+    except Exception:
+        return True
+
+
 def seed_change_overrides(curs, overrides):
     """Seed change enrichment overrides. Returns (seeded_count, misses)."""
     seeded = 0
@@ -71,9 +90,18 @@ def seed_change_overrides(curs, overrides):
             try:
                 enriched["effects"] = canonicalize_trait_effects(enriched["effects"])
             except TraitLookupError as exc:
-                ov = dict(ov, change_text=f"{ov['change_text']} [unknown trait: {exc}]")
-                misses.append(ov)
-                continue
+                if _traits_db_empty():
+                    # No traits DB in this environment (CI subprocess, fresh
+                    # checkout): seed the override verbatim — real pipeline
+                    # runs have the DB and canonicalize.
+                    sys.stderr.write(
+                        f"WARNING: traits DB empty — seeding override verbatim "
+                        f"(no badge canonicalization): {ov['change_text'][:60]!r}\n"
+                    )
+                else:
+                    ov = dict(ov, change_text=f"{ov['change_text']} [unknown trait: {exc}]")
+                    misses.append(ov)
+                    continue
         enriched_json = json.dumps(enriched, sort_keys=True, ensure_ascii=False)
         update_change_enriched_json(
             curs, record["change_id"], enriched_json, ENRICHMENT_VERSION, "manual"
