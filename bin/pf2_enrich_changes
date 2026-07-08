@@ -104,6 +104,8 @@ def main():
                 update_change_enriched_json(
                     curs, record["change_id"], enriched_json, ENRICHMENT_VERSION, method
                 )
+                # a previously-flagged record that now enriches is resolved
+                clear_change_needs_review(curs, record["change_id"])
                 enriched_count += 1
             else:
                 mark_change_needs_review(curs, record["change_id"], "unknown_category")
