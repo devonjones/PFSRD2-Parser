@@ -18,7 +18,7 @@ from pfsrd2.sql.traits import (
     strip_nested_metadata,
 )
 
-ENRICHMENT_VERSION = 23
+ENRICHMENT_VERSION = 24
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -270,12 +270,8 @@ def _categorize_change_text(text):
         or "smaller" in t
     ):
         return "size"
-    if (
-        "creature's level" in t
-        or "creature\u2019s level" in t
-        or "spellcaster's level" in t
-        or "spellcaster\u2019s level" in t
-    ) and ("increase" in t or "decrease" in t):
+    if re.search(r"['\u2019]s level by \d", t) and ("increase" in t or "decrease" in t):
+        # any possessive subject: creature's, spellcaster's, dragon's, ...
         return "level"
     if (
         "perception" in t or "saving throw" in t or "fortitude" in t or "reflex" in t or "will" in t
@@ -910,7 +906,7 @@ def _build_attribute_effects(text):
 
 def _build_level_effects(text):
     t = text.lower()
-    m = re.search(r"(increase|decrease) the (?:creature|spellcaster)['\u2019]s level by (\d+)", t)
+    m = re.search(r"(increase|decrease) (?:the |its )?[a-z]+['\u2019]s level by (\d+)", t)
     if m:
         direction = 1 if m.group(1) == "increase" else -1
         value = int(m.group(2)) * direction
@@ -926,16 +922,15 @@ def _build_combat_stat_effects(text):
         return []
     direction = 1 if m.group(1) == "increase" else -1
     val = int(m.group(2)) * direction
-    if "ac" in t:
-        effects.append({"target": "$.defense.ac.value", "operation": "adjustment", "value": val})
-    if "attack" in t:
-        effects.append(
-            {
-                "target": "$.offense.offensive_actions[*].attack.bonus.bonuses",
-                "operation": "adjustment",
-                "value": val,
-            }
-        )
+    # "spell attack roll/modifier" and "spell DCs" are spell-scoped: they
+    # must not fan out to melee attack bonuses or non-spell ability DCs
+    # (Lich: "Increase spell DCs and spell attack roll by 2"). Strip the
+    # spell-scoped phrases, then let the generic gates run on the rest.
+    spell_attack = re.search(r"spell attack(?: rolls?| modifiers?| bonus(?:es)?)?", t)
+    spell_dc = re.search(r"spell dcs?", t)
+    t_generic = re.sub(r"spell attack(?: rolls?| modifiers?| bonus(?:es)?)?", "", t)
+    t_generic = re.sub(r"spell dcs?", "", t_generic)
+    if spell_attack:
         effects.append(
             {
                 "target": "$.offense.offensive_actions[*].spells.spell_attack",
@@ -943,7 +938,7 @@ def _build_combat_stat_effects(text):
                 "value": val,
             }
         )
-    if "dc" in t:
+    if spell_dc:
         effects.append(
             {
                 "target": "$.offense.offensive_actions[*].spells.saving_throw.dc",
@@ -951,6 +946,34 @@ def _build_combat_stat_effects(text):
                 "value": val,
             }
         )
+    # \bac\b: substring matching would fire on "attACk"
+    if re.search(r"\bac\b", t_generic):
+        effects.append({"target": "$.defense.ac.value", "operation": "adjustment", "value": val})
+    if "attack" in t_generic:
+        effects.append(
+            {
+                "target": "$.offense.offensive_actions[*].attack.bonus.bonuses",
+                "operation": "adjustment",
+                "value": val,
+            }
+        )
+        if not spell_attack:
+            effects.append(
+                {
+                    "target": "$.offense.offensive_actions[*].spells.spell_attack",
+                    "operation": "adjustment",
+                    "value": val,
+                }
+            )
+    if re.search(r"\bdcs?\b", t_generic):
+        if not spell_dc:
+            effects.append(
+                {
+                    "target": "$.offense.offensive_actions[*].spells.saving_throw.dc",
+                    "operation": "adjustment",
+                    "value": val,
+                }
+            )
         effects.append(
             {
                 "target": "$.defense.automatic_abilities[*].saving_throw[*].dc",
@@ -972,18 +995,18 @@ def _build_combat_stat_effects(text):
                 "value": val,
             }
         )
-    if "saving throw" in t:
+    if "saving throw" in t_generic:
         for save in ("fort", "ref", "will"):
             effects.append(
                 {"target": f"$.defense.saves.{save}.value", "operation": "adjustment", "value": val}
             )
-    if "perception" in t:
+    if "perception" in t_generic:
         effects.append(
             {"target": "$.senses.perception.value", "operation": "adjustment", "value": val}
         )
     if not effects:
         for save_name in ("will", "fort", "ref"):
-            if save_name in t:
+            if save_name in t_generic:
                 effects.append(
                     {
                         "target": f"$.defense.saves.{save_name}.value",
@@ -991,7 +1014,7 @@ def _build_combat_stat_effects(text):
                         "value": val,
                     }
                 )
-    if "skill" in t:
+    if "skill" in t_generic:
         effects.append(
             {"target": "$.statistics.skills[*].value", "operation": "adjustment", "value": val}
         )
