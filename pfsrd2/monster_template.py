@@ -15,6 +15,7 @@ from pfsrd2.change_extraction import (
 from pfsrd2.enrichment.change_extractor import choice_bounds
 from pfsrd2.equivalents import equivalent_link_pass
 from pfsrd2.license import license_consolidation_pass, license_pass
+from pfsrd2.prose_changes import prose_changes_from_text
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
 from universal.ability import parse_abilities_from_nodes
@@ -215,9 +216,14 @@ def _try_extract_changes(source_section, mt):
             changes.append(change)
         ul.decompose()
         source_section["text"] = str(bs).strip()
+        # Intro prose in the ul-bearing creation section may carry stat
+        # instructions that never made the list — Experimental Cryptid's
+        # "Increase the creature's level by 1 and change its statistics as
+        # follows." Document order: intro prose precedes the <li> changes.
+        prose = prose_changes_from_text(source_section["text"])
         # granting ability sections may have appended changes already —
         # the <li> changes are the template's primary list and go first
-        mt["changes"] = changes + mt.get("changes", [])
+        mt["changes"] = prose + changes + mt.get("changes", [])
         mt["_ul_changes_extracted"] = True
         found = True
     # Check for inline abilities — either when there's no <ul>, or in

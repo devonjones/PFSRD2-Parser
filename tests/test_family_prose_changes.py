@@ -113,3 +113,26 @@ class TestProseChanges:
         _extract_changes_from_section(s)
         assert len(s["changes"]) == 1
         assert s["text"] == ""
+
+
+class TestTemplateProseChanges:
+    def test_template_ul_intro_level_sentence(self):
+        # Experimental Cryptid class: the level instruction sits in intro
+        # prose before the <ul> and must become the FIRST change.
+        from pfsrd2.monster_template import _try_extract_changes
+
+        mt = {"name": "Experimental Cryptid"}
+        section = {
+            "name": "Experimental Cryptid Adjustments",
+            "text": (
+                "You can turn an existing creature into an experimental "
+                "cryptid by completing the following steps. Increase the "
+                "creature's level by 1 and change its statistics as follows. "
+                "<ul><li>Increase the creature's AC by 1.</li></ul>"
+            ),
+            "sections": [],
+        }
+        assert _try_extract_changes(section, mt)
+        texts = [c["text"] for c in mt["changes"]]
+        assert texts[0].startswith("Increase the creature's level by 1")
+        assert "AC by 1" in texts[1]
