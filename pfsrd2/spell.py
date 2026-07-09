@@ -296,12 +296,39 @@ def spell_struct_pass(struct):
     spell["text"] = text.strip()
 
 
+# Minor words that stay lowercase mid-title (AoN page titles capitalize
+# them inconsistently: "Arms Of Nature" vs "Arms of Nature", "Show The Way").
+_TITLE_MINOR_WORDS = {
+    "a", "an", "and", "at", "but", "by", "for", "from", "in", "nor",
+    "of", "on", "or", "the", "to", "with",
+}
+
+
+def _normalize_title_case(name):
+    """Lowercase minor words except in first/last position.
+
+    Only ever LOWERCASES already-capitalized minor words — it never
+    capitalizes anything, so intentional lowercase styling survives.
+    """
+    words = name.split(" ")
+    for i, w in enumerate(words):
+        if i == 0 or i == len(words) - 1:
+            continue
+        # A word after punctuation starts a new phrase and keeps its case
+        # ("For Love, For Lightning").
+        if words[i - 1].endswith((",", ":", ";", "—", "-")):
+            continue
+        if w.lower() in _TITLE_MINOR_WORDS and w[:1].isupper():
+            words[i] = w.lower()
+    return " ".join(words)
+
+
 def _clean_spell_name(name):
     """Strip trailing conjunctions and extra whitespace from spell names."""
     name = re.sub(r"\s+(or more|or|to)\s*$", "", name)
     # Collapse multiple spaces
     name = re.sub(r"\s{2,}", " ", name)
-    return name.strip()
+    return _normalize_title_case(name.strip())
 
 
 def _extract_spell_name(bs, spell, struct):

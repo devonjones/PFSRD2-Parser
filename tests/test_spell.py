@@ -498,3 +498,23 @@ class TestClassifyCastText:
         _classify_cast_text(cast_obj, "", [])
         assert "time" not in cast_obj
         assert "note" not in cast_obj
+
+
+from pfsrd2.spell import _normalize_title_case
+
+
+class TestTitleNormalization:
+    def test_minor_words_lowercase_mid_title(self):
+        assert _normalize_title_case("Arms Of Nature") == "Arms of Nature"
+        assert _normalize_title_case("Show The Way") == "Show the Way"
+        assert _normalize_title_case("Bounty of The Sky") == "Bounty of the Sky"
+
+    def test_first_and_last_words_untouched(self):
+        assert _normalize_title_case("The Four Hunters") == "The Four Hunters"
+        assert _normalize_title_case("Attacked From Within") == "Attacked from Within"
+
+    def test_never_capitalizes(self):
+        assert _normalize_title_case("gale blast") == "gale blast"
+
+    def test_phrase_start_after_punctuation_keeps_case(self):
+        assert _normalize_title_case("For Love, For Lightning") == "For Love, For Lightning"
