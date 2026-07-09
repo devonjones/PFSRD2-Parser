@@ -2047,6 +2047,40 @@
     "change_category": "strikes",
     "effects": []
    }
+  },
+  {
+   "source_name": "Corrupt",
+   "source_type": "monster_template",
+   "change_text": "- Choose an Intelligence-, Wisdom-, or Charisma-based skill that's thematically important to the creature's office, such as Legal Lore for a judge. The creature gains the official bully ability for that skill.",
+   "note": "choose_skill selection: the GM picks the skill and the engine templates it into the granted ability's text/name; the old parser-encoded add_items auto-granted with 'the chosen skill' left untemplated",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "target": "$.interaction_abilities",
+      "operation": "select",
+      "selection": {
+       "type": "select",
+       "action": "choose_skill",
+       "min": 1,
+       "max": 1,
+       "description": "- Choose an Intelligence-, Wisdom-, or Charisma-based skill that's thematically important to the creature's office, such as Legal Lore for a judge. The creature gains the official bully ability for that skill.",
+       "options": [
+        {
+         "name": "Official Bully",
+         "effects": [
+          {
+           "operation": "add_items",
+           "source": "$.abilities[?(@.name=='Official Bully')]",
+           "target": "$.interaction_abilities"
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   }
   }
  ],
  "quarantines": [

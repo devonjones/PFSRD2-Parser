@@ -18,7 +18,7 @@ from pfsrd2.sql.traits import (
     strip_nested_metadata,
 )
 
-ENRICHMENT_VERSION = 27
+ENRICHMENT_VERSION = 28
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -310,8 +310,50 @@ def _categorize_change_text(text):
     return "unknown"
 
 
+def _build_choose_skill_selection(text):
+    """'Choose an Intelligence-, Wisdom-, or Charisma-based skill... The
+    creature gains the official bully ability for that skill.' — the skill
+    is the GM's pick; surface a choose_skill selection the engine templates
+    into the granted ability (Corrupt). Checked before category dispatch:
+    these texts categorize as ability grants."""
+    t = text.lower()
+    m = re.search(r"choose an? [^.;]*?skill.+?gains the (\w[\w\s]*?) ability for that skill", t)
+    if not m:
+        return None
+    ability = m.group(1).strip().title()
+    escaped = ability.replace("\\", "\\\\").replace("'", "\\'")
+    return [
+        {
+            "target": "$.interaction_abilities",
+            "operation": "select",
+            "selection": {
+                "type": "select",
+                "action": "choose_skill",
+                "min": 1,
+                "max": 1,
+                "description": text.strip(),
+                "options": [
+                    {
+                        "name": ability,
+                        "effects": [
+                            {
+                                "operation": "add_items",
+                                "source": f"$.abilities[?(@.name=='{escaped}')]",
+                                "target": "$.interaction_abilities",
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+    ]
+
+
 def _build_effects(text, category, source_name, adjustments=None, links=None, abilities=None):
     """Build effects for a categorized change."""
+    choose_skill = _build_choose_skill_selection(text)
+    if choose_skill:
+        return choose_skill
     if category == "abilities":
         return _build_ability_effects(abilities, text)
     elif category == "immunities":
