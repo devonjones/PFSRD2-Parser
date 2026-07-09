@@ -18,7 +18,7 @@ from pfsrd2.sql.traits import (
     strip_nested_metadata,
 )
 
-ENRICHMENT_VERSION = 25
+ENRICHMENT_VERSION = 26
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -591,9 +591,52 @@ def _classify_optional_traits(text, trait_names):
     return optional, choice
 
 
+_STRIKE_TRAIT_TARGET = "$.offense.offensive_actions[*].attack.traits"
+_MELEE_TRAIT_TARGET = "$.offense.offensive_actions[?(@.attack.attack_type=='melee')].attack.traits"
+
+
+def _build_strike_trait_effects(text):
+    """Effects for 'Strikes gain the X trait' sentences: the traits belong on
+    the attacks, not the creature badge row (Phantom: 'Their Strikes gain the
+    magical trait (and the finesse trait, for melee Strikes)'). A trait inside
+    a parenthetical qualified 'for melee Strikes' only lands on melee attacks.
+    """
+    t = text.lower()
+    melee_spans = [m.span() for m in re.finditer(r"\([^)]*for melee strikes?[^)]*\)", t)]
+
+    def in_melee(pos):
+        return any(a <= pos < b for a, b in melee_spans)
+
+    effects = []
+    # list items must be joined by explicit separators (", ", " and ",
+    # ", and ") so the lazy repetition cannot swallow sentence words
+    # ("the creature's strikes gain the magical")
+    for m in re.finditer(r"the ((?:[a-z'-]+)(?:(?:, | and |, and )[a-z'-]+)*?) traits?\b", t):
+        for name in re.split(r",| and ", m.group(1)):
+            name = name.strip()
+            if not name or name == "the":
+                continue
+            effects.append(
+                {
+                    "target": _MELEE_TRAIT_TARGET if in_melee(m.start()) else _STRIKE_TRAIT_TARGET,
+                    "operation": "add_item",
+                    "item": {
+                        "type": "stat_block_section",
+                        "subtype": "trait",
+                        "name": name,
+                    },
+                }
+            )
+    return effects
+
+
 def _build_trait_effects(text, links=None):
     effects = []
     t = text.lower()
+
+    # Strike-subject grants route to attack traits, never the badge row.
+    if re.search(r"\bstrikes? gains?\b", t):
+        return _build_strike_trait_effects(text)
 
     # Use links with game-obj="Traits" when available — these are authoritative
     # and avoid the sentence fragment problem (pfsrd2-bfy)
