@@ -71,7 +71,12 @@ def parse_change(li):
 
 
 def _extract_abilities_from_li(li):
-    """Extract abilities from a <li> that says 'Add the following abilities.'"""
+    """Extract abilities from a <li> that says 'Add the following abilities.'
+
+    On success the ability nodes are removed from the li, leaving only the
+    granting instruction as the change text — the structured abilities carry
+    the prose, and keeping both would duplicate the full ability text.
+    """
     found_abilities_text = False
     nodes = list(li.children)
     ability_nodes = []
@@ -81,7 +86,11 @@ def _extract_abilities_from_li(li):
                 found_abilities_text = True
             continue
         ability_nodes.append(node)
-    return parse_abilities_from_nodes(ability_nodes)
+    abilities = parse_abilities_from_nodes(ability_nodes)
+    if abilities:
+        for node in ability_nodes:
+            node.extract()
+    return abilities
 
 
 def parse_adjustments_table(text):
