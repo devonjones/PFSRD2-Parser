@@ -9,6 +9,7 @@ from pfsrd2.enrichment.change_extractor import (
     _build_attribute_effects,
     _build_combat_stat_effects,
     _build_damage_effects,
+    _build_effects,
     _build_hit_points_effects,
     _build_speed_effects,
     _build_trait_effects,
@@ -23,7 +24,6 @@ from pfsrd2.enrichment.change_extractor import (
 from pfsrd2.enrichment.change_extractor import (
     _build_strike_effects as _build_strike_effects_public,
 )
-from pfsrd2.enrichment.change_extractor import _build_effects
 
 
 class TestCategorizeChangeText:
@@ -1108,12 +1108,7 @@ class TestChooseSkillSelection:
         assert sel["min"] == 1 and sel["max"] == 1
         opt = sel["options"][0]
         assert opt["name"] == "Official Bully"
-        assert (
-            opt["effects"][0]["source"]
-            == "$.abilities[?(@.name=='Official Bully')]".replace(chr(92) + chr(92), chr(92))
-            or True
-        )
-        assert "Official Bully" in opt["effects"][0]["source"]
+        assert opt["effects"][0]["source"] == "$.abilities[?(@.name=='Official Bully')]"
 
     def test_plain_ability_grant_unaffected(self):
         effects = _build_effects("- Add the following abilities.", "abilities", "Catfolk")
