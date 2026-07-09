@@ -23,6 +23,8 @@ from pfsrd2.enrichment.change_extractor import (
 from pfsrd2.enrichment.change_extractor import (
     _build_strike_effects as _build_strike_effects_public,
 )
+from pfsrd2.enrichment.change_extractor import _build_effects
+
 
 
 class TestCategorizeChangeText:
@@ -1054,3 +1056,38 @@ class TestStrikeTraitRouting:
         effects = _build_trait_effects("The creature's Strikes gain the magical trait.")
         names = [e["item"]["name"] for e in effects]
         assert names == ["magical"]
+
+
+class TestOptionalSpeedAndRaiseOnly:
+    def test_optional_speed_change_becomes_selection(self):
+        effects = _build_effects(
+            "- Optionally change Speed to 30 feet if lower.", "speed", "Elf"
+        )
+        assert len(effects) == 1
+        sel = effects[0]
+        assert sel["operation"] == "select"
+        assert sel["selection"]["min"] == 0
+        opt = sel["selection"]["options"][0]
+        inner = opt["effects"][0]
+        assert inner["operation"] == "replace"
+        assert inner["value"] == 30
+        assert "value < 30" in inner["conditional"]
+
+    def test_non_optional_speed_change_stays_direct(self):
+        effects = _build_effects(
+            "- Change Speed to 20 feet if higher.", "speed", "Dwarf"
+        )
+        assert effects[0]["operation"] == "replace"
+        assert effects[0]["value"] == 20
+
+    def test_increase_modifier_to_high_skill_is_raise_only(self):
+        effects = _build_effects(
+            "- Increase the creature\u2019s Thievery modifier to a high skill bonus "
+            "of the failed prophet\u2019s level unless it was already higher.",
+            "skills", "Failed Prophet"
+        )
+        assert len(effects) == 1
+        e = effects[0]
+        assert e["operation"] == "add_item"
+        assert e["item"]["name"] == "Thievery"
+        assert e["value_from"] == "$.statistics.skills | high_for_level"
