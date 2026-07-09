@@ -49,6 +49,46 @@ class TestParseChange:
         assert len(change["abilities"]) == 2
         assert change["abilities"][0]["name"] == "Grab"
 
+    def test_ability_prose_removed_from_change_text(self):
+        li = _make_li(
+            "Add the following abilities: "
+            "<b>Grab</b> The creature grabs.<br/>"
+            "<b>Push</b> The creature pushes."
+        )
+        change = parse_change(li)
+        assert "Add the following abilities:" in change["text"]
+        assert "The creature grabs" not in change["text"]
+        assert "Grab" not in change["text"]
+        assert "Push" not in change["text"]
+
+    def test_unparsed_plain_links_stay_in_text(self):
+        # zombie.json pattern: Darkvision/Negative Healing are plain <a>
+        # links the ability parser cannot capture — they must survive in
+        # the change text (and links) or the grants vanish entirely.
+        li = _make_li(
+            "Add the following abilities.  "
+            '<a href="x" game-obj="MonsterAbilities" aonid="12">Darkvision</a><br/>'
+            '<a href="x" game-obj="MonsterAbilities" aonid="42">Negative Healing</a><br/>'
+            "<b>Slow</b> A zombie is permanently slowed 1."
+        )
+        change = parse_change(li)
+        assert "abilities" in change
+        assert [a["name"] for a in change["abilities"]] == ["Slow"]
+        assert "Darkvision" in change["text"]
+        assert "Negative Healing" in change["text"]
+        assert "permanently slowed" not in change["text"]
+
+    def test_lead_in_line_stays_in_text(self):
+        li = _make_li(
+            "Add the following abilities: "
+            "<b>Grab</b> The creature grabs.<br/>"
+            "To make one with this ability, do the following.<br/>"
+            "<b>Push</b> The creature pushes."
+        )
+        change = parse_change(li)
+        assert [a["name"] for a in change["abilities"]] == ["Grab", "Push"]
+        assert "To make one with this ability" in change["text"]
+
 
 class TestParseAdjustmentsTable:
     def test_parses_html_table(self):
