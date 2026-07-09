@@ -613,7 +613,9 @@ def _build_strike_trait_effects(text):
     for m in re.finditer(r"the ((?:[a-z'-]+)(?:,? (?:and )?[a-z'-]+)*?) traits?\b", t):
         for name in re.split(r",| and ", m.group(1)):
             name = name.strip()
-            if not name or name == "the":
+            # a "name" with internal whitespace means the lazy match swallowed
+            # sentence words ("creature's strikes gain the magical") — not a trait
+            if not name or name == "the" or " " in name:
                 continue
             effects.append(
                 {

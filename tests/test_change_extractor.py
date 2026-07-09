@@ -1049,3 +1049,10 @@ class TestStrikeTraitRouting:
         )
         names = [e["item"]["name"] for e in effects]
         assert names == ["magical", "force", "finesse"]
+
+    def test_swallowed_sentence_words_rejected(self):
+        effects = _build_trait_effects(
+            "The creature's Strikes gain the magical trait."
+        )
+        names = [e["item"]["name"] for e in effects]
+        assert names == ["magical"]
