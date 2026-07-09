@@ -73,9 +73,11 @@ def parse_change(li):
 def _extract_abilities_from_li(li):
     """Extract abilities from a <li> that says 'Add the following abilities.'
 
-    On success the ability nodes are removed from the li, leaving only the
-    granting instruction as the change text — the structured abilities carry
-    the prose, and keeping both would duplicate the full ability text.
+    Nodes captured into structured abilities are removed from the li — the
+    abilities carry that prose, and keeping both would duplicate the full
+    ability text. Nodes the ability parser could NOT capture (plain links
+    like zombie's Darkvision, lead-in sentences) stay in the change text:
+    removing them would destroy published content that lives nowhere else.
     """
     found_abilities_text = False
     nodes = list(li.children)
@@ -86,10 +88,12 @@ def _extract_abilities_from_li(li):
                 found_abilities_text = True
             continue
         ability_nodes.append(node)
-    abilities = parse_abilities_from_nodes(ability_nodes)
+    consumed = set()
+    abilities = parse_abilities_from_nodes(ability_nodes, consumed=consumed)
     if abilities:
         for node in ability_nodes:
-            node.extract()
+            if id(node) in consumed:
+                node.extract()
     return abilities
 
 

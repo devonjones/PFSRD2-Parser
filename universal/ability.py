@@ -123,6 +123,7 @@ def parse_abilities_from_nodes(
     addon_labels=None,
     fxn_is_addon=None,
     fxn_post_process=None,
+    consumed=None,
 ):
     """Parse a <br>-delimited sequence of BS4 nodes into ability objects.
 
@@ -136,13 +137,19 @@ def parse_abilities_from_nodes(
         addon_labels: custom set of addon labels (uses DEFAULT_ADDON_LABELS if None)
         fxn_is_addon: optional function(name) -> bool to override addon detection
         fxn_post_process: optional function(ability) for per-ability post-processing
+        consumed: optional set; filled with id() of every input node that was
+            captured into an ability (name nodes, body nodes, delimiter <br>s).
+            Callers that remove ability nodes from the source tree must only
+            remove consumed nodes — _split_nodes silently skips nodes it
+            cannot parse (plain links, lead-in lines) and removing those
+            would destroy published text that lives nowhere else.
 
     Returns: list of ability dicts, or None if no abilities found.
     """
     labels = addon_labels if addon_labels is not None else DEFAULT_ADDON_LABELS
 
     # Phase 1: Split into raw entries
-    raw_entries = _split_nodes(nodes, labels)
+    raw_entries = _split_nodes(nodes, labels, consumed=consumed)
     if not raw_entries:
         return None
 
@@ -277,13 +284,22 @@ def parse_ability_from_html(
 _LEAD_IN_RE = re.compile(r"(?:the\s+)?following(?:\s+abilit\w+)?\s*[.:]?\s*$", re.IGNORECASE)
 
 
-def _split_nodes(nodes, labels=None):
+def _split_nodes(nodes, labels=None, consumed=None):
     """Split BS4 nodes into raw (name, link, text_nodes) tuples.
 
     Abilities are delimited by <br> tags. Each starts with <b>Name</b>
     or <a><b>Name</b></a>.
+
+    When consumed is a set, the id() of every node captured into an entry
+    (or the <br> that closed one) is added to it — the caller's contract
+    for safely detaching ability nodes from the source tree.
     """
     labels = labels if labels is not None else DEFAULT_ADDON_LABELS
+
+    def _consume(node):
+        if consumed is not None:
+            consumed.add(id(node))
+
     entries = []
     current = None  # (name, link, text_nodes)
     # Track whether a continuation may glue backward: only onto a REAL
@@ -303,6 +319,7 @@ def _split_nodes(nodes, labels=None):
                 entries.append(current)
                 glue_blocked = _is_label(current[0])
                 current = None
+                _consume(node)
             continue
 
         if current is None and entries and not glue_blocked and _is_continuation(node):
@@ -318,6 +335,7 @@ def _split_nodes(nodes, labels=None):
             current = entries.pop()
             current[2].append(NavigableString(" "))
             current[2].append(node)
+            _consume(node)
             continue
 
         if isinstance(node, Tag) and node.name == "a" and node.find("b"):
@@ -326,6 +344,7 @@ def _split_nodes(nodes, labels=None):
             if name in _NOT_ABILITY_NAMES:
                 if current:
                     current[2].append(node)
+                    _consume(node)
                 else:
                     # dropped label: its value line must not glue backward
                     glue_blocked = True
@@ -334,6 +353,7 @@ def _split_nodes(nodes, labels=None):
                 entries.append(current)
             _name, link_obj = extract_link(node)
             current = (name, link_obj, [])
+            _consume(node)
             continue
 
         if isinstance(node, Tag) and node.name == "b":
@@ -341,6 +361,7 @@ def _split_nodes(nodes, labels=None):
             if name in _NOT_ABILITY_NAMES:
                 if current:
                     current[2].append(node)
+                    _consume(node)
                 else:
                     glue_blocked = True
                 continue
@@ -353,10 +374,12 @@ def _split_nodes(nodes, labels=None):
                 current = (name, link_obj, [])
             else:
                 current = (name, None, [])
+            _consume(node)
             continue
 
         if current:
             current[2].append(node)
+            _consume(node)
 
     if current:
         entries.append(current)
