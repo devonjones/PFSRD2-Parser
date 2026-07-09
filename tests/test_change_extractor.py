@@ -1027,3 +1027,25 @@ class TestTraitAddBadgeMirror:
         }
         assert "Athamaru" in added or "athamaru" in {str(a).lower() for a in added}
         assert any(str(a).lower() == "amphibious" for a in added)
+
+
+class TestStrikeTraitRouting:
+    def test_strike_traits_target_attacks_not_badges(self):
+        effects = _build_trait_effects(
+            "Their Strikes gain the magical trait (and the finesse trait, "
+            "for melee Strikes) and the phantom gets the phantom touch ability."
+        )
+        by_name = {e["item"]["name"]: e["target"] for e in effects}
+        assert by_name["magical"] == "$.offense.offensive_actions[*].attack.traits"
+        assert by_name["finesse"] == (
+            "$.offense.offensive_actions[?(@.attack.attack_type=='melee')].attack.traits"
+        )
+        assert all("creature_type" not in e["target"] for e in effects)
+
+    def test_multi_trait_strike_grant(self):
+        effects = _build_trait_effects(
+            "Their Strikes gain the magical and force traits (and the finesse "
+            "trait, for melee Strikes) and deal force damage instead."
+        )
+        names = [e["item"]["name"] for e in effects]
+        assert names == ["magical", "force", "finesse"]
