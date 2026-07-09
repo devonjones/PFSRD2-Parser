@@ -18,7 +18,7 @@ from pfsrd2.sql.traits import (
     strip_nested_metadata,
 )
 
-ENRICHMENT_VERSION = 26
+ENRICHMENT_VERSION = 28
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -310,8 +310,50 @@ def _categorize_change_text(text):
     return "unknown"
 
 
+def _build_choose_skill_selection(text):
+    """'Choose an Intelligence-, Wisdom-, or Charisma-based skill... The
+    creature gains the official bully ability for that skill.' — the skill
+    is the GM's pick; surface a choose_skill selection the engine templates
+    into the granted ability (Corrupt). Checked before category dispatch:
+    these texts categorize as ability grants."""
+    t = text.lower()
+    m = re.search(r"choose an? [^.;]*?skill.+?gains the (\w[\w\s]*?) ability for that skill", t)
+    if not m:
+        return None
+    ability = m.group(1).strip().title()
+    escaped = ability.replace("\\", "\\\\").replace("'", "\\'")
+    return [
+        {
+            "target": "$.interaction_abilities",
+            "operation": "select",
+            "selection": {
+                "type": "select",
+                "action": "choose_skill",
+                "min": 1,
+                "max": 1,
+                "description": text.strip(),
+                "options": [
+                    {
+                        "name": ability,
+                        "effects": [
+                            {
+                                "operation": "add_items",
+                                "source": f"$.abilities[?(@.name=='{escaped}')]",
+                                "target": "$.interaction_abilities",
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+    ]
+
+
 def _build_effects(text, category, source_name, adjustments=None, links=None, abilities=None):
     """Build effects for a categorized change."""
+    choose_skill = _build_choose_skill_selection(text)
+    if choose_skill:
+        return choose_skill
     if category == "abilities":
         return _build_ability_effects(abilities, text)
     elif category == "immunities":
@@ -1346,7 +1388,9 @@ def _build_speed_effects(text):
             }
         ]
 
-    # "Change Speed to 20 feet if higher"
+    # "Change Speed to 20 feet if higher" / "Optionally change Speed to 30
+    # feet if lower" — an "Optionally" grant surfaces as a min-0 selection
+    # instead of auto-applying (Elf).
     m = re.search(r"change speed to (\d+) feet", t)
     if m:
         cond = None
@@ -1361,6 +1405,27 @@ def _build_speed_effects(text):
         }
         if cond:
             eff["conditional"] = cond
+        if "optionally" in t:
+            sel = {
+                "target": "$.offense.speed.movement[?(@.movement_type=='walk')].value",
+                "operation": "select",
+                "selection": {
+                    "type": "select",
+                    "min": 0,
+                    "max": 1,
+                    "description": text.strip(),
+                    "options": [
+                        {
+                            "name": f"Speed {m.group(1)} feet",
+                            "effects": [eff],
+                        }
+                    ],
+                },
+            }
+            if cond:
+                sel["conditional"] = cond
+            effects.append(sel)
+            return effects
         effects.append(eff)
         return effects
 
@@ -1604,10 +1669,18 @@ def _build_skill_effects(text):
 
     m = re.search(r"(?:increase|set) the creature.s (\w+) modifier to.+?high skill", t)
     if m and not effects:
+        # "unless it was already higher": add_item carries raise-only dedup
+        # semantics (raise an existing lower value, keep a higher one, add
+        # if absent) — a bare replace would REDUCE an already-higher skill.
         effects.append(
             {
-                "target": f"$.statistics.skills[?(@.name=='{m.group(1).title()}')].value",
-                "operation": "replace",
+                "target": "$.statistics.skills",
+                "operation": "add_item",
+                "item": {
+                    "type": "stat_block_section",
+                    "subtype": "skill",
+                    "name": m.group(1).title(),
+                },
                 "value_from": "$.statistics.skills | high_for_level",
             }
         )
