@@ -1,2206 +1,2234 @@
 {
-  "description": "Human-verified enrichments for template/family change records that regex extraction cannot produce (hand-encoded rules text: conditional chains, level-banded values, add_strike/select encodings, trait-object replaces). Seeded into ~/.pfsrd2/enrichment.db by bin/pf2_seed_change_overrides as extraction_method='manual', human_verified=1. Keyed by (source_name, source_type, change_text) -> identity hash; a seed failure means the source text changed and the override needs re-review.",
-  "overrides": [
-    {
-      "source_name": "Vampire",
-      "source_type": "monster_template",
-      "change_text": "- Add a fangs Strike. It deals damage equal to the creature's lowest melee Strike and can be used to Feed. If the creature already has a jaws or fangs Strike, just add the Feed ability.",
-      "note": "derived natural Strike (add_strike) with skip_if_weapons guard against existing jaws/fangs",
-      "enriched": {
-        "change_category": "damage",
-        "effects": [
-          {
-            "item": {
-              "damage_type": "piercing",
-              "skip_if_weapons": [
-                "jaws",
-                "fangs"
-              ],
-              "weapon": "fangs"
-            },
-            "operation": "add_strike",
-            "target": "$.offense.offensive_actions"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Amphibious",
-      "source_type": "monster_template",
-      "change_text": "- Add the amphibious trait. If the creature has the aquatic trait, remove it.",
-      "note": "adds its own trait (regex read it as a removal), unconditional Aquatic swap with badge-array mirror; deliberate deviation: template-fixes lacks the mirror",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Amphibious",
-            "operation": "add_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Aquatic",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Aquatic",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Frostbound",
-      "source_type": "monster_template",
-      "change_text": "- Add a resistance to cold and a weakness to fire, value dependent on the creature's level (see table below).",
-      "note": "level-banded resistance+weakness pairs from adjustments table prose",
-      "enriched": {
-        "change_category": "weaknesses",
-        "effects": [
-          {
-            "conditional": "$.creature_type.level <= 3",
-            "item": {
-              "name": "cold",
-              "subtype": "resistance",
-              "type": "stat_block_section",
-              "value": 3
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].resistances"
-          },
-          {
-            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
-            "item": {
-              "name": "cold",
-              "subtype": "resistance",
-              "type": "stat_block_section",
-              "value": 5
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].resistances"
-          },
-          {
-            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
-            "item": {
-              "name": "cold",
-              "subtype": "resistance",
-              "type": "stat_block_section",
-              "value": 10
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].resistances"
-          },
-          {
-            "conditional": "$.creature_type.level >= 14",
-            "item": {
-              "name": "cold",
-              "subtype": "resistance",
-              "type": "stat_block_section",
-              "value": 15
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].resistances"
-          },
-          {
-            "conditional": "$.creature_type.level <= 3",
-            "item": {
-              "name": "fire",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 3
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
-            "item": {
-              "name": "fire",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 5
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
-            "item": {
-              "name": "fire",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 10
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 14",
-            "item": {
-              "name": "fire",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 15
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Miniature",
-      "source_type": "monster_template",
-      "change_text": "- Reduce the creature's size to Tiny.",
-      "note": "size trait badge replacement with full trait objects",
-      "enriched": {
-        "change_category": "size",
-        "effects": [
-          {
-            "operation": "replace",
-            "target": "$.creature_type.size",
-            "value": "Tiny"
-          },
-          {
-            "operation": "replace",
-            "target": "$.creature_type.traits[?(@.name=='Small')]",
-            "value": {
-              "classes": [
-                "size"
-              ],
-              "edition": "legacy",
-              "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
-              "game-obj": "Traits",
-              "name": "Tiny",
-              "sources": [
-                {
-                  "errata": {
-                    "alt": "2.0",
-                    "game-obj": "Sources",
-                    "name": "2.0",
-                    "type": "link"
-                  },
-                  "link": {
-                    "alt": "Core Rulebook pg. 474",
-                    "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
-                    "name": "Core Rulebook pg. 474",
-                    "type": "link"
-                  },
-                  "name": "Core Rulebook",
-                  "page": 474,
-                  "type": "source"
-                }
-              ],
-              "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
-              "type": "trait"
-            }
-          },
-          {
-            "operation": "replace",
-            "target": "$.creature_type.traits[?(@.name=='Medium')]",
-            "value": {
-              "classes": [
-                "size"
-              ],
-              "edition": "legacy",
-              "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
-              "game-obj": "Traits",
-              "name": "Tiny",
-              "sources": [
-                {
-                  "errata": {
-                    "alt": "2.0",
-                    "game-obj": "Sources",
-                    "name": "2.0",
-                    "type": "link"
-                  },
-                  "link": {
-                    "alt": "Core Rulebook pg. 474",
-                    "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
-                    "name": "Core Rulebook pg. 474",
-                    "type": "link"
-                  },
-                  "name": "Core Rulebook",
-                  "page": 474,
-                  "type": "source"
-                }
-              ],
-              "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
-              "type": "trait"
-            }
-          },
-          {
-            "operation": "replace",
-            "target": "$.creature_type.traits[?(@.name=='Large')]",
-            "value": {
-              "classes": [
-                "size"
-              ],
-              "edition": "legacy",
-              "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
-              "game-obj": "Traits",
-              "name": "Tiny",
-              "sources": [
-                {
-                  "errata": {
-                    "alt": "2.0",
-                    "game-obj": "Sources",
-                    "name": "2.0",
-                    "type": "link"
-                  },
-                  "link": {
-                    "alt": "Core Rulebook pg. 474",
-                    "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
-                    "name": "Core Rulebook pg. 474",
-                    "type": "link"
-                  },
-                  "name": "Core Rulebook",
-                  "page": 474,
-                  "type": "source"
-                }
-              ],
-              "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
-              "type": "trait"
-            }
-          },
-          {
-            "operation": "replace",
-            "target": "$.creature_type.traits[?(@.name=='Huge')]",
-            "value": {
-              "classes": [
-                "size"
-              ],
-              "edition": "legacy",
-              "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
-              "game-obj": "Traits",
-              "name": "Tiny",
-              "sources": [
-                {
-                  "errata": {
-                    "alt": "2.0",
-                    "game-obj": "Sources",
-                    "name": "2.0",
-                    "type": "link"
-                  },
-                  "link": {
-                    "alt": "Core Rulebook pg. 474",
-                    "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
-                    "name": "Core Rulebook pg. 474",
-                    "type": "link"
-                  },
-                  "name": "Core Rulebook",
-                  "page": 474,
-                  "type": "source"
-                }
-              ],
-              "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
-              "type": "trait"
-            }
-          },
-          {
-            "operation": "replace",
-            "target": "$.creature_type.traits[?(@.name=='Gargantuan')]",
-            "value": {
-              "classes": [
-                "size"
-              ],
-              "edition": "legacy",
-              "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
-              "game-obj": "Traits",
-              "name": "Tiny",
-              "sources": [
-                {
-                  "errata": {
-                    "alt": "2.0",
-                    "game-obj": "Sources",
-                    "name": "2.0",
-                    "type": "link"
-                  },
-                  "link": {
-                    "alt": "Core Rulebook pg. 474",
-                    "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
-                    "name": "Core Rulebook pg. 474",
-                    "type": "link"
-                  },
-                  "name": "Core Rulebook",
-                  "page": 474,
-                  "type": "source"
-                }
-              ],
-              "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
-              "type": "trait"
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Miniature",
-      "source_type": "monster_template",
-      "change_text": "- Reduce the reach of the creature's lowest-reach melee Strikes to 0 feet. If it has melee Strikes with notable reach (often a tail, tentacle, or similar long appendage), reduce the reach of these Strikes to 5 feet.",
-      "note": "set_reach baseline form: melee strikes without a Reach trait gain the canonical Reach trait at 0 ft (Tiny), notable-reach strikes drop to 5 ft (engine only ever lowers); closes the 0-ft half deferred as u0w4",
-      "enriched": {
-        "change_category": "strikes",
-        "effects": [
-          {
-            "item": {
-              "alternate_link": {
-                "alternate_type": "legacy",
-                "aonid": 192,
-                "game-obj": "Traits",
-                "type": "alternate_link"
-              },
-              "edition": "remastered",
-              "game-id": "1d6143e399ba5d4085ca236a97cf860c",
-              "game-obj": "Traits",
-              "name": "Reach",
-              "sources": [
-                {
-                  "errata": {
-                    "alt": "2.0",
-                    "aonid": 216,
-                    "game-obj": "Sources",
-                    "name": "2.0",
-                    "type": "link"
-                  },
-                  "link": {
-                    "alt": "Player Core pg. 283",
-                    "aonid": 216,
-                    "game-obj": "Sources",
-                    "name": "Player Core pg. 283",
-                    "type": "link"
-                  },
-                  "name": "Player Core",
-                  "page": 283,
-                  "type": "source"
-                }
-              ],
-              "text": "This weapon can be used to attack enemies up to 10 feet away instead of only adjacent enemies. For creatures with reach, the weapon increases their reach by 5 feet.",
-              "type": "trait"
-            },
-            "operation": "set_reach",
-            "target": "$.offense.offensive_actions[*].attack",
-            "value": {
-              "baseline": 0,
-              "notable": 5
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Sandbound",
-      "source_type": "monster_template",
-      "change_text": "- Add a resistance to fire and a weakness to cold, value dependent on the creature's level (see table below).",
-      "note": "level-banded resistance+weakness pairs from adjustments table prose",
-      "enriched": {
-        "change_category": "weaknesses",
-        "effects": [
-          {
-            "conditional": "$.creature_type.level <= 3",
-            "item": {
-              "name": "fire",
-              "subtype": "resistance",
-              "type": "stat_block_section",
-              "value": 3
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].resistances"
-          },
-          {
-            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
-            "item": {
-              "name": "fire",
-              "subtype": "resistance",
-              "type": "stat_block_section",
-              "value": 5
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].resistances"
-          },
-          {
-            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
-            "item": {
-              "name": "fire",
-              "subtype": "resistance",
-              "type": "stat_block_section",
-              "value": 10
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].resistances"
-          },
-          {
-            "conditional": "$.creature_type.level >= 14",
-            "item": {
-              "name": "fire",
-              "subtype": "resistance",
-              "type": "stat_block_section",
-              "value": 15
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].resistances"
-          },
-          {
-            "conditional": "$.creature_type.level <= 3",
-            "item": {
-              "name": "cold",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 3
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
-            "item": {
-              "name": "cold",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 5
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
-            "item": {
-              "name": "cold",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 10
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 14",
-            "item": {
-              "name": "cold",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 15
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Sandbound",
-      "source_type": "monster_template",
-      "change_text": "- If the creature doesn't have a burrow Speed, add a burrow Speed equal to half its fastest speed.",
-      "note": "tiered speed grants with presence guards from rules text",
-      "enriched": {
-        "change_category": "speed",
-        "effects": [
-          {
-            "conditional": "$.offense.speed.movement[?(@.movement_type=='burrow')] == null",
-            "item": {
-              "movement_type": "burrow",
-              "name": "burrow",
-              "subtype": "speed",
-              "type": "stat_block_section"
-            },
-            "operation": "add_item",
-            "target": "$.offense.speed.movement",
-            "value_from": "$.offense.speed.movement[*].value | max / 2"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Winged",
-      "source_type": "monster_template",
-      "change_text": "- Add a fly Speed equ al to its highest Speed.",
-      "note": "tiered speed grants with presence guards from rules text",
-      "enriched": {
-        "change_category": "speed",
-        "effects": [
-          {
-            "conditional": "$.offense.speed.movement[?(@.movement_type=='fly')].value == null",
-            "item": {
-              "movement_type": "fly",
-              "name": "fly",
-              "subtype": "speed",
-              "type": "stat_block_section"
-            },
-            "operation": "add_item",
-            "target": "$.offense.speed.movement",
-            "value_from": "$.offense.speed.movement[*].value | max"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Elite",
-      "source_type": "monster_template",
-      "change_text": "- Increase the creature’s level by 1; if the creature is level –1 or 0, instead increase its level by 2.",
-      "note": "conditional level chain from rules text (level <=0 -> +2 / lvl 1 -> -2, default branch)",
-      "enriched": {
-        "change_category": "level",
-        "effects": [
-          {
-            "conditional": "$.creature_type.level <= 0",
-            "operation": "adjustment",
-            "target": "$.creature_type.level",
-            "value": 2
-          },
-          {
-            "conditional": "default",
-            "operation": "adjustment",
-            "target": "$.creature_type.level",
-            "value": 1
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Weak",
-      "source_type": "monster_template",
-      "change_text": "- Decrease the creature’s level by 1; if the creature is level 1, instead decrease its level by 2.",
-      "note": "conditional level chain from rules text (level <=0 -> +2 / lvl 1 -> -2, default branch)",
-      "enriched": {
-        "change_category": "level",
-        "effects": [
-          {
-            "conditional": "$.creature_type.level == 1",
-            "operation": "adjustment",
-            "target": "$.creature_type.level",
-            "value": -2
-          },
-          {
-            "conditional": "default",
-            "operation": "adjustment",
-            "target": "$.creature_type.level",
-            "value": -1
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Dwarf",
-      "source_type": "monster_template",
-      "change_text": "- Add a clan dagger to their items. Optionally, add a clan dagger melee Strike that deals damage equal to the creature's lowest melee Strike.",
-      "note": "clan dagger gear grant + optional (select min 0) clan dagger add_strike with trait objects",
-      "enriched": {
-        "change_category": "strikes",
-        "effects": [
-          {
-            "item": {
-              "name": "clan dagger",
-              "subtype": "gear",
-              "type": "stat_block_section"
-            },
-            "operation": "add_item",
-            "target": "$.gear"
-          },
-          {
-            "operation": "select",
-            "selection": {
-              "description": "Optionally, add a clan dagger melee Strike that deals damage equal to the creature's lowest melee Strike.",
-              "max": 1,
-              "min": 0,
-              "options": [
-                {
-                  "item": {
-                    "damage_type": "piercing",
-                    "traits": [
-                      "Agile",
-                      "Parry",
-                      {
-                        "name": "Versatile",
-                        "value": "B"
-                      }
-                    ],
-                    "weapon": "clan dagger"
-                  },
-                  "name": "Clan Dagger Strike",
-                  "operation": "add_strike",
-                  "target": "$.offense.offensive_actions"
-                }
-              ],
-              "type": "select"
-            },
-            "target": "$.offense.offensive_actions"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Guerrilla",
-      "source_type": "monster_template",
-      "change_text": "- If the creature has the Athletics skill, reduce its modifier by 2.",
-      "note": "conditional skill adjustment from prose",
-      "enriched": {
-        "change_category": "skills",
-        "effects": [
-          {
-            "conditional": "$.statistics.skills[?(@.name=='Athletics')].value != null",
-            "operation": "adjustment",
-            "target": "$.statistics.skills[?(@.name=='Athletics')].value",
-            "value": -2
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Kholo",
-      "source_type": "monster_template",
-      "change_text": "- Add a jaws Strike. It deals damage equal to the creature's lowest melee Strike.",
-      "note": "derived natural Strike (add_strike) encoding rules text",
-      "enriched": {
-        "change_category": "strikes",
-        "effects": [
-          {
-            "item": {
-              "damage_type": "piercing",
-              "weapon": "jaws"
-            },
-            "operation": "add_strike",
-            "target": "$.offense.offensive_actions"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Ratfolk",
-      "source_type": "monster_template",
-      "change_text": "- Add a jaws Strike. It deals damage equal to the creature's lowest melee Strike and has the agile and finesse traits.",
-      "note": "derived natural Strike (add_strike) encoding rules text",
-      "enriched": {
-        "change_category": "strikes",
-        "effects": [
-          {
-            "item": {
-              "damage_type": "piercing",
-              "traits": [
-                "Agile",
-                "Finesse"
-              ],
-              "weapon": "jaws"
-            },
-            "operation": "add_strike",
-            "target": "$.offense.offensive_actions"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Tengu",
-      "source_type": "monster_template",
-      "change_text": "- Add a beak Strike. It deals damage equal to the creature's lowest melee Strike and has the finesse trait.",
-      "note": "derived natural Strike (add_strike) encoding rules text",
-      "enriched": {
-        "change_category": "strikes",
-        "effects": [
-          {
-            "item": {
-              "damage_type": "piercing",
-              "traits": [
-                "Finesse"
-              ],
-              "weapon": "beak"
-            },
-            "operation": "add_strike",
-            "target": "$.offense.offensive_actions"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Air",
-      "source_type": "monster_template",
-      "change_text": "- If the creature is 8th level or higher, give it a fly Speed of 25 feet. If its level is lower than that, you can give it this fly Speed if it either doesn't have ranged attacks or you remove its ranged attacks; use discretion.",
-      "note": "tiered speed grants with presence guards from rules text",
-      "enriched": {
-        "change_category": "speed",
-        "effects": [
-          {
-            "conditional": "$.creature_type.level >= 8 && $.offense.speed.movement[?(@.movement_type=='fly')].value == null",
-            "item": {
-              "movement_type": "fly",
-              "name": "fly 25 feet",
-              "subtype": "speed",
-              "type": "stat_block_section",
-              "value": 25
-            },
-            "operation": "add_item",
-            "target": "$.offense.speed.movement"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Earth",
-      "source_type": "monster_template",
-      "change_text": "- Add tremorsense 60 feet (imprecise).",
-      "note": "sense with parenthetical modifier (imprecise)",
-      "enriched": {
-        "change_category": "senses",
-        "effects": [
-          {
-            "item": {
-              "modifiers": [
-                {
-                  "name": "imprecise",
-                  "subtype": "modifier",
-                  "type": "stat_block_section"
-                }
-              ],
-              "name": "tremorsense",
-              "range": {
-                "range": 60,
-                "subtype": "range",
-                "text": "60 feet",
-                "type": "stat_block_section",
-                "unit": "feet"
-              },
-              "subtype": "special_sense",
-              "type": "stat_block_section"
-            },
-            "operation": "add_item",
-            "target": "$.senses.special_senses"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Earth",
-      "source_type": "monster_template",
-      "change_text": "- Add a burrow Speed of 20 feet, or 40 feet if the creature is 8th level or higher.",
-      "note": "tiered speed grants with presence guards from rules text",
-      "enriched": {
-        "change_category": "speed",
-        "effects": [
-          {
-            "conditional": "$.creature_type.level >= 8 && $.offense.speed.movement[?(@.movement_type=='burrow')].value == null",
-            "item": {
-              "movement_type": "burrow",
-              "name": "burrow 40 feet",
-              "subtype": "speed",
-              "type": "stat_block_section",
-              "value": 40
-            },
-            "operation": "add_item",
-            "target": "$.offense.speed.movement"
-          },
-          {
-            "conditional": "$.creature_type.level <= 7 && $.offense.speed.movement[?(@.movement_type=='burrow')].value == null",
-            "item": {
-              "movement_type": "burrow",
-              "name": "burrow 20 feet",
-              "subtype": "speed",
-              "type": "stat_block_section",
-              "value": 20
-            },
-            "operation": "add_item",
-            "target": "$.offense.speed.movement"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Fire",
-      "source_type": "monster_template",
-      "change_text": "- If the creature's Strikes deal more than one die of damage, change one die to fire damage. If not, add 1 fire damage to its Strikes.",
-      "note": "replace_one_die per RoE elemental rule; no flat-damage fallback",
-      "enriched": {
-        "change_category": "damage",
-        "effects": [
-          {
-            "operation": "replace_one_die",
-            "target": "$.offense.offensive_actions[*].attack.damage",
-            "value": "fire"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Water",
-      "source_type": "monster_template",
-      "change_text": "- Add a swim Speed of 25 feet, or 40 feet if the creature is 8th level or higher.",
-      "note": "tiered speed grants with presence guards from rules text",
-      "enriched": {
-        "change_category": "speed",
-        "effects": [
-          {
-            "conditional": "$.creature_type.level >= 8 && $.offense.speed.movement[?(@.movement_type=='swim')].value == null",
-            "item": {
-              "movement_type": "swim",
-              "name": "swim 40 feet",
-              "subtype": "speed",
-              "type": "stat_block_section",
-              "value": 40
-            },
-            "operation": "add_item",
-            "target": "$.offense.speed.movement"
-          },
-          {
-            "conditional": "$.creature_type.level <= 7 && $.offense.speed.movement[?(@.movement_type=='swim')].value == null",
-            "item": {
-              "movement_type": "swim",
-              "name": "swim 25 feet",
-              "subtype": "speed",
-              "type": "stat_block_section",
-              "value": 25
-            },
-            "operation": "add_item",
-            "target": "$.offense.speed.movement"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Wood",
-      "source_type": "monster_template",
-      "change_text": "- Add the wood trait. If the creature is a growing plant, you can also add the plant trait.",
-      "note": "GM-discretionary selection / compound add-remove prose",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Wood",
-            "operation": "add_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "operation": "select",
-            "selection": {
-              "description": "If the creature is a growing plant, you can also add the plant trait",
-              "max": 1,
-              "min": 0,
-              "options": [
-                {
-                  "name": "Plant",
-                  "operation": "add_item",
-                  "target": "$.creature_type.creature_types"
-                }
-              ],
-              "type": "select"
-            },
-            "target": "$.creature_type.creature_types"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Wood",
-      "source_type": "monster_template",
-      "change_text": "- Add weaknesses to fire and to damage from axes depending on its level.",
-      "note": "level-banded resistance+weakness pairs from adjustments table prose",
-      "enriched": {
-        "change_category": "weaknesses",
-        "effects": [
-          {
-            "conditional": "$.creature_type.level <= 3",
-            "item": {
-              "name": "fire",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 3
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level <= 3",
-            "item": {
-              "name": "axes",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 3
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
-            "item": {
-              "name": "fire",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 5
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
-            "item": {
-              "name": "axes",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 5
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
-            "item": {
-              "name": "fire",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 10
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
-            "item": {
-              "name": "axes",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 10
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 14",
-            "item": {
-              "name": "fire",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 15
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          },
-          {
-            "conditional": "$.creature_type.level >= 14",
-            "item": {
-              "name": "axes",
-              "subtype": "weakness",
-              "type": "stat_block_section",
-              "value": 15
-            },
-            "operation": "add_item",
-            "target": "$.defense.hitpoints[*].weaknesses"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Tengu",
-      "source_type": "monster_template",
-      "change_text": "- Add the following abilities.  **Low-Light Vision**",
-      "note": "route change-attached abilities into the pool; engine diverts known senses at apply time",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_items",
-            "source": "$.changes[*].abilities",
-            "target": "$.defense.automatic_abilities"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Corrupt",
-      "source_type": "monster_template",
-      "change_text": "- Choose an Intelligence-, Wisdom-, or Charisma-based skill that's thematically important to the creature's office, such as Legal Lore for a judge. The creature gains the official bully ability for that skill.",
-      "note": "deliberate deviation from template-fixes: replaces the junk 'Official Bully Ability For That' skill artifact with the ability routing the fabricated block carried",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_items",
-            "source": "$.abilities[?(@.name=='Official Bully')]",
-            "target": "$.interaction_abilities"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Compulsions</b> Vampires are creatures of strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless it is transported while it hides within its coffin, nor can it enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome its compulsion just as it does its revulsion (see below).</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Compulsions",
-              "text": "Vampires are creatures of strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless it is transported while it hides within its coffin, nor can it enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome its compulsion just as it does its revulsion (see below)."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Revulsion</b> A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of its revulsion, it gains the fleeing condition, running from the object of its revulsion until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Revulsion",
-              "text": "A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of its revulsion, it gains the fleeing condition, running from the object of its revulsion until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success)."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Sunlight</b> If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends its turn in sunlight. If the vampire loses all its actions in this way, it is destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Sunlight",
-              "text": "If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends its turn in sunlight. If the vampire loses all its actions in this way, it is destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Vrykolakas",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Vulnerable to Decapitation</b> A vrykolakas that is beheaded can't use its Feral Possession, and a beheaded corpse cannot rise as a vrykolakas.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Vulnerable to Decapitation",
-              "text": "A vrykolakas that is beheaded can't use its Feral Possession, and a beheaded corpse cannot rise as a vrykolakas."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Nosferatu",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Revulsion</b> A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raise a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Revulsion",
-              "text": "A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raise a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Nosferatu",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Sunlight</b> If exposed to direct sunlight, a nosferatu immediately becomes slowed 1. The slowed value increases by 1 each time the nosferatu ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the nosferatu loses all their actions in this way, they're destroyed.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Sunlight",
-              "text": "If exposed to direct sunlight, a nosferatu immediately becomes slowed 1. The slowed value increases by 1 each time the nosferatu ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the nosferatu loses all their actions in this way, they're destroyed."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Jiang-Shi",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Revulsion</b> A jiang-shi can't voluntarily come within 10 feet of a brandished mirror or the sound of ringing handbells. A creature can Interact with a mirror or handbell to brandish or ring that item for 1 round (similar to Raising a Shield). If the jiang-shi involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they are 10 feet or farther from the object. After 1 round of being exposed to the object of their revulsion, a jiang-shi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Revulsion",
-              "text": "A jiang-shi can't voluntarily come within 10 feet of a brandished mirror or the sound of ringing handbells. A creature can Interact with a mirror or handbell to brandish or ring that item for 1 round (similar to Raising a Shield). If the jiang-shi involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they are 10 feet or farther from the object. After 1 round of being exposed to the object of their revulsion, a jiang-shi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Jiang-Shi",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Bitter Epiphany</b> A jiang-shi is afflicted by severe melancholia when reminded of their debased nature and the truth of their existential disconnection from living beings. When a jiang-shi sees an altar with at least 1 Bulk of food offerings to ancestor spirits, they must attempt a DC 25 Will save. They are then temporarily immune to bitter epiphany for 1 minute.<br/><b>Critical Success</b> The jiang-shi is unaffected.<br/><b>Success</b> The jiang-shi is stupefied 1 for 1 round.<br/><b>Failure</b> The jiang-shi is stupefied 2 for 1 minute.<br/><b>Critical Failure</b> The jiang-shi is stupefied 2 and confused for 1 minute. </li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Bitter Epiphany",
-              "text": "A jiang-shi is afflicted by severe melancholia when reminded of their debased nature and the truth of their existential disconnection from living beings. When a jiang-shi sees an altar with at least 1 Bulk of food offerings to ancestor spirits, they must attempt a DC 25 Will save. They are then temporarily immune to bitter epiphany for 1 minute.Critical Success The jiang-shi is unaffected.Success The jiang-shi is stupefied 1 for 1 round.Failure The jiang-shi is stupefied 2 for 1 minute.Critical Failure The jiang-shi is stupefied 2 and confused for 1 minute."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Vetalarana",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Barred Senses</b> A vetalarana can't see or sense through force effects or cold iron, and their mind can't penetrate force effects or cold iron. Such barriers can prevent the transference of a vetalarana's mind through Mental Rebirth.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Barred Senses",
-              "text": "A vetalarana can't see or sense through force effects or cold iron, and their mind can't penetrate force effects or cold iron. Such barriers can prevent the transference of a vetalarana's mind through Mental Rebirth."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Vetalarana",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Revulsion</b> A vetalarana delights in consuming memories and secrets, and is disgusted by those who share such sensitive tidbits openly. A vetalarana can't voluntarily come within 10 feet of a creature loudly voicing their intimate personal secrets or most cherished memories aloud. Speaking such information aloud with conviction is a single action that has the auditory, concentrate, and linguistic traits, and protects the creature until the start of its next turn. A vetalarana that involuntarily comes within 10 feet of a creature sharing such information gains the fleeing condition until they're 10 feet or farther from the creature. After 1 round of being exposed to the secrets of a creature, a vetalarana can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Revulsion",
-              "text": "A vetalarana delights in consuming memories and secrets, and is disgusted by those who share such sensitive tidbits openly. A vetalarana can't voluntarily come within 10 feet of a creature loudly voicing their intimate personal secrets or most cherished memories aloud. Speaking such information aloud with conviction is a single action that has the auditory, concentrate, and linguistic traits, and protects the creature until the start of its next turn. A vetalarana that involuntarily comes within 10 feet of a creature sharing such information gains the fleeing condition until they're 10 feet or farther from the creature. After 1 round of being exposed to the secrets of a creature, a vetalarana can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Strigoi",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Revulsion</b> Strigoi are uncomfortable near mirrors or sources of bright light. Only a strigoi's shadow reflects in a mirror, and this often compels them to cover or destroy mirrors in their presence rather than risk their true nature being displayed. A strigoi can't voluntarily come within 10 feet of a brandished mirror or source of bright light. To brandish a mirror or light source, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the strigoi involuntarily comes within 10 feet of a brandished mirror or light source, it gains the fleeing condition, running from the brandished object until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a strigoi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success). A strigoi can move normally around mirrors or bright light sources that are not brandished, although doing so causes them discomfort that can be noticed with a successful Perception check to Sense Motive.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Revulsion",
-              "text": "Strigoi are uncomfortable near mirrors or sources of bright light. Only a strigoi's shadow reflects in a mirror, and this often compels them to cover or destroy mirrors in their presence rather than risk their true nature being displayed. A strigoi can't voluntarily come within 10 feet of a brandished mirror or source of bright light. To brandish a mirror or light source, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the strigoi involuntarily comes within 10 feet of a brandished mirror or light source, it gains the fleeing condition, running from the brandished object until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a strigoi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success). A strigoi can move normally around mirrors or bright light sources that are not brandished, although doing so causes them discomfort that can be noticed with a successful Perception check to Sense Motive."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Strigoi",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Water Revulsion</b> A strigoi cannot cross a significant source of running water (such as a creek, river, or waves on a seashore). A strigoi capable of flight can cross running water provided it approaches no closer than 10 feet to the liquid's surface. If forced into running water against its will, the strigoi becomes slowed 2 and gains the fleeing condition as long as it remains in the water. At the end of any turn in which the strigoi remains in running water, it must succeed at a DC 5 flat check or be destroyed.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Water Revulsion",
-              "text": "A strigoi cannot cross a significant source of running water (such as a creek, river, or waves on a seashore). A strigoi capable of flight can cross running water provided it approaches no closer than 10 feet to the liquid's surface. If forced into running water against its will, the strigoi becomes slowed 2 and gains the fleeing condition as long as it remains in the water. At the end of any turn in which the strigoi remains in running water, it must succeed at a DC 5 flat check or be destroyed."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Harrowkin",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Hammers</b> The harrowkin gains a +2 status bonus to damage rolls.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Hammers",
-              "text": "The harrowkin gains a +2 status bonus to damage rolls."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Harrowkin",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Keys</b> The harrowkin gains a +1 status bonus to AC.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Keys",
-              "text": "The harrowkin gains a +1 status bonus to AC."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Harrowkin",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Shields</b> The harrowkin gains fast healing 5.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Shields",
-              "text": "The harrowkin gains fast healing 5."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Harrowkin",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Stars</b> The harrowkin gains a +1 status bonus to saving throws.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Stars",
-              "text": "The harrowkin gains a +1 status bonus to saving throws."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Harrowkin",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Crown</b> The harrowkin can reroll 1 check within the next minute and take the higher result. This is a fortune effect.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Crown",
-              "text": "The harrowkin can reroll 1 check within the next minute and take the higher result. This is a fortune effect."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Dragon, Omen",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Assured Fate</b> (fortune) When the omen dragon rolls initiative, instead of rolling, they can choose to have a result equal to 13 + their initiative modifier.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Assured Fate",
-              "text": "(fortune) When the omen dragon rolls initiative, instead of rolling, they can choose to have a result equal to 13 + their initiative modifier."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Dragon, Omen",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Instinctive Challenge</b> During an encounter, the fortune dragon gains an additional reaction at the start of their turn that can be used only for Challenge Fate.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Instinctive Challenge",
-              "text": "During an encounter, the fortune dragon gains an additional reaction at the start of their turn that can be used only for Challenge Fate."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Compulsions</b> Vampires are creatures with strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless they're transported while they hide within their coffin, nor can they enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome their compulsion just as they do their revulsion (see below).</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Compulsions",
-              "text": "Vampires are creatures with strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless they're transported while they hide within their coffin, nor can they enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome their compulsion just as they do their revulsion (see below)."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Revulsion</b> A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so, and it remains brandished for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Revulsion",
-              "text": "A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so, and it remains brandished for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Sunlight</b> If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the vampire loses all their actions in this way, they're destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors.</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Sunlight",
-              "text": "If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the vampire loses all their actions in this way, they're destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Nosferatu",
-      "source_type": "monster_family",
-      "change_text": "<li><b>Revulsion</b> A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
-      "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_item",
-            "target": "$.defense.automatic_abilities",
-            "item": {
-              "type": "stat_block_section",
-              "subtype": "ability",
-              "ability_type": "automatic",
-              "name": "Revulsion",
-              "text": "A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
-            }
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Lich",
-      "source_type": "monster_family",
-      "change_text": "Liches lose all abilities that come from being a living creature. They also lose any traits that represented their life as a living creature, such as human and humanoid.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment; abilities-loss half of the sentence is GM judgment (documented shortfall)",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Ghoul",
-      "source_type": "monster_family",
-      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire",
-      "source_type": "monster_family",
-      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Vrykolakas",
-      "source_type": "monster_family",
-      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Phantom",
-      "source_type": "monster_family",
-      "change_text": "You can turn an existing living creature into a phantom by trading their usual traits for the ethereal, incorporeal, and spirit traits.",
-      "note": "phantom transform: adds encoded; 'usual traits' removal is GM judgment (documented shortfall)",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Ethereal",
-            "operation": "add_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Incorporeal",
-            "operation": "add_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Spirit",
-            "operation": "add_item",
-            "target": "$.creature_type.creature_types"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Nosferatu",
-      "source_type": "monster_family",
-      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Jiang-Shi",
-      "source_type": "monster_family",
-      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Vetalarana",
-      "source_type": "monster_family",
-      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Vampire, Strigoi",
-      "source_type": "monster_family",
-      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Blackfrost Dead",
-      "source_type": "monster_family",
-      "change_text": "As blackfrost dead stem from blackfrost itself, all blackfrost dead have the rare trait.",
-      "note": "universal rarity add",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Rare",
-            "operation": "add_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Ghost",
-      "source_type": "monster_family",
-      "change_text": "The base creature loses any traits that represented its life as a living creature, such as human and humanoid, and any abilities or traits that rely on it being a living, corporeal creature.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment; abilities-loss half of the sentence is GM judgment (documented shortfall)",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Ghoul",
-      "source_type": "monster_family",
-      "change_text": "It also loses any traits that represent its life as a living creature, such as human and humanoid.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Floodslain Creature",
-      "source_type": "monster_family",
-      "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Failed Prophet",
-      "source_type": "monster_family",
-      "change_text": "It also loses any traits that represented its life prior to the transformation, such as human or humanoid.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Swarm Strider",
-      "source_type": "monster_family",
-      "change_text": "They lose any traits that represent their former life, such as human and humanoid, though they usually remain the same size, keep the same items, and use the same weapons as they did before their rebirth.",
-      "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
-      "enriched": {
-        "change_category": "traits",
-        "effects": [
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Human",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.creature_types"
-          },
-          {
-            "name": "Humanoid",
-            "operation": "remove_item",
-            "target": "$.creature_type.traits"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Nymph",
-      "source_type": "monster_family",
-      "change_text": "She gains the Inspiration ability, allowing her to bestow a gift of inspiration on those who catch her fancy, and the Change Shape ability to change her form.",
-      "note": "queen ability grant: source points at the 'Nymph Queen Abilities' section pool (was $.changes[*].abilities, empty)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_items",
-            "target": "$.defense.automatic_abilities",
-            "source": "$.sections[?(@.name=='Nymph Queen Abilities')].abilities"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Nymph",
-      "source_type": "monster_family",
-      "change_text": "She gains the Inspiration ability, allowing her to bestow a gift of inspiration on those who catch her fancy, and the Change Shape ability to change her form.",
-      "note": "queen ability grant: source points at the 'Nymph Queen Abilities' section pool (was $.changes[*].abilities, empty)",
-      "enriched": {
-        "change_category": "abilities",
-        "effects": [
-          {
-            "operation": "add_items",
-            "target": "$.defense.automatic_abilities",
-            "source": "$.sections[?(@.name=='Nymph Queen Abilities')].abilities"
-          }
-        ]
-      }
-    },
-    {
-      "source_name": "Werecreature",
-      "source_type": "monster_family",
-      "change_text": "<li>Increase its size by one category if the animal is a larger size than the base humanoid.</li>",
-      "note": "deliberately effect-less: conditional_on_choice — see matching quarantine entry",
-      "enriched": {
-        "change_category": "size",
-        "effects": []
-      }
-    },
-    {
-      "source_name": "Woodblessed",
-      "source_type": "monster_family",
-      "change_text": "<li>It gains a splinter ranged Strike that deals piercing damage, is in the brawling group, and has a range increment of 30 feet.</li>",
-      "note": "deliberately effect-less: add_strike_ranged_pending — see matching quarantine entry",
-      "enriched": {
-        "change_category": "strikes",
-        "effects": []
-      }
-    }
-  ],
-  "quarantines": [
-    {
-      "source_name": "Ravener",
-      "source_type": "monster_family",
-      "change_text": "<li><b>10th</b> <i>wish</i></li>",
-      "reason": "spell_list_encoding: innate spell rank lists pending spells-op support"
-    },
-    {
-      "source_name": "Ravener",
-      "source_type": "monster_family",
-      "change_text": "<li><b>9th</b> <i>power word kill</i>, <i>telepathic demand</i>, <i>weird</i></li>",
-      "reason": "spell_list_encoding: innate spell rank lists pending spells-op support"
-    },
-    {
-      "source_name": "Ravener",
-      "source_type": "monster_family",
-      "change_text": "<li><b>8th</b> <i>disappearance</i>, <i>maze</i>, <i>mind blank</i></li>",
-      "reason": "spell_list_encoding: innate spell rank lists pending spells-op support"
-    },
-    {
-      "source_name": "Ghoul",
-      "source_type": "monster_family",
-      "change_text": "If the base creature has any abilities that come from it being a living creature, it loses them.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Nymph",
-      "source_type": "monster_family",
-      "change_text": "Nymph queens are not dependent on their wards and lose the corresponding ability (such as a dryad’s tree dependent ability); instead, they gain the tied to the land ability, as described below.",
-      "reason": "gm_judgment_loss: removes a per-creature named ward ability (e.g. dryad's tree dependent)"
-    },
-    {
-      "source_name": "Vampire",
-      "source_type": "monster_family",
-      "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Vampire, Vrykolakas",
-      "source_type": "monster_family",
-      "change_text": "If the base creature becoming a vrykolakas has any abilities that specifically come from it being a living creature, it loses them.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Vampire, Nosferatu",
-      "source_type": "monster_family",
-      "change_text": "If the base creature becoming a nosferatu has any abilities that specifically come from it being a living creature, it loses them.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Vampire, Jiang-Shi",
-      "source_type": "monster_family",
-      "change_text": "If the base creature becoming a jiang-shi has any abilities that specifically come from it being a living creature, it loses them.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Vampire, Vetalarana",
-      "source_type": "monster_family",
-      "change_text": "If the base creature has any abilities that specifically come from being a living creature, it loses them.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Vampire, Strigoi",
-      "source_type": "monster_family",
-      "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Nymph",
-      "source_type": "monster_family",
-      "change_text": "Nymph queens are not dependent on their wards and lose the corresponding ability (such as a dryad's tree dependent ability); instead, they gain the tied to the land ability, as described below.",
-      "reason": "gm_judgment_loss: removes a per-creature named ward ability (e.g. dryad's tree dependent)"
-    },
-    {
-      "source_name": "Floodslain Creature",
-      "source_type": "monster_family",
-      "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Failed Prophet",
-      "source_type": "monster_family",
-      "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Lich",
-      "source_type": "monster_family",
-      "change_text": "Liches lose all abilities that come from being a living creature.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Worm That Walks",
-      "source_type": "monster_family",
-      "change_text": "A worm that walks loses any abilities that came from its previous physical form and any traits that represent its life, such as human and humanoid.",
-      "reason": "gm_judgment_loss: non-enumerable loss/transform prose"
-    },
-    {
-      "source_name": "Graveknight",
-      "source_type": "monster_family",
-      "change_text": "It loses any abilities that come from it being a living creature and any traits that represent its life, such as human and humanoid.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Siabrae",
-      "source_type": "monster_family",
-      "change_text": "Siabraes lose all abilities that specifically come from being a living creature of their original kind.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Graveknight",
-      "source_type": "monster_family",
-      "change_text": "They lose any abilities that come from being a living creature and any traits that represent their life, such as human and humanoid.",
-      "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
-    },
-    {
-      "source_name": "Nymph",
-      "source_type": "monster_family",
-      "change_text": "<b>Change Shape</b> [one-action]  (polymorph, primal, transmutation) Nymph queens can transform between their original form, which looks much like a typical nymph of their kind, and any Small or Medium humanoid form, typically choosing a more humanoid-looking version of their natural form.",
-      "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
-    },
-    {
-      "source_name": "Vampire, Jiang-Shi",
-      "source_type": "monster_family",
-      "change_text": "Ministers gain additional jiang-shi abilities, as detailed below. A creature below level 13 is not significant enough to become a minister—you should instead simply make such a creature into a regular jiang-shi or rebuild the creature so that it's at least level 13 before becoming a minister.",
-      "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
-    },
-    {
-      "source_name": "Vampire, Vetalarana",
-      "source_type": "monster_family",
-      "change_text": "Vetalarana manipulators gain additional abilities, as detailed below. A creature below 10th level isn't powerful enough to become a vetalarana manipulator; instead, make such a creature into a regular vetalarana or rebuild the creature so that it's at least 10th level before making it a vetalarana manipulator.",
-      "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
-    },
-    {
-      "source_name": "Nymph",
-      "source_type": "monster_family",
-      "change_text": "<b>Change Shape</b> [one-action]  (polymorph, primal) Nymph queens can transform between their original form, which looks much like a typical nymph of their kind, and any Small or Medium humanoid form, typically choosing a more humanoid-looking version of their natural form.",
-      "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
-    },
-    {
-      "source_name": "Divine Warden",
-      "source_type": "monster_family",
-      "change_text": "A divine warden retains any abilities it had previously, and it gains the abilities listed below.",
-      "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
-    },
-    {
-      "source_name": "Werecreature",
-      "source_type": "monster_family",
-      "change_text": "<li>Increase its size by one category if the animal is a larger size than the base humanoid.</li>",
-      "reason": "conditional_on_choice: size bump depends on the chosen animal being larger than the base humanoid — engine cannot know the animal"
-    },
-    {
-      "source_name": "Woodblessed",
-      "source_type": "monster_family",
-      "change_text": "<li>It gains a splinter ranged Strike that deals piercing damage, is in the brawling group, and has a range increment of 30 feet.</li>",
-      "reason": "add_strike_ranged_pending: engine add_strike derives from melee Strikes only; ranged derivation is a documented shortfall"
-    },
-    {
-      "source_name": "Skeleton",
-      "source_type": "monster_family",
-      "change_text": "(Gargantuan skeletons can use skeletal hulk with the elite template, Gargantuan size, and 5 feet more reach.) Add Strikes, Speeds, or other abilities it would gain from its shape.",
-      "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
-    },
-    {
-      "source_name": "Zombie",
-      "source_type": "monster_family",
-      "change_text": "Then add any Strikes, Speeds, or other abilities it would gain from its shape.",
-      "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
-    },
-    {
-      "source_name": "Skeleton",
-      "source_type": "monster_family",
-      "change_text": "(Gargantuan skeletons can use skeletal hulk with the elite adjustments, Gargantuan size, and 5 feet more reach.) Add Strikes, Speeds, or other abilities it would gain from its shape.",
-      "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
-    },
-    {
-      "source_name": "Skeleton",
-      "source_type": "monster_family",
-      "change_text": "Add Strikes, Speeds, or other abilities it would gain from its shape.",
-      "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
-    }
-  ]
+ "description": "Human-verified enrichments for template/family change records that regex extraction cannot produce (hand-encoded rules text: conditional chains, level-banded values, add_strike/select encodings, trait-object replaces). Seeded into ~/.pfsrd2/enrichment.db by bin/pf2_seed_change_overrides as extraction_method='manual', human_verified=1. Keyed by (source_name, source_type, change_text) -> identity hash; a seed failure means the source text changed and the override needs re-review.",
+ "overrides": [
+  {
+   "source_name": "Vampire",
+   "source_type": "monster_template",
+   "change_text": "- Add a fangs Strike. It deals damage equal to the creature's lowest melee Strike and can be used to Feed. If the creature already has a jaws or fangs Strike, just add the Feed ability.",
+   "note": "derived natural Strike (add_strike) with skip_if_weapons guard against existing jaws/fangs",
+   "enriched": {
+    "change_category": "damage",
+    "effects": [
+     {
+      "item": {
+       "damage_type": "piercing",
+       "skip_if_weapons": [
+        "jaws",
+        "fangs"
+       ],
+       "weapon": "fangs"
+      },
+      "operation": "add_strike",
+      "target": "$.offense.offensive_actions"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Amphibious",
+   "source_type": "monster_template",
+   "change_text": "- Add the amphibious trait. If the creature has the aquatic trait, remove it.",
+   "note": "adds its own trait (regex read it as a removal), unconditional Aquatic swap with badge-array mirror; deliberate deviation: template-fixes lacks the mirror",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Amphibious",
+      "operation": "add_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Aquatic",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Aquatic",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Frostbound",
+   "source_type": "monster_template",
+   "change_text": "- Add a resistance to cold and a weakness to fire, value dependent on the creature's level (see table below).",
+   "note": "level-banded resistance+weakness pairs from adjustments table prose",
+   "enriched": {
+    "change_category": "weaknesses",
+    "effects": [
+     {
+      "conditional": "$.creature_type.level <= 3",
+      "item": {
+       "name": "cold",
+       "subtype": "resistance",
+       "type": "stat_block_section",
+       "value": 3
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].resistances"
+     },
+     {
+      "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+      "item": {
+       "name": "cold",
+       "subtype": "resistance",
+       "type": "stat_block_section",
+       "value": 5
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].resistances"
+     },
+     {
+      "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+      "item": {
+       "name": "cold",
+       "subtype": "resistance",
+       "type": "stat_block_section",
+       "value": 10
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].resistances"
+     },
+     {
+      "conditional": "$.creature_type.level >= 14",
+      "item": {
+       "name": "cold",
+       "subtype": "resistance",
+       "type": "stat_block_section",
+       "value": 15
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].resistances"
+     },
+     {
+      "conditional": "$.creature_type.level <= 3",
+      "item": {
+       "name": "fire",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 3
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+      "item": {
+       "name": "fire",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 5
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+      "item": {
+       "name": "fire",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 10
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 14",
+      "item": {
+       "name": "fire",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 15
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Miniature",
+   "source_type": "monster_template",
+   "change_text": "- Reduce the creature's size to Tiny.",
+   "note": "size trait badge replacement with full trait objects",
+   "enriched": {
+    "change_category": "size",
+    "effects": [
+     {
+      "operation": "replace",
+      "target": "$.creature_type.size",
+      "value": "Tiny"
+     },
+     {
+      "operation": "replace",
+      "target": "$.creature_type.traits[?(@.name=='Small')]",
+      "value": {
+       "classes": [
+        "size"
+       ],
+       "edition": "legacy",
+       "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
+       "game-obj": "Traits",
+       "name": "Tiny",
+       "sources": [
+        {
+         "errata": {
+          "alt": "2.0",
+          "game-obj": "Sources",
+          "name": "2.0",
+          "type": "link"
+         },
+         "link": {
+          "alt": "Core Rulebook pg. 474",
+          "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
+          "name": "Core Rulebook pg. 474",
+          "type": "link"
+         },
+         "name": "Core Rulebook",
+         "page": 474,
+         "type": "source"
+        }
+       ],
+       "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
+       "type": "trait"
+      }
+     },
+     {
+      "operation": "replace",
+      "target": "$.creature_type.traits[?(@.name=='Medium')]",
+      "value": {
+       "classes": [
+        "size"
+       ],
+       "edition": "legacy",
+       "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
+       "game-obj": "Traits",
+       "name": "Tiny",
+       "sources": [
+        {
+         "errata": {
+          "alt": "2.0",
+          "game-obj": "Sources",
+          "name": "2.0",
+          "type": "link"
+         },
+         "link": {
+          "alt": "Core Rulebook pg. 474",
+          "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
+          "name": "Core Rulebook pg. 474",
+          "type": "link"
+         },
+         "name": "Core Rulebook",
+         "page": 474,
+         "type": "source"
+        }
+       ],
+       "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
+       "type": "trait"
+      }
+     },
+     {
+      "operation": "replace",
+      "target": "$.creature_type.traits[?(@.name=='Large')]",
+      "value": {
+       "classes": [
+        "size"
+       ],
+       "edition": "legacy",
+       "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
+       "game-obj": "Traits",
+       "name": "Tiny",
+       "sources": [
+        {
+         "errata": {
+          "alt": "2.0",
+          "game-obj": "Sources",
+          "name": "2.0",
+          "type": "link"
+         },
+         "link": {
+          "alt": "Core Rulebook pg. 474",
+          "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
+          "name": "Core Rulebook pg. 474",
+          "type": "link"
+         },
+         "name": "Core Rulebook",
+         "page": 474,
+         "type": "source"
+        }
+       ],
+       "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
+       "type": "trait"
+      }
+     },
+     {
+      "operation": "replace",
+      "target": "$.creature_type.traits[?(@.name=='Huge')]",
+      "value": {
+       "classes": [
+        "size"
+       ],
+       "edition": "legacy",
+       "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
+       "game-obj": "Traits",
+       "name": "Tiny",
+       "sources": [
+        {
+         "errata": {
+          "alt": "2.0",
+          "game-obj": "Sources",
+          "name": "2.0",
+          "type": "link"
+         },
+         "link": {
+          "alt": "Core Rulebook pg. 474",
+          "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
+          "name": "Core Rulebook pg. 474",
+          "type": "link"
+         },
+         "name": "Core Rulebook",
+         "page": 474,
+         "type": "source"
+        }
+       ],
+       "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
+       "type": "trait"
+      }
+     },
+     {
+      "operation": "replace",
+      "target": "$.creature_type.traits[?(@.name=='Gargantuan')]",
+      "value": {
+       "classes": [
+        "size"
+       ],
+       "edition": "legacy",
+       "game-id": "bb6959f434e4e1dc9ae2c02ca9015792",
+       "game-obj": "Traits",
+       "name": "Tiny",
+       "sources": [
+        {
+         "errata": {
+          "alt": "2.0",
+          "game-obj": "Sources",
+          "name": "2.0",
+          "type": "link"
+         },
+         "link": {
+          "alt": "Core Rulebook pg. 474",
+          "href": "https://paizo.com/products/btq01y0k?Pathfinder-Core-Rulebook",
+          "name": "Core Rulebook pg. 474",
+          "type": "link"
+         },
+         "name": "Core Rulebook",
+         "page": 474,
+         "type": "source"
+        }
+       ],
+       "text": "*Space:* Less than 5 feet, *Reach (Tall):* 0 feet, *Reach (Long):* 0 feet.  Multiple Tiny creatures can occupy the same square.  At least four can fit in a single square, though the GM might determine that even more can fit.  Tiny creatures can occupy a space larger creature as well, and if their reach is 0 feet, they must do so in order to attack.",
+       "type": "trait"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Miniature",
+   "source_type": "monster_template",
+   "change_text": "- Reduce the reach of the creature's lowest-reach melee Strikes to 0 feet. If it has melee Strikes with notable reach (often a tail, tentacle, or similar long appendage), reduce the reach of these Strikes to 5 feet.",
+   "note": "set_reach baseline form: melee strikes without a Reach trait gain the canonical Reach trait at 0 ft (Tiny), notable-reach strikes drop to 5 ft (engine only ever lowers); closes the 0-ft half deferred as u0w4",
+   "enriched": {
+    "change_category": "strikes",
+    "effects": [
+     {
+      "item": {
+       "alternate_link": {
+        "alternate_type": "legacy",
+        "aonid": 192,
+        "game-obj": "Traits",
+        "type": "alternate_link"
+       },
+       "edition": "remastered",
+       "game-id": "1d6143e399ba5d4085ca236a97cf860c",
+       "game-obj": "Traits",
+       "name": "Reach",
+       "sources": [
+        {
+         "errata": {
+          "alt": "2.0",
+          "aonid": 216,
+          "game-obj": "Sources",
+          "name": "2.0",
+          "type": "link"
+         },
+         "link": {
+          "alt": "Player Core pg. 283",
+          "aonid": 216,
+          "game-obj": "Sources",
+          "name": "Player Core pg. 283",
+          "type": "link"
+         },
+         "name": "Player Core",
+         "page": 283,
+         "type": "source"
+        }
+       ],
+       "text": "This weapon can be used to attack enemies up to 10 feet away instead of only adjacent enemies. For creatures with reach, the weapon increases their reach by 5 feet.",
+       "type": "trait"
+      },
+      "operation": "set_reach",
+      "target": "$.offense.offensive_actions[*].attack",
+      "value": {
+       "baseline": 0,
+       "notable": 5
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Sandbound",
+   "source_type": "monster_template",
+   "change_text": "- Add a resistance to fire and a weakness to cold, value dependent on the creature's level (see table below).",
+   "note": "level-banded resistance+weakness pairs from adjustments table prose",
+   "enriched": {
+    "change_category": "weaknesses",
+    "effects": [
+     {
+      "conditional": "$.creature_type.level <= 3",
+      "item": {
+       "name": "fire",
+       "subtype": "resistance",
+       "type": "stat_block_section",
+       "value": 3
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].resistances"
+     },
+     {
+      "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+      "item": {
+       "name": "fire",
+       "subtype": "resistance",
+       "type": "stat_block_section",
+       "value": 5
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].resistances"
+     },
+     {
+      "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+      "item": {
+       "name": "fire",
+       "subtype": "resistance",
+       "type": "stat_block_section",
+       "value": 10
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].resistances"
+     },
+     {
+      "conditional": "$.creature_type.level >= 14",
+      "item": {
+       "name": "fire",
+       "subtype": "resistance",
+       "type": "stat_block_section",
+       "value": 15
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].resistances"
+     },
+     {
+      "conditional": "$.creature_type.level <= 3",
+      "item": {
+       "name": "cold",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 3
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+      "item": {
+       "name": "cold",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 5
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+      "item": {
+       "name": "cold",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 10
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 14",
+      "item": {
+       "name": "cold",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 15
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Sandbound",
+   "source_type": "monster_template",
+   "change_text": "- If the creature doesn't have a burrow Speed, add a burrow Speed equal to half its fastest speed.",
+   "note": "tiered speed grants with presence guards from rules text",
+   "enriched": {
+    "change_category": "speed",
+    "effects": [
+     {
+      "conditional": "$.offense.speed.movement[?(@.movement_type=='burrow')] == null",
+      "item": {
+       "movement_type": "burrow",
+       "name": "burrow",
+       "subtype": "speed",
+       "type": "stat_block_section"
+      },
+      "operation": "add_item",
+      "target": "$.offense.speed.movement",
+      "value_from": "$.offense.speed.movement[*].value | max / 2"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Winged",
+   "source_type": "monster_template",
+   "change_text": "- Add a fly Speed equ al to its highest Speed.",
+   "note": "tiered speed grants; presence guards removed — the engine merges by movement type (keep the faster), so a slower existing speed is bumped and an equal/faster one is left alone",
+   "enriched": {
+    "change_category": "speed",
+    "effects": [
+     {
+      "item": {
+       "movement_type": "fly",
+       "name": "fly",
+       "subtype": "speed",
+       "type": "stat_block_section"
+      },
+      "operation": "add_item",
+      "target": "$.offense.speed.movement",
+      "value_from": "$.offense.speed.movement[*].value | max"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Elite",
+   "source_type": "monster_template",
+   "change_text": "- Increase the creature’s level by 1; if the creature is level –1 or 0, instead increase its level by 2.",
+   "note": "conditional level chain from rules text (level <=0 -> +2 / lvl 1 -> -2, default branch)",
+   "enriched": {
+    "change_category": "level",
+    "effects": [
+     {
+      "conditional": "$.creature_type.level <= 0",
+      "operation": "adjustment",
+      "target": "$.creature_type.level",
+      "value": 2
+     },
+     {
+      "conditional": "default",
+      "operation": "adjustment",
+      "target": "$.creature_type.level",
+      "value": 1
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Weak",
+   "source_type": "monster_template",
+   "change_text": "- Decrease the creature’s level by 1; if the creature is level 1, instead decrease its level by 2.",
+   "note": "conditional level chain from rules text (level <=0 -> +2 / lvl 1 -> -2, default branch)",
+   "enriched": {
+    "change_category": "level",
+    "effects": [
+     {
+      "conditional": "$.creature_type.level == 1",
+      "operation": "adjustment",
+      "target": "$.creature_type.level",
+      "value": -2
+     },
+     {
+      "conditional": "default",
+      "operation": "adjustment",
+      "target": "$.creature_type.level",
+      "value": -1
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Dwarf",
+   "source_type": "monster_template",
+   "change_text": "- Add a clan dagger to their items. Optionally, add a clan dagger melee Strike that deals damage equal to the creature's lowest melee Strike.",
+   "note": "clan dagger gear grant + optional (select min 0) clan dagger add_strike with trait objects",
+   "enriched": {
+    "change_category": "strikes",
+    "effects": [
+     {
+      "item": {
+       "name": "clan dagger",
+       "subtype": "gear",
+       "type": "stat_block_section"
+      },
+      "operation": "add_item",
+      "target": "$.gear"
+     },
+     {
+      "operation": "select",
+      "selection": {
+       "description": "Optionally, add a clan dagger melee Strike that deals damage equal to the creature's lowest melee Strike.",
+       "max": 1,
+       "min": 0,
+       "options": [
+        {
+         "item": {
+          "damage_type": "piercing",
+          "traits": [
+           "Agile",
+           "Parry",
+           {
+            "name": "Versatile",
+            "value": "B"
+           }
+          ],
+          "weapon": "clan dagger"
+         },
+         "name": "Clan Dagger Strike",
+         "operation": "add_strike",
+         "target": "$.offense.offensive_actions"
+        }
+       ],
+       "type": "select"
+      },
+      "target": "$.offense.offensive_actions"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Guerrilla",
+   "source_type": "monster_template",
+   "change_text": "- If the creature has the Athletics skill, reduce its modifier by 2.",
+   "note": "conditional skill adjustment from prose",
+   "enriched": {
+    "change_category": "skills",
+    "effects": [
+     {
+      "conditional": "$.statistics.skills[?(@.name=='Athletics')].value != null",
+      "operation": "adjustment",
+      "target": "$.statistics.skills[?(@.name=='Athletics')].value",
+      "value": -2
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Kholo",
+   "source_type": "monster_template",
+   "change_text": "- Add a jaws Strike. It deals damage equal to the creature's lowest melee Strike.",
+   "note": "derived natural Strike (add_strike) encoding rules text",
+   "enriched": {
+    "change_category": "strikes",
+    "effects": [
+     {
+      "item": {
+       "damage_type": "piercing",
+       "weapon": "jaws"
+      },
+      "operation": "add_strike",
+      "target": "$.offense.offensive_actions"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Ratfolk",
+   "source_type": "monster_template",
+   "change_text": "- Add a jaws Strike. It deals damage equal to the creature's lowest melee Strike and has the agile and finesse traits.",
+   "note": "derived natural Strike (add_strike) encoding rules text",
+   "enriched": {
+    "change_category": "strikes",
+    "effects": [
+     {
+      "item": {
+       "damage_type": "piercing",
+       "traits": [
+        "Agile",
+        "Finesse"
+       ],
+       "weapon": "jaws"
+      },
+      "operation": "add_strike",
+      "target": "$.offense.offensive_actions"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Tengu",
+   "source_type": "monster_template",
+   "change_text": "- Add a beak Strike. It deals damage equal to the creature's lowest melee Strike and has the finesse trait.",
+   "note": "derived natural Strike (add_strike) encoding rules text",
+   "enriched": {
+    "change_category": "strikes",
+    "effects": [
+     {
+      "item": {
+       "damage_type": "piercing",
+       "traits": [
+        "Finesse"
+       ],
+       "weapon": "beak"
+      },
+      "operation": "add_strike",
+      "target": "$.offense.offensive_actions"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Air",
+   "source_type": "monster_template",
+   "change_text": "- If the creature is 8th level or higher, give it a fly Speed of 25 feet. If its level is lower than that, you can give it this fly Speed if it either doesn't have ranged attacks or you remove its ranged attacks; use discretion.",
+   "note": "tiered speed grant; presence guard removed (engine merges by movement type, keep-the-faster); sub-8th GM option surfaced as selection",
+   "enriched": {
+    "change_category": "speed",
+    "effects": [
+     {
+      "conditional": "$.creature_type.level >= 8",
+      "item": {
+       "movement_type": "fly",
+       "name": "fly 25 feet",
+       "subtype": "speed",
+       "type": "stat_block_section",
+       "value": 25
+      },
+      "operation": "add_item",
+      "target": "$.offense.speed.movement"
+     },
+     {
+      "conditional": "$.creature_type.level <= 7",
+      "operation": "select",
+      "target": "$.offense.speed.movement",
+      "selection": {
+       "type": "select",
+       "min": 0,
+       "max": 1,
+       "description": "Below 8th level you can give the creature this fly Speed if it either doesn't have ranged attacks or you remove its ranged attacks; use discretion.",
+       "options": [
+        {
+         "name": "fly Speed 25 feet",
+         "effects": [
+          {
+           "operation": "add_item",
+           "target": "$.offense.speed.movement",
+           "item": {
+            "movement_type": "fly",
+            "name": "fly 25 feet",
+            "subtype": "speed",
+            "type": "stat_block_section",
+            "value": 25
+           }
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Earth",
+   "source_type": "monster_template",
+   "change_text": "- Add tremorsense 60 feet (imprecise).",
+   "note": "sense with parenthetical modifier (imprecise)",
+   "enriched": {
+    "change_category": "senses",
+    "effects": [
+     {
+      "item": {
+       "modifiers": [
+        {
+         "name": "imprecise",
+         "subtype": "modifier",
+         "type": "stat_block_section"
+        }
+       ],
+       "name": "tremorsense",
+       "range": {
+        "range": 60,
+        "subtype": "range",
+        "text": "60 feet",
+        "type": "stat_block_section",
+        "unit": "feet"
+       },
+       "subtype": "special_sense",
+       "type": "stat_block_section"
+      },
+      "operation": "add_item",
+      "target": "$.senses.special_senses"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Earth",
+   "source_type": "monster_template",
+   "change_text": "- Add a burrow Speed of 20 feet, or 40 feet if the creature is 8th level or higher.",
+   "note": "tiered speed grants; presence guards removed — the engine merges by movement type (keep the faster), so a slower existing speed is bumped and an equal/faster one is left alone",
+   "enriched": {
+    "change_category": "speed",
+    "effects": [
+     {
+      "conditional": "$.creature_type.level >= 8",
+      "item": {
+       "movement_type": "burrow",
+       "name": "burrow 40 feet",
+       "subtype": "speed",
+       "type": "stat_block_section",
+       "value": 40
+      },
+      "operation": "add_item",
+      "target": "$.offense.speed.movement"
+     },
+     {
+      "conditional": "$.creature_type.level <= 7",
+      "item": {
+       "movement_type": "burrow",
+       "name": "burrow 20 feet",
+       "subtype": "speed",
+       "type": "stat_block_section",
+       "value": 20
+      },
+      "operation": "add_item",
+      "target": "$.offense.speed.movement"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Fire",
+   "source_type": "monster_template",
+   "change_text": "- If the creature's Strikes deal more than one die of damage, change one die to fire damage. If not, add 1 fire damage to its Strikes.",
+   "note": "replace_one_die per RoE elemental rule; no flat-damage fallback",
+   "enriched": {
+    "change_category": "damage",
+    "effects": [
+     {
+      "operation": "replace_one_die",
+      "target": "$.offense.offensive_actions[*].attack.damage",
+      "value": "fire"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Water",
+   "source_type": "monster_template",
+   "change_text": "- Add a swim Speed of 25 feet, or 40 feet if the creature is 8th level or higher.",
+   "note": "tiered speed grants; presence guards removed — the engine merges by movement type (keep the faster), so a slower existing speed is bumped and an equal/faster one is left alone",
+   "enriched": {
+    "change_category": "speed",
+    "effects": [
+     {
+      "conditional": "$.creature_type.level >= 8",
+      "item": {
+       "movement_type": "swim",
+       "name": "swim 40 feet",
+       "subtype": "speed",
+       "type": "stat_block_section",
+       "value": 40
+      },
+      "operation": "add_item",
+      "target": "$.offense.speed.movement"
+     },
+     {
+      "conditional": "$.creature_type.level <= 7",
+      "item": {
+       "movement_type": "swim",
+       "name": "swim 25 feet",
+       "subtype": "speed",
+       "type": "stat_block_section",
+       "value": 25
+      },
+      "operation": "add_item",
+      "target": "$.offense.speed.movement"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Wood",
+   "source_type": "monster_template",
+   "change_text": "- Add the wood trait. If the creature is a growing plant, you can also add the plant trait.",
+   "note": "GM-discretionary selection / compound add-remove prose",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Wood",
+      "operation": "add_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "operation": "select",
+      "selection": {
+       "description": "If the creature is a growing plant, you can also add the plant trait",
+       "max": 1,
+       "min": 0,
+       "options": [
+        {
+         "name": "Plant",
+         "operation": "add_item",
+         "target": "$.creature_type.creature_types"
+        }
+       ],
+       "type": "select"
+      },
+      "target": "$.creature_type.creature_types"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Wood",
+   "source_type": "monster_template",
+   "change_text": "- Add weaknesses to fire and to damage from axes depending on its level.",
+   "note": "level-banded resistance+weakness pairs from adjustments table prose",
+   "enriched": {
+    "change_category": "weaknesses",
+    "effects": [
+     {
+      "conditional": "$.creature_type.level <= 3",
+      "item": {
+       "name": "fire",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 3
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level <= 3",
+      "item": {
+       "name": "axes",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 3
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+      "item": {
+       "name": "fire",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 5
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 4 && $.creature_type.level <= 8",
+      "item": {
+       "name": "axes",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 5
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+      "item": {
+       "name": "fire",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 10
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 9 && $.creature_type.level <= 13",
+      "item": {
+       "name": "axes",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 10
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 14",
+      "item": {
+       "name": "fire",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 15
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     },
+     {
+      "conditional": "$.creature_type.level >= 14",
+      "item": {
+       "name": "axes",
+       "subtype": "weakness",
+       "type": "stat_block_section",
+       "value": 15
+      },
+      "operation": "add_item",
+      "target": "$.defense.hitpoints[*].weaknesses"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Tengu",
+   "source_type": "monster_template",
+   "change_text": "- Add the following abilities.  **Low-Light Vision**",
+   "note": "route change-attached abilities into the pool; engine diverts known senses at apply time",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_items",
+      "source": "$.changes[*].abilities",
+      "target": "$.defense.automatic_abilities"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Corrupt",
+   "source_type": "monster_template",
+   "change_text": "- Choose an Intelligence-, Wisdom-, or Charisma-based skill that's thematically important to the creature's office, such as Legal Lore for a judge. The creature gains the official bully ability for that skill.",
+   "note": "deliberate deviation from template-fixes: replaces the junk 'Official Bully Ability For That' skill artifact with the ability routing the fabricated block carried",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_items",
+      "source": "$.abilities[?(@.name=='Official Bully')]",
+      "target": "$.interaction_abilities"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Compulsions</b> Vampires are creatures of strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless it is transported while it hides within its coffin, nor can it enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome its compulsion just as it does its revulsion (see below).</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Compulsions",
+       "text": "Vampires are creatures of strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless it is transported while it hides within its coffin, nor can it enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome its compulsion just as it does its revulsion (see below)."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Revulsion</b> A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of its revulsion, it gains the fleeing condition, running from the object of its revulsion until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Revulsion",
+       "text": "A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of its revulsion, it gains the fleeing condition, running from the object of its revulsion until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success)."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Sunlight</b> If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends its turn in sunlight. If the vampire loses all its actions in this way, it is destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Sunlight",
+       "text": "If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends its turn in sunlight. If the vampire loses all its actions in this way, it is destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Vrykolakas",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Vulnerable to Decapitation</b> A vrykolakas that is beheaded can't use its Feral Possession, and a beheaded corpse cannot rise as a vrykolakas.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Vulnerable to Decapitation",
+       "text": "A vrykolakas that is beheaded can't use its Feral Possession, and a beheaded corpse cannot rise as a vrykolakas."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Nosferatu",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Revulsion</b> A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raise a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Revulsion",
+       "text": "A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a non-evil deity. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raise a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Nosferatu",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Sunlight</b> If exposed to direct sunlight, a nosferatu immediately becomes slowed 1. The slowed value increases by 1 each time the nosferatu ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the nosferatu loses all their actions in this way, they're destroyed.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Sunlight",
+       "text": "If exposed to direct sunlight, a nosferatu immediately becomes slowed 1. The slowed value increases by 1 each time the nosferatu ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the nosferatu loses all their actions in this way, they're destroyed."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Jiang-Shi",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Revulsion</b> A jiang-shi can't voluntarily come within 10 feet of a brandished mirror or the sound of ringing handbells. A creature can Interact with a mirror or handbell to brandish or ring that item for 1 round (similar to Raising a Shield). If the jiang-shi involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they are 10 feet or farther from the object. After 1 round of being exposed to the object of their revulsion, a jiang-shi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Revulsion",
+       "text": "A jiang-shi can't voluntarily come within 10 feet of a brandished mirror or the sound of ringing handbells. A creature can Interact with a mirror or handbell to brandish or ring that item for 1 round (similar to Raising a Shield). If the jiang-shi involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they are 10 feet or farther from the object. After 1 round of being exposed to the object of their revulsion, a jiang-shi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Jiang-Shi",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Bitter Epiphany</b> A jiang-shi is afflicted by severe melancholia when reminded of their debased nature and the truth of their existential disconnection from living beings. When a jiang-shi sees an altar with at least 1 Bulk of food offerings to ancestor spirits, they must attempt a DC 25 Will save. They are then temporarily immune to bitter epiphany for 1 minute.<br/><b>Critical Success</b> The jiang-shi is unaffected.<br/><b>Success</b> The jiang-shi is stupefied 1 for 1 round.<br/><b>Failure</b> The jiang-shi is stupefied 2 for 1 minute.<br/><b>Critical Failure</b> The jiang-shi is stupefied 2 and confused for 1 minute. </li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Bitter Epiphany",
+       "text": "A jiang-shi is afflicted by severe melancholia when reminded of their debased nature and the truth of their existential disconnection from living beings. When a jiang-shi sees an altar with at least 1 Bulk of food offerings to ancestor spirits, they must attempt a DC 25 Will save. They are then temporarily immune to bitter epiphany for 1 minute.Critical Success The jiang-shi is unaffected.Success The jiang-shi is stupefied 1 for 1 round.Failure The jiang-shi is stupefied 2 for 1 minute.Critical Failure The jiang-shi is stupefied 2 and confused for 1 minute."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Vetalarana",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Barred Senses</b> A vetalarana can't see or sense through force effects or cold iron, and their mind can't penetrate force effects or cold iron. Such barriers can prevent the transference of a vetalarana's mind through Mental Rebirth.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Barred Senses",
+       "text": "A vetalarana can't see or sense through force effects or cold iron, and their mind can't penetrate force effects or cold iron. Such barriers can prevent the transference of a vetalarana's mind through Mental Rebirth."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Vetalarana",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Revulsion</b> A vetalarana delights in consuming memories and secrets, and is disgusted by those who share such sensitive tidbits openly. A vetalarana can't voluntarily come within 10 feet of a creature loudly voicing their intimate personal secrets or most cherished memories aloud. Speaking such information aloud with conviction is a single action that has the auditory, concentrate, and linguistic traits, and protects the creature until the start of its next turn. A vetalarana that involuntarily comes within 10 feet of a creature sharing such information gains the fleeing condition until they're 10 feet or farther from the creature. After 1 round of being exposed to the secrets of a creature, a vetalarana can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Revulsion",
+       "text": "A vetalarana delights in consuming memories and secrets, and is disgusted by those who share such sensitive tidbits openly. A vetalarana can't voluntarily come within 10 feet of a creature loudly voicing their intimate personal secrets or most cherished memories aloud. Speaking such information aloud with conviction is a single action that has the auditory, concentrate, and linguistic traits, and protects the creature until the start of its next turn. A vetalarana that involuntarily comes within 10 feet of a creature sharing such information gains the fleeing condition until they're 10 feet or farther from the creature. After 1 round of being exposed to the secrets of a creature, a vetalarana can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Strigoi",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Revulsion</b> Strigoi are uncomfortable near mirrors or sources of bright light. Only a strigoi's shadow reflects in a mirror, and this often compels them to cover or destroy mirrors in their presence rather than risk their true nature being displayed. A strigoi can't voluntarily come within 10 feet of a brandished mirror or source of bright light. To brandish a mirror or light source, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the strigoi involuntarily comes within 10 feet of a brandished mirror or light source, it gains the fleeing condition, running from the brandished object until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a strigoi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success). A strigoi can move normally around mirrors or bright light sources that are not brandished, although doing so causes them discomfort that can be noticed with a successful Perception check to Sense Motive.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Revulsion",
+       "text": "Strigoi are uncomfortable near mirrors or sources of bright light. Only a strigoi's shadow reflects in a mirror, and this often compels them to cover or destroy mirrors in their presence rather than risk their true nature being displayed. A strigoi can't voluntarily come within 10 feet of a brandished mirror or source of bright light. To brandish a mirror or light source, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the strigoi involuntarily comes within 10 feet of a brandished mirror or light source, it gains the fleeing condition, running from the brandished object until it ends an action beyond 10 feet. After 1 round of being exposed to the subject of its revulsion, a strigoi can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, it overcomes its revulsions for 1d6 rounds (or 1 hour on a critical success). A strigoi can move normally around mirrors or bright light sources that are not brandished, although doing so causes them discomfort that can be noticed with a successful Perception check to Sense Motive."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Strigoi",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Water Revulsion</b> A strigoi cannot cross a significant source of running water (such as a creek, river, or waves on a seashore). A strigoi capable of flight can cross running water provided it approaches no closer than 10 feet to the liquid's surface. If forced into running water against its will, the strigoi becomes slowed 2 and gains the fleeing condition as long as it remains in the water. At the end of any turn in which the strigoi remains in running water, it must succeed at a DC 5 flat check or be destroyed.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Water Revulsion",
+       "text": "A strigoi cannot cross a significant source of running water (such as a creek, river, or waves on a seashore). A strigoi capable of flight can cross running water provided it approaches no closer than 10 feet to the liquid's surface. If forced into running water against its will, the strigoi becomes slowed 2 and gains the fleeing condition as long as it remains in the water. At the end of any turn in which the strigoi remains in running water, it must succeed at a DC 5 flat check or be destroyed."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Harrowkin",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Hammers</b> The harrowkin gains a +2 status bonus to damage rolls.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Hammers",
+       "text": "The harrowkin gains a +2 status bonus to damage rolls."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Harrowkin",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Keys</b> The harrowkin gains a +1 status bonus to AC.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Keys",
+       "text": "The harrowkin gains a +1 status bonus to AC."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Harrowkin",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Shields</b> The harrowkin gains fast healing 5.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Shields",
+       "text": "The harrowkin gains fast healing 5."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Harrowkin",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Stars</b> The harrowkin gains a +1 status bonus to saving throws.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Stars",
+       "text": "The harrowkin gains a +1 status bonus to saving throws."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Harrowkin",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Crown</b> The harrowkin can reroll 1 check within the next minute and take the higher result. This is a fortune effect.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Crown",
+       "text": "The harrowkin can reroll 1 check within the next minute and take the higher result. This is a fortune effect."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Dragon, Omen",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Assured Fate</b> (fortune) When the omen dragon rolls initiative, instead of rolling, they can choose to have a result equal to 13 + their initiative modifier.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Assured Fate",
+       "text": "(fortune) When the omen dragon rolls initiative, instead of rolling, they can choose to have a result equal to 13 + their initiative modifier."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Dragon, Omen",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Instinctive Challenge</b> During an encounter, the fortune dragon gains an additional reaction at the start of their turn that can be used only for Challenge Fate.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Instinctive Challenge",
+       "text": "During an encounter, the fortune dragon gains an additional reaction at the start of their turn that can be used only for Challenge Fate."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Compulsions</b> Vampires are creatures with strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless they're transported while they hide within their coffin, nor can they enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome their compulsion just as they do their revulsion (see below).</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Compulsions",
+       "text": "Vampires are creatures with strange and unknowable compulsions. A typical vampire can't voluntarily cross running water unless they're transported while they hide within their coffin, nor can they enter a private dwelling unless invited in by someone with the authority to do so. At your discretion, vampires might have different compulsions—a pirate vampire might not be able to set foot on solid ground without being invited, for example. The vampire can still be forced to do these things and might be able to overcome their compulsion just as they do their revulsion (see below)."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Revulsion</b> A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so, and it remains brandished for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Revulsion",
+       "text": "A vampire can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so, and it remains brandished for 1 round (similar to Raising a Shield). If the vampire involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a vampire can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Sunlight</b> If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the vampire loses all their actions in this way, they're destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors.</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Sunlight",
+       "text": "If exposed to direct sunlight, a vampire immediately becomes slowed 1. The slowed value increases by 1 each time the vampire ends their turn in sunlight, and the condition ends when they're no longer in sunlight. If the vampire loses all their actions in this way, they're destroyed. Due to their supernatural aversion to light, vampires don't cast shadows or show a reflection in mirrors."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Nosferatu",
+   "source_type": "monster_family",
+   "change_text": "<li><b>Revulsion</b> A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success).</li>",
+   "note": "weakness/variant ability grant from li fragment: add_item automatic_abilities (name from bold lead)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_item",
+      "target": "$.defense.automatic_abilities",
+      "item": {
+       "type": "stat_block_section",
+       "subtype": "ability",
+       "ability_type": "automatic",
+       "name": "Revulsion",
+       "text": "A nosferatu can't voluntarily come within 10 feet of brandished garlic or a brandished religious symbol of a deity with a holy sanctification option. To brandish garlic or a religious symbol, a creature must Interact to do so for 1 round (similar to Raising a Shield). If the nosferatu involuntarily comes within 10 feet of an object of their revulsion, they gain the fleeing condition, running from the object of their revulsion until they end an action beyond 10 feet. After 1 round of being exposed to the subject of their revulsion, a nosferatu can attempt a DC 25 Will save as a single action, which has the concentrate trait. On a success, they overcome their revulsions for 1d6 rounds (or 1 hour on a critical success)."
+      }
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Lich",
+   "source_type": "monster_family",
+   "change_text": "Liches lose all abilities that come from being a living creature. They also lose any traits that represented their life as a living creature, such as human and humanoid.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment; abilities-loss half of the sentence is GM judgment (documented shortfall)",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Ghoul",
+   "source_type": "monster_family",
+   "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire",
+   "source_type": "monster_family",
+   "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Vrykolakas",
+   "source_type": "monster_family",
+   "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Phantom",
+   "source_type": "monster_family",
+   "change_text": "You can turn an existing living creature into a phantom by trading their usual traits for the ethereal, incorporeal, and spirit traits.",
+   "note": "phantom transform: adds encoded; 'usual traits' removal is GM judgment (documented shortfall)",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Ethereal",
+      "operation": "add_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Incorporeal",
+      "operation": "add_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Spirit",
+      "operation": "add_item",
+      "target": "$.creature_type.creature_types"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Nosferatu",
+   "source_type": "monster_family",
+   "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Jiang-Shi",
+   "source_type": "monster_family",
+   "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Vetalarana",
+   "source_type": "monster_family",
+   "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Vampire, Strigoi",
+   "source_type": "monster_family",
+   "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Blackfrost Dead",
+   "source_type": "monster_family",
+   "change_text": "As blackfrost dead stem from blackfrost itself, all blackfrost dead have the rare trait.",
+   "note": "universal rarity add",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Rare",
+      "operation": "add_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Ghost",
+   "source_type": "monster_family",
+   "change_text": "The base creature loses any traits that represented its life as a living creature, such as human and humanoid, and any abilities or traits that rely on it being a living, corporeal creature.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment; abilities-loss half of the sentence is GM judgment (documented shortfall)",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Ghoul",
+   "source_type": "monster_family",
+   "change_text": "It also loses any traits that represent its life as a living creature, such as human and humanoid.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Floodslain Creature",
+   "source_type": "monster_family",
+   "change_text": "It also loses any traits that represented its life as a living creature, such as human and humanoid.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Failed Prophet",
+   "source_type": "monster_family",
+   "change_text": "It also loses any traits that represented its life prior to the transformation, such as human or humanoid.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Swarm Strider",
+   "source_type": "monster_family",
+   "change_text": "They lose any traits that represent their former life, such as human and humanoid, though they usually remain the same size, keep the same items, and use the same weapons as they did before their rebirth.",
+   "note": "exemplary trait loss: encode the canonical Human/Humanoid removals (remove-if-present); other life-traits are GM judgment",
+   "enriched": {
+    "change_category": "traits",
+    "effects": [
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Human",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.creature_types"
+     },
+     {
+      "name": "Humanoid",
+      "operation": "remove_item",
+      "target": "$.creature_type.traits"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Nymph",
+   "source_type": "monster_family",
+   "change_text": "She gains the Inspiration ability, allowing her to bestow a gift of inspiration on those who catch her fancy, and the Change Shape ability to change her form.",
+   "note": "queen ability grant: source points at the 'Nymph Queen Abilities' section pool (was $.changes[*].abilities, empty)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_items",
+      "target": "$.defense.automatic_abilities",
+      "source": "$.sections[?(@.name=='Nymph Queen Abilities')].abilities"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Nymph",
+   "source_type": "monster_family",
+   "change_text": "She gains the Inspiration ability, allowing her to bestow a gift of inspiration on those who catch her fancy, and the Change Shape ability to change her form.",
+   "note": "queen ability grant: source points at the 'Nymph Queen Abilities' section pool (was $.changes[*].abilities, empty)",
+   "enriched": {
+    "change_category": "abilities",
+    "effects": [
+     {
+      "operation": "add_items",
+      "target": "$.defense.automatic_abilities",
+      "source": "$.sections[?(@.name=='Nymph Queen Abilities')].abilities"
+     }
+    ]
+   }
+  },
+  {
+   "source_name": "Werecreature",
+   "source_type": "monster_family",
+   "change_text": "<li>Increase its size by one category if the animal is a larger size than the base humanoid.</li>",
+   "note": "deliberately effect-less: conditional_on_choice — see matching quarantine entry",
+   "enriched": {
+    "change_category": "size",
+    "effects": []
+   }
+  },
+  {
+   "source_name": "Woodblessed",
+   "source_type": "monster_family",
+   "change_text": "<li>It gains a splinter ranged Strike that deals piercing damage, is in the brawling group, and has a range increment of 30 feet.</li>",
+   "note": "deliberately effect-less: add_strike_ranged_pending — see matching quarantine entry",
+   "enriched": {
+    "change_category": "strikes",
+    "effects": []
+   }
+  }
+ ],
+ "quarantines": [
+  {
+   "source_name": "Ravener",
+   "source_type": "monster_family",
+   "change_text": "<li><b>10th</b> <i>wish</i></li>",
+   "reason": "spell_list_encoding: innate spell rank lists pending spells-op support"
+  },
+  {
+   "source_name": "Ravener",
+   "source_type": "monster_family",
+   "change_text": "<li><b>9th</b> <i>power word kill</i>, <i>telepathic demand</i>, <i>weird</i></li>",
+   "reason": "spell_list_encoding: innate spell rank lists pending spells-op support"
+  },
+  {
+   "source_name": "Ravener",
+   "source_type": "monster_family",
+   "change_text": "<li><b>8th</b> <i>disappearance</i>, <i>maze</i>, <i>mind blank</i></li>",
+   "reason": "spell_list_encoding: innate spell rank lists pending spells-op support"
+  },
+  {
+   "source_name": "Ghoul",
+   "source_type": "monster_family",
+   "change_text": "If the base creature has any abilities that come from it being a living creature, it loses them.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Nymph",
+   "source_type": "monster_family",
+   "change_text": "Nymph queens are not dependent on their wards and lose the corresponding ability (such as a dryad’s tree dependent ability); instead, they gain the tied to the land ability, as described below.",
+   "reason": "gm_judgment_loss: removes a per-creature named ward ability (e.g. dryad's tree dependent)"
+  },
+  {
+   "source_name": "Vampire",
+   "source_type": "monster_family",
+   "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Vampire, Vrykolakas",
+   "source_type": "monster_family",
+   "change_text": "If the base creature becoming a vrykolakas has any abilities that specifically come from it being a living creature, it loses them.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Vampire, Nosferatu",
+   "source_type": "monster_family",
+   "change_text": "If the base creature becoming a nosferatu has any abilities that specifically come from it being a living creature, it loses them.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Vampire, Jiang-Shi",
+   "source_type": "monster_family",
+   "change_text": "If the base creature becoming a jiang-shi has any abilities that specifically come from it being a living creature, it loses them.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Vampire, Vetalarana",
+   "source_type": "monster_family",
+   "change_text": "If the base creature has any abilities that specifically come from being a living creature, it loses them.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Vampire, Strigoi",
+   "source_type": "monster_family",
+   "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Nymph",
+   "source_type": "monster_family",
+   "change_text": "Nymph queens are not dependent on their wards and lose the corresponding ability (such as a dryad's tree dependent ability); instead, they gain the tied to the land ability, as described below.",
+   "reason": "gm_judgment_loss: removes a per-creature named ward ability (e.g. dryad's tree dependent)"
+  },
+  {
+   "source_name": "Floodslain Creature",
+   "source_type": "monster_family",
+   "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Failed Prophet",
+   "source_type": "monster_family",
+   "change_text": "If the base creature has any abilities that specifically come from it being a living creature, it loses them.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Lich",
+   "source_type": "monster_family",
+   "change_text": "Liches lose all abilities that come from being a living creature.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Worm That Walks",
+   "source_type": "monster_family",
+   "change_text": "A worm that walks loses any abilities that came from its previous physical form and any traits that represent its life, such as human and humanoid.",
+   "reason": "gm_judgment_loss: non-enumerable loss/transform prose"
+  },
+  {
+   "source_name": "Graveknight",
+   "source_type": "monster_family",
+   "change_text": "It loses any abilities that come from it being a living creature and any traits that represent its life, such as human and humanoid.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Siabrae",
+   "source_type": "monster_family",
+   "change_text": "Siabraes lose all abilities that specifically come from being a living creature of their original kind.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Graveknight",
+   "source_type": "monster_family",
+   "change_text": "They lose any abilities that come from being a living creature and any traits that represent their life, such as human and humanoid.",
+   "reason": "gm_judgment_loss: which abilities come from being alive is a per-creature GM call"
+  },
+  {
+   "source_name": "Nymph",
+   "source_type": "monster_family",
+   "change_text": "<b>Change Shape</b> [one-action]  (polymorph, primal, transmutation) Nymph queens can transform between their original form, which looks much like a typical nymph of their kind, and any Small or Medium humanoid form, typically choosing a more humanoid-looking version of their natural form.",
+   "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
+  },
+  {
+   "source_name": "Vampire, Jiang-Shi",
+   "source_type": "monster_family",
+   "change_text": "Ministers gain additional jiang-shi abilities, as detailed below. A creature below level 13 is not significant enough to become a minister—you should instead simply make such a creature into a regular jiang-shi or rebuild the creature so that it's at least level 13 before becoming a minister.",
+   "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
+  },
+  {
+   "source_name": "Vampire, Vetalarana",
+   "source_type": "monster_family",
+   "change_text": "Vetalarana manipulators gain additional abilities, as detailed below. A creature below 10th level isn't powerful enough to become a vetalarana manipulator; instead, make such a creature into a regular vetalarana or rebuild the creature so that it's at least 10th level before making it a vetalarana manipulator.",
+   "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
+  },
+  {
+   "source_name": "Nymph",
+   "source_type": "monster_family",
+   "change_text": "<b>Change Shape</b> [one-action]  (polymorph, primal) Nymph queens can transform between their original form, which looks much like a typical nymph of their kind, and any Small or Medium humanoid form, typically choosing a more humanoid-looking version of their natural form.",
+   "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
+  },
+  {
+   "source_name": "Divine Warden",
+   "source_type": "monster_family",
+   "change_text": "A divine warden retains any abilities it had previously, and it gains the abilities listed below.",
+   "reason": "orphaned_by_reparse: text no longer extracted (grant markers / conditionals excluded by design); record retained for audit"
+  },
+  {
+   "source_name": "Werecreature",
+   "source_type": "monster_family",
+   "change_text": "<li>Increase its size by one category if the animal is a larger size than the base humanoid.</li>",
+   "reason": "conditional_on_choice: size bump depends on the chosen animal being larger than the base humanoid — engine cannot know the animal"
+  },
+  {
+   "source_name": "Woodblessed",
+   "source_type": "monster_family",
+   "change_text": "<li>It gains a splinter ranged Strike that deals piercing damage, is in the brawling group, and has a range increment of 30 feet.</li>",
+   "reason": "add_strike_ranged_pending: engine add_strike derives from melee Strikes only; ranged derivation is a documented shortfall"
+  },
+  {
+   "source_name": "Skeleton",
+   "source_type": "monster_family",
+   "change_text": "(Gargantuan skeletons can use skeletal hulk with the elite template, Gargantuan size, and 5 feet more reach.) Add Strikes, Speeds, or other abilities it would gain from its shape.",
+   "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
+  },
+  {
+   "source_name": "Zombie",
+   "source_type": "monster_family",
+   "change_text": "Then add any Strikes, Speeds, or other abilities it would gain from its shape.",
+   "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
+  },
+  {
+   "source_name": "Skeleton",
+   "source_type": "monster_family",
+   "change_text": "(Gargantuan skeletons can use skeletal hulk with the elite adjustments, Gargantuan size, and 5 feet more reach.) Add Strikes, Speeds, or other abilities it would gain from its shape.",
+   "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
+  },
+  {
+   "source_name": "Skeleton",
+   "source_type": "monster_family",
+   "change_text": "Add Strikes, Speeds, or other abilities it would gain from its shape.",
+   "reason": "gm_judgment_shape: Strikes/Speeds/abilities depend on the base creature's shape — per-creature GM content, engine cannot enumerate"
+  }
+ ]
 }
