@@ -592,9 +592,7 @@ def _classify_optional_traits(text, trait_names):
 
 
 _STRIKE_TRAIT_TARGET = "$.offense.offensive_actions[*].attack.traits"
-_MELEE_TRAIT_TARGET = (
-    "$.offense.offensive_actions[?(@.attack.attack_type=='melee')].attack.traits"
-)
+_MELEE_TRAIT_TARGET = "$.offense.offensive_actions[?(@.attack.attack_type=='melee')].attack.traits"
 
 
 def _build_strike_trait_effects(text):
@@ -610,12 +608,13 @@ def _build_strike_trait_effects(text):
         return any(a <= pos < b for a, b in melee_spans)
 
     effects = []
-    for m in re.finditer(r"the ((?:[a-z'-]+)(?:,? (?:and )?[a-z'-]+)*?) traits?\b", t):
+    # list items must be joined by explicit separators (", ", " and ",
+    # ", and ") so the lazy repetition cannot swallow sentence words
+    # ("the creature's strikes gain the magical")
+    for m in re.finditer(r"the ((?:[a-z'-]+)(?:(?:, | and |, and )[a-z'-]+)*?) traits?\b", t):
         for name in re.split(r",| and ", m.group(1)):
             name = name.strip()
-            # a "name" with internal whitespace means the lazy match swallowed
-            # sentence words ("creature's strikes gain the magical") — not a trait
-            if not name or name == "the" or " " in name:
+            if not name or name == "the":
                 continue
             effects.append(
                 {
