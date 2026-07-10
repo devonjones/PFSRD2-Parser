@@ -11,6 +11,7 @@ from pfsrd2.spell import (
     _extract_stat_fields,
     _extract_traits,
     _label_to_key,
+    _normalize_title_case,
     _parse_heightened_label,
     _split_on_hr,
     find_spell,
@@ -498,3 +499,25 @@ class TestClassifyCastText:
         _classify_cast_text(cast_obj, "", [])
         assert "time" not in cast_obj
         assert "note" not in cast_obj
+
+
+class TestTitleNormalization:
+    def test_minor_words_lowercase_mid_title(self):
+        assert _normalize_title_case("Arms Of Nature") == "Arms of Nature"
+        assert _normalize_title_case("Show The Way") == "Show the Way"
+        assert _normalize_title_case("Bounty of The Sky") == "Bounty of the Sky"
+
+    def test_first_and_last_words_untouched(self):
+        assert _normalize_title_case("The Four Hunters") == "The Four Hunters"
+        assert _normalize_title_case("Attacked From Within") == "Attacked from Within"
+
+    def test_never_capitalizes(self):
+        assert _normalize_title_case("gale blast") == "gale blast"
+
+    def test_phrase_start_after_punctuation_keeps_case(self):
+        assert _normalize_title_case("For Love, For Lightning") == "For Love, For Lightning"
+
+    def test_strip_then_normalize_order(self):
+        # trailing-conjunction strip runs first, so normalization sees the
+        # final word positions ("Way" last, "The" mid)
+        assert _clean_spell_name("Show The Way or") == "Show the Way"
