@@ -4,7 +4,6 @@ import pytest
 from bs4 import BeautifulSoup
 
 from pfsrd2.spell import (
-from pfsrd2.spell import _normalize_title_case
     _classify_cast_text,
     _clean_spell_name,
     _extract_heightened,
@@ -12,6 +11,7 @@ from pfsrd2.spell import _normalize_title_case
     _extract_stat_fields,
     _extract_traits,
     _label_to_key,
+    _normalize_title_case,
     _parse_heightened_label,
     _split_on_hr,
     find_spell,
@@ -520,5 +520,4 @@ class TestTitleNormalization:
     def test_strip_then_normalize_order(self):
         # trailing-conjunction strip runs first, so normalization sees the
         # final word positions ("Way" last, "The" mid)
-        from pfsrd2.spell import _clean_spell_name
         assert _clean_spell_name("Show The Way or") == "Show the Way"
