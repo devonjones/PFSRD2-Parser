@@ -299,8 +299,22 @@ def spell_struct_pass(struct):
 # Minor words that stay lowercase mid-title (AoN page titles capitalize
 # them inconsistently: "Arms Of Nature" vs "Arms of Nature", "Show The Way").
 _TITLE_MINOR_WORDS = {
-    "a", "an", "and", "at", "but", "by", "for", "from", "in", "nor",
-    "of", "on", "or", "the", "to", "with",
+    "a",
+    "an",
+    "and",
+    "at",
+    "but",
+    "by",
+    "for",
+    "from",
+    "in",
+    "nor",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
 }
 
 
