@@ -4,6 +4,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from pfsrd2.spell import (
+from pfsrd2.spell import _normalize_title_case
     _classify_cast_text,
     _clean_spell_name,
     _extract_heightened,
@@ -500,9 +501,6 @@ class TestClassifyCastText:
         assert "note" not in cast_obj
 
 
-from pfsrd2.spell import _normalize_title_case
-
-
 class TestTitleNormalization:
     def test_minor_words_lowercase_mid_title(self):
         assert _normalize_title_case("Arms Of Nature") == "Arms of Nature"
@@ -518,3 +516,9 @@ class TestTitleNormalization:
 
     def test_phrase_start_after_punctuation_keeps_case(self):
         assert _normalize_title_case("For Love, For Lightning") == "For Love, For Lightning"
+
+    def test_strip_then_normalize_order(self):
+        # trailing-conjunction strip runs first, so normalization sees the
+        # final word positions ("Way" last, "The" mid)
+        from pfsrd2.spell import _clean_spell_name
+        assert _clean_spell_name("Show The Way or") == "Show the Way"
