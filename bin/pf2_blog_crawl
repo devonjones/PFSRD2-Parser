@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Crawl the Paizo blog and record image provenance (pass 1).
+
+Usage:
+    pf2_blog_crawl [--year YYYY] [--limit N] [--enumerate-only]
+        [-o DATA_DIR] [--cache CACHE_DIR]
+
+Resumable: enumeration state + failure log live in CACHE_DIR/state.json;
+post HTML is cached; posts with all sidecars present are skipped.
+"""
+import argparse
+import json
+import os
+import sys
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(script_dir, ".."))
+
+from pfsrd2.blog_provenance import enumerate_posts, harvest_post  # noqa: E402
+
+DEFAULT_CACHE = os.path.expanduser("~/MasterworkTools/pfsrd2/pfsrd2-web/paizo.com/blog")
+DEFAULT_DATA = os.path.expanduser("~/MasterworkTools/pfsrd2/pfsrd2-data")
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("-o", "--data-dir", default=DEFAULT_DATA)
+    p.add_argument("--cache", default=DEFAULT_CACHE)
+    p.add_argument("--year", type=int, help="only this archive year")
+    p.add_argument("--limit", type=int, help="stop after N posts harvested")
+    p.add_argument("--enumerate-only", action="store_true")
+    args = p.parse_args()
+
+    os.makedirs(args.cache, exist_ok=True)
+    state_path = os.path.join(args.cache, "state.json")
+    state = {}
+    if os.path.exists(state_path):
+        state = json.load(open(state_path))
+
+    def save_state():
+        json.dump(state, open(state_path, "w"), indent=1)
+
+    print("Enumerating blog archives …", flush=True)
+    posts = enumerate_posts(state)
+    save_state()
+    print(f"Total posts known: {len(posts)}", flush=True)
+    if args.enumerate_only:
+        return
+
+    todo = sorted(posts.items(), key=lambda kv: (kv[1], kv[0]))
+    if args.year:
+        todo = [(s, y) for s, y in todo if y == args.year]
+
+    harvested = 0
+    total_imgs = 0
+    for i, (slug, year) in enumerate(todo, 1):
+        try:
+            written, found = harvest_post(slug, year, args.cache, args.data_dir, state)
+        except Exception as exc:  # noqa: BLE001 — log and continue the crawl
+            print(f"  ERROR {slug}: {exc}", flush=True)
+            state.setdefault("post_failures", []).append({"post": slug, "error": str(exc)})
+            save_state()
+            continue
+        total_imgs += written
+        if written or i % 100 == 0:
+            print(
+                f"[{i}/{len(todo)}] {year}/{slug}: " f"{written} new image(s) (of {found})",
+                flush=True,
+            )
+        if written:
+            harvested += 1
+            save_state()
+        if args.limit and harvested >= args.limit:
+            print(f"--limit {args.limit} reached", flush=True)
+            break
+    save_state()
+    print(
+        f"Done. {harvested} posts yielded {total_imgs} new images. "
+        f"Failures: {len(state.get('image_failures', []))} image, "
+        f"{len(state.get('post_failures', []))} post.",
+        flush=True,
+    )
+
+
+if __name__ == "__main__":
+    main()
