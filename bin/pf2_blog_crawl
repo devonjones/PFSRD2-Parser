@@ -16,7 +16,13 @@ import sys
 script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(script_dir, ".."))
 
-from pfsrd2.blog_provenance import enumerate_posts, harvest_post  # noqa: E402
+from pfsrd2.blog_provenance import (  # noqa: E402
+    enumerate_posts,
+    fetch_delivery_token,
+    harvest_cms_post,
+    harvest_post,
+    kontent_iter_posts,
+)
 
 DEFAULT_CACHE = os.path.expanduser("~/MasterworkTools/pfsrd2/pfsrd2-web/paizo.com/blog")
 DEFAULT_DATA = os.path.expanduser("~/MasterworkTools/pfsrd2/pfsrd2-data")
@@ -29,6 +35,13 @@ def main():
     p.add_argument("--year", type=int, help="only this archive year")
     p.add_argument("--limit", type=int, help="stop after N posts harvested")
     p.add_argument("--enumerate-only", action="store_true")
+    p.add_argument(
+        "--source",
+        choices=("cms", "html"),
+        default="cms",
+        help="cms = Kontent delivery API (richer: dates, artist attribution, "
+        "entity refs); html = public rendered pages",
+    )
     args = p.parse_args()
 
     os.makedirs(args.cache, exist_ok=True)
@@ -39,6 +52,48 @@ def main():
 
     def save_state():
         json.dump(state, open(state_path, "w"), indent=1)
+
+    harvested = 0
+    total_imgs = 0
+
+    if args.source == "cms":
+        print("Fetching Kontent delivery token …", flush=True)
+        token = fetch_delivery_token()
+        print("Streaming published posts from the CMS …", flush=True)
+        i = 0
+        for item, mods in kontent_iter_posts(token):
+            i += 1
+            slug = item["elements"]["url_slug"]["value"]
+            pd = (item["elements"].get("post_date", {}) or {}).get("value") or ""
+            if args.year and not pd.startswith(str(args.year)):
+                continue
+            try:
+                written, found = harvest_cms_post(item, mods, args.data_dir, state)
+            except Exception as exc:  # noqa: BLE001 — log and continue
+                print(f"  ERROR {slug}: {exc}", flush=True)
+                state.setdefault("post_failures", []).append({"post": slug, "error": str(exc)})
+                save_state()
+                continue
+            total_imgs += written
+            if written or i % 100 == 0:
+                print(
+                    f"[{i}] {pd[:10]} {slug}: {written} new image(s) (of {found})",
+                    flush=True,
+                )
+            if written:
+                harvested += 1
+                save_state()
+            if args.limit and harvested >= args.limit:
+                print(f"--limit {args.limit} reached", flush=True)
+                break
+        save_state()
+        print(
+            f"Done. {harvested} posts yielded {total_imgs} new images. "
+            f"Failures: {len(state.get('image_failures', []))} image, "
+            f"{len(state.get('post_failures', []))} post.",
+            flush=True,
+        )
+        return
 
     print("Enumerating blog archives …", flush=True)
     posts = enumerate_posts(state)
@@ -51,8 +106,6 @@ def main():
     if args.year:
         todo = [(s, y) for s, y in todo if y == args.year]
 
-    harvested = 0
-    total_imgs = 0
     for i, (slug, year) in enumerate(todo, 1):
         try:
             written, found = harvest_post(slug, year, args.cache, args.data_dir, state)
