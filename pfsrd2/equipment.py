@@ -386,6 +386,28 @@ def equipment_markdown_valid_set(struct, name, path, validset):
 # ============================================================================
 
 
+def _extract_nav_categories(soup):
+    """Extract the current category/subcategory from the nav headers.
+
+    AoN marks the page's category as an underlined link in a nav <h1>
+    (e.g. "Runes") and the optional subcategory in a nav <h2>
+    (e.g. "Fundamental Weapon Runes"). Must run before _strip_equipment_nav,
+    which removes the nav entirely.
+
+    Returns a dict with 'item_category' and optionally 'item_subcategory'.
+    """
+    main = soup.find(id="main")
+    assert main, "No #main div found in equipment HTML"
+    result = {}
+    for h in main.find_all(["h1", "h2"]):
+        u = h.find("u")
+        if u and u.find_parent("a"):
+            key = "item_category" if h.name == "h1" else "item_subcategory"
+            result.setdefault(key, get_text(u).strip())
+    assert "item_category" in result, "No underlined category link found in nav"
+    return result
+
+
 def _strip_equipment_nav(soup):
     """Strip navigation elements from equipment HTML.
 
@@ -681,11 +703,18 @@ def parse_equipment_v2(filename, options):
         sys.stderr.write(f"{basename}\n")
 
     # 1. Standard parse_universal entry point
+    # Capture nav category/subcategory via closure — pre_filters can't
+    # return data, and _content_filter_v2 strips the nav that holds them.
+    nav_categories = {}
+
+    def _nav_category_filter(soup):
+        nav_categories.update(_extract_nav_categories(soup))
+
     details = parse_universal(
         filename,
         max_title=1,
         cssclass="main",
-        pre_filters=[_content_filter_v2, _sidebar_filter],
+        pre_filters=[_nav_category_filter, _content_filter_v2, _sidebar_filter],
     )
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
@@ -695,6 +724,7 @@ def parse_equipment_v2(filename, options):
 
     # 3. Restructure (equipment-specific)
     struct = restructure_equipment_v2_pass(details, equipment_type)
+    struct.update(nav_categories)
     if alternate_link:
         # Store single dict (schema expects object, not array).
         # Items split into multiple remastered versions have multiple links;

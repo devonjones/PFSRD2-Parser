@@ -4,6 +4,7 @@ import pytest
 from bs4 import BeautifulSoup
 
 from pfsrd2.equipment import (
+    _extract_nav_categories,
     _remove_supplementary_sections,
     _restructure_h1_title,
     _sidebar_filter,
@@ -116,6 +117,39 @@ class TestStripEquipmentNav:
         soup = BeautifulSoup(html, "html.parser")
         with pytest.raises(AssertionError, match="No direct-child"):
             _strip_equipment_nav(soup)
+
+
+# ---------------------------------------------------------------------------
+# _extract_nav_categories
+# ---------------------------------------------------------------------------
+class TestExtractNavCategories:
+    def test_category_and_subcategory(self):
+        html = """<div id="main">
+        <span><h1 style="text-align:center"><a href="Equipment.aspx?Category=23"><u>Runes</u></a></h1>
+        <h2 style="text-align:center"><a href="Equipment.aspx?Category=23&amp;Subcategory=25"><u>Fundamental Weapon Runes</u></a></h2></span>
+        <hr/>
+        <h1 class="title">Striking</h1>
+        </div>"""
+        soup = BeautifulSoup(html, "html.parser")
+        assert _extract_nav_categories(soup) == {
+            "item_category": "Runes",
+            "item_subcategory": "Fundamental Weapon Runes",
+        }
+
+    def test_category_only(self):
+        html = """<div id="main">
+        <span><h1><a href="Vehicles.aspx"><u>Vehicles</u></a></h1></span>
+        <hr/>
+        <h1 class="title">Sleigh</h1>
+        </div>"""
+        soup = BeautifulSoup(html, "html.parser")
+        assert _extract_nav_categories(soup) == {"item_category": "Vehicles"}
+
+    def test_no_category_asserts(self):
+        html = '<div id="main"><hr/><h1 class="title">Content</h1></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        with pytest.raises(AssertionError, match="No underlined category"):
+            _extract_nav_categories(soup)
 
 
 # ---------------------------------------------------------------------------
