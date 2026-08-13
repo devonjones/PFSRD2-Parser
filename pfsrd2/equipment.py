@@ -403,7 +403,8 @@ def _extract_nav_categories(soup):
         u = h.find("u")
         if u and u.find_parent("a"):
             key = "item_category" if h.name == "h1" else "item_subcategory"
-            result.setdefault(key, get_text(u).strip())
+            assert key not in result, f"Multiple underlined {h.name} nav links found"
+            result[key] = get_text(u).strip()
     assert "item_category" in result, "No underlined category link found in nav"
     return result
 
@@ -690,10 +691,9 @@ def restructure_equipment_v2_pass(details, equipment_type):
 
 
 def parse_equipment_v2(filename, options):
-    """V2 equipment parser - uses parse_universal instead of parse_equipment_html.
+    """Parse a single equipment HTML file into a validated JSON struct.
 
-    Produces identical output to parse_equipment but uses the standard
-    parse_universal entry point like every other parser.
+    Uses the standard parse_universal entry point like every other parser.
     """
     equipment_type = options.equipment_type
     config = EQUIPMENT_TYPES[equipment_type]
@@ -724,7 +724,7 @@ def parse_equipment_v2(filename, options):
 
     # 3. Restructure (equipment-specific)
     struct = restructure_equipment_v2_pass(details, equipment_type)
-    struct.update(nav_categories)
+    find_stat_block(struct).update(nav_categories)
     if alternate_link:
         # Store single dict (schema expects object, not array).
         # Items split into multiple remastered versions have multiple links;

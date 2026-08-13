@@ -124,9 +124,20 @@ class TestStripEquipmentNav:
 # ---------------------------------------------------------------------------
 class TestExtractNavCategories:
     def test_category_and_subcategory(self):
+        # Mirrors real nav shape: many links per header, only the current
+        # one underlined, with newlines inside the <u> (exercises .strip()).
         html = """<div id="main">
-        <span><h1 style="text-align:center"><a href="Equipment.aspx?Category=23"><u>Runes</u></a></h1>
-        <h2 style="text-align:center"><a href="Equipment.aspx?Category=23&amp;Subcategory=25"><u>Fundamental Weapon Runes</u></a></h2></span>
+        <span><h1 style="text-align:center"><a href="Equipment.aspx?Category=1">
+        Adventuring Gear</a> | <a href="Equipment.aspx?Category=23">
+        <u>
+        Runes</u>
+        </a> | <a href="Equipment.aspx?Category=46">
+        Tattoos</a></h1>
+        <h2 style="text-align:center"><a href="Equipment.aspx?Category=23&amp;Subcategory=78">
+        Accessory Runes</a> | <a href="Equipment.aspx?Category=23&amp;Subcategory=25">
+        <u>
+        Fundamental Weapon Runes</u>
+        </a></h2></span>
         <hr/>
         <h1 class="title">Striking</h1>
         </div>"""
@@ -135,6 +146,16 @@ class TestExtractNavCategories:
             "item_category": "Runes",
             "item_subcategory": "Fundamental Weapon Runes",
         }
+
+    def test_h2_without_underline_yields_no_subcategory(self):
+        html = """<div id="main">
+        <span><h1><a href="Equipment.aspx?Category=23"><u>Runes</u></a></h1>
+        <h2><a href="Equipment.aspx?Category=23&amp;Subcategory=78">Accessory Runes</a> |
+        <a href="Equipment.aspx?Category=23&amp;Subcategory=25">Fundamental Weapon Runes</a></h2></span>
+        <hr/>
+        </div>"""
+        soup = BeautifulSoup(html, "html.parser")
+        assert _extract_nav_categories(soup) == {"item_category": "Runes"}
 
     def test_category_only(self):
         html = """<div id="main">
@@ -149,6 +170,32 @@ class TestExtractNavCategories:
         html = '<div id="main"><hr/><h1 class="title">Content</h1></div>'
         soup = BeautifulSoup(html, "html.parser")
         with pytest.raises(AssertionError, match="No underlined category"):
+            _extract_nav_categories(soup)
+
+    def test_no_main_div_asserts(self):
+        html = '<div><h1><a href="Equipment.aspx?Category=23"><u>Runes</u></a></h1></div>'
+        soup = BeautifulSoup(html, "html.parser")
+        with pytest.raises(AssertionError, match="No #main div"):
+            _extract_nav_categories(soup)
+
+    def test_underline_without_link_ignored(self):
+        html = """<div id="main">
+        <span><h1><u>Plain Underline</u></h1>
+        <h1><a href="Equipment.aspx?Category=23"><u>Runes</u></a></h1></span>
+        <hr/>
+        <h1 class="title">Striking</h1>
+        </div>"""
+        soup = BeautifulSoup(html, "html.parser")
+        assert _extract_nav_categories(soup) == {"item_category": "Runes"}
+
+    def test_duplicate_category_asserts(self):
+        html = """<div id="main">
+        <span><h1><a href="Equipment.aspx?Category=23"><u>Runes</u></a></h1>
+        <h1><a href="Equipment.aspx?Category=15"><u>Consumables</u></a></h1></span>
+        <hr/>
+        </div>"""
+        soup = BeautifulSoup(html, "html.parser")
+        with pytest.raises(AssertionError, match="Multiple underlined h1"):
             _extract_nav_categories(soup)
 
 
