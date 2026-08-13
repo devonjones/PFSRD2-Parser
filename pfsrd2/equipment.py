@@ -53,6 +53,8 @@ from universal.utils import (
     content_filter,
     extract_pfs_note,
     get_text,
+    has_name,
+    is_tag_named,
     parse_section_modifiers,
     rebuilt_split_modifiers,
     recursive_filter_entities,
@@ -386,6 +388,42 @@ def equipment_markdown_valid_set(struct, name, path, validset):
 # ============================================================================
 
 
+def _extract_nav_categories(soup):
+    """Extract the current category/subcategory from the nav headers.
+
+    AoN marks the page's category as an underlined link in a nav <h1>
+    (e.g. "Runes") and the optional subcategory in a nav <h2>
+    (e.g. "Fundamental Weapon Runes"). Must run before _strip_equipment_nav,
+    which removes the nav entirely.
+
+    Returns a dict with 'item_category' and optionally 'item_subcategory'.
+    """
+    main = soup.find(id="main")
+    assert main, "No #main div found in equipment HTML"
+    # Scope to the nav region: direct children before the first direct-child
+    # <hr>, same boundary _strip_equipment_nav removes. Underlined links in
+    # content headers after the nav must not be mistaken for categories.
+    nav_headers = []
+    for child in main.children:
+        if has_name(child, "hr"):
+            break
+        if is_tag_named(child, ["h1", "h2"]):
+            nav_headers.append(child)
+        elif isinstance(child, Tag):
+            nav_headers.extend(child.find_all(["h1", "h2"]))
+    result = {}
+    for h in nav_headers:
+        u = h.find("u")
+        if u and u.find_parent("a"):
+            key = "item_category" if h.name == "h1" else "item_subcategory"
+            assert key not in result, f"Multiple underlined {h.name} nav links found"
+            text = get_text(u).strip()
+            assert text, f"Empty underlined {h.name} nav link found"
+            result[key] = text
+    assert "item_category" in result, "No underlined category link found in nav"
+    return result
+
+
 def _strip_equipment_nav(soup):
     """Strip navigation elements from equipment HTML.
 
@@ -668,10 +706,9 @@ def restructure_equipment_v2_pass(details, equipment_type):
 
 
 def parse_equipment_v2(filename, options):
-    """V2 equipment parser - uses parse_universal instead of parse_equipment_html.
+    """Parse a single equipment HTML file into a validated JSON struct.
 
-    Produces identical output to parse_equipment but uses the standard
-    parse_universal entry point like every other parser.
+    Uses the standard parse_universal entry point like every other parser.
     """
     equipment_type = options.equipment_type
     config = EQUIPMENT_TYPES[equipment_type]
@@ -681,11 +718,18 @@ def parse_equipment_v2(filename, options):
         sys.stderr.write(f"{basename}\n")
 
     # 1. Standard parse_universal entry point
+    # Capture nav category/subcategory via closure — pre_filters can't
+    # return data, and _content_filter_v2 strips the nav that holds them.
+    nav_categories = {}
+
+    def _nav_category_filter(soup):
+        nav_categories.update(_extract_nav_categories(soup))
+
     details = parse_universal(
         filename,
         max_title=1,
         cssclass="main",
-        pre_filters=[_content_filter_v2, _sidebar_filter],
+        pre_filters=[_nav_category_filter, _content_filter_v2, _sidebar_filter],
     )
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
@@ -695,6 +739,7 @@ def parse_equipment_v2(filename, options):
 
     # 3. Restructure (equipment-specific)
     struct = restructure_equipment_v2_pass(details, equipment_type)
+    find_stat_block(struct).update(nav_categories)
     if alternate_link:
         # Store single dict (schema expects object, not array).
         # Items split into multiple remastered versions have multiple links;

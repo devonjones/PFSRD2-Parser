@@ -816,6 +816,12 @@
         "intelligent_item": {
           "$ref": "#/definitions/intelligent_item"
         },
+        "item_category": {
+          "type": "string"
+        },
+        "item_subcategory": {
+          "type": "string"
+        },
         "level": {
           "type": "integer"
         },
@@ -2180,7 +2186,16 @@
       "$ref": "#/definitions/sources"
     },
     "stat_block": {
-      "$ref": "#/definitions/equipment_stat_block"
+      "allOf": [
+        {
+          "$ref": "#/definitions/equipment_stat_block"
+        },
+        {
+          "required": [
+            "item_category"
+          ]
+        }
+      ]
     },
     "text": {
       "type": "string"
