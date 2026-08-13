@@ -1,5 +1,7 @@
 """Tests for equipment.py parse_universal rebuild functions."""
 
+import os
+
 import pytest
 from bs4 import BeautifulSoup
 
@@ -124,16 +126,18 @@ class TestStripEquipmentNav:
 # ---------------------------------------------------------------------------
 class TestExtractNavCategories:
     def test_category_and_subcategory(self):
-        # Mirrors real nav shape: many links per header, only the current
-        # one underlined, with newlines inside the <u> (exercises .strip()).
+        # Mirrors real nav shape: two sibling spans, the first containing its
+        # own internal <hr> (so the nav boundary must be direct-child-only),
+        # many links per header with only the current one underlined, and
+        # newlines inside the <u> (exercises .strip()).
         html = """<div id="main">
         <span><h1 style="text-align:center"><a href="Equipment.aspx?Category=1">
         Adventuring Gear</a> | <a href="Equipment.aspx?Category=23">
         <u>
         Runes</u>
         </a> | <a href="Equipment.aspx?Category=46">
-        Tattoos</a></h1>
-        <h2 style="text-align:center"><a href="Equipment.aspx?Category=23&amp;Subcategory=78">
+        Tattoos</a></h1><hr/></span>
+        <span><h2 style="text-align:center"><a href="Equipment.aspx?Category=23&amp;Subcategory=78">
         Accessory Runes</a> | <a href="Equipment.aspx?Category=23&amp;Subcategory=25">
         <u>
         Fundamental Weapon Runes</u>
@@ -158,8 +162,10 @@ class TestExtractNavCategories:
         assert _extract_nav_categories(soup) == {"item_category": "Runes"}
 
     def test_category_only(self):
+        # h1 as a direct child of #main (no wrapping span) covers the
+        # direct-child header branch of the nav scan.
         html = """<div id="main">
-        <span><h1><a href="Vehicles.aspx"><u>Vehicles</u></a></h1></span>
+        <h1><a href="Vehicles.aspx"><u>Vehicles</u></a></h1>
         <hr/>
         <h1 class="title">Sleigh</h1>
         </div>"""
@@ -216,6 +222,63 @@ class TestExtractNavCategories:
         soup = BeautifulSoup(html, "html.parser")
         with pytest.raises(AssertionError, match="Multiple underlined h1"):
             _extract_nav_categories(soup)
+
+    def test_duplicate_subcategory_asserts(self):
+        html = """<div id="main">
+        <span><h1><a href="Equipment.aspx?Category=23"><u>Runes</u></a></h1>
+        <h2><a href="Equipment.aspx?Category=23&amp;Subcategory=25"><u>Fundamental Weapon Runes</u></a></h2>
+        <h2><a href="Equipment.aspx?Category=23&amp;Subcategory=26"><u>Armor Property Runes</u></a></h2></span>
+        <hr/>
+        </div>"""
+        soup = BeautifulSoup(html, "html.parser")
+        with pytest.raises(AssertionError, match="Multiple underlined h2"):
+            _extract_nav_categories(soup)
+
+    def test_empty_subcategory_underline_asserts(self):
+        html = """<div id="main">
+        <span><h1><a href="Equipment.aspx?Category=23"><u>Runes</u></a></h1>
+        <h2><a href="Equipment.aspx?Category=23&amp;Subcategory=25"><u> </u></a></h2></span>
+        <hr/>
+        </div>"""
+        soup = BeautifulSoup(html, "html.parser")
+        with pytest.raises(AssertionError, match="Empty underlined h2"):
+            _extract_nav_categories(soup)
+
+
+class TestNavCategoriesEndToEnd:
+    """Full-pipeline checks that nav categories land in the stat_block."""
+
+    def _parse(self, subdir, filename, equipment_type):
+        from tests.test_equipment_activation import parse_equipment_file
+
+        test_file = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "pfsrd2-web",
+            "2e.aonprd.com",
+            subdir,
+            filename,
+        )
+        if not os.path.exists(test_file):
+            pytest.skip(f"Test file not found: {test_file}")
+        return parse_equipment_file(test_file, equipment_type)
+
+    def test_categories_land_in_stat_block(self):
+        result = self._parse("Equipment", "Equipment.aspx.ID_2829.html", "equipment")
+        assert "item_category" not in result
+        assert "item_subcategory" not in result
+        sb = result["stat_block"]
+        assert sb["item_category"] == "Runes"
+        assert sb["item_subcategory"] == "Fundamental Weapon Runes"
+        # update() must not clobber existing stat_block fields
+        assert sb["level"] == 4
+
+    def test_vehicle_category_without_subcategory(self):
+        result = self._parse("Vehicles", "Vehicles.aspx.ID_10.html", "vehicle")
+        sb = result["stat_block"]
+        assert sb["item_category"] == "Vehicles"
+        assert "item_subcategory" not in sb
 
 
 # ---------------------------------------------------------------------------

@@ -53,6 +53,8 @@ from universal.utils import (
     content_filter,
     extract_pfs_note,
     get_text,
+    has_name,
+    is_tag_named,
     parse_section_modifiers,
     rebuilt_split_modifiers,
     recursive_filter_entities,
@@ -403,11 +405,11 @@ def _extract_nav_categories(soup):
     # content headers after the nav must not be mistaken for categories.
     nav_headers = []
     for child in main.children:
-        if getattr(child, "name", None) == "hr":
+        if has_name(child, "hr"):
             break
-        if getattr(child, "name", None) in ("h1", "h2"):
+        if is_tag_named(child, ["h1", "h2"]):
             nav_headers.append(child)
-        elif hasattr(child, "find_all"):
+        elif isinstance(child, Tag):
             nav_headers.extend(child.find_all(["h1", "h2"]))
     result = {}
     for h in nav_headers:
