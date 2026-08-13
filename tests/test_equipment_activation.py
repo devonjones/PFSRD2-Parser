@@ -8,13 +8,16 @@ import sys
 import pytest
 
 
-def parse_equipment_file(filename, equipment_type="equipment"):
+def parse_equipment_file(filename, equipment_type="equipment", skip_schema=True):
     """Parse an equipment file and return the JSON output."""
     bin_dir = os.path.join(os.path.dirname(__file__), "..", "bin")
     script = os.path.join(bin_dir, "pf2_equipment_parse")
 
+    args = [sys.executable, script, equipment_type, filename, "-d", "-s"]
+    if skip_schema:
+        args.append("--skip-schema")
     result = subprocess.run(
-        [sys.executable, script, equipment_type, filename, "-d", "-s", "--skip-schema"],
+        args,
         capture_output=True,
         text=True,
     )
