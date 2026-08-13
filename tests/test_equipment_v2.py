@@ -194,6 +194,16 @@ class TestExtractNavCategories:
         soup = BeautifulSoup(html, "html.parser")
         assert _extract_nav_categories(soup) == {"item_category": "Runes"}
 
+    def test_plain_underline_before_link_in_same_header(self):
+        # A decorative <u> earlier in the SAME header must not mask the
+        # real underlined link that follows it.
+        html = """<div id="main">
+        <span><h1><u>Decoration</u> <a href="Equipment.aspx?Category=23"><u>Runes</u></a></h1></span>
+        <hr/>
+        </div>"""
+        soup = BeautifulSoup(html, "html.parser")
+        assert _extract_nav_categories(soup) == {"item_category": "Runes"}
+
     def test_underlined_content_header_after_nav_ignored(self):
         html = """<div id="main">
         <span><h1><a href="Equipment.aspx?Category=23"><u>Runes</u></a></h1></span>
@@ -262,7 +272,9 @@ class TestNavCategoriesEndToEnd:
         )
         if not os.path.exists(test_file):
             pytest.skip(f"Test file not found: {test_file}")
-        return parse_equipment_file(test_file, equipment_type)
+        # skip_schema=False so these also exercise the schema's
+        # required-item_category enforcement on the main stat_block.
+        return parse_equipment_file(test_file, equipment_type, skip_schema=False)
 
     def test_categories_land_in_stat_block(self):
         result = self._parse("Equipment", "Equipment.aspx.ID_2829.html", "equipment")

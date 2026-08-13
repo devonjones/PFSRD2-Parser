@@ -400,6 +400,9 @@ def _extract_nav_categories(soup):
     """
     main = soup.find(id="main")
     assert main, "No #main div found in equipment HTML"
+    assert main.find(
+        "hr", recursive=False
+    ), "No direct-child <hr> found in main — equipment HTML structure is malformed"
     # Scope to the nav region: direct children before the first direct-child
     # <hr>, same boundary _strip_equipment_nav removes. Underlined links in
     # content headers after the nav must not be mistaken for categories.
@@ -413,8 +416,9 @@ def _extract_nav_categories(soup):
             nav_headers.extend(child.find_all(["h1", "h2"]))
     result = {}
     for h in nav_headers:
-        u = h.find("u")
-        if u and u.find_parent("a"):
+        for u in h.find_all("u"):
+            if not u.find_parent("a"):
+                continue
             key = "item_category" if h.name == "h1" else "item_subcategory"
             assert key not in result, f"Multiple underlined {h.name} nav links found"
             text = get_text(u).strip()
