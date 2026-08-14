@@ -578,6 +578,7 @@
           "enum": [
             "armor",
             "dexterity",
+            "item",
             "shield"
           ]
         },
@@ -587,6 +588,11 @@
         "subtype": {
           "enum": [
             "ac",
+            "attack",
+            "break_threshold",
+            "hardness",
+            "hit_points",
+            "save",
             "skill",
             "speed"
           ]
@@ -810,6 +816,9 @@
         "destruction": {
           "type": "string"
         },
+        "effects": {
+          "$ref": "#/definitions/rune_effects"
+        },
         "image": {
           "$ref": "#/definitions/image"
         },
@@ -843,6 +852,9 @@
         },
         "price": {
           "$ref": "#/definitions/price"
+        },
+        "rune": {
+          "$ref": "#/definitions/rune"
         },
         "save_results": {
           "$ref": "#/definitions/save_results"
@@ -1415,6 +1427,153 @@
         "subtype",
         "value",
         "unit"
+      ],
+      "type": "object"
+    },
+    "rune": {
+      "additionalProperties": false,
+      "properties": {
+        "conflicts_with": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "form": {
+          "enum": [
+            "fundamental",
+            "property"
+          ]
+        },
+        "host": {
+          "enum": [
+            "weapon",
+            "armor",
+            "shield",
+            "accessory"
+          ]
+        },
+        "needs_review": {
+          "type": "boolean"
+        },
+        "requires": {
+          "additionalItems": false,
+          "items": {
+            "$ref": "#/definitions/rune_requirement"
+          },
+          "type": "array"
+        },
+        "slot": {
+          "enum": [
+            "weapon_potency",
+            "striking",
+            "armor_potency",
+            "resilient",
+            "reinforcing",
+            "property"
+          ]
+        },
+        "subtype": {
+          "enum": [
+            "rune"
+          ]
+        },
+        "type": {
+          "enum": [
+            "stat_block_section"
+          ]
+        },
+        "usage_text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "subtype",
+        "form",
+        "slot",
+        "host"
+      ],
+      "type": "object"
+    },
+    "rune_effect": {
+      "additionalProperties": false,
+      "properties": {
+        "maximum": {
+          "type": "integer"
+        },
+        "modifier": {
+          "$ref": "#/definitions/bonus"
+        },
+        "operation": {
+          "enum": [
+            "set",
+            "add_modifier"
+          ]
+        },
+        "subject": {
+          "enum": [
+            "property_rune_slots",
+            "weapon_damage_dice",
+            "attack",
+            "ac",
+            "save",
+            "hardness",
+            "hit_points",
+            "break_threshold"
+          ]
+        },
+        "subtype": {
+          "enum": [
+            "rune_effect"
+          ]
+        },
+        "type": {
+          "enum": [
+            "stat_block_section"
+          ]
+        },
+        "value": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type",
+        "subtype",
+        "operation",
+        "subject"
+      ],
+      "type": "object"
+    },
+    "rune_effects": {
+      "additionalItems": false,
+      "items": {
+        "$ref": "#/definitions/rune_effect"
+      },
+      "type": "array"
+    },
+    "rune_requirement": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "enum": [
+            "in"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "op",
+        "values"
       ],
       "type": "object"
     },
