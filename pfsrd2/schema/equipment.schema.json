@@ -1297,9 +1297,6 @@
         "break_threshold": {
           "type": "integer"
         },
-        "form": {
-          "type": "string"
-        },
         "grade": {
           "enum": [
             "low",
@@ -1318,6 +1315,15 @@
             "armor",
             "shield",
             "weapon"
+          ]
+        },
+        "item_form": {
+          "enum": [
+            "armor",
+            "weapon",
+            "shield",
+            "buckler",
+            "tower shield"
           ]
         },
         "subtype": {
@@ -1674,7 +1680,7 @@
       ],
       "type": "object"
     },
-    "rune_effect": {
+    "rune_effect_modifier": {
       "additionalProperties": false,
       "properties": {
         "maximum": {
@@ -1685,8 +1691,50 @@
         },
         "operation": {
           "enum": [
-            "set",
             "add_modifier"
+          ]
+        },
+        "subject": {
+          "enum": [
+            "property_rune_slots",
+            "weapon_damage_dice",
+            "attack",
+            "ac",
+            "save",
+            "hardness",
+            "hit_points",
+            "break_threshold"
+          ]
+        },
+        "subtype": {
+          "enum": [
+            "rune_effect"
+          ]
+        },
+        "type": {
+          "enum": [
+            "stat_block_section"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "subtype",
+        "operation",
+        "subject",
+        "modifier"
+      ],
+      "type": "object"
+    },
+    "rune_effect_set": {
+      "additionalProperties": false,
+      "properties": {
+        "maximum": {
+          "type": "integer"
+        },
+        "operation": {
+          "enum": [
+            "set"
           ]
         },
         "subject": {
@@ -1719,14 +1767,22 @@
         "type",
         "subtype",
         "operation",
-        "subject"
+        "subject",
+        "value"
       ],
       "type": "object"
     },
     "rune_effects": {
       "additionalItems": false,
       "items": {
-        "$ref": "#/definitions/rune_effect"
+        "oneOf": [
+          {
+            "$ref": "#/definitions/rune_effect_set"
+          },
+          {
+            "$ref": "#/definitions/rune_effect_modifier"
+          }
+        ]
       },
       "type": "array"
     },
@@ -2513,7 +2569,7 @@
     },
     "schema_version": {
       "enum": [
-        1.0
+        1.1
       ]
     },
     "sections": {

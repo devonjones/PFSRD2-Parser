@@ -72,9 +72,39 @@ _MATERIALS = ("nonmetallic", "metal")
 
 # Words that carry no requirement once the real clauses are consumed.
 _FILLER = frozenset(
-    "a an the or and of onto on to into in that with weapon armor shield "
-    "dagger clan melee thrown monk trait rune without isn't is not each "
-    "item etched applied".split()
+    {
+        "a",
+        "an",
+        "the",
+        "or",
+        "and",
+        "of",
+        "onto",
+        "on",
+        "to",
+        "into",
+        "in",
+        "that",
+        "with",
+        "weapon",
+        "armor",
+        "shield",
+        "dagger",
+        "clan",
+        "melee",
+        "thrown",
+        "monk",
+        "trait",
+        "rune",
+        "without",
+        "isn't",
+        "is",
+        "not",
+        "each",
+        "item",
+        "etched",
+        "applied",
+    }
 )
 
 
@@ -96,8 +126,10 @@ def parse_usage(text):
     """Parse a rune's Usage line into requirement clauses on the host item.
 
     Returns (requires, conflicts_with, fully_parsed). `fully_parsed` is False
-    when the string names something with no structured counterpart on items —
-    the caller drops the partial clauses and flags the rune for review.
+    when the string names something with no structured counterpart on items.
+    Clauses parsed before that point are still returned; `rune_pass` is what
+    discards them, so a partially-understood usage never ships a requirement
+    list that looks authoritative.
     """
     requires = []
     conflicts = []
@@ -134,9 +166,7 @@ def parse_usage(text):
                 )
             )
         if re.search(r"\bmelee\b", lowered):
-            requires.append(
-                _clause("$.stat_block.offense.weapon_modes[*].weapon_type", ["Melee"])
-            )
+            requires.append(_clause("$.stat_block.offense.weapon_modes[*].weapon_type", ["Melee"]))
         traits = []
         if re.search(r"\bthrown\b", lowered):
             traits.append("Thrown")
@@ -304,20 +334,26 @@ def rune_pass(struct):
         # Eligibility is prose by design; nothing to review.
         pass
     elif subcategory in _SUBCATEGORY_REQUIRES and not usage_text:
-        rune["requires"] = _SUBCATEGORY_REQUIRES[subcategory]
+        rune["requires"] = copy.deepcopy(_SUBCATEGORY_REQUIRES[subcategory])
     else:
         requires, conflicts, fully_parsed = parse_usage(usage_text)
-        if requires:
-            rune["requires"] = requires
         if conflicts:
             rune["conflicts_with"] = sorted(set(conflicts))
-        if not fully_parsed:
+        if fully_parsed:
+            if requires:
+                rune["requires"] = requires
+        else:
+            # Partial clauses are worse than none: a consumer filtering on
+            # them would treat an incomplete requirement list as authoritative
+            # and call ineligible items legal.
             rune["needs_review"] = True
 
     stat_block["rune"] = rune
     variants = stat_block.get("variants", [])
     for variant in variants:
-        variant["rune"] = dict(rune)
+        # deepcopy, not dict(): a shallow copy would alias the requires and
+        # conflicts_with lists across the base block and every variant.
+        variant["rune"] = copy.deepcopy(rune)
 
     base_effects = _effects_for(name, None)
     if base_effects:

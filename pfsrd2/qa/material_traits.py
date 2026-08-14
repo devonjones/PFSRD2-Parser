@@ -9,26 +9,20 @@ that material's use pages.
     bin/pf2_verify_materials      # exit 1 on contradictions
 
 What this canNOT check: rarity composition with a base item. The use pages are
-generic ("Adamantine Weapon", no base weapon), so max(base, material) has no
-published answer to compare against and is covered by unit tests instead.
+generic ("Adamantine Weapon", no base weapon), so the more-restrictive-wins
+rule documented in pfsrd2/material.py has no published answer to compare
+against.
+
+Each check below is a pure function over already-loaded docs so it can be
+unit-tested without a data checkout; main() only loads and reports.
 """
 
-import glob
-import json
-import os
-
 from pfsrd2.material import RARITIES
-
-DATA = "/home/devon/MasterworkTools/pfsrd2/pfsrd2-data"
-
-
-def load_equipment():
-    for path in glob.glob(os.path.join(DATA, "equipment", "**", "*.json"), recursive=True):
-        with open(path) as handle:
-            yield json.load(handle)
+from pfsrd2.qa import load_equipment
 
 
-def main():
+def load_materials_and_uses():
+    """Split equipment data into {(name, edition): doc} materials and use pages."""
     materials = {}
     uses = []
     for doc in load_equipment():
@@ -37,14 +31,12 @@ def main():
             materials[(doc["name"], doc["edition"])] = doc
         if stat_block.get("material_use"):
             uses.append(doc)
+    return materials, uses
 
-    if not materials:
-        print("no material data found — run bin/pf2_run_equipment.sh equipment first")
-        return 1
 
+def check_propagation(materials, uses):
+    """Derived grants_traits must equal what AoN prints on each use page."""
     problems = []
-
-    # 1. Propagation, checked against the published use pages.
     checked = 0
     for doc in uses:
         stat_block = doc["stat_block"]
@@ -62,8 +54,12 @@ def main():
             problems.append(
                 f"{doc['name']}: traits {sorted(actual)} != {base} grants {sorted(expected)}"
             )
+    return problems, checked
 
-    # 2. Grades exist for precious materials and only for them.
+
+def check_grades(materials):
+    """Grades exist for precious materials and only for them."""
+    problems = []
     for (name, edition), doc in sorted(materials.items()):
         block = doc["stat_block"]["material"]
         grades = block.get("grades")
@@ -71,32 +67,64 @@ def main():
             problems.append(f"{name} ({edition}): precious but no grades")
         if not block["precious"] and grades:
             problems.append(f"{name} ({edition}): not precious but has grades {grades}")
+    return problems
 
-    # 3. Every use-page variant resolved a grade.
+
+def check_variant_grades(uses):
+    """Every use-page variant resolved a grade and an item form."""
+    problems = []
     for doc in uses:
         for variant in doc["stat_block"].get("variants", []):
-            if not (variant.get("material_use") or {}).get("grade"):
+            use = variant.get("material_use") or {}
+            if not use.get("grade"):
                 problems.append(f"{doc['name']}: variant {variant.get('name')!r} has no grade")
+            if not use.get("item_form"):
+                problems.append(f"{doc['name']}: variant {variant.get('name')!r} has no item_form")
+    return problems
 
-    # 4. Rarity sanity — a material grants at most one rarity.
+
+def check_statistics(materials):
+    """Every material page publishes a Hardness/HP/BT grid, so every one parses.
+
+    Reported as a failure rather than a note: a missing grid means a table
+    layout this parser doesn't handle, which is exactly the silent data loss
+    that let legacy Dragonhide ship with no statistics.
+    """
+    problems = []
+    for (name, edition), doc in sorted(materials.items()):
+        if not doc["stat_block"]["material"].get("statistics"):
+            problems.append(f"{name} ({edition}): no statistics extracted")
+    return problems
+
+
+def check_rarity(materials):
+    """A material grants at most one rarity."""
+    problems = []
     for (name, edition), doc in sorted(materials.items()):
         granted = doc["stat_block"]["material"].get("grants_traits", [])
         rarities = [t for t in granted if t.lower() in RARITIES]
         if len(rarities) > 1:
             problems.append(f"{name} ({edition}): grants multiple rarities {rarities}")
+    return problems
 
-    no_stats = [
-        f"{name} ({edition})"
-        for (name, edition), doc in sorted(materials.items())
-        if not doc["stat_block"]["material"].get("statistics")
-    ]
+
+def main():
+    materials, uses = load_materials_and_uses()
+    if not materials:
+        print("no material data found — run bin/pf2_run_equipment.sh equipment first")
+        return 1
+
+    propagation_problems, checked = check_propagation(materials, uses)
+    problems = (
+        propagation_problems
+        + check_grades(materials)
+        + check_variant_grades(uses)
+        + check_statistics(materials)
+        + check_rarity(materials)
+    )
 
     print(f"materials: {len(materials)}   use pages: {len(uses)}")
     print(f"propagation checks against published pages: {checked}")
-    if no_stats:
-        print(f"materials with no stat table extracted: {len(no_stats)}")
-        for entry in no_stats:
-            print(f"  - {entry}")
     if problems:
         print(f"\nPROBLEMS: {len(problems)}")
         for problem in problems:

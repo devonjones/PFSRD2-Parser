@@ -24,6 +24,16 @@ item" (GM Core 253). The `precious` trait is therefore the gate, never the
 variant naming: Stone is a common material whose only variant is published as
 "Stone Object (Low-Grade)", and reading a grade off that name would wrongly
 cap its rune levels.
+
+Composing a material with a base item is the CONSUMER's job, not this
+parser's — nothing here builds a combined item, so no code applies the rules
+below. They are stated here because `grants_traits` is only meaningful with
+them:
+
+  - non-rarity traits union onto the item
+  - rarity does NOT union; an item has exactly one, so it is the more
+    restrictive of the item's own and the material's, over
+    common < uncommon < rare < unique
 """
 
 import re
@@ -48,6 +58,11 @@ _GRADE_ORDER = ("low", "standard", "high")
 _NON_PROPAGATING_TRAITS = frozenset({"precious"})
 
 RARITIES = ("common", "uncommon", "rare", "unique")
+
+# Item forms a precious-material use page can describe. `material_use.item_form`
+# is deliberately a different vocabulary from `material_statistics.form`
+# (thin / item / structure), which is why the two carry different key names.
+ITEM_FORMS = frozenset({"armor", "weapon", "shield", "buckler", "tower shield"})
 
 # Table row labels vary by page: Dragonhide says "Standard Items" for what
 # every other material calls "Items", and structures appear both singular and
@@ -157,29 +172,31 @@ def granted_traits(traits):
     return [t for t in traits if t.lower() not in _NON_PROPAGATING_TRAITS]
 
 
-def combine_rarity(base_rarity, material_rarity):
-    """Rarity of an item made from a material: the more restrictive of the two.
-
-    An item has exactly one rarity, so this cannot be a union — 300 base
-    weapons and armor already carry one. Absent means common.
-    """
-    ranks = {r: i for i, r in enumerate(RARITIES)}
-    base = (base_rarity or "common").lower()
-    material = (material_rarity or "common").lower()
-    assert base in ranks, f"Unknown rarity: {base_rarity!r}"
-    assert material in ranks, f"Unknown rarity: {material_rarity!r}"
-    return base if ranks[base] >= ranks[material] else material
-
-
-def _find_stat_table(sections):
+def _stat_tables(sections):
+    """Every markdown table on the page, in document order."""
+    tables = []
     for section in sections or []:
         text = section.get("text") or ""
         if "| ---" in text:
-            return text
-        nested = _find_stat_table(section.get("sections"))
-        if nested:
-            return nested
-    return None
+            tables.append(text)
+        tables.extend(_stat_tables(section.get("sections")))
+    return tables
+
+
+def _find_stat_rows(sections):
+    """Stat rows from the first table on the page that parses as one.
+
+    A material page can carry more than one table: legacy Dragonhide leads
+    with Dragon Type to Resistance and puts the real Hardness/HP/BT grid in
+    the section below it. Taking the first table outright dropped that page's
+    statistics silently, so every table is tried and the first that yields
+    rows wins.
+    """
+    for table in _stat_tables(sections):
+        rows = parse_stat_table(table)
+        if rows:
+            return rows
+    return []
 
 
 def _trait_names(stat_block):
@@ -208,28 +225,42 @@ def _material_pass(struct, stat_block):
         )
         material["grades"] = [_grade_entry(g) for g in grades]
 
-    table = _find_stat_table(stat_block.get("sections"))
-    if table:
-        rows = parse_stat_table(table)
-        if rows:
-            material["statistics"] = rows
+    rows = _find_stat_rows(stat_block.get("sections"))
+    assert rows, (
+        f"Material {struct.get('name')!r} has no parsable Hardness/HP/BT table. "
+        "Every published material page carries one — a new table layout needs "
+        "handling in parse_stat_table rather than shipping a material with no "
+        "statistics."
+    )
+    material["statistics"] = rows
 
     stat_block["material"] = material
 
 
-def _use_form(item_name, variant_name, host):
+def _use_item_form(item_name, variant_name, host):
     """The item form a use-page variant describes.
 
     Shields publish separate buckler / shield / tower shield rows because the
     stats differ; armor and weapons have a single generic form. Falls back to
-    the host kind when the variant name adds nothing.
+    the host kind when the variant name adds nothing beyond the material name
+    (Elven Chain is a specific armor, so its leftover is a name, not a form).
+
+    The result is checked against a closed set: an unrecognized leftover means
+    AoN published a form this parser doesn't model, and silently shipping it
+    as a free string would let a consumer's form lookup miss.
     """
     head = _GRADE_SUFFIX.sub("", variant_name or "").strip()
     # Strip the material name off the front: "Adamantine Buckler" -> "Buckler".
     material_name = re.sub(r"\s+(Armor|Shield|Weapon)$", "", item_name or "").strip()
     if material_name and head.lower().startswith(material_name.lower()):
         head = head[len(material_name) :].strip()
-    return head.lower() or host
+    form = head.lower() or host
+    assert form in ITEM_FORMS, (
+        f"Unrecognized precious-material item form {form!r} from variant "
+        f"{variant_name!r} on {item_name!r} — add it to ITEM_FORMS and the "
+        "material_use.item_form schema enum."
+    )
+    return form
 
 
 def _use_pass(struct, stat_block, host):
@@ -240,18 +271,20 @@ def _use_pass(struct, stat_block, host):
     }
     for variant in stat_block.get("variants", []):
         name = variant.get("name", "")
-        use = {
-            "type": "stat_block_section",
-            "subtype": "material_use",
-            "host": host,
-            "form": _use_form(struct.get("name"), name, host),
-        }
+        # Grade first: a malformed title fails both checks, and "no grade
+        # suffix" is the diagnosis that points at the actual defect.
         grade_match = _GRADE_SUFFIX.search(name)
         assert grade_match, (
             f"Precious material variant {name!r} on {struct.get('name')!r} has no "
             "grade suffix — the page or the parse is malformed"
         )
-        use["grade"] = grade_match.group(1).lower()
+        use = {
+            "type": "stat_block_section",
+            "subtype": "material_use",
+            "host": host,
+            "item_form": _use_item_form(struct.get("name"), name, host),
+            "grade": grade_match.group(1).lower(),
+        }
 
         stats = _STAT_TEXT.search(variant.get("text") or "")
         if stats:

@@ -125,9 +125,7 @@ class TestRunePass:
             "host": "weapon",
             "usage_text": "etched onto a weapon",
         }
-        dice = [
-            v["effects"][0]["value"] for v in struct["stat_block"]["variants"]
-        ]
+        dice = [v["effects"][0]["value"] for v in struct["stat_block"]["variants"]]
         assert dice == [2, 3, 4]
 
     def test_potency_grants_property_slots(self):
@@ -147,10 +145,7 @@ class TestRunePass:
         ]
         assert [s["value"] for s in slots] == [1, 2, 3]
         attack = [
-            effect
-            for v in variants
-            for effect in v["effects"]
-            if effect["subject"] == "attack"
+            effect for v in variants for effect in v["effects"] if effect["subject"] == "attack"
         ]
         assert [a["modifier"]["bonus_value"] for a in attack] == [1, 2, 3]
         assert all(a["modifier"]["bonus_type"] == "item" for a in attack)
@@ -170,12 +165,16 @@ class TestRunePass:
             if effect["subject"] == "ac"
         ]
         assert [a["modifier"]["bonus_value"] for a in ac] == [1, 2, 3]
-        assert all(a["modifier"] == {
-            "type": "bonus",
-            "subtype": "ac",
-            "bonus_type": "item",
-            "bonus_value": a["modifier"]["bonus_value"],
-        } for a in ac)
+        assert all(
+            a["modifier"]
+            == {
+                "type": "bonus",
+                "subtype": "ac",
+                "bonus_type": "item",
+                "bonus_value": a["modifier"]["bonus_value"],
+            }
+            for a in ac
+        )
 
     def test_resilient_grants_an_item_bonus_to_saves(self):
         struct = _stat_block(
@@ -198,7 +197,9 @@ class TestRunePass:
         )
         rune_pass(struct)
         minor, supreme = struct["stat_block"]["variants"]
-        assert [(e["subject"], e["modifier"]["bonus_value"], e["maximum"]) for e in minor["effects"]] == [
+        assert [
+            (e["subject"], e["modifier"]["bonus_value"], e["maximum"]) for e in minor["effects"]
+        ] == [
             ("hardness", 3, 8),
             ("hit_points", 44, 64),
             ("break_threshold", 22, 32),
@@ -236,14 +237,14 @@ class TestRunePass:
 
     def test_mythic_resilient_typo_still_resolves_its_slot(self):
         # AoN publishes it as "Mythic Resilent".
-        struct = _stat_block("Mythic Resilent", "Fundamental Armor Runes", usage="etched onto armor")
+        struct = _stat_block(
+            "Mythic Resilent", "Fundamental Armor Runes", usage="etched onto armor"
+        )
         rune_pass(struct)
         assert _rune(struct)["slot"] == "resilient"
 
     def test_property_rune_shares_the_property_slot(self):
-        struct = _stat_block(
-            "Giant-Killing", "Weapon Property Runes", usage="etched onto a weapon"
-        )
+        struct = _stat_block("Giant-Killing", "Weapon Property Runes", usage="etched onto a weapon")
         rune_pass(struct)
         assert _rune(struct)["form"] == "property"
         assert _rune(struct)["slot"] == "property"
@@ -274,10 +275,51 @@ class TestRunePass:
         assert "requires" not in _rune(struct)
 
     def test_unknown_fundamental_rune_fails_loudly(self):
-        struct = _stat_block("Weapon Potency", "Fundamental Weapon Runes", usage="etched onto a weapon")
+        struct = _stat_block(
+            "Weapon Potency", "Fundamental Weapon Runes", usage="etched onto a weapon"
+        )
         struct["name"] = "Astonishing Potency"
         with pytest.raises(AssertionError):
             rune_pass(struct)
+
+    def test_residue_path_drops_partial_clauses_and_flags_review(self):
+        # Usage naming something with no structured counterpart: the armor
+        # category clause parses, the rest doesn't. Shipping just the category
+        # would call every light armor legal for a rune that needs more.
+        requires, _, parsed = parse_usage("etched onto light armor blessed by a dragon")
+        assert requires and not parsed
+        struct = _stat_block(
+            "Dragonblessed",
+            "Armor Property Runes",
+            usage="etched onto light armor blessed by a dragon",
+        )
+        rune_pass(struct)
+        assert _rune(struct)["needs_review"] is True
+        assert "requires" not in _rune(struct)
+
+    def test_variant_rune_blocks_do_not_share_mutable_state(self):
+        struct = _stat_block(
+            "Giant-Killing",
+            "Weapon Property Runes",
+            usage="etched onto a slashing melee weapon",
+            variants=["Giant-Killing", "Giant-Killing (Greater)"],
+        )
+        rune_pass(struct)
+        base = struct["stat_block"]["rune"]
+        first, second = (v["rune"] for v in struct["stat_block"]["variants"])
+        assert first["requires"] is not base["requires"]
+        assert first["requires"] is not second["requires"]
+        first["requires"][0]["values"].append("mutated")
+        assert "mutated" not in base["requires"][0]["values"]
+        assert "mutated" not in second["requires"][0]["values"]
+
+    def test_subcategory_requires_constant_is_not_aliased(self):
+        first = _stat_block("Trudd's Strength", "Clan Dagger Filigrees")
+        second = _stat_block("Bolka's Blessing", "Clan Dagger Filigrees")
+        rune_pass(first)
+        first["stat_block"]["rune"]["requires"][0]["values"].append("mutated")
+        rune_pass(second)
+        assert second["stat_block"]["rune"]["requires"][0]["values"] == ["Clan Dagger"]
 
     def test_unknown_subcategory_fails_loudly(self):
         struct = _stat_block("Whatever", "Sandwich Runes", usage="etched onto a weapon")

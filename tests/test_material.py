@@ -3,7 +3,6 @@
 import pytest
 
 from pfsrd2.material import (
-    combine_rarity,
     granted_traits,
     material_pass,
     parse_stat_table,
@@ -99,22 +98,29 @@ class TestParseStatTable:
             "break_threshold": 20,
         }
         assert [(r["form"], r["grade"]) for r in rows] == [
-            ("thin", "standard"), ("thin", "high"),
-            ("item", "standard"), ("item", "high"),
-            ("structure", "standard"), ("structure", "high"),
+            ("thin", "standard"),
+            ("thin", "high"),
+            ("item", "standard"),
+            ("item", "high"),
+            ("structure", "standard"),
+            ("structure", "high"),
         ]
 
     def test_form_header_carrying_column_labels(self):
         rows = parse_stat_table(GRISANTIAN_TABLE)
         assert [(r["form"], r["grade"], r["hardness"]) for r in rows] == [
-            ("thin", "standard", 6), ("thin", "high", 8),
-            ("item", "standard", 9), ("item", "high", 11),
+            ("thin", "standard", 6),
+            ("thin", "high", 8),
+            ("item", "standard", 9),
+            ("item", "high", 11),
         ]
 
     def test_common_material_rows_have_no_grade(self):
         rows = parse_stat_table(STONE_TABLE)
         assert [(r["form"], r["hardness"]) for r in rows] == [
-            ("thin", 4), ("item", 7), ("structure", 14)
+            ("thin", 4),
+            ("item", 7),
+            ("structure", 14),
         ]
         assert all("grade" not in r for r in rows)
 
@@ -146,26 +152,17 @@ class TestTraitPropagation:
     def test_common_material_grants_nothing(self):
         assert granted_traits(["Precious"]) == []
 
-    def test_rarity_takes_the_more_restrictive(self):
-        assert combine_rarity("uncommon", "rare") == "rare"
-        assert combine_rarity("rare", "uncommon") == "rare"
-        assert combine_rarity(None, "uncommon") == "uncommon"
-        assert combine_rarity("rare", None) == "rare"
-        assert combine_rarity(None, None) == "common"
-        assert combine_rarity("unique", "rare") == "unique"
-
-    def test_unknown_rarity_fails_loudly(self):
-        with pytest.raises(AssertionError):
-            combine_rarity("legendary", "rare")
-
 
 class TestMaterialPass:
     def test_precious_material_gets_grades_with_caps(self):
         struct = _material(
             "Adamantine",
             ["Uncommon", "Precious"],
-            variants=["Adamantine Chunk", "Adamantine Object (Standard-Grade)",
-                      "Adamantine Object (High-Grade)"],
+            variants=[
+                "Adamantine Chunk",
+                "Adamantine Object (Standard-Grade)",
+                "Adamantine Object (High-Grade)",
+            ],
             table=ADAMANTINE_TABLE,
         )
         material_pass(struct)
@@ -181,9 +178,14 @@ class TestMaterialPass:
 
     def test_grades_are_ordered_low_standard_high(self):
         struct = _material(
-            "Silver", ["Precious"],
-            variants=["Silver Object (High-Grade)", "Silver Object (Low-Grade)",
-                      "Silver Object (Standard-Grade)"],
+            "Silver",
+            ["Precious"],
+            variants=[
+                "Silver Object (High-Grade)",
+                "Silver Object (Low-Grade)",
+                "Silver Object (Standard-Grade)",
+            ],
+            table=ADAMANTINE_TABLE,
         )
         material_pass(struct)
         grades = struct["stat_block"]["material"]["grades"]
@@ -205,30 +207,79 @@ class TestMaterialPass:
         with pytest.raises(AssertionError, match="no"):
             material_pass(struct)
 
-    def test_material_with_no_stat_table_still_decorates(self):
+    def test_stats_are_found_past_a_leading_non_stat_table(self):
+        # Legacy Dragonhide leads with Dragon Type -> Resistance and puts the
+        # real grid in the section below. Taking the first table dropped its
+        # statistics silently.
         struct = _material(
-            "Dragonhide", ["Uncommon", "Precious"],
+            "Dragonhide",
+            ["Uncommon", "Precious"],
             variants=["Dragonhide Object (Standard-Grade)", "Dragonhide Object (High-Grade)"],
             table=DRAGON_TYPE_TABLE,
         )
+        struct["stat_block"]["sections"].append(
+            {"type": "section", "name": "Dragonhide Items", "text": GRISANTIAN_TABLE}
+        )
         material_pass(struct)
-        assert "statistics" not in struct["stat_block"]["material"]
-        assert struct["stat_block"]["material"]["grants_traits"] == ["Uncommon"]
+        stats = struct["stat_block"]["material"]["statistics"]
+        assert [(r["form"], r["grade"], r["hardness"]) for r in stats] == [
+            ("thin", "standard", 6),
+            ("thin", "high", 8),
+            ("item", "standard", 9),
+            ("item", "high", 11),
+        ]
+
+    def test_material_with_no_parsable_table_fails_loudly(self):
+        struct = _material(
+            "Dragonhide",
+            ["Uncommon", "Precious"],
+            variants=["Dragonhide Object (Standard-Grade)", "Dragonhide Object (High-Grade)"],
+            table=DRAGON_TYPE_TABLE,
+        )
+        with pytest.raises(AssertionError, match="no parsable"):
+            material_pass(struct)
+
+    def test_stats_are_found_in_a_nested_section(self):
+        struct = _material(
+            "Adamantine", ["Uncommon", "Precious"], variants=["Adamantine Object (Standard-Grade)"]
+        )
+        struct["stat_block"]["sections"] = [
+            {
+                "type": "section",
+                "name": "Outer",
+                "text": "",
+                "sections": [
+                    {"type": "section", "name": "Adamantine Items", "text": ADAMANTINE_TABLE}
+                ],
+            }
+        ]
+        material_pass(struct)
+        assert len(struct["stat_block"]["material"]["statistics"]) == 6
 
 
 class TestUsePass:
     def test_shield_variants_split_into_form_and_grade(self):
-        struct = _use("Adamantine Shield", "Shields", [
-            {"name": "Adamantine Buckler (Standard-Grade)",
-             "text": "The shield has Hardness 8, HP 32, and BT 16."},
-            {"name": "Adamantine Shield (Standard-Grade)",
-             "text": "The shield has Hardness 10, HP 40, and BT 20."},
-            {"name": "Adamantine Buckler (High-Grade)",
-             "text": "The shield has Hardness 11, HP 44, and BT 22."},
-        ])
+        struct = _use(
+            "Adamantine Shield",
+            "Shields",
+            [
+                {
+                    "name": "Adamantine Buckler (Standard-Grade)",
+                    "text": "The shield has Hardness 8, HP 32, and BT 16.",
+                },
+                {
+                    "name": "Adamantine Shield (Standard-Grade)",
+                    "text": "The shield has Hardness 10, HP 40, and BT 20.",
+                },
+                {
+                    "name": "Adamantine Buckler (High-Grade)",
+                    "text": "The shield has Hardness 11, HP 44, and BT 22.",
+                },
+            ],
+        )
         material_pass(struct)
         uses = [v["material_use"] for v in struct["stat_block"]["variants"]]
-        assert [(u["form"], u["grade"], u["hardness"]) for u in uses] == [
+        assert [(u["item_form"], u["grade"], u["hardness"]) for u in uses] == [
             ("buckler", "standard", 8),
             ("shield", "standard", 10),
             ("buckler", "high", 11),
@@ -236,21 +287,33 @@ class TestUsePass:
         assert uses[0]["host"] == "shield"
 
     def test_tower_shield_is_its_own_form(self):
-        struct = _use("Darkwood Shield", "Shields", [
-            {"name": "Darkwood Tower Shield (Standard-Grade)",
-             "text": "The shield has Hardness 5, HP 20, and BT 10."},
-        ])
+        struct = _use(
+            "Darkwood Shield",
+            "Shields",
+            [
+                {
+                    "name": "Darkwood Tower Shield (Standard-Grade)",
+                    "text": "The shield has Hardness 5, HP 20, and BT 10.",
+                },
+            ],
+        )
         material_pass(struct)
-        assert struct["stat_block"]["variants"][0]["material_use"]["form"] == "tower shield"
+        assert struct["stat_block"]["variants"][0]["material_use"]["item_form"] == "tower shield"
 
     def test_armor_and_weapon_variants_fall_back_to_the_host_form(self):
-        armor = _use("Adamantine Armor", "Armor", [
-            {"name": "Adamantine Armor (Standard-Grade)",
-             "text": "The initial raw materials must include adamantine worth at least 200 gp."},
-        ])
+        armor = _use(
+            "Adamantine Armor",
+            "Armor",
+            [
+                {
+                    "name": "Adamantine Armor (Standard-Grade)",
+                    "text": "The initial raw materials must include adamantine worth at least 200 gp.",
+                },
+            ],
+        )
         material_pass(armor)
         use = armor["stat_block"]["variants"][0]["material_use"]
-        assert use["form"] == "armor"
+        assert use["item_form"] == "armor"
         assert use["grade"] == "standard"
         # Armor states no stats — it inherits the material page's grid.
         assert "hardness" not in use
@@ -260,15 +323,56 @@ class TestUsePass:
         # its name carries no material to strip and nothing distinguishes the
         # form. "armor" is the honest answer; guessing "elven chain" from the
         # leftover would be a naming coincidence, not a form.
-        struct = _use("Elven Chain", "Armor", [
-            {"name": "Elven Chain (Standard-Grade)"},
-        ])
+        struct = _use(
+            "Elven Chain",
+            "Armor",
+            [
+                {"name": "Elven Chain (Standard-Grade)"},
+            ],
+        )
         material_pass(struct)
-        assert struct["stat_block"]["variants"][0]["material_use"]["form"] == "armor"
+        assert struct["stat_block"]["variants"][0]["material_use"]["item_form"] == "armor"
 
     def test_variant_without_a_grade_suffix_fails_loudly(self):
         struct = _use("Duskwood Armor", "Armor", [{"name": "Duskwood Armor (Standard-Grade"}])
         with pytest.raises(AssertionError, match="grade suffix"):
+            material_pass(struct)
+
+    def test_weapon_use_page_resolves_grade_and_form(self):
+        struct = _use(
+            "Adamantine Weapon",
+            "Weapons",
+            [
+                {
+                    "name": "Adamantine Weapon (Standard-Grade)",
+                    "text": "Craft Requirements at least 175 gp of adamantine.",
+                },
+                {"name": "Adamantine Weapon (High-Grade)", "text": ""},
+            ],
+        )
+        material_pass(struct)
+        uses = [v["material_use"] for v in struct["stat_block"]["variants"]]
+        assert [(u["host"], u["item_form"], u["grade"]) for u in uses] == [
+            ("weapon", "weapon", "standard"),
+            ("weapon", "weapon", "high"),
+        ]
+
+    def test_unknown_use_subcategory_fails_loudly(self):
+        struct = _use("Adamantine Hat", "Hats", [{"name": "Adamantine Hat (High-Grade)"}])
+        with pytest.raises(AssertionError, match="Unrecognized precious material use"):
+            material_pass(struct)
+
+    def test_unknown_item_form_fails_loudly(self):
+        # AoN publishing a form this parser doesn't model must not ship as a
+        # free string a consumer's form lookup would miss.
+        struct = _use(
+            "Adamantine Shield",
+            "Shields",
+            [
+                {"name": "Adamantine Pavise (Standard-Grade)", "text": ""},
+            ],
+        )
+        with pytest.raises(AssertionError, match="Unrecognized precious-material item form"):
             material_pass(struct)
 
     def test_non_material_equipment_is_untouched(self):
