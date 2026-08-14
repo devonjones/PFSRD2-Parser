@@ -279,8 +279,31 @@ class TestRunePass:
             "Weapon Potency", "Fundamental Weapon Runes", usage="etched onto a weapon"
         )
         struct["name"] = "Astonishing Potency"
-        with pytest.raises(AssertionError):
+        # Fails in _slot_for, before the effects-coverage assert.
+        with pytest.raises(AssertionError, match="no slot for"):
             rune_pass(struct)
+
+    def test_variantless_fundamental_without_effects_fails_loudly(self):
+        # Reaches the variantless branch of the coverage assert: the name
+        # resolves to a slot, but no effects are authored for it.
+        struct = _stat_block("Striking", "Fundamental Weapon Runes", usage="etched onto a weapon")
+        struct["name"] = "Mythic Striking Prime"
+        with pytest.raises(AssertionError, match="no effects"):
+            rune_pass(struct)
+
+    def test_missing_usage_on_a_normal_rune_fails_loudly(self):
+        # Only accessory runes and clan dagger filigrees legitimately lack a
+        # Usage line; anything else silently becoming needs_review would hide
+        # an upstream extraction regression across the whole corpus.
+        struct = _stat_block("Keen", "Weapon Property Runes")
+        with pytest.raises(AssertionError, match="no usage text"):
+            rune_pass(struct)
+
+    def test_conflict_capture_ignores_articles(self):
+        # "that isn't a shield" would otherwise capture the article as a
+        # conflicting rune name.
+        _, conflicts, _ = parse_usage("etched onto a weapon that isn't a shield")
+        assert conflicts == []
 
     def test_residue_path_drops_partial_clauses_and_flags_review(self):
         # Usage naming something with no structured counterpart: the armor

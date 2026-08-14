@@ -790,8 +790,9 @@ def parse_equipment_v2(filename, options):
     # Populate creature-style buckets (statistics, defense, offense)
     populate_equipment_buckets_pass(struct)
 
-    # Decorate runes and materials with slot metadata (needs item_category,
-    # usage and section text in place)
+    # Decorate runes and materials with slot metadata. Both need
+    # item_category/item_subcategory set; rune_pass also reads statistics.usage
+    # and material_pass reads the section text holding the stat table.
     rune_pass(struct)
     material_pass(struct)
     remove_empty_sections_pass(struct)

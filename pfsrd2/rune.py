@@ -128,8 +128,13 @@ def parse_usage(text):
     Returns (requires, conflicts_with, fully_parsed). `fully_parsed` is False
     when the string names something with no structured counterpart on items.
     Clauses parsed before that point are still returned; `rune_pass` is what
-    discards them, so a partially-understood usage never ships a requirement
-    list that looks authoritative.
+    discards `requires`, so a partially-understood usage never ships a
+    requirement list that looks authoritative.
+
+    `conflicts_with` deliberately survives that discard: a conflict names
+    another rune outright ("without a *disrupting* rune") and is decided
+    independently of whatever residue made the rest unparsable, so it stays
+    true even when the requirement side is incomplete.
     """
     requires = []
     conflicts = []
@@ -335,6 +340,15 @@ def rune_pass(struct):
         pass
     elif subcategory in _SUBCATEGORY_REQUIRES and not usage_text:
         rune["requires"] = copy.deepcopy(_SUBCATEGORY_REQUIRES[subcategory])
+    elif not usage_text:
+        # Every published rune outside those two cases carries a Usage line.
+        # Falling through to needs_review would let an upstream extraction
+        # regression flip the whole corpus to "unreviewed" while the verifier
+        # still exits 0.
+        raise AssertionError(
+            f"Rune {name!r} ({subcategory}) has no usage text — expected one on "
+            "every rune except accessory runes and clan dagger filigrees"
+        )
     else:
         requires, conflicts, fully_parsed = parse_usage(usage_text)
         if conflicts:

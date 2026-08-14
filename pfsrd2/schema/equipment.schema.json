@@ -1206,7 +1206,8 @@
       "required": [
         "type",
         "subtype",
-        "precious"
+        "precious",
+        "statistics"
       ],
       "type": "object"
     },

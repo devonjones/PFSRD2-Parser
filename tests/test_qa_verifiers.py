@@ -6,6 +6,11 @@ silently pass dead clauses, and a propagation check that never compares
 anything would report success on an empty set.
 """
 
+import json
+
+import pytest
+
+from pfsrd2.qa import data_dir, load_equipment, load_json_dir
 from pfsrd2.qa.material_traits import (
     check_grades,
     check_propagation,
@@ -248,3 +253,57 @@ class TestMaterialChecks:
             ],
         )
         assert check_variant_grades([use]) == []
+
+
+class TestLoaders:
+    """pfsrd2/qa/__init__.py — hermetic, via the PF2_DATA_DIR override that
+    exists on this module specifically to make it testable."""
+
+    @pytest.fixture
+    def data_root(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        return tmp_path
+
+    def _write(self, root, relative, doc):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(doc))
+
+    def test_data_dir_honours_the_override(self, data_root):
+        assert data_dir() == str(data_root)
+
+    def test_data_dir_falls_back_to_the_default(self, monkeypatch):
+        monkeypatch.delenv("PF2_DATA_DIR", raising=False)
+        assert data_dir().endswith("pfsrd2-data")
+
+    def test_load_json_dir_reads_nested_files(self, data_root):
+        self._write(data_root, "equipment/book/a.json", {"name": "A"})
+        self._write(data_root, "equipment/book/deeper/b.json", {"name": "B"})
+        assert sorted(d["name"] for d in load_json_dir("equipment")) == ["A", "B"]
+
+    def test_load_json_dir_spans_several_directories(self, data_root):
+        self._write(data_root, "weapons/w.json", {"name": "W"})
+        self._write(data_root, "armor/a.json", {"name": "A"})
+        assert sorted(d["name"] for d in load_json_dir("weapons", "armor")) == ["A", "W"]
+
+    def test_load_json_dir_on_a_missing_directory_is_empty(self, data_root):
+        assert load_json_dir("nope") == []
+
+    def test_load_equipment_without_a_predicate_returns_everything(self, data_root):
+        self._write(data_root, "equipment/book/a.json", {"name": "A"})
+        self._write(data_root, "equipment/book/b.json", {"name": "B"})
+        assert len(load_equipment()) == 2
+
+    def test_load_equipment_applies_the_predicate(self, data_root):
+        self._write(
+            data_root,
+            "equipment/book/rune.json",
+            {"name": "Striking", "stat_block": {"item_category": "Runes"}},
+        )
+        self._write(
+            data_root,
+            "equipment/book/other.json",
+            {"name": "Rope", "stat_block": {"item_category": "Adventuring Gear"}},
+        )
+        kept = load_equipment(lambda d: d.get("stat_block", {}).get("item_category") == "Runes")
+        assert [d["name"] for d in kept] == ["Striking"]

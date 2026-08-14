@@ -110,11 +110,17 @@ def check_rarity(materials):
 
 def main():
     materials, uses = load_materials_and_uses()
-    if not materials:
+    if not materials or not uses:
         print("no material data found — run bin/pf2_run_equipment.sh equipment first")
         return 1
 
     propagation_problems, checked = check_propagation(materials, uses)
+    if not checked:
+        # A verifier that compared nothing must not report success. Every
+        # published use page names a base_material, so zero comparisons means
+        # the data or the parse is broken, not that everything agrees.
+        print("no propagation comparisons ran — every use page lacked a base_material")
+        return 1
     problems = (
         propagation_problems
         + check_grades(materials)

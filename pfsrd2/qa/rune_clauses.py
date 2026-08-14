@@ -103,6 +103,14 @@ def main():
         return 1
 
     hosts = {host: load_json_dir(*dirs) for host, dirs in HOST_DIRS.items()}
+    empty = sorted(host for host, docs in hosts.items() if not docs)
+    if empty:
+        # Same trap as the material verifier: an empty host list makes every
+        # clause for that host vacuously unverifiable. Shield-host runes all
+        # have empty requires today, so a missing shields/ directory would
+        # otherwise pass silently.
+        print(f"no items loaded for host(s): {', '.join(empty)} — check the data directories")
+        return 1
     problems = check_clauses(runes, hosts) + check_review_exclusivity(runes)
     review = [r["name"] for r in runes if r["stat_block"].get("rune", {}).get("needs_review")]
 

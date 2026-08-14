@@ -77,10 +77,7 @@ _FORMS = {
 
 _GRADE_ROW = re.compile(r"^(low|standard|high)[- ]grade$", re.I)
 _GRADE_SUFFIX = re.compile(r"\s*\((low|standard|high)-grade\)\s*$", re.I)
-_STAT_TEXT = re.compile(
-    r"Hardness\s+(\d+),?\s*(?:it gains an additional\s+)?HP\s+(\d+),?\s*(?:and\s+)?BT\s+(\d+)",
-    re.I,
-)
+_STAT_TEXT = re.compile(r"Hardness\s+(\d+),?\s*HP\s+(\d+),?\s*(?:and\s+)?BT\s+(\d+)", re.I)
 
 
 def _cell_values(row):
