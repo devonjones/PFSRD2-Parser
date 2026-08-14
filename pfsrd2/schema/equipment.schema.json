@@ -1293,6 +1293,44 @@
       "type": "object"
     },
     "material_use": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/material_use_variant"
+        },
+        {
+          "$ref": "#/definitions/material_use_page"
+        }
+      ]
+    },
+    "material_use_page": {
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "enum": [
+            "armor",
+            "shield",
+            "weapon"
+          ]
+        },
+        "subtype": {
+          "enum": [
+            "material_use"
+          ]
+        },
+        "type": {
+          "enum": [
+            "stat_block_section"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "subtype",
+        "host"
+      ],
+      "type": "object"
+    },
+    "material_use_variant": {
       "additionalProperties": false,
       "properties": {
         "break_threshold": {
@@ -1341,7 +1379,9 @@
       "required": [
         "type",
         "subtype",
-        "host"
+        "host",
+        "item_form",
+        "grade"
       ],
       "type": "object"
     },

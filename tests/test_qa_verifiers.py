@@ -18,12 +18,14 @@ from pfsrd2.qa.material_traits import (
     check_statistics,
     check_variant_grades,
 )
+from pfsrd2.qa.material_traits import main as material_main
 from pfsrd2.qa.rune_clauses import (
     check_clauses,
     check_review_exclusivity,
     clause_matches,
     resolve,
 )
+from pfsrd2.qa.rune_clauses import main as rune_main
 
 WEAPON = {
     "name": "Clan Dagger",
@@ -195,11 +197,21 @@ class TestMaterialChecks:
         problems, checked = check_propagation(materials, uses)
         assert len(problems) == 1 and checked == 1
 
-    def test_use_page_without_base_material_is_skipped_not_failed(self):
+    def test_known_page_without_base_material_is_skipped(self):
+        # Elven Chain is a specific armor, not a generic material use page.
         use = _use("Elven Chain", "Dawnsilver", [])
         del use["stat_block"]["base_material"]
         problems, checked = check_propagation({}, [use])
         assert problems == [] and checked == 0
+
+    def test_unknown_page_without_base_material_is_reported(self):
+        # Scoped exception, not a blanket skip: any other page missing a base
+        # material is one this verifier silently could not check.
+        use = _use("Mystery Armor", "Dawnsilver", [])
+        del use["stat_block"]["base_material"]
+        problems, checked = check_propagation({}, [use])
+        assert checked == 0
+        assert "has no base_material" in problems[0]
 
     def test_unknown_base_material_is_reported(self):
         problems, _ = check_propagation({}, [_use("X Armor", "Nonexistent", [])])
@@ -239,6 +251,18 @@ class TestMaterialChecks:
         )
         problems = check_variant_grades([use])
         assert len(problems) == 1 and "item_form" in problems[0]
+
+    def test_variant_missing_grade_is_reported(self):
+        use = _use(
+            "A Armor",
+            "A",
+            [],
+            variants=[
+                {"name": "A Armor (Standard-Grade)", "material_use": {"item_form": "armor"}},
+            ],
+        )
+        problems = check_variant_grades([use])
+        assert len(problems) == 1 and "no grade" in problems[0]
 
     def test_complete_variant_passes(self):
         use = _use(
@@ -307,3 +331,153 @@ class TestLoaders:
         )
         kept = load_equipment(lambda d: d.get("stat_block", {}).get("item_category") == "Runes")
         assert [d["name"] for d in kept] == ["Striking"]
+
+
+class TestVerifierMain:
+    """main() end to end, hermetically.
+
+    The vacuous-success guards live here, and they are the whole reason the
+    verifiers can be trusted — a dropped return or an inverted condition would
+    silently restore the failure mode three reviewers independently flagged.
+    Both modules reach the filesystem only through load_equipment/load_json_dir,
+    so a PF2_DATA_DIR override drives them with no mocking.
+    """
+
+    @pytest.fixture
+    def data_root(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        return tmp_path
+
+    def _write(self, root, relative, doc):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(doc))
+
+    def _material_doc(self, name, grants):
+        return {
+            "name": name,
+            "edition": "remastered",
+            "stat_block": {
+                "item_category": "Materials",
+                "material": {
+                    "precious": True,
+                    "grants_traits": grants,
+                    "grades": [{"grade": "high"}],
+                    "statistics": [{"form": "item", "hardness": 1}],
+                },
+            },
+        }
+
+    def _use_doc(self, name, base, traits, with_base=True):
+        stat_block = {
+            "material_use": {"host": "armor"},
+            "traits": [{"name": t} for t in traits],
+            "variants": [
+                {
+                    "name": f"{name} (High-Grade)",
+                    "material_use": {"grade": "high", "item_form": "armor"},
+                }
+            ],
+        }
+        if with_base:
+            stat_block["base_material"] = {"name": base}
+        return {"name": name, "edition": "remastered", "stat_block": stat_block}
+
+    def test_material_main_passes_on_agreeing_data(self, data_root):
+        self._write(
+            data_root, "equipment/b/adamantine.json", self._material_doc("Adamantine", ["Uncommon"])
+        )
+        self._write(
+            data_root,
+            "equipment/b/adamantine_armor.json",
+            self._use_doc("Adamantine Armor", "Adamantine", ["Uncommon"]),
+        )
+        assert material_main() == 0
+
+    def test_material_main_fails_when_nothing_was_compared(self, data_root, capsys):
+        # Use pages exist but none names a base_material, so checked == 0.
+        # Without the guard this prints success and exits 0.
+        self._write(
+            data_root, "equipment/b/adamantine.json", self._material_doc("Adamantine", ["Uncommon"])
+        )
+        self._write(
+            data_root,
+            "equipment/b/elven_chain.json",
+            self._use_doc("Elven Chain", "Adamantine", [], with_base=False),
+        )
+        assert material_main() == 1
+        assert "no propagation comparisons ran" in capsys.readouterr().out
+
+    def test_material_main_fails_with_no_use_pages(self, data_root):
+        self._write(
+            data_root, "equipment/b/adamantine.json", self._material_doc("Adamantine", ["Uncommon"])
+        )
+        assert material_main() == 1
+
+    def test_material_main_fails_on_a_propagation_mismatch(self, data_root, capsys):
+        self._write(
+            data_root, "equipment/b/adamantine.json", self._material_doc("Adamantine", ["Uncommon"])
+        )
+        self._write(
+            data_root,
+            "equipment/b/adamantine_armor.json",
+            self._use_doc("Adamantine Armor", "Adamantine", ["Rare"]),
+        )
+        assert material_main() == 1
+        assert "PROBLEMS" in capsys.readouterr().out
+
+    def _rune_doc(self, name, requires=None):
+        block = {"host": "weapon"}
+        if requires:
+            block["requires"] = requires
+        return {
+            "name": name,
+            "edition": "remastered",
+            "stat_block": {"item_category": "Runes", "rune": block},
+        }
+
+    def _hosts(self, root):
+        for kind, doc in (
+            ("weapons", WEAPON),
+            ("armor", {"name": "Chain Shirt"}),
+            ("shields", {"name": "Buckler"}),
+        ):
+            self._write(root, f"{kind}/x.json", doc)
+
+    def test_rune_main_passes_on_live_clauses(self, data_root):
+        self._hosts(data_root)
+        self._write(
+            data_root,
+            "equipment/b/monks.json",
+            self._rune_doc(
+                "Monk's", [{"path": "$.stat_block.traits[*].name", "op": "in", "values": ["Monk"]}]
+            ),
+        )
+        assert rune_main() == 0
+
+    def test_rune_main_fails_when_a_host_directory_is_empty(self, data_root, capsys):
+        # weapons/ and armor/ exist, shields/ does not. Every shield-host rune
+        # has empty requires in real data, so without this guard a missing
+        # shields/ directory verifies nothing and still exits 0.
+        self._write(data_root, "weapons/x.json", WEAPON)
+        self._write(data_root, "armor/x.json", {"name": "Chain Shirt"})
+        self._write(data_root, "equipment/b/monks.json", self._rune_doc("Monk's"))
+        assert rune_main() == 1
+        assert "shield" in capsys.readouterr().out
+
+    def test_rune_main_fails_on_a_dead_clause(self, data_root, capsys):
+        self._hosts(data_root)
+        self._write(
+            data_root,
+            "equipment/b/ghostly.json",
+            self._rune_doc(
+                "Ghostly",
+                [{"path": "$.stat_block.traits[*].name", "op": "in", "values": ["Nonexistent"]}],
+            ),
+        )
+        assert rune_main() == 1
+        assert "DEAD CLAUSES" in capsys.readouterr().out
+
+    def test_rune_main_fails_with_no_rune_data(self, data_root):
+        self._hosts(data_root)
+        assert rune_main() == 1

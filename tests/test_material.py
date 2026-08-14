@@ -357,6 +357,22 @@ class TestUsePass:
             ("weapon", "weapon", "high"),
         ]
 
+    def test_stat_override_without_the_and_conjunction(self):
+        # Siccatite's six variants state stats without the "and" before BT.
+        struct = _use(
+            "Siccatite Shield",
+            "Shields",
+            [
+                {
+                    "name": "Siccatite Shield (Standard-Grade)",
+                    "text": "The shield has Hardness 8, HP 32, BT 16.",
+                },
+            ],
+        )
+        material_pass(struct)
+        use = struct["stat_block"]["variants"][0]["material_use"]
+        assert (use["hardness"], use["hit_points"], use["break_threshold"]) == (8, 32, 16)
+
     def test_unknown_use_subcategory_fails_loudly(self):
         struct = _use("Adamantine Hat", "Hats", [{"name": "Adamantine Hat (High-Grade)"}])
         with pytest.raises(AssertionError, match="Unrecognized precious material use"):

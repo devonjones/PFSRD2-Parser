@@ -298,9 +298,18 @@ def _effects_for(name, variant_name):
 
 
 def _usage_text(stat_block):
+    """The Usage line, or None when it is absent or blank.
+
+    Whitespace-only text is treated as absent: it is truthy, so it would
+    otherwise skip the missing-usage raise and then parse to "fully parsed,
+    no requirements" — a rune claiming it fits every host item.
+    """
     statistics = stat_block.get("statistics") or {}
     usage = statistics.get("usage") or {}
-    return usage.get("text")
+    text = usage.get("text")
+    if text is None or not text.strip():
+        return None
+    return text
 
 
 def is_rune(stat_block):
@@ -346,8 +355,9 @@ def rune_pass(struct):
         # regression flip the whole corpus to "unreviewed" while the verifier
         # still exits 0.
         raise AssertionError(
-            f"Rune {name!r} ({subcategory}) has no usage text — expected one on "
-            "every rune except accessory runes and clan dagger filigrees"
+            f"Rune {name!r} ({subcategory}) has no usage text — every rune "
+            "outside the clan dagger filigrees carries one (accessory runes "
+            "have usage text too; they just skip parsing it)"
         )
     else:
         requires, conflicts, fully_parsed = parse_usage(usage_text)

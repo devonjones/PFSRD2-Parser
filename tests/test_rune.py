@@ -292,12 +292,35 @@ class TestRunePass:
             rune_pass(struct)
 
     def test_missing_usage_on_a_normal_rune_fails_loudly(self):
-        # Only accessory runes and clan dagger filigrees legitimately lack a
-        # Usage line; anything else silently becoming needs_review would hide
-        # an upstream extraction regression across the whole corpus.
+        # Only clan dagger filigrees legitimately lack a Usage line (accessory
+        # runes have one, they just skip parsing it). Anything else silently
+        # becoming needs_review would hide an upstream extraction regression
+        # across the whole corpus.
         struct = _stat_block("Keen", "Weapon Property Runes")
         with pytest.raises(AssertionError, match="no usage text"):
             rune_pass(struct)
+
+    def test_blank_usage_is_treated_as_missing(self):
+        # Whitespace is truthy, so it would skip the missing-usage raise and
+        # then parse to "fully parsed, no requirements" — a rune claiming it
+        # fits every host item.
+        struct = _stat_block("Keen", "Weapon Property Runes", usage="   ")
+        with pytest.raises(AssertionError, match="no usage text"):
+            rune_pass(struct)
+
+    def test_conflicts_survive_an_unparsable_usage(self):
+        # conflicts_with is decided independently of the residue, so it is
+        # kept while requires is dropped. Pins the documented asymmetry.
+        struct = _stat_block(
+            "Warding",
+            "Armor Property Runes",
+            usage="etched onto metal armor without a *disrupting* rune",
+        )
+        rune_pass(struct)
+        rune = _rune(struct)
+        assert rune["needs_review"] is True
+        assert "requires" not in rune
+        assert rune["conflicts_with"] == ["disrupting"]
 
     def test_conflict_capture_ignores_articles(self):
         # "that isn't a shield" would otherwise capture the article as a
