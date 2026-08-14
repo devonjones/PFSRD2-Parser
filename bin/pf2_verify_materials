@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""Verify material trait propagation against AoN's published use pages.
+Exit 1 on contradictions. See pfsrd2/qa/material_traits.py."""
+import os
+import sys
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(script_dir, ".."))
+
+from pfsrd2.qa import material_traits  # noqa: E402
+
+sys.exit(material_traits.main())

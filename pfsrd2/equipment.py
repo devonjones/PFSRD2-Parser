@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 import pfsrd2.constants as constants
 from pfsrd2.action import extract_action_type
 from pfsrd2.license import license_consolidation_pass, license_pass
+from pfsrd2.material import material_pass
 from pfsrd2.rune import rune_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql import get_db_connection, get_db_path
@@ -789,8 +790,10 @@ def parse_equipment_v2(filename, options):
     # Populate creature-style buckets (statistics, defense, offense)
     populate_equipment_buckets_pass(struct)
 
-    # Decorate runes with slot metadata (needs item_category + usage in place)
+    # Decorate runes and materials with slot metadata (needs item_category,
+    # usage and section text in place)
     rune_pass(struct)
+    material_pass(struct)
     remove_empty_sections_pass(struct)
     _remove_empty_values_pass(struct)
 
