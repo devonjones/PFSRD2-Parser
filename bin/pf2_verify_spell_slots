@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Verify every slotted spell resolves against the parsed spell corpus and
+every rank is legal for its holder. Exit 1 on problems.
+See pfsrd2/qa/spell_slots.py."""
+import os
+import sys
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(script_dir, ".."))
+
+from pfsrd2.qa import spell_slots  # noqa: E402
+
+sys.exit(spell_slots.main())

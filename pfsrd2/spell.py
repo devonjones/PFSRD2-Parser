@@ -3,7 +3,7 @@ import os
 import re
 import sys
 
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup, NavigableString, Tag
 
 from pfsrd2.action import ACTION_TITLE_MAP
 from pfsrd2.license import license_consolidation_pass, license_pass
@@ -135,6 +135,38 @@ def _content_filter(soup):
                 cleaned = re.sub(r"\s+(or more|or|to)\s*$", "", str(node))
                 if cleaned != str(node):
                     node.replace_with(NavigableString(cleaned))
+        _strip_cast_range_from_title(h1)
+
+
+def _strip_cast_range_from_title(h1):
+    """Drop a variable cast time that AoN wrote into the spell's title.
+
+    Three Secrets of Magic spells are titled "Name [two-actions] to 2 rounds".
+    Their markup is malformed — an unbalanced </a> inside the h1 pushes the
+    name, the action span and the trailing range out of the h1 and into #main
+    as loose siblings — so the range is not reachable from inside the h1 and
+    ends up concatenated onto the spell's name.
+
+    The range is casting-time detail already carried by the Cast entry, so it
+    is removed rather than relocated. Scoped to the title region: it stops at
+    the first trait or heading, so action spans in the spell's body are
+    untouched.
+    """
+    node = h1
+    while True:
+        node = node.next_sibling
+        if node is None:
+            break
+        if isinstance(node, Tag):
+            if node.name in ("h1", "h2", "h3", "hr") or "trait" in (node.get("class") or []):
+                break
+            if "action" not in (node.get("class") or []):
+                continue
+            following = node.next_sibling
+            if isinstance(following, NavigableString) and re.match(
+                r"\s*(to|or more|or)\b", str(following)
+            ):
+                following.extract()
 
 
 def _sidebar_filter(soup):

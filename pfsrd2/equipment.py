@@ -12,6 +12,7 @@ from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.material import material_pass
 from pfsrd2.rune import rune_pass
 from pfsrd2.schema import validate_against_schema
+from pfsrd2.spell_slot import spell_slot_pass
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.traits import (
     fetch_trait_by_name,
@@ -795,6 +796,7 @@ def parse_equipment_v2(filename, options):
     # and material_pass reads the section text holding the stat table.
     rune_pass(struct)
     material_pass(struct)
+    spell_slot_pass(struct)
     remove_empty_sections_pass(struct)
     _remove_empty_values_pass(struct)
 
