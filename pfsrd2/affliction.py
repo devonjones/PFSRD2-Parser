@@ -149,9 +149,20 @@ def parse_affliction(filename, options):
     aon_pass(struct, basename)
     restructure_pass(struct, "affliction", find_affliction)
     struct["edition"] = edition_from_alternate_link(struct) or edition_pass(struct["sections"])
-    struct["sections"] = [
-        s for s in struct["sections"] if s.get("name") not in ("Legacy Content", "Traits")
-    ]
+    # These two are markers, not content: "Legacy Content" has had its text
+    # taken by take_stat_block_text and "Traits" is consumed by the trait
+    # extractor. Dropping either while it still carries something would be
+    # silent data loss, so check before dropping rather than after.
+    kept = []
+    for section in struct["sections"]:
+        if section.get("name") not in ("Legacy Content", "Traits"):
+            kept.append(section)
+            continue
+        assert not section.get("text"), (
+            f"{section['name']!r} section on {struct['name']!r} still carries text; "
+            "dropping it here would lose data"
+        )
+    struct["sections"] = kept
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
     trait_db_pass(struct)

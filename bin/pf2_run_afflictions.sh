@@ -50,6 +50,13 @@ if test -f "$BIN_DIR/errors.pf2.${ERROR_SUFFIX}"; then
 		fi
 	done
 else
+	COUNT=$(ls "$PF2_WEB_DIR"/$PLURAL/$PLURAL.aspx.ID_* 2>/dev/null | wc -l)
+	if [ "$COUNT" -eq 0 ]; then
+		# Zero files processed writes no error log and exits 0, which reads
+		# exactly like a perfect run.
+		echo "no source files matched $PF2_WEB_DIR/$PLURAL/$PLURAL.aspx.ID_*" >&2
+		exit 1
+	fi
 	for i in `ls "$PF2_WEB_DIR"/$PLURAL/$PLURAL.aspx.ID_* | msort -j -q -l -n 1 -c hybrid`
 	do
 		if ! "$BIN_DIR/pf2_affliction_parse" -o "$PF2_DATA_DIR" "$AFFLICTION_TYPE" "$i" ; then
