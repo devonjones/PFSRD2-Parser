@@ -857,3 +857,35 @@ class TestAttackExtractionOrder:
             "claw +20, <b>Damage</b> 2d6 slashing"
         )
         assert _parsed(text=text)["attacks"][0]["action_type"]["name"] == "One Action"
+
+
+class TestUnlinkedAttackTraits:
+    """An unlinked trait is a source problem, so it has to be visible."""
+
+    SOURCE = '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+
+    def test_an_unlinked_trait_fails_loudly(self):
+        # extract_starting_traits only objects when SOME traits are linked, so
+        # a wholly unlinked parenthetical would otherwise vanish.
+        text = self.SOURCE + "<b>Melee</b> claw +20 (magical), <b>Damage</b> 2d6 slashing"
+        with pytest.raises(AssertionError, match="link them in the source"):
+            _parsed(text=text)
+
+    def test_a_linked_trait_is_fine(self):
+        text = (
+            self.SOURCE + "<b>Melee</b> claw +20 "
+            '(<a game-obj="Traits" aonid="103">magical</a>), <b>Damage</b> 2d6 slashing'
+        )
+        assert [t["name"] for t in _parsed(text=text)["attacks"][0]["traits"]] == ["magical"]
+
+    def test_a_note_in_the_traits_slot_is_kept_not_flagged(self):
+        # "can target any creature in area A8" is published content, not traits.
+        text = (
+            self.SOURCE + "<b>Melee</b> bolt +35 (can target any creature in area A8), "
+            "<b>Damage</b> 4d10 force"
+        )
+        attack = _parsed(text=text)["attacks"][0]
+        assert attack["note"] == "can target any creature in area A8"
+        # parse_attack_action always sets traits; remove_empty_fields drops the
+        # empty list later in the pipeline.
+        assert not attack["traits"]

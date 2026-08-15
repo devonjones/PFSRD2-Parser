@@ -420,6 +420,17 @@ def _assert_no_duplicate_labels(hazard, bs):
 _ATTACK_TYPES = {"Melee", "Ranged"}
 
 
+def _looks_like_traits(inner):
+    """Does a parenthetical hold traits rather than a note?
+
+    Traits are short and comma-separated; a note is a sentence. The
+    distinction matters because an unlinked trait has to be fixed in the
+    source, while a note has to be kept.
+    """
+    parts = [p.strip() for p in inner.split(",") if p.strip()]
+    return bool(parts) and all(len(p.split()) <= 4 and " the " not in f" {p} " for p in parts)
+
+
 def _extract_attacks(hazard, bs):
     """Pull Melee/Ranged Strikes out before the ability parser sees them.
 
@@ -457,6 +468,23 @@ def _extract_attacks(hazard, bs):
         assert attack.get(
             "weapon"
         ), f"{name} of hazard {hazard.get('name')!r} parsed no weapon from {line!r}"
+        # extract_starting_traits only objects to a parenthetical where SOME
+        # traits are linked; one with none silently yields nothing. The fix for
+        # an unlinked trait is to link it in the source, so say so. Only the
+        # parenthetical before the Damage label holds traits — later ones are
+        # notes on the damage.
+        head = re.split(r"(?:<b>\s*)?\b(?:Damage|Effect)\b", line)[0]
+        paren = re.search(r"\(([^)]*)\)", head)
+        if paren and paren.group(1).strip() and not attack.get("traits"):
+            inner = paren.group(1)
+            assert not _looks_like_traits(inner), (
+                f"{name} of hazard {hazard.get('name')!r} publishes ({inner}) with no "
+                "trait links, so the traits are lost — link them in the source"
+            )
+            # A note in the traits slot ("can target any creature in area A8")
+            # is published content; parse_attack_action discards it with the
+            # traits it could not find.
+            attack["note"] = _plain(inner)
         if "links" in section:
             attack.setdefault("links", []).extend(section["links"])
         attacks.append(attack)

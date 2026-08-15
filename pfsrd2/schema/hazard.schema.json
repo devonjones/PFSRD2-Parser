@@ -353,6 +353,10 @@
         "name": {
           "type": "string"
         },
+        "note": {
+          "description": "A note published in the traits parenthetical rather than traits, e.g. \"can target any creature in area A8\". Not in creature.schema.json's attack because no creature publishes one; kept here because dropping it would lose published content.",
+          "type": "string"
+        },
         "requirement": {
           "type": "string"
         },
