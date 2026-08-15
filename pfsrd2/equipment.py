@@ -6616,12 +6616,7 @@ def _normalize_damage(sb):
         if len(tokens) < 2:
             # Just a formula without type, or single token
             if tokens:
-                damage_obj = {
-                    "type": "stat_block_section",
-                    "subtype": "attack_damage",
-                    "formula": tokens[0],
-                }
-                damage_array.append(damage_obj)
+                damage_array.append(_damage_object(tokens[0]))
             continue
 
         formula = tokens[0]
@@ -6635,17 +6630,36 @@ def _normalize_damage(sb):
 
         damage_type = damage_type_map[damage_type_code]
 
-        damage_obj = {
-            "type": "stat_block_section",
-            "subtype": "attack_damage",
-            "formula": formula,
-            "damage_type": damage_type,
-        }
-        damage_array.append(damage_obj)
+        damage_array.append(_damage_object(formula, damage_type))
 
     if damage_array:
         sb["damage"] = damage_array
     # If empty, don't set it - cleanup pass will handle any existing empty/null values
+
+
+_DICE_FORMULA = re.compile(r"^(\d+)d(\d+)$")
+
+
+def _damage_object(formula, damage_type=None):
+    """An attack_damage object with the dice broken out of the formula.
+
+    The formula string is the display form; dice_count and die_size are the
+    mechanics. A striking rune sets the number of weapon damage dice, so a
+    consumer applying it needs the count as a field rather than embedded in
+    "1d8". Flat damage ("1") carries neither, since there are no dice.
+    """
+    damage = {
+        "type": "stat_block_section",
+        "subtype": "attack_damage",
+        "formula": formula,
+    }
+    match = _DICE_FORMULA.match(formula or "")
+    if match:
+        damage["dice_count"] = int(match.group(1))
+        damage["die_size"] = int(match.group(2))
+    if damage_type:
+        damage["damage_type"] = damage_type
+    return damage
 
 
 def _normalize_hands(sb):

@@ -125,8 +125,13 @@ class TestRunePass:
             "host": "weapon",
             "usage_text": "etched onto a weapon",
         }
-        dice = [v["effects"][0]["value"] for v in struct["stat_block"]["variants"]]
-        assert dice == [2, 3, 4]
+        dice = [v["effects"][0] for v in struct["stat_block"]["variants"]]
+        assert [d["value"] for d in dice] == [2, 3, 4]
+        assert all(d["operation"] == "replace" for d in dice)
+        assert all(
+            d["target"] == "$.stat_block.offense.weapon_modes[*].damage[*].dice_count"
+            for d in dice
+        )
 
     def test_potency_grants_property_slots(self):
         struct = _stat_block(
@@ -137,18 +142,16 @@ class TestRunePass:
         )
         rune_pass(struct)
         variants = struct["stat_block"]["variants"]
-        slots = [
-            effect
-            for v in variants
-            for effect in v["effects"]
-            if effect["subject"] == "property_rune_slots"
-        ]
-        assert [s["value"] for s in slots] == [1, 2, 3]
-        attack = [
-            effect for v in variants for effect in v["effects"] if effect["subject"] == "attack"
-        ]
+        # Capacity is metadata on the rune block, not an effect: it mutates
+        # nothing on the host.
+        assert [v["rune"]["grants_property_slots"] for v in variants] == [1, 2, 3]
+        attack = [e for v in variants for e in v["effects"]]
         assert [a["modifier"]["bonus_value"] for a in attack] == [1, 2, 3]
         assert all(a["modifier"]["bonus_type"] == "item" for a in attack)
+        assert all(a["operation"] == "add_modifier" for a in attack)
+        assert all(
+            a["target"] == "$.stat_block.offense.weapon_modes[*].modifiers" for a in attack
+        )
 
     def test_armor_potency_grants_an_item_bonus_to_ac(self):
         struct = _stat_block(
@@ -158,13 +161,9 @@ class TestRunePass:
             variants=["Armor Potency (+1)", "Armor Potency (+2)", "Armor Potency (+3)"],
         )
         rune_pass(struct)
-        ac = [
-            effect
-            for v in struct["stat_block"]["variants"]
-            for effect in v["effects"]
-            if effect["subject"] == "ac"
-        ]
+        ac = [effect for v in struct["stat_block"]["variants"] for effect in v["effects"]]
         assert [a["modifier"]["bonus_value"] for a in ac] == [1, 2, 3]
+        assert all(a["target"] == "$.stat_block.defense.modifiers" for a in ac)
         assert all(
             a["modifier"]
             == {
@@ -197,13 +196,12 @@ class TestRunePass:
         )
         rune_pass(struct)
         minor, supreme = struct["stat_block"]["variants"]
-        assert [
-            (e["subject"], e["modifier"]["bonus_value"], e["maximum"]) for e in minor["effects"]
-        ] == [
-            ("hardness", 3, 8),
-            ("hit_points", 44, 64),
-            ("break_threshold", 22, 32),
+        assert [(e["target"], e["value"], e["maximum"]) for e in minor["effects"]] == [
+            ("$.stat_block.defense.hitpoints.hardness", 3, 8),
+            ("$.stat_block.defense.hitpoints.hp", 44, 64),
+            ("$.stat_block.defense.hitpoints.break_threshold", 22, 32),
         ]
+        assert all(e["operation"] == "adjustment" for e in minor["effects"])
         assert supreme["effects"][0]["maximum"] == 20
 
     def test_missing_grade_effects_fail_loudly(self):
