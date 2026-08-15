@@ -334,9 +334,10 @@ def handle_trait_value(trait):
     with valued traits needs it — equipment and hazards both.
     """
     original_name = trait["name"]
-    if original_name.lower().startswith("range increment"):
+    prefix = "range increment"
+    if original_name.lower().startswith(prefix):
         trait["name"] = "range"
-        trait["value"] = original_name[6:].strip()
+        trait["value"] = original_name[len(prefix) :].strip()
         return
 
     m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
@@ -348,6 +349,30 @@ def handle_trait_value(trait):
         parts = trait["name"].split(" ", 1)
         trait["name"] = parts[0].strip()
         trait["value"] = parts[1].strip()
+
+
+def parse_defense_line(text, subtype):
+    """Split an Immunities/Weaknesses/Resistances line into protection objects.
+
+    "cold 5, fire 10" -> [{name: "cold", value: 5}, {name: "fire", value: 10}].
+    Shared because every stat block that has these publishes them identically —
+    creatures and hazards both parse the same line.
+    """
+    text = text.strip()
+    if text.endswith(";"):
+        text = text[:-1].strip()
+    entries = []
+    for part in rebuilt_split_modifiers(split_stat_block_line(text)):
+        # A trailing separator yields an empty part. Left in, its name is ""
+        # and remove_empty_fields later strips the key entirely, producing a
+        # nameless entry that fails schema validation.
+        if not part or not part.strip():
+            continue
+        entry = {"type": "stat_block_section", "subtype": subtype, "name": part.strip()}
+        parse_section_modifiers(entry, "name")
+        parse_section_value(entry, "name")
+        entries.append(entry)
+    return entries
 
 
 def parse_section_value(section, key):

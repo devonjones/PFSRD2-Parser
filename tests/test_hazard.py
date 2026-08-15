@@ -1,5 +1,8 @@
 """Tests for the hazard parser (pfsrd2/hazard.py)."""
 
+import json
+import os
+
 import pytest
 from bs4 import BeautifulSoup
 
@@ -7,7 +10,10 @@ from pfsrd2.hazard import (
     FIELD_LABELS,
     _component_label,
     _extract_component_durability,
+    _extract_sources,
     _extract_traits,
+    _hazard_filename,
+    _hazard_trait_pre_process,
     _parse_defenses,
     _structure_fields,
     _unwrap_map_area_refs,
@@ -126,7 +132,7 @@ class TestFields:
 
     def test_saves(self):
         saves = {s["name"]: s["value"] for s in _parsed()["saves"]}
-        assert saves == {"fortitude": 1, "reflex": 3}
+        assert saves == {"Fort": 1, "Ref": 3}
 
     def test_links_are_extracted_and_tags_unwrapped(self):
         hazard = _parsed()
@@ -216,10 +222,25 @@ class TestFieldLabels:
 
 
 class TestStructureFields:
-    def test_non_numeric_stat_is_dropped_rather_than_kept_as_text(self):
-        hazard = {"ac": "—"}
+    def test_unparseable_stat_fails_loudly(self):
+        # Dropping it would ship a hazard missing a published AC and report success.
+        with pytest.raises(AssertionError, match="no number in it"):
+            _structure_fields({"ac": "—", "name": "Hidden Pit"})
+
+    def test_unparseable_save_fails_loudly(self):
+        with pytest.raises(AssertionError, match="no number in it"):
+            _structure_fields({"fort": "—", "name": "Hidden Pit"})
+
+    def test_break_threshold_is_read_out_of_hp(self):
+        # BT is never its own bold label; it rides inside HP as "90 (BT 45)".
+        hazard = {"hp": "90 (BT 45)", "name": "Hidden Pit"}
         _structure_fields(hazard)
-        assert "ac" not in hazard
+        assert (hazard["hp"], hazard["bt"]) == (90, 45)
+
+    def test_hp_without_a_break_threshold_gets_no_bt(self):
+        hazard = {"hp": "32", "name": "Hidden Pit"}
+        _structure_fields(hazard)
+        assert "bt" not in hazard
 
 
 class TestMapAreaRefs:
@@ -247,3 +268,119 @@ class TestMapAreaRefs:
         ability = _parsed(text=text)["abilities"][0]
         assert ability["name"] == "Disorient"
         assert ability["trigger"] == "A creature enters from area C2 or C4."
+
+
+class TestResultBlocks:
+    """Degrees of success belong to the ability that rolled the save."""
+
+    ABILITY = (
+        '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+        "<b>Pitfall</b> "
+        '<span class="action" title="Reaction">[reaction]</span> '
+        "<b>Effect</b> The creature falls in. "
+        "<b>Critical Success</b> No damage. "
+        "<b>Success</b> Half damage. "
+        "<b>Failure</b> Full damage. "
+        "<b>Critical Failure</b> Double damage."
+    )
+
+    def test_result_labels_do_not_become_their_own_abilities(self):
+        assert [a["name"] for a in _parsed(text=self.ABILITY)["abilities"]] == ["Pitfall"]
+
+    def test_each_degree_lands_on_the_ability(self):
+        ability = _parsed(text=self.ABILITY)["abilities"][0]
+        assert ability["critical_success"] == "No damage."
+        assert ability["success"] == "Half damage."
+        assert ability["failure"] == "Full damage."
+        assert ability["critical_failure"] == "Double damage."
+
+
+class TestTraitPreProcess:
+    def test_known_trait_is_left_alone(self, monkeypatch):
+        monkeypatch.setattr("pfsrd2.hazard.fetch_trait_by_name", lambda curs, name: {"name": name})
+        trait = {"name": "magical"}
+        _hazard_trait_pre_process(trait, None, None)
+        assert trait == {"name": "magical"}
+
+    def test_unknown_valued_trait_is_split(self, monkeypatch):
+        # "thrown 10 feet" is one string in the source; the table knows "thrown".
+        monkeypatch.setattr("pfsrd2.hazard.fetch_trait_by_name", lambda curs, name: None)
+        trait = {"name": "thrown 10 feet"}
+        _hazard_trait_pre_process(trait, None, None)
+        assert (trait["name"], trait["value"]) == ("thrown", "10 feet")
+
+    def test_unknown_single_word_trait_is_left_for_the_db_to_reject(self, monkeypatch):
+        monkeypatch.setattr("pfsrd2.hazard.fetch_trait_by_name", lambda curs, name: None)
+        trait = {"name": "nonsense"}
+        _hazard_trait_pre_process(trait, None, None)
+        assert trait == {"name": "nonsense"}
+
+
+class TestSources:
+    def test_source_is_extracted(self):
+        assert _parsed()["sources"][0]["name"] == "Core Rulebook"
+
+    def test_the_source_page_is_kept(self):
+        assert _parsed()["sources"][0]["page"] == 522
+
+    def test_a_hazard_with_no_source_fails_loudly(self):
+        hazard, bs = {"name": "Hidden Pit"}, BeautifulSoup(
+            "<b>Complexity</b> Simple", "html.parser"
+        )
+        with pytest.raises(AssertionError, match="No source found"):
+            _extract_sources(hazard, bs)
+
+
+class TestResidue:
+    def test_prose_the_ability_parser_could_not_claim_is_kept(self):
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Pitfall</b> "
+            '<span class="action" title="Reaction">[reaction]</span> '
+            "<b>Effect</b> The creature falls in.<br/>"
+            "The pit is lined with spikes."
+        )
+        assert "The pit is lined with spikes." in _parsed(text=text)["text"]
+
+    def test_a_fully_claimed_block_leaves_no_text(self):
+        # Otherwise every hazard would carry a text key of leftover punctuation.
+        assert "text" not in _parsed()
+
+
+class TestFilenames:
+    def _write(self, tmp_path, aonid, name="Glyph of Warding"):
+        struct = {"name": name, "aonid": aonid, "game-obj": "Hazards"}
+        path = _hazard_filename(str(tmp_path), struct)
+        with open(path, "w") as fp:
+            json.dump(struct, fp)
+        return os.path.basename(path)
+
+    def test_a_lone_hazard_keeps_the_plain_name(self, tmp_path):
+        assert self._write(tmp_path, 263) == "glyph_of_warding.json"
+
+    def test_two_hazards_sharing_a_name_both_survive(self, tmp_path):
+        # Pathfinder #184 publishes two "Glyph of Warding" (levels 13 and 14);
+        # one plain path silently loses whichever is written first.
+        self._write(tmp_path, 263)
+        second = self._write(tmp_path, 266)
+        assert sorted(os.listdir(tmp_path)) == [
+            "glyph_of_warding_263.json",
+            "glyph_of_warding_266.json",
+        ]
+        assert second == "glyph_of_warding_266.json"
+
+    def test_the_same_hazard_rewrites_its_own_file(self, tmp_path):
+        self._write(tmp_path, 263)
+        self._write(tmp_path, 263)
+        assert os.listdir(tmp_path) == ["glyph_of_warding.json"]
+
+    def test_collision_naming_is_independent_of_order(self, tmp_path):
+        for order in ([263, 266], [266, 263]):
+            for f in os.listdir(tmp_path):
+                os.remove(os.path.join(tmp_path, f))
+            for aonid in order:
+                self._write(tmp_path, aonid)
+            assert sorted(os.listdir(tmp_path)) == [
+                "glyph_of_warding_263.json",
+                "glyph_of_warding_266.json",
+            ], order

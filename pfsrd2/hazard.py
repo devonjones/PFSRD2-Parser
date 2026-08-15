@@ -9,10 +9,10 @@ Built on the existing parsers rather than beside them:
 
   pipeline shape   pfsrd2/feat.py — the closest existing shape (level badge,
                    traits, bold fields, an action span in the title)
+  traits           universal.universal.is_trait
   bold fields      universal.universal.extract_bold_fields
   abilities        universal.ability.parse_abilities_from_nodes
-  defenses         universal.creatures.universal_handle_* for immunities,
-                   weaknesses, resistances and save DCs
+  defenses         universal.utils.parse_defense_line, shared with creatures
 
 Brittle by design: FIELD_LABELS is closed. A bold label outside it is treated
 as the start of an ability, and an ability that yields nothing fails the parse
@@ -24,15 +24,17 @@ import os
 import re
 import sys
 
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup
 
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.traits import fetch_trait_by_name, trait_db_pass
-from universal.ability import parse_abilities_from_nodes
+from universal.ability import DEFAULT_ADDON_LABELS, parse_abilities_from_nodes
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
+from universal.monster_ability import monster_ability_db_pass
 from universal.universal import (
+    RESULT_LABELS,
     aon_pass,
     build_object,
     edition_from_alternate_link,
@@ -43,6 +45,7 @@ from universal.universal import (
     game_id_pass,
     get_links,
     handle_alternate_link,
+    is_trait,
     link_objects,
     parse_universal,
     remove_empty_sections_pass,
@@ -56,11 +59,8 @@ from universal.utils import (
     get_text,
     handle_trait_value,
     normalize_pfs_to_object,
-    parse_section_modifiers,
-    parse_section_value,
-    rebuilt_split_modifiers,
+    parse_defense_line,
     remove_empty_fields,
-    split_stat_block_line,
     strip_block_tags,
 )
 
@@ -96,9 +96,16 @@ FIELD_LABELS = {
 _COMPONENT_DURABILITY = re.compile(r"^(?P<component>.+?)\s+(?P<stat>Hardness|HP|BT)$")
 _QUALIFIED_DURABILITY = re.compile(r"^(?P<stat>Hardness|HP|BT)\s*\((?P<component>[^)]+)\)$")
 
-_SAVE_LABELS = {"Fort": "fortitude", "Ref": "reflex", "Will": "will"}
+# Same names creature.schema.json uses, so a consumer sees one save shape
+# across both content types.
+_SAVE_LABELS = {"Fort": "Fort", "Ref": "Ref", "Will": "Will"}
 
 _LEVEL_RE = re.compile(r"Hazard\s+(-?\d+)", re.I)
+
+# A hazard's degrees of success belong to the ability that rolled the save, not
+# beside it. Without these, every bold "Success" starts a new ability, because
+# an unrecognised bold is what starts one.
+_HAZARD_ADDON_LABELS = DEFAULT_ADDON_LABELS | set(RESULT_LABELS)
 
 
 def parse_hazard(filename, options):
@@ -109,7 +116,10 @@ def parse_hazard(filename, options):
         filename,
         max_title=4,
         cssclass="main",
-        pre_filters=[_content_filter, _sidebar_filter],
+        # content_filter is used bare, unlike feat.py which also moves the level
+        # badge span out of the h1. A hazard's badge IS its level, and
+        # parse_universal turns it into `subname`, which restructure reads.
+        pre_filters=[content_filter, _sidebar_filter],
     )
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
@@ -122,13 +132,10 @@ def parse_hazard(filename, options):
         )
 
     hazard = find_hazard(struct)
-    if "text" in hazard:
-        bs = BeautifulSoup(hazard["text"], "html.parser")
-        struct["pfs"] = extract_pfs_availability(bs)
-        extract_pfs_note(bs, struct)
-        hazard["text"] = str(bs)
-    else:
-        struct["pfs"] = "Standard"
+    bs = BeautifulSoup(hazard["text"], "html.parser")
+    struct["pfs"] = extract_pfs_availability(bs)
+    extract_pfs_note(bs, struct)
+    hazard["text"] = str(bs)
     normalize_pfs_to_object(struct)
 
     hazard_extract_pass(struct)
@@ -141,6 +148,9 @@ def parse_hazard(filename, options):
     ]
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
+    # A hazard can reference a universal monster ability by link; the same DB
+    # pass creatures use fills in the full record.
+    monster_ability_db_pass(struct)
     trait_db_pass(struct, pre_process=_hazard_trait_pre_process)
     license_pass(struct)
     license_consolidation_pass(struct)
@@ -158,17 +168,6 @@ def parse_hazard(filename, options):
             write_hazard(jsondir, struct, name)
     elif options.stdout:
         print(json.dumps(struct, indent=2, sort_keys=True))
-
-
-def _content_filter(soup):
-    """Base content filter only.
-
-    Deliberately does NOT move the level badge span out of the h1 the way
-    feat.py does. Feats move it because they also carry an action span there;
-    a hazard's badge IS its level, and parse_universal turns it into `subname`,
-    which restructure_hazard_pass reads.
-    """
-    content_filter(soup)
 
 
 def _sidebar_filter(soup):
@@ -198,9 +197,31 @@ def find_hazard(struct):
 
 def write_hazard(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
-    filename = os.path.abspath(jsondir + "/" + char_replace(struct["name"]) + ".json")
+    filename = _hazard_filename(jsondir, struct)
     with open(filename, "w") as fp:
         json.dump(struct, fp, indent=2, sort_keys=True)
+
+
+def _hazard_filename(jsondir, struct):
+    """Path for a hazard, disambiguated by aonid when two share a name.
+
+    A book can publish two different hazards under one name — Pathfinder #184
+    has two "Glyph of Warding" (levels 13 and 14). Writing both to the same
+    path silently loses one, so on a collision BOTH get their aonid appended,
+    which keeps the result independent of the order the files were parsed.
+    """
+    base = os.path.abspath(jsondir + "/" + char_replace(struct["name"]) + ".json")
+    suffixed = base[: -len(".json")] + "_" + str(struct["aonid"]) + ".json"
+    if not os.path.exists(base):
+        return suffixed if os.path.exists(suffixed) else base
+
+    with open(base) as fp:
+        existing = json.load(fp)
+    if existing["aonid"] == struct["aonid"]:
+        return base
+    # Move the squatter aside under its own aonid, then take a suffix too.
+    os.rename(base, base[: -len(".json")] + "_" + str(existing["aonid"]) + ".json")
+    return suffixed
 
 
 def restructure_hazard_pass(details):
@@ -260,14 +281,21 @@ def _unwrap_map_area_refs(bs):
     "or" as an action type. 59 hazard files do this, so it belongs in code.
     """
     for tag in list(bs.find_all("b")):
-        if _MAP_AREA_REF.match(tag.get_text().strip()):
-            tag.unwrap()
+        if not _MAP_AREA_REF.match(tag.get_text().strip()):
+            continue
+        # Only mid-sentence, where the source actually writes these. A bold
+        # "C2" that starts a run is a label this parser has not seen, and
+        # unwrapping it on shape alone would hide that.
+        lead = tag.previous_sibling
+        if not isinstance(lead, str) or not lead.strip():
+            continue
+        tag.unwrap()
 
 
 def hazard_extract_pass(struct):
     """Pull traits, bold fields and abilities out of the stat block blob."""
     hazard = find_hazard(struct)
-    bs = BeautifulSoup(hazard.pop("text", ""), "html.parser")
+    bs = BeautifulSoup(hazard.pop("text"), "html.parser")
 
     # Separators carry no data, and leaving them in bleeds "---" into field
     # values and ability effects once markdown runs.
@@ -294,9 +322,6 @@ def hazard_extract_pass(struct):
     # Residual prose the fields and abilities did not claim is real published
     # content, so it is kept — flattened the same way field values are, since
     # the markdown pass accepts no tags.
-    residue_links = get_links(bs, unwrap=True)
-    if residue_links:
-        hazard.setdefault("links", []).extend(residue_links)
     for span in bs.find_all("span", {"class": "action"}):
         span.unwrap()
     leftover = re.sub(r"(<br/?>|<hr/?>|\s|;|,)+", "", str(bs).strip())
@@ -307,12 +332,11 @@ def hazard_extract_pass(struct):
 def _extract_traits(hazard, bs):
     traits = []
 
-    # AoN marks rarity with its own classes: trait, traituncommon, traitrare,
-    # traitunique. Matching only "trait" drops every rare hazard's rarity.
-    def _is_trait_span(tag):
-        return tag.name == "span" and any(c.startswith("trait") for c in (tag.get("class") or []))
-
-    for span in list(bs.find_all(_is_trait_span)):
+    # is_trait joins the class list before matching, so it covers every rarity
+    # class AoN uses — trait, traituncommon, traitrare, traitunique.
+    for span in list(bs.find_all("span")):
+        if not is_trait(span):
+            continue
         trait = build_object("stat_block_section", "trait", get_text(span).strip())
         links = get_links(span, unwrap=True)
         if links:
@@ -327,14 +351,9 @@ def _extract_sources(hazard, bs):
     """Sources come from the shared extractor, which builds the structured
     dict and removes the nodes; extract_bold_fields would only capture the
     raw HTML."""
-    sources = []
-    while True:
-        source = extract_source_from_bs(bs)
-        if not source:
-            break
-        sources.append(source)
-    assert sources, f"No sources found for hazard {hazard.get('name')!r}"
-    hazard["sources"] = sources
+    source = extract_source_from_bs(bs)
+    assert source, f"No source found for hazard {hazard.get('name')!r}"
+    hazard["sources"] = [source]
 
 
 def _extract_abilities(hazard, bs):
@@ -346,7 +365,7 @@ def _extract_abilities(hazard, bs):
     start = None
     for bold in bs.find_all("b"):
         label = get_text(bold).strip()
-        if label in FIELD_LABELS or _component_label(label):
+        if label in FIELD_LABELS:
             continue
         start = bold
         break
@@ -361,7 +380,9 @@ def _extract_abilities(hazard, bs):
         node = following
 
     consumed = set()
-    abilities = parse_abilities_from_nodes(nodes, consumed=consumed)
+    abilities = parse_abilities_from_nodes(
+        nodes, addon_labels=_HAZARD_ADDON_LABELS, consumed=consumed
+    )
     assert abilities, (
         f"Bold label {get_text(start).strip()!r} on {hazard.get('name')!r} is not a known "
         "field and did not parse as an ability — add it to FIELD_LABELS or fix the split"
@@ -447,7 +468,12 @@ def _extract_component_durability(hazard, bs):
             build_object("stat_block_section", "hazard_component", component),
         )
         raw = _value_after(bold)
-        entry[stat.lower()] = _first_int(raw)
+        value = _first_int(raw)
+        assert value is not None, (
+            f"{label!r} of hazard {hazard.get('name')!r} is {_plain(raw)!r}, which has "
+            "no number in it — the component stat was published but not understood"
+        )
+        entry[stat.lower()] = value
         # HP is published as "12 (BT 6)" — the break threshold rides along.
         bt = re.search(r"BT\s+(-?\d+)", _plain(raw))
         if bt:
@@ -486,21 +512,34 @@ def _structure_fields(hazard):
         if raw is None:
             continue
         value = _first_int(raw)
-        if value is None:
-            continue
+        assert value is not None, (
+            f"{label} save of hazard {hazard.get('name')!r} is {raw!r}, which has no "
+            "number in it — the save was published but not understood"
+        )
         save = build_object("stat_block_section", "save", key)
         save["value"] = value
         saves[key] = save
     if saves:
-        hazard["saves"] = [saves[k] for k in ("fortitude", "reflex", "will") if k in saves]
+        hazard["saves"] = [saves[k] for k in ("Fort", "Ref", "Will") if k in saves]
+
+    # The break threshold rides along inside HP ("90 (BT 45)") — it is never
+    # published as its own bold label, so reading only the first integer drops
+    # it. _extract_component_durability already does this for named parts.
+    raw_hp = hazard.get("hp")
+    break_threshold = re.search(r"BT\s+(-?\d+)", _plain(raw_hp)) if raw_hp else None
 
     for key in ("ac", "hardness", "hp", "bt"):
-        if key in hazard:
-            value = _first_int(hazard[key])
-            if value is not None:
-                hazard[key] = value
-            else:
-                del hazard[key]
+        if key not in hazard:
+            continue
+        value = _first_int(hazard[key])
+        assert value is not None, (
+            f"{key.upper()} of hazard {hazard.get('name')!r} is {hazard[key]!r}, "
+            "which has no number in it — the field was published but not understood"
+        )
+        hazard[key] = value
+
+    if break_threshold:
+        hazard["bt"] = int(break_threshold.group(1))
 
     for key, subtype in (
         ("immunities", "immunity"),
@@ -516,33 +555,11 @@ def _structure_fields(hazard):
 
 
 def _parse_defenses(text, subtype):
-    """Immunities / weaknesses / resistances, in the creature shape.
-
-    Uses the same helper chain pfsrd2/creatures.py uses for the identical
-    stat-block line, so "cold 5" yields {name: "cold", value: 5} and a
-    consumer sees one shape across both content types.
-    """
-    if text.endswith(";"):
-        text = text[:-1].strip()
-    entries = []
-    for part in rebuilt_split_modifiers(split_stat_block_line(text)):
-        # A trailing separator yields an empty part. Left in, its name is ""
-        # and remove_empty_fields later strips the key entirely, producing a
-        # nameless entry that fails schema validation.
-        if not part or not part.strip():
-            continue
-        entry = {"type": "stat_block_section", "subtype": subtype, "name": part.strip()}
-        parse_section_modifiers(entry, "name")
-        parse_section_value(entry, "name")
-        entries.append(entry)
+    """Immunities / weaknesses / resistances, in the creature shape."""
+    entries = parse_defense_line(text, subtype)
     link_objects(entries)
     return entries
 
 
 def _plain(value):
     return get_text(BeautifulSoup(value, "html.parser")).strip()
-
-
-def _iter_strings(node):
-    if isinstance(node, NavigableString):
-        yield str(node)

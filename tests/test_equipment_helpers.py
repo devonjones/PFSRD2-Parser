@@ -2141,10 +2141,11 @@ class TestEquipmentHandleValue:
         return {"name": name, "type": "trait"}
 
     def test_range_increment_case_insensitive(self):
+        # The whole "range increment" prefix comes off, not a fixed 6 chars.
         trait = self._make_trait("Range Increment 30 feet")
         handle_trait_value(trait)
         assert trait["name"] == "range"
-        assert trait["value"] == "Increment 30 feet"
+        assert trait["value"] == "30 feet"
 
     def test_numeric_dice_value(self):
         trait = self._make_trait("Deadly d8")
