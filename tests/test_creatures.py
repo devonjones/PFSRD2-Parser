@@ -232,3 +232,13 @@ class TestProcessDefense:
         assert [e["name"] for e in parse_defense_line("fire 5;", "resistance")] == ["fire"]
         with pytest.raises(AssertionError, match="Empty entry"):
             parse_defense_line("fire 5;,", "resistance")
+
+    def test_a_semicolon_inside_the_parenthetical_is_not_a_separator(self):
+        # Splitting on it leaks a stray ")" into the note.
+        damage = parse_attack_damage(
+            "2d12 poison (on a critical hit, the target is enfeebled 1; this has the poison trait)"
+        )[0]
+        assert damage["damage_type"] == "poison"
+        assert damage["notes"] == (
+            "on a critical hit, the target is enfeebled 1; this has the poison trait"
+        )

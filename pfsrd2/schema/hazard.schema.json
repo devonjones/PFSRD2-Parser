@@ -608,14 +608,30 @@
         "ac": {
           "type": "integer"
         },
+        "ac_note": {
+          "description": "What the component's AC value is qualified by, e.g. 'per spider'.",
+          "type": "string"
+        },
         "bt": {
           "type": "integer"
+        },
+        "bt_note": {
+          "description": "What the component's BT value is qualified by, e.g. 'per spider'.",
+          "type": "string"
         },
         "hardness": {
           "type": "integer"
         },
+        "hardness_note": {
+          "description": "What the component's Hardness value is qualified by, e.g. 'per spider'.",
+          "type": "string"
+        },
         "hp": {
           "type": "integer"
+        },
+        "hp_note": {
+          "description": "What the component's HP value is qualified by, e.g. 'per spider'.",
+          "type": "string"
         },
         "immunities": {
           "additionalItems": false,

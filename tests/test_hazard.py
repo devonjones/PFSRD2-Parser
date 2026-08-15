@@ -596,3 +596,31 @@ class TestComponentDefences:
         assert component["ac"] == 24
         assert [(s["name"], s["value"]) for s in component["saves"]] == [("Fort", 11)]
         assert [i["name"] for i in component["immunities"]] == ["object immunities"]
+
+
+class TestComponentQualifiers:
+    def test_a_component_keeps_its_qualifier_and_break_threshold(self):
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Spider HP</b> 40 per spider (BT 20)"
+        )
+        component = _parsed(text=text)["components"][0]
+        assert (component["hp"], component["bt"], component["hp_note"]) == (40, 20, "per spider")
+
+    def test_a_plain_component_stat_gets_no_note(self):
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Trapdoor Hardness</b> 3"
+        )
+        component = _parsed(text=text)["components"][0]
+        assert component["hardness"] == 3 and "hardness_note" not in component
+
+    def test_a_signed_value_leaves_no_note(self):
+        # The sign belongs to the number; "+11" must not yield a note of "+".
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Reflection Fort</b> +11"
+        )
+        component = _parsed(text=text)["components"][0]
+        assert [(s["name"], s["value"]) for s in component["saves"]] == [("Fort", 11)]
+        assert not any(k.endswith("_note") for k in component)

@@ -1753,8 +1753,19 @@ def parse_attack_damage(text):
             # the damage type — hazards publish "slashing; no multiple attack
             # penalty" this way.
             notes = []
-            if ";" in damage_type:
-                damage_type, _, trailing = damage_type.partition(";")
+            # Only a ";" outside the parentheses separates a trailing clause;
+            # one inside belongs to the parenthetical note.
+            depth, cut = 0, -1
+            for i, ch in enumerate(damage_type):
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                elif ch == ";" and depth == 0:
+                    cut = i
+                    break
+            if cut > -1:
+                damage_type, trailing = damage_type[:cut], damage_type[cut + 1 :]
                 damage_type = damage_type.strip()
                 note_bs = BeautifulSoup(trailing.strip(), "html.parser")
                 note_links = get_links(note_bs, unwrap=True)

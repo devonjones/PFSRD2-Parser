@@ -523,21 +523,21 @@ def _extract_component_durability(hazard, bs):
                 node.extract()
             bold.decompose()
             continue
-        value = _first_int(raw)
+        value, bt, note = _stat_value(raw)
         assert value is not None, (
             f"{label!r} of hazard {hazard.get('name')!r} is {_plain(raw)!r}, which has "
             "no number in it — the component stat was published but not understood"
         )
+        if note:
+            entry[stat.lower() + "_note"] = note
         if stat in _SAVE_LABELS:
             save = build_object("stat_block_section", "save", _SAVE_LABELS[stat])
             save["value"] = value
             entry.setdefault("saves", []).append(save)
         else:
             entry[stat.lower()] = value
-        # HP is published as "12 (BT 6)" — the break threshold rides along.
-        bt = _BREAK_THRESHOLD.search(_plain(raw))
-        if bt:
-            entry["bt"] = int(bt.group(1))
+        if bt is not None:
+            entry["bt"] = bt
         for node in _nodes_after(bold):
             node.extract()
         bold.decompose()
@@ -562,6 +562,23 @@ def _value_after(bold):
 def _first_int(text):
     match = re.search(r"-?\d+", get_text(BeautifulSoup(text, "html.parser")))
     return int(match.group(0)) if match else None
+
+
+def _stat_value(raw):
+    """Split a raw stat value into its number, break threshold and qualifier.
+
+    "88 (BT 44) per spider" -> (88, 44, "per spider"). What the number is
+    qualified by is published content, so taking only the integer drops it —
+    at component level as much as at hazard level.
+    """
+    plain = _plain(raw)
+    value = _first_int(plain)
+    bt = _BREAK_THRESHOLD.search(plain)
+    note = _BREAK_THRESHOLD.sub("", plain, count=1)
+    # The sign belongs to the number, not to the qualifier ("+11").
+    note = re.sub(r"^\s*[+-]?\d+", "", note, count=1)
+    note = note.replace("()", "").strip(" ,;")
+    return value, int(bt.group(1)) if bt else None, note
 
 
 def _structure_fields(hazard):
@@ -591,18 +608,12 @@ def _structure_fields(hazard):
     for key in ("ac", "hardness", "hp"):
         if key not in hazard:
             continue
-        raw = _plain(hazard[key])
-        value = _first_int(raw)
+        value, _, note = _stat_value(hazard[key])
         assert value is not None, (
             f"{key.upper()} of hazard {hazard.get('name')!r} is {hazard[key]!r}, "
             "which has no number in it — the field was published but not understood"
         )
         hazard[key] = value
-        # What the number is qualified by ("22 HP per instrument", "Hardness 9
-        # (wall)") is published content; taking only the integer drops it.
-        note = _BREAK_THRESHOLD.sub("", raw, count=1)
-        note = re.sub(r"^\s*-?\d+", "", note, count=1)
-        note = note.replace("()", "").strip(" ,;")
         if note:
             hazard[key + "_note"] = note
 
