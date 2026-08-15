@@ -871,6 +871,20 @@ class TestAttackExtractionOrder:
         assert [a["weapon"] for a in hazard["attacks"]] == ["lash"]
         assert "Constrict" in [a["name"] for a in hazard["abilities"]]
 
+    def test_a_bolded_list_in_the_effect_stays_with_the_attack(self):
+        # Only a bold inside a LINK ends the run. Descending into any tag stops
+        # at a <ul> whose <li> headers are bold, which hands the Strike's own
+        # list to whichever ability came before it.
+        text = (
+            self.SOURCE + "<b>Ranged</b> eye beam +20, <b>Effect</b> as below."
+            "<ul><li><b>Black Eye Beam</b> blinded for 1 round.</li>"
+            "<li><b>Blue Eye Beam</b> petrified for 1 round.</li></ul>"
+        )
+        hazard = _parsed(text=text)
+        effect = " ".join(d.get("effect", "") for d in hazard["attacks"][0]["damage"])
+        assert "Black Eye Beam" in effect
+        assert "abilities" not in hazard
+
     def test_the_action_type_is_kept(self):
         text = (
             self.SOURCE + "<b>Melee</b> "

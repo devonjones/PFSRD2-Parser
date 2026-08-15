@@ -442,7 +442,10 @@ def _starts_next_entry(node):
     """
     if getattr(node, "name", None) is None:
         return False
-    bold = node if node.name == "b" else node.find("b")
+    # Only inside a link. Descending into any tag stops the run at a <ul>
+    # whose <li> headers are bold, which hands the Strike's own list to
+    # whichever ability came before it.
+    bold = node if node.name == "b" else (node.find("b") if node.name == "a" else None)
     if bold is None:
         return False
     return get_text(bold).strip() not in ("Damage", "Effect")
