@@ -15,7 +15,6 @@ from pfsrd2.equipment import (
     _collect_siblings_until,
     _deduplicate_links_across_abilities,
     _detect_and_remove_actions,
-    _equipment_handle_value,
     _extract_ability_fields,
     _extract_action_type_from_spans,
     _extract_activation_traits_from_parens,
@@ -39,6 +38,7 @@ from pfsrd2.equipment import (
     _split_compound_bulk,
     normalize_equipment_fields,
 )
+from universal.utils import handle_trait_value
 
 
 class TestExtractAbilityFields:
@@ -2141,32 +2141,33 @@ class TestEquipmentHandleValue:
         return {"name": name, "type": "trait"}
 
     def test_range_increment_case_insensitive(self):
+        # Only "range " comes off; "increment" is part of the published value.
         trait = self._make_trait("Range Increment 30 feet")
-        _equipment_handle_value(trait)
+        handle_trait_value(trait)
         assert trait["name"] == "range"
         assert trait["value"] == "Increment 30 feet"
 
     def test_numeric_dice_value(self):
         trait = self._make_trait("Deadly d8")
-        _equipment_handle_value(trait)
+        handle_trait_value(trait)
         assert trait["name"] == "Deadly"
         assert trait["value"] == "d8"
 
     def test_word_value_split(self):
         trait = self._make_trait("Entrench Melee")
-        _equipment_handle_value(trait)
+        handle_trait_value(trait)
         assert trait["name"] == "Entrench"
         assert trait["value"] == "Melee"
 
     def test_single_word_unchanged(self):
         trait = self._make_trait("Fire")
-        _equipment_handle_value(trait)
+        handle_trait_value(trait)
         assert trait["name"] == "Fire"
         assert "value" not in trait
 
     def test_plus_numeric(self):
         trait = self._make_trait("Potency +1")
-        _equipment_handle_value(trait)
+        handle_trait_value(trait)
         assert trait["name"] == "Potency"
         assert trait["value"] == "+1"
 
@@ -2389,3 +2390,30 @@ class TestCleanDescriptionNewlines:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestHandleTraitValuePrefixes:
+    """The prefix_traits argument, which creatures use to keep their own shape."""
+
+    def test_range_increment_keeps_increment_in_the_value(self):
+        # Equipment and creatures both publish it this way; 40 equipment and
+        # 918 creature files carry the "increment N feet" form.
+        trait = {"name": "range increment 30 feet"}
+        handle_trait_value(trait, prefix_traits=["versatile"])
+        assert (trait["name"], trait["value"]) == ("range", "increment 30 feet")
+
+    def test_non_numeric_prefix_splits(self):
+        trait = {"name": "versatile B"}
+        handle_trait_value(trait, prefix_traits=["versatile"])
+        assert (trait["name"], trait["value"]) == ("versatile", "B")
+
+    def test_naming_prefixes_switches_off_the_blind_split(self):
+        # Otherwise any unknown two-word trait is invented into name + value.
+        trait = {"name": "some unknown trait"}
+        handle_trait_value(trait, prefix_traits=["versatile"])
+        assert trait == {"name": "some unknown trait"}
+
+    def test_without_prefixes_the_blind_split_still_applies(self):
+        trait = {"name": "thrown 10 feet"}
+        handle_trait_value(trait)
+        assert (trait["name"], trait["value"]) == ("thrown", "10 feet")

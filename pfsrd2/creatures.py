@@ -68,10 +68,13 @@ from universal.utils import (
     extract_pfs_availability,
     extract_pfs_note,
     get_text,
+    handle_trait_value,
     is_tag_named,
     log_element,
     normalize_pfs_to_object,
+    parse_defense_line,
     parse_section_modifiers,
+    parse_section_value,
     rebuilt_split_modifiers,
     split_maintain_parens,
     split_on_tag,
@@ -377,22 +380,8 @@ _CREATURE_PREFIX_TRAITS = ["versatile", "reload", "precious", "attached"]
 
 
 def _creature_handle_value(trait):
-    """Extract value from creature trait names like 'range increment 30 feet'."""
-    if trait["name"].startswith("range increment"):
-        trait["value"] = trait["name"].replace("range ", "")
-        trait["name"] = "range"
-        return
-    m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
-    if m:
-        name, value = m.groups()
-        trait["name"] = name
-        trait["value"] = value
-        return
-    for prefix in _CREATURE_PREFIX_TRAITS:
-        if trait["name"].startswith(prefix + " "):
-            trait["value"] = trait["name"][len(prefix) + 1 :]
-            trait["name"] = prefix
-            return
+    """Creature traits split on a numeric value or one of the known prefixes."""
+    handle_trait_value(trait, prefix_traits=_CREATURE_PREFIX_TRAITS)
 
 
 def _creature_handle_alignment(trait, parent, curs):
@@ -1567,31 +1556,18 @@ def process_threshold(hp, section):
 
 
 def process_defense(hp, section, ret=False):
-    def create_defense(defense):
-        d = {"type": "stat_block_section", "subtype": subtype[section[0]], "name": part}
-        d = parse_section_modifiers(d, "name")
-        d = parse_section_value(d, "name")
-        return d
-
     assert section[0] in ["Immunities", "Resistances", "Weaknesses"]
     assert section[2] is None
     assert section[3] is None
-    text = section[1].strip()
     subtype = {
         "Immunities": "immunity",
         "Resistances": "resistance",
         "Weaknesses": "weakness",
     }
-    if text.endswith(";"):
-        text = text[:-1].strip()
-    parts = rebuilt_split_modifiers(split_stat_block_line(text))
-    defense = build_object(
-        "stat_block_section", section[0].lower(), section[0], {section[0].lower(): []}
-    )
-    for part in parts:
-        defense[section[0].lower()].append(create_defense(part))
-    link_objects(defense[section[0].lower()])
-    hp[section[0].lower()] = defense[section[0].lower()]
+    key = section[0].lower()
+    entries = parse_defense_line(section[1], subtype[section[0]])
+    link_objects(entries)
+    hp[key] = entries
 
 
 # handle_aura removed — now handled by universal/ability.py _handle_aura
@@ -1757,7 +1733,11 @@ def parse_attack_damage(text):
         effect["effect"] = get_text(bs).strip()
         return effect
 
-    ds = split_list(text.strip(), [" plus ", " and "])
+    # A comma before a dice formula separates two damage instances
+    # ("1d6 acid, 2d6 fire"). Commas inside a type ("bludgeoning, piercing, or
+    # slashing") are not followed by dice, so they survive.
+    text = re.sub(r",\s*(?=\d+d?\d*[\s+])", " and ", text.strip())
+    ds = split_list(text, [" plus ", " and "])
     damages = []
     for d in ds:
         damage = {"type": "stat_block_section", "subtype": "attack_damage"}
@@ -1769,19 +1749,52 @@ def parse_attack_damage(text):
         if m:  # damage
             damage["formula"] = dice.replace("–", "-")
             damage_type = " ".join(parts)
+            # A trailing clause after ";" is a note on the strike, not part of
+            # the damage type — hazards publish "slashing; no multiple attack
+            # penalty" this way.
+            notes = []
+            # Only a ";" outside the parentheses separates a trailing clause;
+            # one inside belongs to the parenthetical note.
+            depth, cut = 0, -1
+            for i, ch in enumerate(damage_type):
+                if ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+                elif ch == ";" and depth == 0:
+                    cut = i
+                    break
+            if cut > -1:
+                damage_type, trailing = damage_type[:cut], damage_type[cut + 1 :]
+                damage_type = damage_type.strip()
+                note_bs = BeautifulSoup(trailing.strip(), "html.parser")
+                note_links = get_links(note_bs, unwrap=True)
+                if note_links:
+                    damage.setdefault("links", []).extend(note_links)
+                notes.append(str(note_bs))
             if damage_type.find("(") > -1:
                 parts = damage_type.split("(")
                 damage_type = parts.pop(0).strip()
-                notes = parts.pop(0).replace(")", "").strip()
+                paren_note = parts.pop(0).replace(")", "").strip()
                 assert len(parts) == 0, f"Failed to parse damage: {text}"
-                bs = BeautifulSoup(notes, "html.parser")
+                bs = BeautifulSoup(paren_note, "html.parser")
                 links = get_links(bs, unwrap=True)
                 if len(links) > 0:
                     damage.setdefault("links", []).extend(links)
-                damage["notes"] = str(bs)
+                # A strike can carry both kinds of note; the parenthetical one
+                # comes first in the source, so it leads.
+                notes.insert(0, str(bs))
+            if notes:
+                damage["notes"] = "; ".join(n for n in notes if n)
+            # A trailing separator is never part of a damage type.
+            damage_type = damage_type.strip().rstrip(",;").strip()
             if damage_type.find("damage") > -1:
                 # energy touch +36 [<a aonid="322" game-obj="Rules"><u>+32/+28</u></a>] (<a aonid="170" game-obj="Traits"><u>agile</u></a>, <a aonid="99" game-obj="Traits"><u>lawful</u></a>, <a aonid="103" game-obj="Traits"><u>magical</u></a>), <b>Damage</b> 5d8+18 positive or negative damage plus 1d6 lawful
                 damage_type = damage_type.replace(" damage", "")
+            if damage_type == "damage":
+                # "2d10+13 damage (fire damage from the burning city, ...)" —
+                # the type is spelled out in the note, not the type slot.
+                damage_type = "varies"
             bs = BeautifulSoup(damage_type, "html.parser")
             allA = bs.find_all("a")
             links = []
@@ -2114,18 +2127,6 @@ def get_attacks(sb):
             newsections.append(section)
     sb["sections"] = newsections
     return attacks
-
-
-def parse_section_value(section, key):
-    text = section[key]
-    m = re.search(r"(.*) (\d*)$", text)
-    value = None
-    if m:
-        text, value = m.groups()
-    if value:
-        section["value"] = int(value)
-    section[key] = text
-    return section
 
 
 def link_abilities(abilities):

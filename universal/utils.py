@@ -326,6 +326,111 @@ def rebuilt_split_modifiers(parts):
     return newparts
 
 
+def handle_trait_value(trait, prefix_traits=()):
+    """Split a value off a trait name: "thrown 10 feet" -> name "thrown", value "10 feet".
+
+    Traits that carry a magnitude are written as one string in the source, and
+    the traits table only knows the bare name. Shared because every stat block
+    with valued traits needs it — equipment, creatures and hazards all do.
+
+    prefix_traits names traits that must split on the prefix rather than on
+    whatever the numeric regex would find ("versatile B", and "range", whose
+    creature form keeps the word "increment" in the value). They are matched
+    first, and passing any switches off the blind split-on-first-space
+    fallback.
+    """
+    original_name = trait["name"]
+    for prefix in prefix_traits:
+        if original_name.startswith(prefix + " "):
+            trait["value"] = original_name[len(prefix) + 1 :]
+            trait["name"] = prefix
+            return
+
+    # Only the word "range" comes off: the traits table knows "range", and
+    # "increment" belongs to the value ("range increment 400 feet" -> value
+    # "increment 400 feet"). Both equipment and creatures publish it this way.
+    if original_name.lower().startswith("range increment"):
+        trait["name"] = "range"
+        trait["value"] = original_name[len("range ") :].strip()
+        return
+
+    m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
+    if m:
+        name, value = m.groups()
+        trait["name"] = name.strip()
+        trait["value"] = value.strip()
+        return
+    if prefix_traits:
+        # Callers that name their prefixes want only those splits; a blind
+        # split on the first space would invent traits.
+        return
+    if " " in trait["name"]:
+        parts = trait["name"].split(" ", 1)
+        trait["name"] = parts[0].strip()
+        trait["value"] = parts[1].strip()
+
+
+def flatten_field_links(value, links_out):
+    """Strip a field value down to plain text, collecting its links.
+
+    Links become structured references and action spans are reduced to their
+    bracket text, because the markdown pass accepts no tags.
+
+    Returns the flattened string; discovered links are appended to links_out.
+    """
+    from universal.universal import get_links  # circular import at module level
+
+    bs = BeautifulSoup(value, "html.parser")
+    links = get_links(bs, unwrap=True)
+    if links:
+        links_out.extend(links)
+    for span in bs.find_all("span", {"class": "action"}):
+        span.unwrap()
+    return str(bs).strip()
+
+
+def parse_defense_line(text, subtype):
+    """Split an Immunities/Weaknesses/Resistances line into protection objects.
+
+    "cold 5, fire 10" -> [{name: "cold", value: 5}, {name: "fire", value: 10}].
+    Shared because every stat block that has these publishes them identically —
+    creatures and hazards both parse the same line.
+    """
+    # One trailing separator is routine in the source; two in a row means the
+    # line is malformed, so leave the second for the empty-entry assert.
+    text = text.strip()
+    if text[-1:] in ",;":
+        text = text[:-1].strip()
+    entries = []
+    for part in rebuilt_split_modifiers(split_stat_block_line(text)):
+        assert part and part.strip(), (
+            f"Empty entry in {subtype} line {text!r} — two separators with nothing "
+            "between them, which means the line is malformed"
+        )
+        entry = {"type": "stat_block_section", "subtype": subtype, "name": part.strip()}
+        parse_section_modifiers(entry, "name")
+        parse_section_value(entry, "name")
+        entries.append(entry)
+    return entries
+
+
+def parse_section_value(section, key):
+    """Split a trailing number off a name: "cold 5" -> name "cold", value 5.
+
+    Lives here rather than in a content-type module because every stat block
+    with typed defences needs it — creatures and hazards both.
+    """
+    text = section[key]
+    m = re.search(r"(.*) (\d*)$", text)
+    value = None
+    if m:
+        text, value = m.groups()
+    if value:
+        section["value"] = int(value)
+    section[key] = text
+    return section
+
+
 def parse_section_modifiers(section, key):
     """Extract parenthesized modifier from a section field and build modifier objects."""
     # Deferred import to avoid circular dependency: universal.universal imports from utils

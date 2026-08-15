@@ -5,8 +5,11 @@ import pytest
 from pfsrd2.creatures import (
     _creature_handle_value,
     _creature_trait_pre_process,
+    parse_attack_damage,
+    process_defense,
     split_stat_block_line,
 )
+from universal.utils import parse_defense_line
 
 
 class TestSplitStatBlockLine:
@@ -134,3 +137,108 @@ class TestCreatureTraitPreProcess:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestParseAttackDamage:
+    """The damage parser is shared with hazards, which is where these shapes come from."""
+
+    def test_simple_damage(self):
+        damage = parse_attack_damage("2d12+4 slashing")[0]
+        assert (damage["formula"], damage["damage_type"]) == ("2d12+4", "slashing")
+
+    def test_trailing_clause_becomes_a_note(self):
+        # "slashing; no multiple attack penalty" is a type plus a note, not a type.
+        damage = parse_attack_damage("2d12+4 slashing; no multiple attack penalty")[0]
+        assert damage["damage_type"] == "slashing"
+        assert damage["notes"] == "no multiple attack penalty"
+
+    def test_parenthetical_and_trailing_notes_both_survive(self):
+        damage = parse_attack_damage("3d6 slashing (magical); no multiple attack penalty")[0]
+        assert damage["damage_type"] == "slashing"
+        assert damage["notes"] == "magical; no multiple attack penalty"
+
+    def test_comma_before_dice_separates_instances(self):
+        damages = parse_attack_damage("1d6 acid, 2d6 fire, and 2d6 poison")
+        assert [(d["formula"], d["damage_type"]) for d in damages] == [
+            ("1d6", "acid"),
+            ("2d6", "fire"),
+            ("2d6", "poison"),
+        ]
+
+    def test_a_comma_inside_a_damage_type_is_not_a_separator(self):
+        # The guard on the split above: no dice follows these commas.
+        damages = parse_attack_damage("1d6 bludgeoning, piercing, or slashing")
+        assert len(damages) == 1
+        assert damages[0]["damage_type"] == "bludgeoning, piercing, or slashing"
+
+    def test_trailing_separator_is_not_part_of_the_type(self):
+        assert parse_attack_damage("5d10 bludgeoning,")[0]["damage_type"] == "bludgeoning"
+
+    def test_plus_still_separates(self):
+        damages = parse_attack_damage("4d6+10 slashing plus 1d6 bleed")
+        assert [d["damage_type"] for d in damages] == ["slashing", "bleed"]
+
+    def test_a_bare_damage_type_means_it_varies(self):
+        # "2d10+13 damage (fire damage from the burning city, ...)" — the types
+        # are spelled out in the note, not the type slot.
+        damage = parse_attack_damage("2d10+13 damage (fire from the city, sonic from the storm)")[0]
+        assert damage["damage_type"] == "varies"
+        assert "fire from the city" in damage["notes"]
+
+
+class TestProcessDefense:
+    """Shared with hazards via universal.utils.parse_defense_line."""
+
+    def _run(self, label, text):
+        hp = {}
+        process_defense(hp, [label, text, None, None])
+        return hp[label.lower()]
+
+    def test_immunities_split_into_entries(self):
+        entries = self._run("Immunities", "critical hits, object immunities")
+        assert [e["name"] for e in entries] == ["critical hits", "object immunities"]
+        assert all(e["subtype"] == "immunity" for e in entries)
+
+    def test_valued_weaknesses(self):
+        entries = self._run("Weaknesses", "cold 5, fire 10")
+        assert [(e["name"], e["value"]) for e in entries] == [("cold", 5), ("fire", 10)]
+
+    def test_trailing_separator_is_trimmed(self):
+        # Both callers rely on this; hazards used to trim it themselves.
+        assert [e["name"] for e in self._run("Resistances", "fire 5;")] == ["fire"]
+        assert [e["name"] for e in self._run("Resistances", "fire 5,")] == ["fire"]
+
+    def test_a_gap_between_separators_fails_loudly(self):
+        with pytest.raises(AssertionError, match="Empty entry"):
+            self._run("Immunities", "fire,, cold")
+
+    def test_an_unexpected_label_fails_loudly(self):
+        with pytest.raises(AssertionError):
+            self._run("Speed", "fire 5")
+
+    def test_a_link_in_the_trailing_clause_is_extracted(self):
+        # Otherwise the raw anchor ships inside notes.
+        damage = parse_attack_damage(
+            '2d6 mental; the target is <a game-obj="Conditions" aonid="19">frightened</a> 1'
+        )[0]
+        assert "<a" not in damage["notes"]
+        assert [link["name"] for link in damage["links"]] == ["frightened"]
+
+    def test_subtype_is_what_the_caller_asked_for(self):
+        entries = parse_defense_line("cold 5", "resistance")
+        assert entries[0]["subtype"] == "resistance"
+
+    def test_one_trailing_separator_is_routine_two_is_malformed(self):
+        assert [e["name"] for e in parse_defense_line("fire 5;", "resistance")] == ["fire"]
+        with pytest.raises(AssertionError, match="Empty entry"):
+            parse_defense_line("fire 5;,", "resistance")
+
+    def test_a_semicolon_inside_the_parenthetical_is_not_a_separator(self):
+        # Splitting on it leaks a stray ")" into the note.
+        damage = parse_attack_damage(
+            "2d12 poison (on a critical hit, the target is enfeebled 1; this has the poison trait)"
+        )[0]
+        assert damage["damage_type"] == "poison"
+        assert damage["notes"] == (
+            "on a critical hit, the target is enfeebled 1; this has the poison trait"
+        )
