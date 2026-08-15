@@ -19,7 +19,6 @@ as the start of an ability, and an ability that yields nothing fails the parse
 rather than silently dropping a chunk of the stat block.
 """
 
-import glob
 import json
 import os
 import re
@@ -34,7 +33,7 @@ from pfsrd2.sql.traits import fetch_trait_by_name, trait_db_pass
 from universal.ability import DEFAULT_ADDON_LABELS, parse_abilities_from_nodes
 from universal.attack import parse_attack_action
 from universal.creatures import universal_handle_save_dc
-from universal.files import char_replace, makedirs
+from universal.files import char_replace, disambiguated_filename, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.monster_ability import monster_ability_db_pass
 from universal.universal import (
@@ -46,26 +45,30 @@ from universal.universal import (
     entity_pass,
     extract_bold_fields,
     extract_source_from_bs,
+    extract_span_traits,
     game_id_pass,
     get_links,
     handle_alternate_link,
-    is_trait,
     link_objects,
     parse_universal,
     remove_empty_sections_pass,
     restructure_pass,
     source_pass,
+    take_stat_block_text,
 )
 from universal.utils import (
     content_filter,
     extract_pfs_availability,
     extract_pfs_note,
-    flatten_field_links,
+    flatten_fields,
     get_text,
     handle_trait_value,
+    nodes_after,
     normalize_pfs_to_object,
     parse_defense_line,
+    plain_text,
     remove_empty_fields,
+    sidebar_filter,
     strip_block_tags,
 )
 
@@ -137,7 +140,7 @@ def parse_hazard(filename, options):
         # content_filter is used bare, unlike feat.py which also moves the level
         # badge span out of the h1. A hazard's badge IS its level, and
         # parse_universal turns it into `subname`, which restructure reads.
-        pre_filters=[content_filter, _sidebar_filter],
+        pre_filters=[content_filter, sidebar_filter],
     )
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
@@ -188,12 +191,6 @@ def parse_hazard(filename, options):
         print(json.dumps(struct, indent=2, sort_keys=True))
 
 
-def _sidebar_filter(soup):
-    """Unwrap sidebar-nofloat divs. siderbarlook is handled by handle_alternate_link."""
-    for div in soup.find_all("div", {"class": "sidebar-nofloat"}):
-        div.unwrap()
-
-
 def _hazard_trait_pre_process(trait, parent, curs):
     """Split a magnitude off a trait name before the DB lookup.
 
@@ -221,38 +218,9 @@ def find_hazard(struct):
 
 def write_hazard(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
-    filename = _hazard_filename(jsondir, struct)
+    filename = disambiguated_filename(jsondir, struct, "hazard")
     with open(filename, "w") as fp:
         json.dump(struct, fp, indent=2, sort_keys=True)
-
-
-def _hazard_filename(jsondir, struct):
-    """Path for a hazard, disambiguated by aonid when two share a name.
-
-    A book can publish two different hazards under one name — Pathfinder #184
-    has two "Glyph of Warding" (levels 13 and 14). Writing both to the same
-    path silently loses one, so once a name collides EVERY hazard sharing it
-    takes its aonid, however many there are and in whatever order they are
-    parsed.
-    """
-    stem = os.path.abspath(jsondir + "/" + char_replace(struct["name"]))
-    base = stem + ".json"
-    suffixed = f"{stem}_{struct['aonid']}.json"
-    if not os.path.exists(base):
-        # A sibling already claimed a suffix, so this name is known to collide.
-        return suffixed if glob.glob(f"{stem}_*.json") else base
-
-    with open(base) as fp:
-        try:
-            existing = json.load(fp)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Existing hazard file {base} is not readable JSON") from e
-    assert "aonid" in existing, f"Existing hazard file {base} has no aonid"
-    if existing["aonid"] == struct["aonid"]:
-        return base
-    # Move the squatter aside under its own aonid, then take a suffix too.
-    os.rename(base, f"{stem}_{existing['aonid']}.json")
-    return suffixed
 
 
 def restructure_hazard_pass(details):
@@ -284,19 +252,15 @@ def restructure_hazard_pass(details):
     # Two layouts: legacy pages wrap the stat block in a "Legacy Content"
     # section, remastered ones carry the text on the entry itself.
     body_sections = list(first.get("sections", []))
-    carrier = None
-    for section in body_sections:
-        if section.get("text"):
-            carrier = section
-            break
-    if carrier:
-        sb["text"] = carrier["text"]
-    else:
-        assert first.get("text"), f"No stat block text found for {name!r}"
+    if first.get("text"):
         sb["text"] = first["text"]
+    else:
+        text = take_stat_block_text(body_sections)
+        assert text, f"No stat block text found for {name!r}"
+        sb["text"] = text
 
     top = {"name": name, "type": "hazard", "sections": [sb]}
-    top["sections"].extend(s for s in body_sections if s is not carrier)
+    top["sections"].extend(body_sections)
     for r in rest:
         assert isinstance(r, dict), f"Unstructured trailing detail on {name!r}: {r!r}"
         top["sections"].append(r)
@@ -342,7 +306,7 @@ def hazard_extract_pass(struct):
     # values and ability effects once markdown runs.
     for rule in list(bs.find_all("hr")):
         rule.decompose()
-    _extract_traits(hazard, bs)
+    extract_span_traits(hazard, bs)
     _extract_sources(hazard, bs)
     # Fields first: the ability grab takes everything from the first non-field
     # bold onward, so a trailing Reset would be swallowed into the last ability.
@@ -353,7 +317,7 @@ def hazard_extract_pass(struct):
     # Links are unwrapped per field AFTER abilities are parsed: universal.ability
     # reads an ability's trait links out of the live tags, so a global unwrap
     # beforehand strips the traits it needs.
-    _unwrap_field_links(hazard)
+    flatten_fields(hazard, _TEXT_FIELDS)
     links = get_links(bs, unwrap=True)
     if links:
         hazard.setdefault("links", []).extend(links)
@@ -367,24 +331,6 @@ def hazard_extract_pass(struct):
     leftover = re.sub(r"(<br/?>|<hr/?>|\s|;|,)+", "", str(bs).strip())
     if leftover:
         hazard["text"] = str(bs)
-
-
-def _extract_traits(hazard, bs):
-    traits = []
-
-    # is_trait joins the class list before matching, so it covers every rarity
-    # class AoN uses — trait, traituncommon, traitrare, traitunique.
-    for span in list(bs.find_all("span")):
-        if not is_trait(span):
-            continue
-        trait = build_object("stat_block_section", "trait", get_text(span).strip())
-        links = get_links(span, unwrap=True)
-        if links:
-            trait["links"] = links
-        traits.append(trait)
-        span.decompose()
-    if traits:
-        hazard["traits"] = traits
 
 
 def _extract_sources(hazard, bs):
@@ -483,7 +429,7 @@ def _extract_attacks(hazard, bs):
         line = section["text"]
         assert line.count("(") == line.count(")"), (
             f"{name} of hazard {hazard.get('name')!r} has an unbalanced parenthesis in "
-            f"{_plain(line)!r} — the attack run stopped part way through the line"
+            f"{plain_text(line)!r} — the attack run stopped part way through the line"
         )
         parse_attack_action(section, name.lower())
         attack = section["attack"]
@@ -508,19 +454,19 @@ def _extract_attacks(hazard, bs):
         if paren and paren.group(1).strip() and not attack.get("traits"):
             inner = paren.group(1)
             assert "Traits.aspx" not in inner and 'game-obj="Traits"' not in inner, (
-                f"{name} of hazard {hazard.get('name')!r} publishes ({_plain(inner)}) "
+                f"{name} of hazard {hazard.get('name')!r} publishes ({plain_text(inner)}) "
                 "as linked traits but the attack parser did not read them — the line "
                 "puts the parenthetical somewhere it does not expect, so fix the order "
                 "in the source"
             )
-            assert not _looks_like_traits(_plain(inner)), (
-                f"{name} of hazard {hazard.get('name')!r} publishes ({_plain(inner)}) "
+            assert not _looks_like_traits(plain_text(inner)), (
+                f"{name} of hazard {hazard.get('name')!r} publishes ({plain_text(inner)}) "
                 "with no trait links, so the traits are lost — link them in the source"
             )
             # A note in the traits slot ("can target any creature in area A8")
             # is published content; parse_attack_action discards it with the
             # traits it could not find.
-            attack["note"] = _plain(inner)
+            attack["note"] = plain_text(inner)
         attacks.append(attack)
         for node in run:
             node.extract()
@@ -565,7 +511,7 @@ def _extract_abilities(hazard, bs):
     for ability in abilities:
         # Both halves of the split: "<b>Spout</b> HP 32" leaves the stat in the
         # body, "<b>HP (per mannequin)</b> 70" leaves it in the name.
-        body = _plain(ability.get("text") or ability.get("effect") or "")
+        body = plain_text(ability.get("text") or ability.get("effect") or "")
         for part, where in ((ability["name"], "name"), (body, "body")):
             assert not _SPLIT_COMPONENT.match(part), (
                 f"Ability {ability['name']!r} of hazard {hazard.get('name')!r} has a "
@@ -606,20 +552,6 @@ _TEXT_FIELDS = (
 )
 
 
-def _unwrap_field_links(hazard):
-    """Flatten extracted field values to plain text.
-
-    Links become structured references; action spans are unwrapped to their
-    bracket text the way change_extraction.py does, since a Routine or Disable
-    entry can name an action inline and the markdown pass accepts no tags.
-    """
-    for key in _TEXT_FIELDS:
-        value = hazard.get(key)
-        if not isinstance(value, str) or "<" not in value:
-            continue
-        hazard[key] = flatten_field_links(value, hazard.setdefault("links", []))
-
-
 def _component_label(label):
     """(component, stat) for a durability label naming a part, else None."""
     match = _COMPONENT_DURABILITY.match(label)
@@ -657,14 +589,14 @@ def _extract_component_durability(hazard, bs):
         )
         raw = _value_after(bold)
         if stat in _DEFENSE_SUBTYPES:
-            entry[stat.lower()] = _parse_defenses(_plain(raw), _DEFENSE_SUBTYPES[stat])
-            for node in _nodes_after(bold):
+            entry[stat.lower()] = _parse_defenses(plain_text(raw), _DEFENSE_SUBTYPES[stat])
+            for node in nodes_after(bold):
                 node.extract()
             bold.decompose()
             continue
         value, bt, note = _stat_value(raw)
         assert value is not None, (
-            f"{label!r} of hazard {hazard.get('name')!r} is {_plain(raw)!r}, which has "
+            f"{label!r} of hazard {hazard.get('name')!r} is {plain_text(raw)!r}, which has "
             "no number in it — the component stat was published but not understood"
         )
         if note:
@@ -677,25 +609,15 @@ def _extract_component_durability(hazard, bs):
             entry[stat.lower()] = value
         if bt is not None:
             entry["bt"] = bt
-        for node in _nodes_after(bold):
+        for node in nodes_after(bold):
             node.extract()
         bold.decompose()
     if components:
         hazard["components"] = list(components.values())
 
 
-def _nodes_after(bold):
-    """Sibling nodes up to the next bold label — a label's value run."""
-    nodes = []
-    node = bold.next_sibling
-    while node is not None and getattr(node, "name", None) != "b":
-        nodes.append(node)
-        node = node.next_sibling
-    return nodes
-
-
 def _value_after(bold):
-    return "".join(str(n) for n in _nodes_after(bold))
+    return "".join(str(n) for n in nodes_after(bold))
 
 
 def _first_int(text):
@@ -710,7 +632,7 @@ def _stat_value(raw):
     qualified by is published content, so taking only the integer drops it —
     at component level as much as at hazard level.
     """
-    plain = _plain(raw)
+    plain = plain_text(raw)
     value = _first_int(plain)
     bt = _BREAK_THRESHOLD.search(plain)
     note = _BREAK_THRESHOLD.sub("", plain, count=1)
@@ -827,7 +749,7 @@ def _structure_fields(hazard):
         ("resistances", "resistance"),
     ):
         if hazard.get(key):
-            hazard[key] = _parse_defenses(_plain(hazard[key]), subtype)
+            hazard[key] = _parse_defenses(plain_text(hazard[key]), subtype)
 
     for key in ("complexity", "stealth", "description", "disable", "reset", "routine"):
         if key in hazard:
@@ -842,7 +764,3 @@ def _parse_defenses(text, subtype):
     entries = parse_defense_line(text, subtype)
     link_objects(entries)
     return entries
-
-
-def _plain(value):
-    return get_text(BeautifulSoup(value, "html.parser")).strip()

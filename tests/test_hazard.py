@@ -7,21 +7,22 @@ import pytest
 from bs4 import BeautifulSoup
 
 from pfsrd2.hazard import (
+    _TEXT_FIELDS,
     FIELD_LABELS,
     _component_label,
     _extract_component_durability,
     _extract_sources,
-    _extract_traits,
-    _hazard_filename,
     _hazard_trait_pre_process,
     _looks_like_traits,
     _parse_defenses,
     _structure_fields,
-    _unwrap_field_links,
     _unwrap_inline_refs,
     hazard_extract_pass,
     restructure_hazard_pass,
 )
+from universal.files import disambiguated_filename
+from universal.universal import extract_span_traits
+from universal.utils import flatten_fields
 
 TRAITS = (
     '<span class="trait"><a game-obj="Traits" aonid="105">Mechanical</a></span>'
@@ -102,13 +103,13 @@ class TestTraits:
         # AoN marks rarity with traituncommon/traitrare/traitunique, not "trait".
         hazard = {}
         bs = BeautifulSoup(TRAITS, "html.parser")
-        _extract_traits(hazard, bs)
+        extract_span_traits(hazard, bs)
         assert [t["name"] for t in hazard["traits"]] == ["Mechanical", "Uncommon"]
 
     def test_trait_spans_are_consumed(self):
         hazard = {}
         bs = BeautifulSoup(TRAITS, "html.parser")
-        _extract_traits(hazard, bs)
+        extract_span_traits(hazard, bs)
         assert bs.find("span") is None
 
 
@@ -373,7 +374,7 @@ class TestResidue:
 class TestFilenames:
     def _write(self, tmp_path, aonid, name="Glyph of Warding"):
         struct = {"name": name, "aonid": aonid, "game-obj": "Hazards"}
-        path = _hazard_filename(str(tmp_path), struct)
+        path = disambiguated_filename(str(tmp_path), struct, "hazard")
         with open(path, "w") as fp:
             json.dump(struct, fp)
         return os.path.basename(path)
@@ -430,18 +431,18 @@ class TestFieldFlattening:
         # A Routine or Disable can name an action inline, and the markdown
         # pass accepts no tags.
         hazard = {"routine": '<span class="action" title="Reaction">[reaction]</span> then strike'}
-        _unwrap_field_links(hazard)
+        flatten_fields(hazard, _TEXT_FIELDS)
         assert hazard["routine"] == "[reaction] then strike"
 
     def test_links_in_a_field_are_collected_and_unwrapped(self):
         hazard = {"disable": '<a game-obj="Skills" aonid="17">Thievery</a> DC 12'}
-        _unwrap_field_links(hazard)
+        flatten_fields(hazard, _TEXT_FIELDS)
         assert hazard["disable"] == "Thievery DC 12"
         assert [link["name"] for link in hazard["links"]] == ["Thievery"]
 
     def test_a_field_with_no_markup_is_left_alone(self):
         hazard = {"complexity": "Simple"}
-        _unwrap_field_links(hazard)
+        flatten_fields(hazard, _TEXT_FIELDS)
         assert hazard == {"complexity": "Simple"}
 
 

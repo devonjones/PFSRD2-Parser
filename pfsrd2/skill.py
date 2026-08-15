@@ -26,7 +26,13 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.utils import content_filter, get_text, remove_empty_fields, strip_block_tags
+from universal.utils import (
+    content_filter,
+    get_text,
+    remove_empty_fields,
+    sidebar_filter,
+    strip_block_tags,
+)
 
 
 def parse_skill(filename, options):
@@ -37,7 +43,7 @@ def parse_skill(filename, options):
         filename,
         max_title=4,
         cssclass="main",
-        pre_filters=[_content_filter, _sidebar_filter],
+        pre_filters=[_content_filter, sidebar_filter],
     )
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
@@ -82,12 +88,6 @@ def parse_skill(filename, options):
 
 def _content_filter(soup):
     content_filter(soup)
-
-
-def _sidebar_filter(soup):
-    """Unwrap sidebar-nofloat divs. siderbarlook is handled by handle_alternate_link."""
-    for div in soup.find_all("div", {"class": "sidebar-nofloat"}):
-        div.unwrap()
 
 
 def restructure_skill_pass(details):

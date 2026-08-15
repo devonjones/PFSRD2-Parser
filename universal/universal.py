@@ -976,3 +976,45 @@ def source_edition_override_pass(struct):
             if "link" in source:
                 source["link"]["name"] = overrides[edition]
                 source["link"]["alt"] = overrides[edition]
+
+
+def extract_span_traits(section, bs):
+    """Trait spans out of a stat block, into section["traits"].
+
+    is_trait joins the class list before matching, so it covers every rarity
+    class AoN uses — trait, traituncommon, traitrare, traitunique. The spans
+    are decomposed so they do not survive into the residual description.
+    """
+    traits = []
+    for span in list(bs.find_all("span")):
+        if not is_trait(span):
+            continue
+        trait = build_object("stat_block_section", "trait", get_text(span).strip())
+        links = get_links(span, unwrap=True)
+        if links:
+            trait["links"] = links
+        traits.append(trait)
+        span.decompose()
+    if traits:
+        section["traits"] = traits
+
+
+def take_stat_block_text(sections):
+    """Take the stat block text out of whichever section carries it.
+
+    Depth first: a spoiler warning renders as an h2 that nests the stat block
+    a level deeper than the usual layout.
+
+    The carrier section is left in place with only its text removed. On a
+    legacy page that section is named "Legacy Content", and edition_pass
+    decides the edition by looking for exactly that name — so removing the
+    section outright silently turns every legacy page remastered.
+    remove_empty_sections_pass drops the emptied husk later.
+    """
+    for section in sections:
+        if section.get("text"):
+            return section.pop("text")
+        found = take_stat_block_text(section.get("sections", []))
+        if found:
+            return found
+    return None

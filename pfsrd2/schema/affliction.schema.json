@@ -181,7 +181,7 @@
     },
     "affliction": {
       "additionalProperties": false,
-      "anyOf": [
+      "oneOf": [
         {
           "required": [
             "level"
@@ -257,6 +257,7 @@
           ]
         },
         "tempted_curse": {
+          "description": "Curses only: the temptation a tempting curse offers, and what taking it costs.",
           "type": "string"
         },
         "traits": {
@@ -268,7 +269,7 @@
           ]
         },
         "usage": {
-          "description": "Curses only: what the curse can afflict, e.g. 'curses armor or shield'.",
+          "description": "Observed on curses only: what the curse can afflict, e.g. 'held in one hand'. Not enforced per affliction_type.",
           "type": "string"
         }
       },
@@ -319,7 +320,7 @@
     },
     "affliction_stage": {
       "additionalProperties": false,
-      "description": "A superset of the affliction_stage creature.schema.json defines. That one carries name + text, because a creature's or hazard's affliction is parsed inline out of an ability and the stage is prose. A standalone affliction document is where the structure belongs, so this adds stage, effect, duration and links. text stays permitted so a consumer written against the creature shape still reads these. Unifying the two is PFSRD2-Parser-3xoc.",
+      "description": "A step through a staged affliction. NOT interchangeable with the affliction_stage universal/ability.py builds for creatures and hazards: that one carries its prose in `text`, this one splits it into `effect` plus the parenthetical `duration`. PFSRD2-Parser-3xoc tracks unifying the two.",
       "properties": {
         "duration": {
           "description": "The parenthetical duration, e.g. '1 day'.",
@@ -344,9 +345,6 @@
             "affliction_stage"
           ]
         },
-        "text": {
-          "type": "string"
-        },
         "type": {
           "enum": [
             "stat_block_section"
@@ -356,7 +354,9 @@
       "required": [
         "name",
         "type",
-        "subtype"
+        "subtype",
+        "stage",
+        "effect"
       ],
       "type": "object"
     },
@@ -383,6 +383,7 @@
             "Armor",
             "Classes",
             "Conditions",
+            "Curses",
             "Deities",
             "Diseases",
             "Domains",

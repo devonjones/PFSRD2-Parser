@@ -7,11 +7,11 @@ fields ending in Stage 1..N. One parser, two runs, on the equipment pattern.
 Built on the existing parsers rather than beside them:
 
   pipeline shape   pfsrd2/hazard.py — the same badge/traits/bold-fields shape
-  traits           universal.universal.is_trait
+  traits           universal.universal.extract_span_traits
   bold fields      universal.universal.extract_bold_fields
-  save DC          universal.creatures.universal_handle_save_dc
-  stages           the affliction_stage shape universal/ability.py already
-                   produces for creature and hazard afflictions
+  save DC          universal.creatures.parse_save_dc
+  filenames        universal.files.disambiguated_filename — the same
+                   aonid-suffix collision policy hazards use
 
 ItemCurses is deliberately not parsed. All 15 of its distinct entries resolve
 to Curses.aspx IDs the Curses run already covers, and the rendered bodies are
@@ -31,8 +31,8 @@ from bs4 import BeautifulSoup
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.traits import trait_db_pass
-from universal.creatures import universal_handle_save_dc
-from universal.files import char_replace, makedirs
+from universal.creatures import parse_save_dc
+from universal.files import char_replace, disambiguated_filename, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.universal import (
     aon_pass,
@@ -42,23 +42,28 @@ from universal.universal import (
     entity_pass,
     extract_bold_fields,
     extract_source_from_bs,
+    extract_span_traits,
     game_id_pass,
     get_links,
     handle_alternate_link,
-    is_trait,
     parse_universal,
     remove_empty_sections_pass,
     restructure_pass,
     source_pass,
+    take_stat_block_text,
 )
 from universal.utils import (
     content_filter,
     extract_pfs_availability,
     extract_pfs_note,
     flatten_field_links,
+    flatten_fields,
     get_text,
+    nodes_after,
     normalize_pfs_to_object,
+    plain_text,
     remove_empty_fields,
+    sidebar_filter,
     strip_block_tags,
 )
 
@@ -76,23 +81,33 @@ FIELD_LABELS = {
 
 _STAGE = re.compile(r"^Stage\s+(\d+)$", re.I)
 
-# "Curse 5" as a bold label, on an affliction whose own badge is "Curse 4":
-# the level the affliction becomes later in the adventure.
-_ESCALATION = re.compile(r"^(?:Curse|Disease)\s+(\d+)$", re.I)
+# The badge and the escalation labels name the affliction's own type, so the
+# patterns are built per type: a "Curse 5" bold on a disease page is not an
+# escalation, it is a page the parser has misunderstood.
+_BADGE_WORD = {"curse": "Curse", "disease": "Disease"}
 
-# "Curse 8", "Disease 0" — the badge parse_universal turns into `subname`.
-_LEVEL_RE = re.compile(r"(?:Curse|Disease)\s+(-?\d+)", re.I)
 
-# "Curse Level Varies" — published where the level depends on context.
-_LEVEL_VARIES = re.compile(r"Level\s+Varies", re.I)
+def _escalation_re(subtype):
+    """ "Curse 5" as a bold label on an affliction whose badge is "Curse 4":
+    the level the affliction becomes later in the adventure."""
+    return re.compile(rf"^{_BADGE_WORD[subtype]}\s+(\d+)$", re.I)
+
+
+def _level_re(subtype):
+    """ "Curse 8", "Disease 0" — the badge parse_universal turns into subname."""
+    return re.compile(rf"{_BADGE_WORD[subtype]}\s+(-?\d+)", re.I)
+
+
+def _level_varies_re(subtype):
+    """ "Curse Level Varies" — published where the level depends on context."""
+    return re.compile(rf"^{_BADGE_WORD[subtype]}\s+Level\s+Varies$", re.I)
+
 
 # "clumsy 1 (1 day)" — the trailing parenthetical is the stage's duration.
 _STAGE_DURATION = re.compile(r"\(([^)]*)\)\s*$")
 
 # "a high spell DC for a monster of its level" mentions DC without giving one.
 _NUMERIC_DC = re.compile(r"\bDC\s*\d+")
-_SAVE_NAME = re.compile(r"\b(Fortitude|Reflex|Will)\b", re.I)
-_SAVE_NAMES = {"fortitude": "Fort", "reflex": "Ref", "will": "Will"}
 
 AFFLICTION_TYPES = {"curse": "curses", "disease": "diseases"}
 
@@ -109,17 +124,18 @@ def parse_affliction(filename, options):
         cssclass="main",
         # content_filter bare, as hazards do: the badge IS the level, and
         # parse_universal turns it into `subname` for restructure to read.
-        pre_filters=[content_filter, _sidebar_filter],
+        pre_filters=[content_filter, sidebar_filter],
     )
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
-    alternate_link = handle_alternate_link(details, allow_multiple=True)
+    # No allow_multiple: the universal assert that a version line carries
+    # exactly one link is the only thing that would notice a second one, and
+    # keeping [0] of a list silently drops the rest.
+    alternate_link = handle_alternate_link(details)
 
     struct = restructure_affliction_pass(details, options.subtype)
     if alternate_link:
-        struct["alternate_link"] = (
-            alternate_link[0] if isinstance(alternate_link, list) else alternate_link
-        )
+        struct["alternate_link"] = alternate_link
 
     affliction = find_affliction(struct)
     bs = BeautifulSoup(affliction["text"], "html.parser")
@@ -157,12 +173,6 @@ def parse_affliction(filename, options):
         print(json.dumps(struct, indent=2, sort_keys=True))
 
 
-def _sidebar_filter(soup):
-    """Unwrap sidebar-nofloat divs. siderbarlook is handled by handle_alternate_link."""
-    for div in soup.find_all("div", {"class": "sidebar-nofloat"}):
-        div.unwrap()
-
-
 def find_affliction(struct):
     for section in struct["sections"]:
         if section.get("subtype") == "affliction":
@@ -172,54 +182,9 @@ def find_affliction(struct):
 
 def write_affliction(jsondir, struct, source):
     print("{} ({}): {}".format(struct["game-obj"], source, struct["name"]))
-    filename = os.path.abspath(jsondir + "/" + char_replace(struct["name"]) + ".json")
-    _assert_safe_overwrite(filename, struct)
+    filename = disambiguated_filename(jsondir, struct, "affliction")
     with open(filename, "w") as fp:
         json.dump(struct, fp, indent=2, sort_keys=True)
-
-
-# Fields that differ between two AoN entries for the same affliction purely
-# because they are two entries: the ID and everything derived from it.
-_IDENTITY_FIELDS = ("aonid", "game-id", "alternate_link")
-
-
-def _assert_safe_overwrite(filename, struct):
-    """Refuse to silently overwrite a different affliction with the same name.
-
-    AoN publishes 19 GM Core / Gatewalkers curses twice under two aonids, with
-    identical bodies, so one overwriting the other loses nothing. That is only
-    safe while the bodies match: without this check, the day two genuinely
-    different afflictions share a name in one book, one of them disappears
-    from the output and the run still reports success.
-    """
-    if not os.path.exists(filename):
-        return
-    with open(filename) as fp:
-        existing = json.load(fp)
-    if existing.get("aonid") == struct.get("aonid"):
-        return  # our own output from a previous run
-    body = lambda d: {k: v for k, v in d.items() if k not in _IDENTITY_FIELDS}  # noqa: E731
-    assert body(existing) == body(struct), (
-        f"{struct['name']!r} would overwrite a different affliction at "
-        f"{filename} (aonid {existing.get('aonid')} vs {struct.get('aonid')})"
-    )
-
-
-def _take_text_section(sections):
-    """Remove and return the first section carrying stat block text.
-
-    Depth first, and removed from wherever it sits: a spoiler warning renders
-    as an h2 that nests the stat block a level deeper, and leaving the section
-    in place would carry the whole unparsed block into the output a second
-    time.
-    """
-    for i, section in enumerate(sections):
-        if section.get("text"):
-            return sections.pop(i)
-        found = _take_text_section(section.get("sections", []))
-        if found:
-            return found
-    return None
 
 
 def restructure_affliction_pass(details, subtype):
@@ -240,30 +205,32 @@ def restructure_affliction_pass(details, subtype):
     sb = build_object("stat_block_section", "affliction", name, {"sections": []})
     sb["affliction_type"] = subtype
 
+    # The badge names the type, so it also confirms it: affliction_type comes
+    # from the command line and is the one field the HTML cannot contradict
+    # unless it is checked here.
     subname = (first.get("subname") or "").strip()
     assert subname, f"No level badge at all for {name!r}"
-    match = _LEVEL_RE.search(subname)
+    match = _level_re(subtype).search(subname)
     if match:
         sb["level"] = int(match.group(1))
     else:
         # "Curse Level Varies" — the level genuinely depends on the item or
         # the ritual that inflicted it. Record what was published rather than
         # inventing a number.
-        assert _LEVEL_VARIES.search(
-            subname
-        ), f"Level badge {subname!r} for {name!r} is neither a number nor 'Varies'"
+        assert _level_varies_re(subtype).search(subname), (
+            f"Level badge {subname!r} for {name!r} is neither a "
+            f"{_BADGE_WORD[subtype]} level nor '{_BADGE_WORD[subtype]} Level Varies' — "
+            "wrong affliction type for this page?"
+        )
         sb["level_text"] = subname
 
     body_sections = list(first.get("sections", []))
     if first.get("text"):
         sb["text"] = first["text"]
-        carrier = None
     else:
-        # A spoiler warning renders as an h2, which nests the stat block one
-        # level deeper, so the search has to descend rather than scan the top.
-        carrier = _take_text_section(body_sections)
-        assert carrier, f"No stat block text found for {name!r}"
-        sb["text"] = carrier["text"]
+        text = take_stat_block_text(body_sections)
+        assert text, f"No stat block text found for {name!r}"
+        sb["text"] = text
 
     top = {"name": name, "type": "affliction", "sections": [sb]}
     top["sections"].extend(body_sections)
@@ -283,51 +250,50 @@ def affliction_extract_pass(struct):
     for rule in list(bs.find_all("hr")):
         rule.decompose()
 
-    _extract_traits(affliction, bs)
+    # Snapshot every published label before anything consumes one. Checking
+    # the residue instead would make a label invisible to the check the moment
+    # an earlier extractor removed it — which is exactly the markup change the
+    # check exists to catch.
+    published = [get_text(b).strip() for b in bs.find_all("b")]
+
+    extract_span_traits(affliction, bs)
     _extract_sources(affliction, bs)
     # Stages first: their labels are Stage N rather than members of the closed
     # set, so extract_bold_fields would treat them as unknown.
     _extract_stages(affliction, bs)
-    _extract_escalations(affliction, bs)
+    _extract_escalations(affliction, bs, affliction["affliction_type"])
     extract_bold_fields(affliction, bs, FIELD_LABELS, decompose=True)
-    _split_trailing_prose(affliction)
-    _assert_no_unknown_labels(affliction, bs)
-    _unwrap_field_links(affliction)
+    prose = _split_trailing_prose(affliction)
+    _assert_no_unknown_labels(affliction, published, affliction["affliction_type"])
+    flatten_fields(affliction, _TEXT_FIELDS)
     links = get_links(bs, unwrap=True)
     if links:
         affliction.setdefault("links", []).extend(links)
     _structure_fields(affliction)
+    _extract_description(affliction, bs, prose)
 
-    # Residual prose is the affliction's description — it is published between
-    # the Source line and the Saving Throw, with no label of its own.
+
+def _extract_description(affliction, bs, prose):
+    """Whatever prose is left once every label has taken its own.
+
+    The description is published between the Source line and the first field
+    with no label of its own, and a last-in-block field can swallow a second
+    run of it, which _split_trailing_prose hands back here. Published order is
+    residual-then-recovered: the recovered half came from further down the
+    block.
+    """
     residual = str(bs).strip()
-    recovered = affliction.pop("_trailing_prose", "")
-    if recovered:
-        residual = f"{recovered}<br/>{residual}" if residual else recovered
+    if prose:
+        residual = f"{residual}<br/>{prose}" if residual else prose
+    # Without this the punctuation left behind by the field run would ship as
+    # a description of "<br/>;".
     leftover = re.sub(r"(<br/?>|\s|;|,)+", "", residual)
-    if leftover:
-        # Flatten here rather than in _unwrap_field_links: the description is
-        # assembled after that runs, so its links would otherwise survive as
-        # <a> tags and fail markdown validation.
-        affliction["description"] = flatten_field_links(
-            residual, affliction.setdefault("links", [])
-        )
-
-
-def _extract_traits(affliction, bs):
-    """is_trait joins the class list, so it covers every rarity class AoN uses."""
-    traits = []
-    for span in list(bs.find_all("span")):
-        if not is_trait(span):
-            continue
-        trait = build_object("stat_block_section", "trait", get_text(span).strip())
-        links = get_links(span, unwrap=True)
-        if links:
-            trait["links"] = links
-        traits.append(trait)
-        span.decompose()
-    if traits:
-        affliction["traits"] = traits
+    if not leftover:
+        return
+    # Flatten here rather than in flatten_fields: the description is assembled
+    # after that runs, so its links would otherwise survive as <a> tags and
+    # fail markdown validation.
+    affliction["description"] = flatten_field_links(residual, affliction.setdefault("links", []))
 
 
 def _extract_sources(affliction, bs):
@@ -337,22 +303,36 @@ def _extract_sources(affliction, bs):
     affliction["sources"] = [source]
 
 
-def _extract_stages(affliction, bs):
-    """Stage 1..N, in published order, with the trailing duration split out.
+def _labelled_blocks(bs, pattern):
+    """Yield (match, value_html) for each bold matching pattern, consuming both.
 
-    The same affliction_stage shape universal/ability.py produces for creature
-    and hazard afflictions, so a consumer needs no new code to read them.
+    Stages and escalations are the same walk over the same markup — only what
+    they build from the value differs.
     """
-    stages = []
     for bold in list(bs.find_all("b")):
-        match = _STAGE.match(get_text(bold).strip())
+        match = pattern.match(get_text(bold).strip())
         if not match:
             continue
-        value = "".join(str(n) for n in _nodes_after(bold)).strip()
+        nodes = nodes_after(bold)
+        value = "".join(str(n) for n in nodes).strip()
+        for node in nodes:
+            node.extract()
+        bold.decompose()
+        yield match, value
+
+
+def _block_links(value):
+    return get_links(BeautifulSoup(value, "html.parser"), unwrap=True)
+
+
+def _extract_stages(affliction, bs):
+    """Stage 1..N, in published order, with the trailing duration split out."""
+    stages = []
+    for match, value in _labelled_blocks(bs, _STAGE):
         stage = build_object("stat_block_section", "affliction_stage", f"Stage {match.group(1)}")
         stage["stage"] = int(match.group(1))
         # A trailing separator hides the duration from the anchored match.
-        plain = _plain(value).strip(" ;,")
+        plain = plain_text(value).strip(" ;,")
         duration = _STAGE_DURATION.search(plain)
         if duration:
             stage["duration"] = duration.group(1).strip()
@@ -362,23 +342,20 @@ def _extract_stages(affliction, bs):
             "the stage was published but not understood"
         )
         stage["effect"] = plain
-        links = get_links(BeautifulSoup(value, "html.parser"), unwrap=True)
+        links = _block_links(value)
         if links:
             stage["links"] = links
         stages.append(stage)
-        for node in _nodes_after(bold):
-            node.extract()
-        bold.decompose()
     if stages:
         expected = list(range(1, len(stages) + 1))
-        assert [s["stage"] for s in stages] == expected, (
+        assert [st["stage"] for st in stages] == expected, (
             f"{affliction.get('name')!r} publishes stages "
-            f"{[s['stage'] for s in stages]}, which is not a run from 1"
+            f"{[st['stage'] for st in stages]}, which is not a run from 1"
         )
         affliction["stages"] = stages
 
 
-def _extract_escalations(affliction, bs):
+def _extract_escalations(affliction, bs, subtype):
     """ "Curse 5", "Curse 6" — the affliction growing stronger as a story runs.
 
     Adventure-path afflictions publish later levels as their own bold labels,
@@ -387,12 +364,8 @@ def _extract_escalations(affliction, bs):
     a higher-level version.
     """
     escalations = []
-    for bold in list(bs.find_all("b")):
-        match = _ESCALATION.match(get_text(bold).strip())
-        if not match:
-            continue
-        value = "".join(str(n) for n in _nodes_after(bold)).strip()
-        effect = _plain(value).strip(" ;,")
+    for match, value in _labelled_blocks(bs, _escalation_re(subtype)):
+        effect = plain_text(value).strip(" ;,")
         assert effect, (
             f"{match.group(0)!r} on {affliction.get('name')!r} has no text — the "
             "escalation was published but not understood"
@@ -400,22 +373,37 @@ def _extract_escalations(affliction, bs):
         entry = build_object("stat_block_section", "affliction_escalation", match.group(0))
         entry["level"] = int(match.group(1))
         entry["effect"] = effect
-        links = get_links(BeautifulSoup(value, "html.parser"), unwrap=True)
+        links = _block_links(value)
         if links:
             entry["links"] = links
         escalations.append(entry)
-        for node in _nodes_after(bold):
-            node.extract()
-        bold.decompose()
     if escalations:
+        levels = [e["level"] for e in escalations]
+        assert levels == sorted(set(levels)), (
+            f"{affliction.get('name')!r} publishes escalations {levels}, "
+            "which are not in ascending order or repeat a level"
+        )
         affliction["escalations"] = escalations
 
 
-def _assert_no_unknown_labels(affliction, bs):
-    """Every bold is either a known field or a stage; anything else is new."""
-    for bold in bs.find_all("b"):
-        label = get_text(bold).strip()
+# Labels owned by a dedicated extractor rather than by FIELD_LABELS.
+_OWNED_LABELS = {"Source", "Sources"}
+
+
+def _assert_no_unknown_labels(affliction, published, subtype):
+    """Every published bold is a known field, a stage, or an escalation.
+
+    Escalations are matched against this affliction's own type: a "Curse 7"
+    bold on a disease page is not an escalation the parser understood, it is a
+    page it has misread.
+    """
+    escalation = _escalation_re(subtype)
+    for label in published:
         if not label:
+            continue
+        if label in FIELD_LABELS or label in _OWNED_LABELS:
+            continue
+        if _STAGE.match(label) or escalation.match(label):
             continue
         raise AssertionError(
             f"Unknown bold label {label!r} on affliction {affliction.get('name')!r} — "
@@ -434,56 +422,37 @@ def _split_trailing_prose(affliction):
     prose = []
     for key in _TEXT_FIELDS:
         value = affliction.get(key)
-        if not isinstance(value, str) or "<br" not in value:
+        if value is None:
+            continue
+        assert isinstance(value, str), f"Field {key!r} is {type(value).__name__}, not text"
+        if "<br" not in value:
             continue
         parts = re.split(r"<br\s*/?>", value, maxsplit=1)
         affliction[key] = parts[0].strip()
         if len(parts) > 1 and parts[1].strip():
             prose.append(parts[1].strip())
-    if prose:
-        affliction["_trailing_prose"] = "<br/>".join(prose)
-
-
-def _nodes_after(bold):
-    """Sibling nodes up to the next bold label — a label's value run."""
-    nodes = []
-    node = bold.next_sibling
-    while node is not None and getattr(node, "name", None) != "b":
-        nodes.append(node)
-        node = node.next_sibling
-    return nodes
-
-
-def _unwrap_field_links(affliction):
-    """Flatten extracted field values to plain text, keeping their links."""
-    for key in _TEXT_FIELDS:
-        value = affliction.get(key)
-        if not isinstance(value, str) or "<" not in value:
-            continue
-        affliction[key] = flatten_field_links(value, affliction.setdefault("links", []))
+    return "<br/>".join(prose)
 
 
 def _structure_fields(affliction):
     """Turn the extracted strings into the structures the schema expects."""
     raw = affliction.get("saving_throw")
     if raw:
-        plain = _plain(raw).strip(" ;,")
-        if _NUMERIC_DC.search(plain):
-            affliction["saving_throw"] = universal_handle_save_dc(plain)
-        else:
-            # Some afflictions name the save without a DC ("Fortitude", "Will
-            # save, with a high spell DC for a monster of its level"). Keep
-            # what was published rather than inventing a number.
-            save = {"type": "stat_block_section", "subtype": "save_dc", "text": plain}
-            named = _SAVE_NAME.search(plain)
-            if named:
-                save["save_type"] = _SAVE_NAMES[named.group(1).lower()]
-            affliction["saving_throw"] = save
+        # Harvest before flattening: the save line links its save type and any
+        # condition it inflicts, and plain text alone would drop them.
+        links = get_links(BeautifulSoup(raw, "html.parser"), unwrap=True)
+        if links:
+            affliction.setdefault("links", []).extend(links)
+        plain = plain_text(raw).strip(" ;,")
+        # strict: every DC an affliction prints is a number, so a DC that will
+        # not parse is a bug to surface rather than prose to fall back on.
+        save = parse_save_dc(plain, strict=True)
+        assert save.get("dc") or save.get("save_type"), (
+            f"Saving throw {plain!r} on {affliction.get('name')!r} carries neither "
+            "a DC nor a Fortitude/Reflex/Will save name"
+        )
+        affliction["saving_throw"] = save
 
     for key in _TEXT_FIELDS:
         if key in affliction:
             affliction[key] = affliction[key].strip(" ;,")
-
-
-def _plain(value):
-    return get_text(BeautifulSoup(value, "html.parser")).strip()

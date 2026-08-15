@@ -602,3 +602,37 @@ def extract_pfs_note(bs, struct):
         "availability": pfs_availability,
         "note": note_text,
     }
+
+
+def sidebar_filter(soup):
+    """Unwrap sidebar-nofloat divs. sidebarlook is handled by handle_alternate_link."""
+    for div in soup.find_all("div", {"class": "sidebar-nofloat"}):
+        div.unwrap()
+
+
+def plain_text(value):
+    """Markup in, visible text out."""
+    return get_text(BeautifulSoup(value, "html.parser")).strip()
+
+
+def nodes_after(bold):
+    """Sibling nodes up to the next bold label — a label's value run."""
+    nodes = []
+    node = bold.next_sibling
+    while node is not None and getattr(node, "name", None) != "b":
+        nodes.append(node)
+        node = node.next_sibling
+    return nodes
+
+
+def flatten_fields(section, keys):
+    """Flatten extracted field values to plain text, keeping their links.
+
+    Links become structured references and action spans are unwrapped to their
+    bracket text, since the markdown pass accepts no tags in a field value.
+    """
+    for key in keys:
+        value = section.get(key)
+        if not isinstance(value, str) or "<" not in value:
+            continue
+        section[key] = flatten_field_links(value, section.setdefault("links", []))

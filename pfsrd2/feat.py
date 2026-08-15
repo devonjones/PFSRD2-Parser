@@ -39,6 +39,7 @@ from universal.utils import (
     get_text,
     normalize_pfs_to_object,
     remove_empty_fields,
+    sidebar_filter,
     strip_block_tags,
 )
 
@@ -51,7 +52,7 @@ def parse_feat(filename, options):
         filename,
         max_title=4,
         cssclass="main",
-        pre_filters=[_content_filter, _sidebar_filter],
+        pre_filters=[_content_filter, sidebar_filter],
     )
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
@@ -126,12 +127,6 @@ def _content_filter(soup):
         for span in spans_to_move:
             span.extract()
             h1.insert_after(span)
-
-
-def _sidebar_filter(soup):
-    """Unwrap sidebar-nofloat divs. siderbarlook is handled by handle_alternate_link."""
-    for div in soup.find_all("div", {"class": "sidebar-nofloat"}):
-        div.unwrap()
 
 
 def restructure_feat_pass(details):

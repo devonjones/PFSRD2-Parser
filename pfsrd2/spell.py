@@ -35,6 +35,7 @@ from universal.utils import (
     get_text,
     normalize_pfs_to_object,
     remove_empty_fields,
+    sidebar_filter,
     strip_block_tags,
 )
 
@@ -47,7 +48,7 @@ def parse_spell(filename, options):
         filename,
         max_title=1,
         cssclass="main",
-        pre_filters=[_content_filter, _sidebar_filter],
+        pre_filters=[_content_filter, sidebar_filter],
     )
     details = entity_pass(details)
     details = [d for d in details if not (isinstance(d, str) and not d.strip())]
@@ -167,12 +168,6 @@ def _strip_cast_range_from_title(h1):
                 r"\s*(to|or more|or)\b", str(following)
             ):
                 following.extract()
-
-
-def _sidebar_filter(soup):
-    """Unwrap sidebar-nofloat divs. siderbarlook is handled by handle_alternate_link."""
-    for div in soup.find_all("div", {"class": "sidebar-nofloat"}):
-        div.unwrap()
 
 
 def restructure_spell_pass(details):
