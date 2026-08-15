@@ -5,10 +5,10 @@ import pytest
 from pfsrd2.creatures import (
     _creature_handle_value,
     _creature_trait_pre_process,
-    parse_attack_damage,
     process_defense,
     split_stat_block_line,
 )
+from universal.attack import parse_attack_damage
 from universal.utils import parse_defense_line
 
 

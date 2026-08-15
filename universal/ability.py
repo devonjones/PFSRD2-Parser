@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 
 from pfsrd2.action import extract_action_type
 from pfsrd2.trait import extract_starting_traits
+from universal.attack import parse_attack_damage
 from universal.creatures import universal_handle_range, universal_handle_save_dc
 from universal.universal import (
     build_object,
@@ -653,28 +654,10 @@ def _parse_save_dc(text):
 
 
 def _parse_damage(text):
-    """Parse a damage string into an array of attack_damage objects.
-
-    Tries structured parsing (dice formula + type), falls back to
-    minimal object with the text as effect.
-    """
+    """Parse a damage string into an array of attack_damage objects."""
     if not text:
         return []
-    # Try to use the creature parser's damage parser
-    try:
-        from pfsrd2.creatures import parse_attack_damage
-
-        return parse_attack_damage(text)
-    except ImportError:
-        pass  # creatures module not available (circular import or test context)
-    # Fallback: single object with text as effect
-    return [
-        {
-            "type": "stat_block_section",
-            "subtype": "attack_damage",
-            "effect": text,
-        }
-    ]
+    return parse_attack_damage(text)
 
 
 # --------------------------------------------------------------------------- #
