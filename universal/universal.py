@@ -976,3 +976,78 @@ def source_edition_override_pass(struct):
             if "link" in source:
                 source["link"]["name"] = overrides[edition]
                 source["link"]["alt"] = overrides[edition]
+
+
+def extract_span_traits(section, bs):
+    """Trait spans out of a stat block, into section["traits"].
+
+    is_trait joins the class list before matching, so it covers every rarity
+    class AoN uses — trait, traituncommon, traitrare, traitunique. The spans
+    are decomposed so they do not survive into the residual description.
+    """
+    traits = []
+    for span in list(bs.find_all("span")):
+        if not is_trait(span):
+            continue
+        trait = build_object("stat_block_section", "trait", get_text(span).strip())
+        links = get_links(span, unwrap=True)
+        if links:
+            trait["links"] = links
+        traits.append(trait)
+        span.decompose()
+    if traits:
+        section["traits"] = traits
+
+
+def take_stat_block_text(sections):
+    """Take the stat block text out of whichever section carries it.
+
+    Depth first: a spoiler warning renders as an h2 that nests the stat block
+    a level deeper than the usual layout.
+
+    The carrier section is left in place with only its text removed. On a
+    legacy page that section is named "Legacy Content", and edition_pass
+    decides the edition by looking for exactly that name — so removing the
+    section outright silently turns every legacy page remastered.
+    remove_empty_sections_pass drops the emptied husk later.
+    """
+    for section in sections:
+        if section.get("text"):
+            return section.pop("text")
+        found = take_stat_block_text(section.get("sections", []))
+        if found:
+            return found
+    return None
+
+
+# Sections that exist to be read and then discarded: "Legacy Content" is the
+# carrier edition_pass reads the edition off, "Traits" is consumed by the
+# trait extractor. No page in the current corpus produces a "Traits" section —
+# it is kept because it costs a word and the alternative is one leaking into
+# output the day a page does.
+MARKER_SECTIONS = ("Legacy Content", "Traits")
+
+
+def drop_marker_sections(struct, names=MARKER_SECTIONS):
+    """Remove the marker sections, once they are known to be empty.
+
+    Dropping one by name while it still carries text would be silent data
+    loss, so this asserts rather than trusting that an earlier pass emptied
+    it. Must run after edition_pass, which needs the Legacy Content name.
+
+    Recurses, because a spoiler warning nests the carrier a level deeper and
+    remove_empty_sections_pass only clears empty `sections` keys — it never
+    removes an element from a parent list, so a nested husk would otherwise
+    ship with the document.
+    """
+    kept = []
+    for section in struct.get("sections", []):
+        drop_marker_sections(section, names)
+        if section.get("name") in names:
+            assert not section.get("text"), (
+                f"{section['name']!r} section on {struct.get('name')!r} still carries text; "
+                "dropping it here would lose data"
+            )
+            continue
+        kept.append(section)
+    struct["sections"] = kept

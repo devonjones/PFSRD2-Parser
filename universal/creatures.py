@@ -226,6 +226,55 @@ def universal_handle_range(text):
     return None
 
 
+# "a high spell DC for a monster of its level" mentions DC without giving one.
+_NUMERIC_DC = re.compile(r"\bDC\s*\d+")
+
+# Both the full names and the abbreviations AoN prints. Reading only the full
+# names gives the same text two different answers depending on content type.
+_SAVE_TYPES = {
+    "Fortitude": "Fort",
+    "Fort": "Fort",
+    "Reflex": "Ref",
+    "Ref": "Ref",
+    "Will": "Will",
+}
+
+
+def parse_save_dc(text, strict=False):
+    """A saving throw string as a save_dc object, whether or not it has a DC.
+
+    Saves are published both ways: "DC 22 Fortitude" carries a number, while
+    "Will save, with a high spell DC for a monster of its level" names a
+    formula instead. The second is not a parser bug, so it keeps the text it
+    was published with rather than a DC nobody wrote.
+
+    strict=True refuses to fall back once a numeric DC is present — for
+    callers whose corpus proves every printed DC parses, so a mangled one
+    fails the file instead of quietly degrading to prose.
+    """
+    if not text:
+        return {"type": "stat_block_section", "subtype": "save_dc", "text": ""}
+    if "DC" in text:
+        # Everyone tries the full parser first: it reads more than numbers,
+        # including "DC varies" and flat checks, and gating on a numeric DC
+        # would throw that away.
+        try:
+            return universal_handle_save_dc(text)
+        except (ValueError, AssertionError):
+            # Known case: non-numeric DCs like "the high spell DC for the
+            # ghoul's level" that still print the letters DC. But a DC that
+            # prints an actual number and still will not parse is a bug, and
+            # strict callers refuse to degrade it to prose.
+            if strict and _NUMERIC_DC.search(text):
+                raise
+    save_dc = {"type": "stat_block_section", "subtype": "save_dc", "text": text}
+    for name, abbrev in _SAVE_TYPES.items():
+        if name in text:
+            save_dc["save_type"] = abbrev
+            break
+    return save_dc
+
+
 def universal_handle_save_dc(text):
     # Fortitude DC 22
     # DC 22

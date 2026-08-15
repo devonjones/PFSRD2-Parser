@@ -23,7 +23,14 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.utils import bs_pop_spaces, content_filter, get_text, get_unique_tag_set, log_element
+from universal.utils import (
+    bs_pop_spaces,
+    content_filter,
+    get_text,
+    get_unique_tag_set,
+    log_element,
+    sidebar_filter,
+)
 
 
 def parse_condition(filename, options):
@@ -67,12 +74,6 @@ def parse_condition(filename, options):
 
 def _content_filter(soup):
     content_filter(soup)
-
-
-def sidebar_filter(soup):
-    divs = soup.find_all("div", {"class": "sidebar-nofloat"})
-    for div in divs:
-        div.unwrap()
 
 
 def restructure_condition_pass(details):

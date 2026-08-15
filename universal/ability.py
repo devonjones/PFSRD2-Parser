@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 from pfsrd2.action import extract_action_type
 from pfsrd2.trait import extract_starting_traits
 from universal.attack import parse_attack_damage
-from universal.creatures import universal_handle_range, universal_handle_save_dc
+from universal.creatures import parse_save_dc, universal_handle_range, universal_handle_save_dc
 from universal.universal import (
     build_object,
     extract_bold_fields,
@@ -621,36 +621,9 @@ def _normalize_structured_fields(ability):
 
 
 def _parse_save_dc(text):
-    """Parse a saving throw string into a save_dc object.
-
-    Tries structured parsing (DC + save type), falls back to minimal
-    object with just the text for freeform descriptions.
-    """
-    if not text:
-        return {"type": "stat_block_section", "subtype": "save_dc", "text": ""}
-    if "DC" in text:
-        try:
-            return universal_handle_save_dc(text)
-        except (ValueError, AssertionError):
-            # Legitimate: non-numeric DCs like "the high spell DC for the
-            # ghoul's level" or "moderate spell DC for the werecreature's
-            # new level". These are formulas, not parser bugs.
-            pass
-    # Fallback: minimal object with text
-    save_dc = {"type": "stat_block_section", "subtype": "save_dc", "text": text}
-    # Try to extract save type from common patterns
-    _SAVE_TYPES = {
-        "Fortitude": "Fort",
-        "Fort": "Fort",
-        "Reflex": "Ref",
-        "Ref": "Ref",
-        "Will": "Will",
-    }
-    for name, abbrev in _SAVE_TYPES.items():
-        if name in text:
-            save_dc["save_type"] = abbrev
-            break
-    return save_dc
+    """Ability saves use the shared parser, so a creature and an affliction
+    read the same published text the same way."""
+    return parse_save_dc(text)
 
 
 def _parse_damage(text):
