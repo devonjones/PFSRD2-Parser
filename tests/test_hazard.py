@@ -960,3 +960,37 @@ class TestTraitsVersusNote:
     def test_every_part_must_look_like_a_trait(self):
         # "all", not "any" — one prose clause makes the whole thing a note.
         assert not _looks_like_traits("agile, the target is knocked prone")
+
+
+class TestAttackLineGuards:
+    """The asserts that stand between a misread line and plausible-looking output."""
+
+    SOURCE = '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+
+    def test_a_parenthetical_inside_the_weapon_name_fails_loudly(self):
+        # "claw (agile) +20" leaves the trait in the weapon and traits empty,
+        # which is schema-valid and reads as real data.
+        text = self.SOURCE + "<b>Melee</b> claw (agile) +20, <b>Damage</b> 2d6 slashing"
+        with pytest.raises(AssertionError, match="ended up inside the name"):
+            _parsed(text=text)
+
+    def test_a_linked_trait_inside_the_weapon_name_also_fails(self):
+        text = (
+            self.SOURCE + "<b>Melee</b> claw "
+            '(<a game-obj="Traits" aonid="170">agile</a>) +20, <b>Damage</b> 2d6 slashing'
+        )
+        with pytest.raises(AssertionError, match="ended up inside the name"):
+            _parsed(text=text)
+
+    def test_an_unbalanced_parenthesis_fails_loudly(self):
+        # The run stopping mid-line is how five fabricated abilities appeared.
+        text = self.SOURCE + "<b>Melee</b> claw +20 (agile, <b>Damage</b> 2d6 slashing"
+        with pytest.raises(AssertionError, match="unbalanced parenthesis"):
+            _parsed(text=text)
+
+    def test_an_empty_weapon_fails_loudly(self):
+        # Empty <a>/<i> markup is a known AoN artefact; an empty weapon string
+        # is schema-valid, so nothing downstream would notice.
+        text = self.SOURCE + "<b>Melee</b> <i></i> +20, <b>Damage</b> 2d6 slashing"
+        with pytest.raises(AssertionError, match="parsed no weapon"):
+            _parsed(text=text)
