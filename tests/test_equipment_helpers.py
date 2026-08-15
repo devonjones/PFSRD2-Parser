@@ -2141,11 +2141,11 @@ class TestEquipmentHandleValue:
         return {"name": name, "type": "trait"}
 
     def test_range_increment_case_insensitive(self):
-        # The whole "range increment" prefix comes off, not a fixed 6 chars.
+        # Only "range " comes off; "increment" is part of the published value.
         trait = self._make_trait("Range Increment 30 feet")
         handle_trait_value(trait)
         assert trait["name"] == "range"
-        assert trait["value"] == "30 feet"
+        assert trait["value"] == "Increment 30 feet"
 
     def test_numeric_dice_value(self):
         trait = self._make_trait("Deadly d8")
@@ -2390,3 +2390,30 @@ class TestCleanDescriptionNewlines:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestHandleTraitValuePrefixes:
+    """The prefix_traits argument, which creatures use to keep their own shape."""
+
+    def test_range_increment_keeps_increment_in_the_value(self):
+        # Equipment and creatures both publish it this way; 40 equipment and
+        # 918 creature files carry the "increment N feet" form.
+        trait = {"name": "range increment 30 feet"}
+        handle_trait_value(trait, prefix_traits=["versatile"])
+        assert (trait["name"], trait["value"]) == ("range", "increment 30 feet")
+
+    def test_non_numeric_prefix_splits(self):
+        trait = {"name": "versatile B"}
+        handle_trait_value(trait, prefix_traits=["versatile"])
+        assert (trait["name"], trait["value"]) == ("versatile", "B")
+
+    def test_naming_prefixes_switches_off_the_blind_split(self):
+        # Otherwise any unknown two-word trait is invented into name + value.
+        trait = {"name": "some unknown trait"}
+        handle_trait_value(trait, prefix_traits=["versatile"])
+        assert trait == {"name": "some unknown trait"}
+
+    def test_without_prefixes_the_blind_split_still_applies(self):
+        trait = {"name": "thrown 10 feet"}
+        handle_trait_value(trait)
+        assert (trait["name"], trait["value"]) == ("thrown", "10 feet")

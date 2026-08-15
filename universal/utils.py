@@ -333,9 +333,11 @@ def handle_trait_value(trait, prefix_traits=()):
     the traits table only knows the bare name. Shared because every stat block
     with valued traits needs it — equipment, creatures and hazards all do.
 
-    prefix_traits names traits whose value is not numeric ("versatile B"). They
-    are matched first, and passing any switches off the blind split-on-first-
-    space fallback, so only the listed prefixes and numeric values are split.
+    prefix_traits names traits that must split on the prefix rather than on
+    whatever the numeric regex would find ("versatile B", and "range", whose
+    creature form keeps the word "increment" in the value). They are matched
+    first, and passing any switches off the blind split-on-first-space
+    fallback.
     """
     original_name = trait["name"]
     for prefix in prefix_traits:
@@ -344,10 +346,12 @@ def handle_trait_value(trait, prefix_traits=()):
             trait["name"] = prefix
             return
 
-    prefix = "range increment"
-    if original_name.lower().startswith(prefix):
+    # Only the word "range" comes off: the traits table knows "range", and
+    # "increment" belongs to the value ("range increment 400 feet" -> value
+    # "increment 400 feet"). Both equipment and creatures publish it this way.
+    if original_name.lower().startswith("range increment"):
         trait["name"] = "range"
-        trait["value"] = original_name[len(prefix) :].strip()
+        trait["value"] = original_name[len("range ") :].strip()
         return
 
     m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
@@ -366,12 +370,11 @@ def handle_trait_value(trait, prefix_traits=()):
         trait["value"] = parts[1].strip()
 
 
-def flatten_field_links(value, links_out, unwrap_actions=True):
+def flatten_field_links(value, links_out):
     """Strip a field value down to plain text, collecting its links.
 
     Links become structured references and action spans are reduced to their
-    bracket text, because the markdown pass accepts no tags. Shared: feat,
-    change extraction and hazards all need exactly this on a field value.
+    bracket text, because the markdown pass accepts no tags.
 
     Returns the flattened string; discovered links are appended to links_out.
     """
@@ -381,9 +384,8 @@ def flatten_field_links(value, links_out, unwrap_actions=True):
     links = get_links(bs, unwrap=True)
     if links:
         links_out.extend(links)
-    if unwrap_actions:
-        for span in bs.find_all("span", {"class": "action"}):
-            span.unwrap()
+    for span in bs.find_all("span", {"class": "action"}):
+        span.unwrap()
     return str(bs).strip()
 
 
@@ -394,14 +396,16 @@ def parse_defense_line(text, subtype):
     Shared because every stat block that has these publishes them identically —
     creatures and hazards both parse the same line.
     """
+    # One trailing separator is routine in the source; two in a row means the
+    # line is malformed, so leave the second for the empty-entry assert.
     text = text.strip()
-    if text.endswith(";"):
+    if text[-1:] in ",;":
         text = text[:-1].strip()
     entries = []
     for part in rebuilt_split_modifiers(split_stat_block_line(text)):
         assert part and part.strip(), (
-            f"Empty entry in {subtype} line {text!r} — a separator with nothing "
-            "between it and the next, which means the line is malformed"
+            f"Empty entry in {subtype} line {text!r} — two separators with nothing "
+            "between them, which means the line is malformed"
         )
         entry = {"type": "stat_block_section", "subtype": subtype, "name": part.strip()}
         parse_section_modifiers(entry, "name")

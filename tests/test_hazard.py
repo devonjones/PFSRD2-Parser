@@ -17,7 +17,7 @@ from pfsrd2.hazard import (
     _parse_defenses,
     _structure_fields,
     _unwrap_field_links,
-    _unwrap_map_area_refs,
+    _unwrap_inline_refs,
     hazard_extract_pass,
     restructure_hazard_pass,
 )
@@ -248,18 +248,25 @@ class TestStructureFields:
         assert "bt" not in hazard
 
 
-class TestMapAreaRefs:
+class TestInlineRefs:
     def test_bolded_area_ref_becomes_plain_text(self):
         # Adventure hazards bold the map square mid-sentence; every other bold
         # is a label, so leaving it makes the ability parser read "C2" as one.
         bs = BeautifulSoup("A creature enters from area <b>C2</b> or <b>C4</b>.", "html.parser")
-        _unwrap_map_area_refs(bs)
+        _unwrap_inline_refs(bs)
         assert bs.find("b") is None
         assert bs.get_text() == "A creature enters from area C2 or C4."
 
+    def test_a_bold_starting_a_run_is_left_for_the_parser_to_fail_on(self):
+        # Shape alone is not enough: a bold "C2" with nothing before it is a
+        # label this parser has not seen, and hiding it would hide that.
+        bs = BeautifulSoup("<b>C2</b> some value", "html.parser")
+        _unwrap_inline_refs(bs)
+        assert bs.find("b") is not None
+
     def test_real_labels_keep_their_bold(self):
         bs = BeautifulSoup("<b>Trigger</b> x <b>Effect</b> y", "html.parser")
-        _unwrap_map_area_refs(bs)
+        _unwrap_inline_refs(bs)
         assert [b.get_text() for b in bs.find_all("b")] == ["Trigger", "Effect"]
 
     def test_area_ref_inside_a_trigger_does_not_split_the_ability(self):
@@ -390,8 +397,23 @@ class TestFilenames:
         self._write(tmp_path, 263)
         assert os.listdir(tmp_path) == ["glyph_of_warding.json"]
 
+    def test_three_hazards_sharing_a_name_all_take_a_suffix(self, tmp_path):
+        for aonid in (263, 266, 999):
+            self._write(tmp_path, aonid)
+        assert sorted(os.listdir(tmp_path)) == [
+            "glyph_of_warding_263.json",
+            "glyph_of_warding_266.json",
+            "glyph_of_warding_999.json",
+        ]
+
+    def test_an_unreadable_existing_file_says_which_one(self, tmp_path):
+        with open(tmp_path / "glyph_of_warding.json", "w") as fp:
+            fp.write("not json")
+        with pytest.raises(ValueError, match="not readable JSON"):
+            self._write(tmp_path, 263)
+
     def test_collision_naming_is_independent_of_order(self, tmp_path):
-        for order in ([263, 266], [266, 263]):
+        for order in ([263, 266, 999], [999, 266, 263], [266, 999, 263]):
             for f in os.listdir(tmp_path):
                 os.remove(os.path.join(tmp_path, f))
             for aonid in order:
@@ -399,6 +421,7 @@ class TestFilenames:
             assert sorted(os.listdir(tmp_path)) == [
                 "glyph_of_warding_263.json",
                 "glyph_of_warding_266.json",
+                "glyph_of_warding_999.json",
             ], order
 
 
@@ -451,3 +474,85 @@ class TestAbilityLeftovers:
         assert ability["name"] == "Melee"
         assert ability["damage"][0]["formula"] == "2d12+4"
         assert ability["damage"][0]["damage_type"] == "slashing"
+
+
+class TestComponentAssertions:
+    def test_an_unparseable_component_stat_fails_loudly(self):
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Trapdoor Hardness</b> —"
+        )
+        with pytest.raises(AssertionError, match="no number in it"):
+            _parsed(text=text)
+
+
+class TestTrailingDetails:
+    def test_an_unstructured_trailing_detail_fails_loudly(self):
+        details = _details()
+        details.append("leftover prose")
+        with pytest.raises(AssertionError, match="Unstructured trailing detail"):
+            restructure_hazard_pass(details)
+
+
+class TestStatQualifiers:
+    def test_a_per_component_qualifier_is_kept(self):
+        # "22 HP per instrument" — taking only the integer drops the qualifier.
+        hazard = {"hp": "22 per instrument", "name": "Hidden Pit"}
+        _structure_fields(hazard)
+        assert (hazard["hp"], hazard["hp_note"]) == (22, "per instrument")
+
+    def test_a_qualifier_alongside_a_break_threshold(self):
+        hazard = {"hp": "22 per instrument (BT 11)", "name": "Hidden Pit"}
+        _structure_fields(hazard)
+        assert (hazard["hp"], hazard["bt"], hazard["hp_note"]) == (22, 11, "per instrument")
+
+    def test_a_parenthetical_qualifier_on_hardness(self):
+        hazard = {"hardness": "9 (wall)", "name": "Hidden Pit"}
+        _structure_fields(hazard)
+        assert (hazard["hardness"], hazard["hardness_note"]) == (9, "(wall)")
+
+    def test_a_plain_value_gets_no_note(self):
+        hazard = {"hp": "32 (BT 16)", "name": "Hidden Pit"}
+        _structure_fields(hazard)
+        assert "hp_note" not in hazard
+
+
+class TestUniversalMonsterAbilityEnrichment:
+    def test_the_db_pass_is_wired_into_the_pipeline(self):
+        # A hazard ability can name a universal monster ability; without this
+        # pass it ships with an empty game-id and the schema rejects it.
+        import inspect
+
+        from pfsrd2 import hazard
+
+        source = inspect.getsource(hazard.parse_hazard)
+        assert "monster_ability_db_pass(struct)" in source
+        assert source.index("game_id_pass(struct)") < source.index("monster_ability_db_pass")
+
+
+class TestSaveOrder:
+    def test_saves_are_ordered_fort_ref_will(self):
+        hazard = {"fort": "+1", "ref": "+3", "will": "+5", "name": "Hidden Pit"}
+        _structure_fields(hazard)
+        assert [s["name"] for s in hazard["saves"]] == ["Fort", "Ref", "Will"]
+
+    def test_a_partial_set_keeps_that_order(self):
+        hazard = {"will": "+5", "fort": "+1", "name": "Hidden Pit"}
+        _structure_fields(hazard)
+        assert [s["name"] for s in hazard["saves"]] == ["Fort", "Will"]
+
+
+class TestWiderInlineRefs:
+    @pytest.mark.parametrize("ref", ["C2", "B4a", "K13", "41", "3"])
+    def test_reference_shapes_are_demoted_mid_sentence(self, ref):
+        # Map squares, sub-lettered rooms, DCs and numbered effect entries are
+        # all bolded mid-sentence by the source.
+        bs = BeautifulSoup(f"a creature in area <b>{ref}</b> takes damage", "html.parser")
+        _unwrap_inline_refs(bs)
+        assert bs.find("b") is None
+
+    @pytest.mark.parametrize("label", ["Trigger", "Effect", "Reset", "Melee"])
+    def test_word_labels_keep_their_bold(self, label):
+        bs = BeautifulSoup(f"text <b>{label}</b> more", "html.parser")
+        _unwrap_inline_refs(bs)
+        assert bs.find("b") is not None

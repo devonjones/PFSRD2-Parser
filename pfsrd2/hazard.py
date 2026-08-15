@@ -19,6 +19,7 @@ as the start of an ability, and an ability that yields nothing fails the parse
 rather than silently dropping a chunk of the stat block.
 """
 
+import glob
 import json
 import os
 import re
@@ -80,7 +81,6 @@ FIELD_LABELS = {
     "Will",
     "HP",
     "Hardness",
-    "BT",
     "Immunities",
     "Weaknesses",
     "Resistances",
@@ -102,6 +102,10 @@ _QUALIFIED_DURABILITY = re.compile(r"^(?P<stat>Hardness|HP|BT)\s*\((?P<component
 _SAVE_LABELS = {"Fort": "Fort", "Ref": "Ref", "Will": "Will"}
 
 _LEVEL_RE = re.compile(r"Hazard\s+(-?\d+)", re.I)
+
+# The break threshold is published inside the HP value ("90 (BT 45)"), never
+# as its own bold label.
+_BREAK_THRESHOLD = re.compile(r"BT\s+(-?\d+)")
 
 # A hazard's degrees of success belong to the ability that rolled the save, not
 # beside it. Without these, every bold "Success" starts a new ability, because
@@ -149,8 +153,8 @@ def parse_hazard(filename, options):
     ]
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
-    # A hazard can reference a universal monster ability by link; the same DB
-    # pass creatures use fills in the full record.
+    # A hazard ability can name a universal monster ability; the same DB pass
+    # creatures use matches it by name and fills in the full record.
     monster_ability_db_pass(struct)
     trait_db_pass(struct, pre_process=_hazard_trait_pre_process)
     license_pass(struct)
@@ -214,20 +218,27 @@ def _hazard_filename(jsondir, struct):
 
     A book can publish two different hazards under one name — Pathfinder #184
     has two "Glyph of Warding" (levels 13 and 14). Writing both to the same
-    path silently loses one, so on a collision BOTH get their aonid appended,
-    which keeps the result independent of the order the files were parsed.
+    path silently loses one, so once a name collides EVERY hazard sharing it
+    takes its aonid, however many there are and in whatever order they are
+    parsed.
     """
-    base = os.path.abspath(jsondir + "/" + char_replace(struct["name"]) + ".json")
-    suffixed = base[: -len(".json")] + "_" + str(struct["aonid"]) + ".json"
+    stem = os.path.abspath(jsondir + "/" + char_replace(struct["name"]))
+    base = stem + ".json"
+    suffixed = f"{stem}_{struct['aonid']}.json"
     if not os.path.exists(base):
-        return suffixed if os.path.exists(suffixed) else base
+        # A sibling already claimed a suffix, so this name is known to collide.
+        return suffixed if glob.glob(f"{stem}_*.json") else base
 
     with open(base) as fp:
-        existing = json.load(fp)
+        try:
+            existing = json.load(fp)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Existing hazard file {base} is not readable JSON") from e
+    assert "aonid" in existing, f"Existing hazard file {base} has no aonid"
     if existing["aonid"] == struct["aonid"]:
         return base
     # Move the squatter aside under its own aonid, then take a suffix too.
-    os.rename(base, base[: -len(".json")] + "_" + str(existing["aonid"]) + ".json")
+    os.rename(base, f"{stem}_{existing['aonid']}.json")
     return suffixed
 
 
@@ -235,8 +246,9 @@ def restructure_hazard_pass(details):
     """Build the hazard structure from parse_universal output.
 
     parse_universal yields the hazard as one entry whose `name` is the title
-    link, `subname` is the level badge ("Hazard 3"), and whose single section
-    carries the entire stat block as flat HTML.
+    link and `subname` is the level badge ("Hazard 3"). The stat block arrives
+    as flat HTML in one of two places: legacy pages wrap it in a "Legacy
+    Content" section, remastered pages put it on the entry itself.
     """
     assert details, "parse_universal returned nothing — the page has no parsable content"
     first = details[0]
@@ -278,19 +290,21 @@ def restructure_hazard_pass(details):
     return top
 
 
-_MAP_AREA_REF = re.compile(r"^[A-Z]\d+$")
+_INLINE_REF = re.compile(r"^[A-Z]?\d+[a-z]?$")
 
 
-def _unwrap_map_area_refs(bs):
-    """Demote bolded map-area references ("area <b>C2</b>") to plain text.
+def _unwrap_inline_refs(bs):
+    """Demote a bolded reference number mid-sentence to plain text.
 
-    Adventure hazards cite the map square a trigger fires in, and the source
-    bolds it mid-sentence. Every other bold in a stat block is a field or
-    ability label, so the ability parser reads "C2" as a label and its trailing
-    "or" as an action type. 59 hazard files do this, so it belongs in code.
+    Adventure hazards bold the map square a trigger fires in ("area <b>C2</b>",
+    also sub-lettered forms like <b>B4a</b>), the DC of a save, and the entries
+    of a numbered effect list. Every other bold in a stat block is a field or
+    ability label, so the ability parser reads these as labels — "C2" becomes
+    an ability and its trailing "or" an action type. 59 hazard files bold a map
+    square alone, so this belongs in code rather than in the HTML.
     """
     for tag in list(bs.find_all("b")):
-        if not _MAP_AREA_REF.match(tag.get_text().strip()):
+        if not _INLINE_REF.match(tag.get_text().strip()):
             continue
         # Only mid-sentence, where the source actually writes these. A bold
         # "C2" that starts a run is a label this parser has not seen, and
@@ -311,7 +325,7 @@ def hazard_extract_pass(struct):
     for rule in list(bs.find_all("hr")):
         rule.decompose()
 
-    _unwrap_map_area_refs(bs)
+    _unwrap_inline_refs(bs)
     _extract_traits(hazard, bs)
     _extract_sources(hazard, bs)
     # Fields first: the ability grab takes everything from the first non-field
@@ -478,7 +492,7 @@ def _extract_component_durability(hazard, bs):
         )
         entry[stat.lower()] = value
         # HP is published as "12 (BT 6)" — the break threshold rides along.
-        bt = re.search(r"BT\s+(-?\d+)", _plain(raw))
+        bt = _BREAK_THRESHOLD.search(_plain(raw))
         if bt:
             entry["bt"] = int(bt.group(1))
         for node in _nodes_after(bold):
@@ -529,17 +543,25 @@ def _structure_fields(hazard):
     # published as its own bold label, so reading only the first integer drops
     # it. _extract_component_durability already does this for named parts.
     raw_hp = hazard.get("hp")
-    break_threshold = re.search(r"BT\s+(-?\d+)", _plain(raw_hp)) if raw_hp else None
+    break_threshold = _BREAK_THRESHOLD.search(_plain(raw_hp)) if raw_hp else None
 
-    for key in ("ac", "hardness", "hp", "bt"):
+    for key in ("ac", "hardness", "hp"):
         if key not in hazard:
             continue
-        value = _first_int(hazard[key])
+        raw = _plain(hazard[key])
+        value = _first_int(raw)
         assert value is not None, (
             f"{key.upper()} of hazard {hazard.get('name')!r} is {hazard[key]!r}, "
             "which has no number in it — the field was published but not understood"
         )
         hazard[key] = value
+        # What the number is qualified by ("22 HP per instrument", "Hardness 9
+        # (wall)") is published content; taking only the integer drops it.
+        note = _BREAK_THRESHOLD.sub("", raw, count=1)
+        note = re.sub(r"^\s*-?\d+", "", note, count=1)
+        note = note.replace("()", "").strip(" ,;")
+        if note:
+            hazard[key + "_note"] = note
 
     if break_threshold:
         hazard["bt"] = int(break_threshold.group(1))
@@ -559,7 +581,7 @@ def _structure_fields(hazard):
 
 def _parse_defenses(text, subtype):
     """Immunities / weaknesses / resistances, in the creature shape."""
-    entries = parse_defense_line(text.strip().rstrip(",;").strip(), subtype)
+    entries = parse_defense_line(text, subtype)
     link_objects(entries)
     return entries
 

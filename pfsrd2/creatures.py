@@ -376,9 +376,7 @@ def markdown_valid_set(struct, name, path, validset):
         validset.add("a")
 
 
-# "range" is listed so "range increment 30 feet" keeps its historical creature
-# shape (value "increment 30 feet") rather than the equipment/hazard one.
-_CREATURE_PREFIX_TRAITS = ["range", "versatile", "reload", "precious", "attached"]
+_CREATURE_PREFIX_TRAITS = ["versatile", "reload", "precious", "attached"]
 
 
 def _creature_handle_value(trait):
@@ -1754,6 +1752,7 @@ def parse_attack_damage(text):
             # A trailing clause after ";" is a note on the strike, not part of
             # the damage type — hazards publish "slashing; no multiple attack
             # penalty" this way.
+            notes = []
             if ";" in damage_type:
                 damage_type, _, trailing = damage_type.partition(";")
                 damage_type = damage_type.strip()
@@ -1761,17 +1760,21 @@ def parse_attack_damage(text):
                 note_links = get_links(note_bs, unwrap=True)
                 if note_links:
                     damage.setdefault("links", []).extend(note_links)
-                damage["notes"] = str(note_bs)
+                notes.append(str(note_bs))
             if damage_type.find("(") > -1:
                 parts = damage_type.split("(")
                 damage_type = parts.pop(0).strip()
-                notes = parts.pop(0).replace(")", "").strip()
+                paren_note = parts.pop(0).replace(")", "").strip()
                 assert len(parts) == 0, f"Failed to parse damage: {text}"
-                bs = BeautifulSoup(notes, "html.parser")
+                bs = BeautifulSoup(paren_note, "html.parser")
                 links = get_links(bs, unwrap=True)
                 if len(links) > 0:
                     damage.setdefault("links", []).extend(links)
-                damage["notes"] = str(bs)
+                # A strike can carry both kinds of note; the parenthetical one
+                # comes first in the source, so it leads.
+                notes.insert(0, str(bs))
+            if notes:
+                damage["notes"] = "; ".join(n for n in notes if n)
             # A trailing separator is never part of a damage type.
             damage_type = damage_type.strip().rstrip(",;").strip()
             if damage_type.find("damage") > -1:

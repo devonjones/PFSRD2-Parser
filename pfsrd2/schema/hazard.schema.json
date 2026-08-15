@@ -425,6 +425,10 @@
         "ac": {
           "type": "integer"
         },
+        "ac_note": {
+          "description": "What the AC value is qualified by, e.g. 'per instrument' or '(wall)'.",
+          "type": "string"
+        },
         "bt": {
           "type": "integer"
         },
@@ -453,8 +457,16 @@
         "hardness": {
           "type": "integer"
         },
+        "hardness_note": {
+          "description": "What the Hardness value is qualified by, e.g. 'per instrument' or '(wall)'.",
+          "type": "string"
+        },
         "hp": {
           "type": "integer"
+        },
+        "hp_note": {
+          "description": "What the HP value is qualified by, e.g. 'per instrument' or '(wall)'.",
+          "type": "string"
         },
         "immunities": {
           "additionalItems": false,
