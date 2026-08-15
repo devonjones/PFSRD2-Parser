@@ -654,7 +654,11 @@ def _parse_save_dc(text):
 
 
 def _parse_damage(text):
-    """Parse a damage string into an array of attack_damage objects."""
+    """Damage on an ability, parsed the same way a Strike's damage is.
+
+    The empty guard is load-bearing: parse_attack_damage("") returns a junk
+    entry rather than nothing.
+    """
     if not text:
         return []
     return parse_attack_damage(text)

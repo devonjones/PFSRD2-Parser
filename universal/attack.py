@@ -1,8 +1,12 @@
 """Attack lines shared by every stat block that has them.
 
 A Strike is published the same way wherever it appears — "tentacle +16
-[+12/+8] (agile, magical), Damage 2d8+10 bludgeoning" — so creatures and
-hazards parse it with the same code rather than each with their own.
+[+12/+8] (agile, magical), Damage 2d8+10 bludgeoning" for a creature, the same
+shape without the multiple-attack bracket for a hazard — so it is parsed in one
+place. Lifted verbatim from pfsrd2/creatures.py.
+
+Reached directly by creatures and hazards, and indirectly by everything that
+builds abilities, since universal/ability.py parses ability damage with it.
 """
 
 import re
@@ -124,7 +128,7 @@ def remove_html_weapon(text, section):
     return str(bs)
 
 
-def parse_attack_action(parent_section, attack_type, damage=None):
+def parse_attack_action(parent_section, attack_type):
     def _handle_requirements(text):
         if "Requirements" in text:
             if "Effect" in text:
@@ -175,31 +179,17 @@ def parse_attack_action(parent_section, attack_type, damage=None):
     # Normalize: HTML5 may have space between sign and digits (e.g. "+ 14")
     text = re.sub(r"([+-])\s+(\d)", r"\1\2", text)
 
-    if damage is None:
-        # Old format: name +bonus [MAP link] (traits), Damage ...
-        m = re.search(r"^(.*) ([+-]\d*) \[(.*)\] \((.*)\), (.*)$", text)
-        has_map = True
+    # Old format: name +bonus [MAP link] (traits), Damage ...
+    m = re.search(r"^(.*) ([+-]\d*) \[(.*)\] \((.*)\), (.*)$", text)
+    has_map = True
+    if not m:
+        m = re.search(r"^(.*) ([+-]\d*) \[(.*)\], (.*)$", text)
+    if not m:
+        # HTML5 format: no MAP brackets
+        has_map = False
+        m = re.search(r"^(.*) ([+-]\d*) \((.*)\), (.*)$", text)
         if not m:
-            m = re.search(r"^(.*) ([+-]\d*) \[(.*)\], (.*)$", text)
-        if not m:
-            # HTML5 format: no MAP brackets
-            has_map = False
-            m = re.search(r"^(.*) ([+-]\d*) \((.*)\), (.*)$", text)
-            if not m:
-                m = re.search(r"^(.*) ([+-]\d*), (.*)$", text)
-    else:
-        # The damage arrived as its own bold field, so the line ends at the
-        # bonus or the traits; a trailing separator is punctuation.
-        text = text.strip().rstrip(",;").strip()
-        m = re.search(r"^(.*) ([+-]\d*) \[(.*)\] \((.*)\)$", text)
-        has_map = True
-        if not m:
-            m = re.search(r"^(.*) ([+-]\d*) \[(.*)\]$", text)
-        if not m:
-            has_map = False
-            m = re.search(r"^(.*) ([+-]\d*) \((.*)\)$", text)
-            if not m:
-                m = re.search(r"^(.*) ([+-]\d*)$", text)
+            m = re.search(r"^(.*) ([+-]\d*), (.*)$", text)
     assert m, f"Failed to parse: {text}"
     attack_data = list(m.groups())
     section["weapon"] = remove_html_weapon(attack_data.pop(0), section)
@@ -226,12 +216,9 @@ def parse_attack_action(parent_section, attack_type, damage=None):
             "bonuses": attacks,
         }
 
-    if damage is None:
-        tail = attack_data.pop().split(" ")
-        _ = tail.pop(0)
-        section["damage"] = parse_attack_damage(" ".join(tail).strip())
-    else:
-        section["damage"] = damage
+    damage = attack_data.pop().split(" ")
+    _ = damage.pop(0)
+    section["damage"] = parse_attack_damage(" ".join(damage).strip())
 
     if len(attack_data) > 0:
         _, traits = extract_starting_traits(f"({attack_data.pop()})")

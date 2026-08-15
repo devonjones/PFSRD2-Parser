@@ -388,11 +388,11 @@
       "properties": {
         "bonuses": {
           "additionalItems": false,
-          "description": "Attack bonuses as published. creature.schema.json requires exactly 3 because a creature stat block prints its full multiple-attack progression (\"+16 [+12/+8]\"); no hazard does — all 129 published hazard attack lines carry a single bonus and no MAP bracket, whether the hazard is Simple or Complex. That is a printing convention, not an exemption: a complex hazard acts each round through its routine, so repeated Strikes take the multiple attack penalty, and 16 attack lines say \"no multiple attack penalty\" explicitly precisely because it would otherwise apply. Consumers derive the progression from the rules; this field reports only what the source printed.",
+          "description": "Attack bonuses as published. creature.schema.json requires exactly 3 because a creature stat block prints its full multiple-attack progression (\"+16 [+12/+8]\"); no hazard does. All 128 published hazard attack lines carry a single bonus and no MAP bracket, whether the hazard is Simple or Complex, so this is bounded to exactly 1 — a hazard that ever prints a progression should fail here rather than pass unnoticed. That is a printing convention, not an exemption: a complex hazard acts each round through its routine, so repeated Strikes take the multiple attack penalty, and 27 attack lines say \"no multiple attack penalty\" explicitly precisely because it would otherwise apply. Consumers derive the progression from the rules; this field reports only what the source printed.",
           "items": {
             "type": "integer"
           },
-          "maxItems": 3,
+          "maxItems": 1,
           "minItems": 1,
           "type": "array"
         },
@@ -623,7 +623,7 @@
           "type": "string"
         },
         "stealth": {
-          "$ref": "#/definitions/stealth"
+          "$ref": "#/definitions/hazard_stealth"
         },
         "subtype": {
           "enum": [
@@ -788,6 +788,66 @@
         "will_note": {
           "description": "What the component's Will save is qualified by.",
           "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "subtype",
+        "name"
+      ],
+      "type": "object"
+    },
+    "hazard_stealth": {
+      "additionalProperties": false,
+      "description": "A hazard's Stealth entry. GM Core 100: a DC to detect a simple hazard, or an initiative modifier for a complex one, with the minimum proficiency rank to detect it if one is given. Which form appears is reported as published and is NOT derived from the complexity: 563 of 588 hazards follow the convention, but 19 Complex hazards publish a DC and 6 Simple ones publish a modifier, so a consumer should read the form present rather than assume it from the complexity field.",
+      "oneOf": [
+        {
+          "required": [
+            "dc"
+          ]
+        },
+        {
+          "required": [
+            "value"
+          ]
+        }
+      ],
+      "properties": {
+        "dc": {
+          "description": "DC to detect a simple hazard.",
+          "type": "integer"
+        },
+        "name": {
+          "enum": [
+            "Stealth"
+          ]
+        },
+        "note": {
+          "description": "Anything published after the value.",
+          "type": "string"
+        },
+        "proficiency": {
+          "enum": [
+            "untrained",
+            "trained",
+            "expert",
+            "master",
+            "legendary"
+          ]
+        },
+        "subtype": {
+          "enum": [
+            "stealth"
+          ]
+        },
+        "type": {
+          "enum": [
+            "stat_block_section"
+          ]
+        },
+        "value": {
+          "description": "Initiative modifier for a complex hazard.",
+          "type": "integer"
         }
       },
       "required": [
@@ -1270,66 +1330,6 @@
         "$ref": "#/definitions/source"
       },
       "type": "array"
-    },
-    "stealth": {
-      "additionalProperties": false,
-      "description": "A hazard's Stealth entry. GM Core 100: a DC to detect a simple hazard, or an initiative modifier for a complex one, with the minimum proficiency rank to detect it if one is given.",
-      "oneOf": [
-        {
-          "required": [
-            "dc"
-          ]
-        },
-        {
-          "required": [
-            "value"
-          ]
-        }
-      ],
-      "properties": {
-        "dc": {
-          "description": "DC to detect a simple hazard.",
-          "type": "integer"
-        },
-        "name": {
-          "enum": [
-            "Stealth"
-          ]
-        },
-        "note": {
-          "description": "Anything published after the value.",
-          "type": "string"
-        },
-        "proficiency": {
-          "enum": [
-            "untrained",
-            "trained",
-            "expert",
-            "master",
-            "legendary"
-          ]
-        },
-        "subtype": {
-          "enum": [
-            "stealth"
-          ]
-        },
-        "type": {
-          "enum": [
-            "stat_block_section"
-          ]
-        },
-        "value": {
-          "description": "Initiative modifier for a complex hazard.",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "type",
-        "subtype",
-        "name"
-      ],
-      "type": "object"
     },
     "trait": {
       "additionalProperties": false,

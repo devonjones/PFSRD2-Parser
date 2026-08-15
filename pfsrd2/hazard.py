@@ -27,11 +27,13 @@ import sys
 
 from bs4 import BeautifulSoup
 
+from pfsrd2.action import extract_action_type
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.traits import fetch_trait_by_name, trait_db_pass
 from universal.ability import DEFAULT_ADDON_LABELS, parse_abilities_from_nodes
 from universal.attack import parse_attack_action
+from universal.creatures import universal_handle_save_dc
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.monster_ability import monster_ability_db_pass
@@ -417,99 +419,52 @@ def _assert_no_duplicate_labels(hazard, bs):
 
 _ATTACK_TYPES = {"Melee", "Ranged"}
 
-# A Strike published whole ("jaws +17, Damage 2d6") rather than with its
-# damage split into its own bold field.
-_ATTACK_TAIL = re.compile(r",\s*(?:Damage|Effect)\b", re.I)
 
+def _extract_attacks(hazard, bs):
+    """Pull Melee/Ranged Strikes out before the ability parser sees them.
 
-def _recover_attack_traits(attack, text):
-    """Rebuild the Strike's traits from the links the ability parser took.
-
-    A creature's attack line still carries its trait markup when the attack
-    parser sees it; a hazard's does not, because the ability parser has already
-    pulled every <a> out into links. The trait names survive as plain text in
-    the parenthetical, so match them back up — agile and reach change how the
-    Strike is used, so losing them would lose mechanics.
+    A hazard publishes a Strike character for character the way a creature
+    does — "<b>Melee</b> [one-action] jaws +17 (agile), <b>Damage</b> 2d6" — so
+    the creature parser handles it unchanged. It has to run first: the ability
+    parser unwraps every <a>, which would strip the trait markup the attack
+    line carries, and splits <b>Damage</b> off into its own field.
     """
-    if attack.get("traits"):
-        return
-    paren = re.search(r"\(([^)]*)\)", text or "")
-    if not paren:
-        return
-    named = [part.strip().lower() for part in paren.group(1).split(",") if part.strip()]
-    if not named:
-        return
-    traits, kept, seen = [], [], set()
-    for link in attack.get("links", []):
-        if link.get("game-obj") != "Traits":
-            kept.append(link)
+    attacks = []
+    for bold in list(bs.find_all("b")):
+        name = get_text(bold).strip()
+        if name not in _ATTACK_TYPES:
             continue
-        name = link["name"].lower()
-        matched = next((p for p in named if p == name or p.startswith(name + " ")), None)
-        if matched is None or name in seen:
-            # A trait link can appear again in the effect text; it belongs to
-            # the Strike once.
-            if matched is None:
-                kept.append(link)
-            continue
-        seen.add(name)
-        trait = build_object("stat_block_section", "trait", link["name"])
-        trait["link"] = link
-        # "range 120 feet" — the magnitude is published with the trait name.
-        value = matched[len(name) :].strip()
-        if value:
-            trait["value"] = value
-        traits.append(trait)
-    if traits:
-        attack["traits"] = traits
-        if kept:
-            attack["links"] = kept
-        else:
-            attack.pop("links", None)
-
-
-def _structure_attack(ability, hazard):
-    """Turn a Melee/Ranged ability into the attack creatures already model.
-
-    A hazard publishes its Strikes exactly as a creature does, so the same
-    parser handles them. The one difference is that Damage arrives as its own
-    bold field here, already parsed, rather than as a tail on the attack line.
-    """
-    text = ability.get("text", "")
-    section = {"name": ability["name"], "text": text}
-    for key in ("action_type", "traits", "links"):
-        if key in ability:
-            section[key] = ability[key]
-
-    if _ATTACK_TAIL.search(text):
-        # The whole Strike is on one line, exactly as a creature publishes it.
-        damage = None
-    elif "damage" in ability:
-        damage = ability["damage"]
-    else:
-        # An attack can resolve to an effect rather than damage; creatures
-        # model that as a damage entry carrying the effect text.
-        effect = ability.get("effect")
-        assert effect, (
-            f"{ability['name']} of hazard {hazard.get('name')!r} has neither damage "
-            f"nor an effect, and its line is {text!r} — the source is malformed"
-        )
-        damage = [{"type": "stat_block_section", "subtype": "attack_damage", "effect": effect}]
-
-    parse_attack_action(section, ability["name"].lower(), damage=damage)
-    attack = section["attack"]
-    assert attack.get("weapon"), (
-        f"{ability['name']} of hazard {hazard.get('name')!r} parsed no weapon from "
-        f"{ability.get('text')!r}"
-    )
-    # Carry the ability's links over first, so trait recovery can take the
-    # trait ones out rather than leaving them duplicated as links.
-    if "links" in section:
-        attack.setdefault("links", []).extend(
-            link for link in section["links"] if link not in attack.get("links", [])
-        )
-    _recover_attack_traits(attack, text)
-    return attack
+        # The Damage/Effect label belongs to the attack line, so the run
+        # continues through it and stops at the next unrelated bold.
+        run = []
+        node = bold.next_sibling
+        while node is not None:
+            if getattr(node, "name", None) == "b" and get_text(node).strip() not in (
+                "Damage",
+                "Effect",
+            ):
+                break
+            run.append(node)
+            node = node.next_sibling
+        section = {"name": name, "text": "".join(str(n) for n in run).strip()}
+        text, action = extract_action_type(section["text"])
+        if action:
+            section["action_type"] = action
+        section["text"] = text.strip()
+        line = section["text"]
+        parse_attack_action(section, name.lower())
+        attack = section["attack"]
+        assert attack.get(
+            "weapon"
+        ), f"{name} of hazard {hazard.get('name')!r} parsed no weapon from {line!r}"
+        if "links" in section:
+            attack.setdefault("links", []).extend(section["links"])
+        attacks.append(attack)
+        for node in run:
+            node.extract()
+        bold.decompose()
+    if attacks:
+        hazard["attacks"] = attacks
 
 
 def _extract_abilities(hazard, bs):
@@ -518,6 +473,8 @@ def _extract_abilities(hazard, bs):
     Hazard actions are published exactly like creature abilities — a bold name,
     an action span, then Trigger/Effect — so universal.ability does the work.
     """
+    _extract_attacks(hazard, bs)
+
     start = None
     for bold in bs.find_all("b"):
         label = get_text(bold).strip()
@@ -553,12 +510,7 @@ def _extract_abilities(hazard, bs):
                 f"component stat in its {where} ({part[:40]!r}) — the source should "
                 'join the part and the stat in one bold ("Spout HP")'
             )
-    attacks = [a for a in abilities if a["name"] in _ATTACK_TYPES]
-    if attacks:
-        hazard["attacks"] = [_structure_attack(a, hazard) for a in attacks]
-    abilities = [a for a in abilities if a["name"] not in _ATTACK_TYPES]
-    if abilities:
-        hazard["abilities"] = abilities
+    hazard["abilities"] = abilities
 
     # Nodes the ability parser could not claim are real published content, so
     # they go back rather than being dropped.
@@ -628,8 +580,9 @@ def _extract_component_durability(hazard, bs):
         if not parsed:
             continue
         component, stat = parsed
-        # Same reason the hazard's own labels are guarded: the assignment below
-        # replaces rather than accumulates, so a repeat loses the first value.
+        # Same reason the hazard's own labels are guarded: a repeated stat is
+        # either lost (durability, which assigns) or doubled (a save, which
+        # appends), and neither is something to discover in the output.
         assert (component, stat) not in seen, (
             f"{stat} of component {component!r} appears twice on hazard "
             f"{hazard.get('name')!r} — the second value would silently replace the first"
@@ -708,7 +661,7 @@ _PROFICIENCIES = ("untrained", "trained", "expert", "master", "legendary")
 
 # "DC 37 (expert)" for a simple hazard, "+17 (trained)" for a complex one.
 _STEALTH = re.compile(
-    r"^(?:(?P<dc>DC\s*(?P<dcval>\d+))|(?P<mod>[+-]?\d+))"
+    r"^(?:(?P<dc>DC\s*(?P<dcval>\d+))|(?P<mod>[+-]\d+))"
     r"(?:\s*\((?P<prof>[^)]*)\))?(?P<rest>.*)$",
     re.I,
 )
@@ -735,9 +688,13 @@ def _structure_stealth(hazard):
     if not raw:
         return
     match = _STEALTH.match(raw.strip())
+    # A bare number says neither which it is nor which the hazard needs, and
+    # guessing from the complexity would be wrong 21 times over — the corpus
+    # has Complex hazards publishing a DC and Simple ones a modifier.
     assert match, (
-        f"Stealth of hazard {hazard.get('name')!r} is {raw!r}, which is neither a DC "
-        "nor a modifier — the field was published but not understood"
+        f"Stealth of hazard {hazard.get('name')!r} is {raw!r} — a Stealth entry is a "
+        'DC ("DC 37") for a simple hazard or a signed modifier ("+17") for a complex '
+        "one, and this is neither"
     )
     stealth = build_object("stat_block_section", "stealth", "Stealth")
     if match.group("dc"):
@@ -748,8 +705,11 @@ def _structure_stealth(hazard):
     # prose there instead ("the tar lake is blatantly obvious").
     notes = []
     paren = (match.group("prof") or "").strip()
-    if paren.lower() in _PROFICIENCIES:
-        stealth["proficiency"] = paren.lower()
+    rank, _, trailing = paren.partition(";")
+    if rank.strip().lower() in _PROFICIENCIES:
+        stealth["proficiency"] = rank.strip().lower()
+        if trailing.strip():
+            notes.append(trailing.strip())
     elif paren:
         notes.append(paren)
     rest = (match.group("rest") or "").strip(" ;,")
@@ -761,24 +721,10 @@ def _structure_stealth(hazard):
 
 
 def _structure_saving_throw(hazard):
-    """The save a hazard's effect calls for, in either published order."""
+    """The save a hazard's effect calls for, via the shared save-DC parser."""
     raw = hazard.get("saving_throw")
-    if not raw:
-        return
-    match = _SAVE_DC.search(raw)
-    assert match, (
-        f"Saving Throw of hazard {hazard.get('name')!r} is {raw!r}, which names no "
-        "save and DC — the field was published but not understood"
-    )
-    save = match.group("save1") or match.group("save2")
-    dc = match.group("dc1") or match.group("dc2")
-    hazard["saving_throw"] = {
-        "type": "stat_block_section",
-        "subtype": "save_dc",
-        "save_type": _SAVE_NAMES[save.lower()],
-        "dc": int(dc),
-        "text": raw.strip(),
-    }
+    if raw:
+        hazard["saving_throw"] = universal_handle_save_dc(raw.strip())
 
 
 def _structure_fields(hazard):
