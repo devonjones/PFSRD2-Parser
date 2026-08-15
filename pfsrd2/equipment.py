@@ -56,6 +56,7 @@ from universal.utils import (
     content_filter,
     extract_pfs_note,
     get_text,
+    handle_trait_value,
     has_name,
     is_tag_named,
     parse_section_modifiers,
@@ -6752,25 +6753,6 @@ def _normalize_reload(sb):
     sb["reload"] = reload_obj
 
 
-def _equipment_handle_value(trait):
-    """Extract value from trait names like 'Entrench Melee' -> name='Entrench', value='Melee'."""
-    original_name = trait["name"]
-    if original_name.lower().startswith("range increment"):
-        trait["name"] = "range"
-        trait["value"] = original_name[6:].strip()
-        return
-
-    m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
-    if m:
-        name, value = m.groups()
-        trait["name"] = name.strip()
-        trait["value"] = value.strip()
-    elif " " in trait["name"]:
-        parts = trait["name"].split(" ", 1)
-        trait["name"] = parts[0].strip()
-        trait["value"] = parts[1].strip()
-
-
 def _equipment_trait_pre_process(trait, parent, curs):
     """Pre-process equipment traits: alignment expansion, name fixes, value splitting."""
     # Handle alignment abbreviations (CG -> Chaotic Good, etc.)
@@ -6790,7 +6772,7 @@ def _equipment_trait_pre_process(trait, parent, curs):
 
     # If not found and name has space, try splitting into name + value
     if not data and " " in trait["name"]:
-        _equipment_handle_value(trait)
+        handle_trait_value(trait)
 
     return False  # Continue with universal processing
 

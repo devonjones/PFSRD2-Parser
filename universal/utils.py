@@ -326,6 +326,47 @@ def rebuilt_split_modifiers(parts):
     return newparts
 
 
+def handle_trait_value(trait):
+    """Split a value off a trait name: "thrown 10 feet" -> name "thrown", value "10 feet".
+
+    Traits that carry a magnitude are written as one string in the source, and
+    the traits table only knows the bare name. Shared because every stat block
+    with valued traits needs it — equipment and hazards both.
+    """
+    original_name = trait["name"]
+    if original_name.lower().startswith("range increment"):
+        trait["name"] = "range"
+        trait["value"] = original_name[6:].strip()
+        return
+
+    m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
+    if m:
+        name, value = m.groups()
+        trait["name"] = name.strip()
+        trait["value"] = value.strip()
+    elif " " in trait["name"]:
+        parts = trait["name"].split(" ", 1)
+        trait["name"] = parts[0].strip()
+        trait["value"] = parts[1].strip()
+
+
+def parse_section_value(section, key):
+    """Split a trailing number off a name: "cold 5" -> name "cold", value 5.
+
+    Lives here rather than in a content-type module because every stat block
+    with typed defences needs it — creatures and hazards both.
+    """
+    text = section[key]
+    m = re.search(r"(.*) (\d*)$", text)
+    value = None
+    if m:
+        text, value = m.groups()
+    if value:
+        section["value"] = int(value)
+    section[key] = text
+    return section
+
+
 def parse_section_modifiers(section, key):
     """Extract parenthesized modifier from a section field and build modifier objects."""
     # Deferred import to avoid circular dependency: universal.universal imports from utils

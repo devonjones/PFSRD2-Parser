@@ -72,6 +72,7 @@ from universal.utils import (
     log_element,
     normalize_pfs_to_object,
     parse_section_modifiers,
+    parse_section_value,
     rebuilt_split_modifiers,
     split_maintain_parens,
     split_on_tag,
@@ -2114,18 +2115,6 @@ def get_attacks(sb):
             newsections.append(section)
     sb["sections"] = newsections
     return attacks
-
-
-def parse_section_value(section, key):
-    text = section[key]
-    m = re.search(r"(.*) (\d*)$", text)
-    value = None
-    if m:
-        text, value = m.groups()
-    if value:
-        section["value"] = int(value)
-    section[key] = text
-    return section
 
 
 def link_abilities(abilities):

@@ -15,7 +15,6 @@ from pfsrd2.equipment import (
     _collect_siblings_until,
     _deduplicate_links_across_abilities,
     _detect_and_remove_actions,
-    _equipment_handle_value,
     _extract_ability_fields,
     _extract_action_type_from_spans,
     _extract_activation_traits_from_parens,
@@ -39,6 +38,7 @@ from pfsrd2.equipment import (
     _split_compound_bulk,
     normalize_equipment_fields,
 )
+from universal.utils import handle_trait_value
 
 
 class TestExtractAbilityFields:
@@ -2142,31 +2142,31 @@ class TestEquipmentHandleValue:
 
     def test_range_increment_case_insensitive(self):
         trait = self._make_trait("Range Increment 30 feet")
-        _equipment_handle_value(trait)
+        handle_trait_value(trait)
         assert trait["name"] == "range"
         assert trait["value"] == "Increment 30 feet"
 
     def test_numeric_dice_value(self):
         trait = self._make_trait("Deadly d8")
-        _equipment_handle_value(trait)
+        handle_trait_value(trait)
         assert trait["name"] == "Deadly"
         assert trait["value"] == "d8"
 
     def test_word_value_split(self):
         trait = self._make_trait("Entrench Melee")
-        _equipment_handle_value(trait)
+        handle_trait_value(trait)
         assert trait["name"] == "Entrench"
         assert trait["value"] == "Melee"
 
     def test_single_word_unchanged(self):
         trait = self._make_trait("Fire")
-        _equipment_handle_value(trait)
+        handle_trait_value(trait)
         assert trait["name"] == "Fire"
         assert "value" not in trait
 
     def test_plus_numeric(self):
         trait = self._make_trait("Potency +1")
-        _equipment_handle_value(trait)
+        handle_trait_value(trait)
         assert trait["name"] == "Potency"
         assert trait["value"] == "+1"
 
