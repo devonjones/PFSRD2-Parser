@@ -94,12 +94,19 @@ FIELD_LABELS = {
 # "Trapdoor Hardness", "Scythe Blade HP", "HP (per mannequin)" — a hazard whose
 # named parts have their own durability. The component keeps its own entry
 # instead of overwriting the hazard's.
-_COMPONENT_DURABILITY = re.compile(r"^(?P<component>.+?)\s+(?P<stat>Hardness|HP|BT)$")
-_QUALIFIED_DURABILITY = re.compile(r"^(?P<stat>Hardness|HP|BT)\s*\((?P<component>[^)]+)\)$")
+_COMPONENT_STATS = "Hardness|HP|BT|AC|Fort|Ref|Will|Immunities|Weaknesses|Resistances"
+_COMPONENT_DURABILITY = re.compile(rf"^(?P<component>.+?)\s+(?P<stat>{_COMPONENT_STATS})$")
+_QUALIFIED_DURABILITY = re.compile(rf"^(?P<stat>{_COMPONENT_STATS})\s*\((?P<component>[^)]+)\)$")
 
 # Same names creature.schema.json uses, so a consumer sees one save shape
 # across both content types.
 _SAVE_LABELS = {"Fort": "Fort", "Ref": "Ref", "Will": "Will"}
+
+_DEFENSE_SUBTYPES = {
+    "Immunities": "immunity",
+    "Weaknesses": "weakness",
+    "Resistances": "resistance",
+}
 
 _LEVEL_RE = re.compile(r"Hazard\s+(-?\d+)", re.I)
 
@@ -320,17 +327,21 @@ def hazard_extract_pass(struct):
     hazard = find_hazard(struct)
     bs = BeautifulSoup(hazard.pop("text"), "html.parser")
 
+    # Before the <hr> sweep: decomposing a rule re-parents the bold that
+    # followed it onto the preceding text, which would let a bold starting a
+    # run pass the mid-sentence guard below.
+    _unwrap_inline_refs(bs)
+
     # Separators carry no data, and leaving them in bleeds "---" into field
     # values and ability effects once markdown runs.
     for rule in list(bs.find_all("hr")):
         rule.decompose()
-
-    _unwrap_inline_refs(bs)
     _extract_traits(hazard, bs)
     _extract_sources(hazard, bs)
     # Fields first: the ability grab takes everything from the first non-field
     # bold onward, so a trailing Reset would be swallowed into the last ability.
     _extract_component_durability(hazard, bs)
+    _assert_no_duplicate_labels(hazard, bs)
     extract_bold_fields(hazard, bs, FIELD_LABELS, decompose=True)
     _extract_abilities(hazard, bs)
     # Links are unwrapped per field AFTER abilities are parsed: universal.ability
@@ -377,6 +388,27 @@ def _extract_sources(hazard, bs):
     source = extract_source_from_bs(bs)
     assert source, f"No source found for hazard {hazard.get('name')!r}"
     hazard["sources"] = [source]
+
+
+def _assert_no_duplicate_labels(hazard, bs):
+    """A stat-block label may appear once.
+
+    extract_bold_fields assigns rather than accumulates, so a repeated label
+    means the second value silently replaced the first — and a hazard whose
+    component publishes its own HP and saves ends up wearing them, which reads
+    as plausible data rather than as a failure.
+    """
+    seen = set()
+    for bold in bs.find_all("b"):
+        label = get_text(bold).strip()
+        if label not in FIELD_LABELS:
+            continue
+        assert label not in seen, (
+            f"{label!r} appears twice in the stat block of {hazard.get('name')!r} — the "
+            "second value would silently replace the first; if it belongs to a named "
+            'part, the source should label it as one ("Reflection HP")'
+        )
+        seen.add(label)
 
 
 def _extract_abilities(hazard, bs):
@@ -485,12 +517,23 @@ def _extract_component_durability(hazard, bs):
             build_object("stat_block_section", "hazard_component", component),
         )
         raw = _value_after(bold)
+        if stat in _DEFENSE_SUBTYPES:
+            entry[stat.lower()] = _parse_defenses(_plain(raw), _DEFENSE_SUBTYPES[stat])
+            for node in _nodes_after(bold):
+                node.extract()
+            bold.decompose()
+            continue
         value = _first_int(raw)
         assert value is not None, (
             f"{label!r} of hazard {hazard.get('name')!r} is {_plain(raw)!r}, which has "
             "no number in it — the component stat was published but not understood"
         )
-        entry[stat.lower()] = value
+        if stat in _SAVE_LABELS:
+            save = build_object("stat_block_section", "save", _SAVE_LABELS[stat])
+            save["value"] = value
+            entry.setdefault("saves", []).append(save)
+        else:
+            entry[stat.lower()] = value
         # HP is published as "12 (BT 6)" — the break threshold rides along.
         bt = _BREAK_THRESHOLD.search(_plain(raw))
         if bt:

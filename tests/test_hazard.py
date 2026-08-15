@@ -556,3 +556,43 @@ class TestWiderInlineRefs:
         bs = BeautifulSoup(f"text <b>{label}</b> more", "html.parser")
         _unwrap_inline_refs(bs)
         assert bs.find("b") is not None
+
+
+class TestDuplicateLabels:
+    def test_a_repeated_label_fails_loudly(self):
+        # extract_bold_fields assigns rather than accumulates, so the second
+        # value silently replaces the first — and a component's HP worn by the
+        # hazard reads as plausible data, not as a failure.
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>HP</b> 54 (BT 27)<br/><b>HP</b> 30"
+        )
+        with pytest.raises(AssertionError, match="appears twice"):
+            _parsed(text=text)
+
+    def test_the_same_label_on_a_named_part_is_fine(self):
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>HP</b> 54 (BT 27)<br/><b>Reflection HP</b> 30"
+        )
+        hazard = _parsed(text=text)
+        assert (hazard["hp"], hazard["bt"]) == (54, 27)
+        assert hazard["components"][0]["hp"] == 30
+
+
+class TestComponentDefences:
+    def test_a_component_carries_its_own_ac_saves_and_immunities(self):
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>AC</b> 21, <b>Fort</b> +17<br/>"
+            "<b>Reflection AC</b> 24; <b>Reflection Fort</b> +11; "
+            "<b>Reflection Immunities</b> object immunities"
+        )
+        hazard = _parsed(text=text)
+        assert hazard["ac"] == 21
+        assert [(s["name"], s["value"]) for s in hazard["saves"]] == [("Fort", 17)]
+        component = hazard["components"][0]
+        assert component["name"] == "Reflection"
+        assert component["ac"] == 24
+        assert [(s["name"], s["value"]) for s in component["saves"]] == [("Fort", 11)]
+        assert [i["name"] for i in component["immunities"]] == ["object immunities"]

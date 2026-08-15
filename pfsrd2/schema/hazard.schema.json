@@ -577,9 +577,37 @@
           "required": [
             "bt"
           ]
+        },
+        {
+          "required": [
+            "ac"
+          ]
+        },
+        {
+          "required": [
+            "saves"
+          ]
+        },
+        {
+          "required": [
+            "immunities"
+          ]
+        },
+        {
+          "required": [
+            "weaknesses"
+          ]
+        },
+        {
+          "required": [
+            "resistances"
+          ]
         }
       ],
       "properties": {
+        "ac": {
+          "type": "integer"
+        },
         "bt": {
           "type": "integer"
         },
@@ -589,8 +617,29 @@
         "hp": {
           "type": "integer"
         },
+        "immunities": {
+          "additionalItems": false,
+          "items": {
+            "$ref": "#/definitions/protection"
+          },
+          "type": "array"
+        },
         "name": {
           "type": "string"
+        },
+        "resistances": {
+          "additionalItems": false,
+          "items": {
+            "$ref": "#/definitions/protection"
+          },
+          "type": "array"
+        },
+        "saves": {
+          "additionalItems": false,
+          "items": {
+            "$ref": "#/definitions/save"
+          },
+          "type": "array"
         },
         "subtype": {
           "enum": [
@@ -601,6 +650,13 @@
           "enum": [
             "stat_block_section"
           ]
+        },
+        "weaknesses": {
+          "additionalItems": false,
+          "items": {
+            "$ref": "#/definitions/protection"
+          },
+          "type": "array"
         }
       },
       "required": [
