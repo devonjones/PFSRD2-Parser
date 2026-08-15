@@ -326,14 +326,24 @@ def rebuilt_split_modifiers(parts):
     return newparts
 
 
-def handle_trait_value(trait):
+def handle_trait_value(trait, prefix_traits=()):
     """Split a value off a trait name: "thrown 10 feet" -> name "thrown", value "10 feet".
 
     Traits that carry a magnitude are written as one string in the source, and
     the traits table only knows the bare name. Shared because every stat block
-    with valued traits needs it — equipment and hazards both.
+    with valued traits needs it — equipment, creatures and hazards all do.
+
+    prefix_traits names traits whose value is not numeric ("versatile B"). They
+    are matched first, and passing any switches off the blind split-on-first-
+    space fallback, so only the listed prefixes and numeric values are split.
     """
     original_name = trait["name"]
+    for prefix in prefix_traits:
+        if original_name.startswith(prefix + " "):
+            trait["value"] = original_name[len(prefix) + 1 :]
+            trait["name"] = prefix
+            return
+
     prefix = "range increment"
     if original_name.lower().startswith(prefix):
         trait["name"] = "range"
@@ -345,10 +355,36 @@ def handle_trait_value(trait):
         name, value = m.groups()
         trait["name"] = name.strip()
         trait["value"] = value.strip()
-    elif " " in trait["name"]:
+        return
+    if prefix_traits:
+        # Callers that name their prefixes want only those splits; a blind
+        # split on the first space would invent traits.
+        return
+    if " " in trait["name"]:
         parts = trait["name"].split(" ", 1)
         trait["name"] = parts[0].strip()
         trait["value"] = parts[1].strip()
+
+
+def flatten_field_links(value, links_out, unwrap_actions=True):
+    """Strip a field value down to plain text, collecting its links.
+
+    Links become structured references and action spans are reduced to their
+    bracket text, because the markdown pass accepts no tags. Shared: feat,
+    change extraction and hazards all need exactly this on a field value.
+
+    Returns the flattened string; discovered links are appended to links_out.
+    """
+    from universal.universal import get_links  # circular import at module level
+
+    bs = BeautifulSoup(value, "html.parser")
+    links = get_links(bs, unwrap=True)
+    if links:
+        links_out.extend(links)
+    if unwrap_actions:
+        for span in bs.find_all("span", {"class": "action"}):
+            span.unwrap()
+    return str(bs).strip()
 
 
 def parse_defense_line(text, subtype):
@@ -363,11 +399,10 @@ def parse_defense_line(text, subtype):
         text = text[:-1].strip()
     entries = []
     for part in rebuilt_split_modifiers(split_stat_block_line(text)):
-        # A trailing separator yields an empty part. Left in, its name is ""
-        # and remove_empty_fields later strips the key entirely, producing a
-        # nameless entry that fails schema validation.
-        if not part or not part.strip():
-            continue
+        assert part and part.strip(), (
+            f"Empty entry in {subtype} line {text!r} — a separator with nothing "
+            "between it and the next, which means the line is malformed"
+        )
         entry = {"type": "stat_block_section", "subtype": subtype, "name": part.strip()}
         parse_section_modifiers(entry, "name")
         parse_section_value(entry, "name")

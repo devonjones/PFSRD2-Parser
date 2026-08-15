@@ -56,6 +56,7 @@ from universal.utils import (
     content_filter,
     extract_pfs_availability,
     extract_pfs_note,
+    flatten_field_links,
     get_text,
     handle_trait_value,
     normalize_pfs_to_object,
@@ -180,11 +181,17 @@ def _hazard_trait_pre_process(trait, parent, curs):
     """Split a magnitude off a trait name before the DB lookup.
 
     A hazard's Strike can carry "thrown 10 feet"; the traits table knows
-    "thrown". Same hook equipment uses for the same reason.
+    "thrown". Same hook equipment uses for the same reason. The split is only
+    kept if it actually resolves — otherwise an unknown two-word trait would
+    be quietly reshaped into a plausible-looking name instead of failing.
     """
-    data = fetch_trait_by_name(curs, trait["name"])
-    if not data and " " in trait["name"]:
-        handle_trait_value(trait)
+    if fetch_trait_by_name(curs, trait["name"]) or " " not in trait["name"]:
+        return False
+    original = dict(trait)
+    handle_trait_value(trait)
+    if not fetch_trait_by_name(curs, trait["name"]):
+        trait.clear()
+        trait.update(original)
     return False
 
 
@@ -231,7 +238,7 @@ def restructure_hazard_pass(details):
     link, `subname` is the level badge ("Hazard 3"), and whose single section
     carries the entire stat block as flat HTML.
     """
-    assert details, "No details from parse_universal"
+    assert details, "parse_universal returned nothing — the page has no parsable content"
     first = details[0]
     rest = details[1:]
 
@@ -265,7 +272,9 @@ def restructure_hazard_pass(details):
 
     top = {"name": name, "type": "hazard", "sections": [sb]}
     top["sections"].extend(s for s in body_sections if s is not carrier)
-    top["sections"].extend(r for r in rest if isinstance(r, dict))
+    for r in rest:
+        assert isinstance(r, dict), f"Unstructured trailing detail on {name!r}: {r!r}"
+        top["sections"].append(r)
     return top
 
 
@@ -432,13 +441,7 @@ def _unwrap_field_links(hazard):
         value = hazard.get(key)
         if not isinstance(value, str) or "<" not in value:
             continue
-        bs = BeautifulSoup(value, "html.parser")
-        links = get_links(bs, unwrap=True)
-        if links:
-            hazard.setdefault("links", []).extend(links)
-        for span in bs.find_all("span", {"class": "action"}):
-            span.unwrap()
-        hazard[key] = str(bs)
+        hazard[key] = flatten_field_links(value, hazard.setdefault("links", []))
 
 
 def _component_label(label):
@@ -556,7 +559,7 @@ def _structure_fields(hazard):
 
 def _parse_defenses(text, subtype):
     """Immunities / weaknesses / resistances, in the creature shape."""
-    entries = parse_defense_line(text, subtype)
+    entries = parse_defense_line(text.strip().rstrip(",;").strip(), subtype)
     link_objects(entries)
     return entries
 

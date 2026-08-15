@@ -16,6 +16,7 @@ from pfsrd2.hazard import (
     _hazard_trait_pre_process,
     _parse_defenses,
     _structure_fields,
+    _unwrap_field_links,
     _unwrap_map_area_refs,
     hazard_extract_pass,
     restructure_hazard_pass,
@@ -156,11 +157,15 @@ class TestDefenses:
         assert entry["name"] == "precision damage"
         assert "value" not in entry
 
-    def test_empty_parts_are_skipped(self):
+    def test_trailing_separator_is_trimmed(self):
         # A trailing separator otherwise yields a nameless entry, which
         # remove_empty_fields later strips into an invalid object.
-        entries = _parse_defenses("fire, ", "immunity")
-        assert [e["name"] for e in entries] == ["fire"]
+        assert [e["name"] for e in _parse_defenses("fire, ", "immunity")] == ["fire"]
+
+    def test_a_gap_between_separators_fails_loudly(self):
+        # Malformed HTML, not a routine trailing separator.
+        with pytest.raises(AssertionError, match="Empty entry"):
+            _parse_defenses("fire,, cold", "immunity")
 
 
 class TestComponents:
@@ -304,10 +309,21 @@ class TestTraitPreProcess:
 
     def test_unknown_valued_trait_is_split(self, monkeypatch):
         # "thrown 10 feet" is one string in the source; the table knows "thrown".
-        monkeypatch.setattr("pfsrd2.hazard.fetch_trait_by_name", lambda curs, name: None)
+        monkeypatch.setattr(
+            "pfsrd2.hazard.fetch_trait_by_name",
+            lambda curs, name: {"name": name} if name == "thrown" else None,
+        )
         trait = {"name": "thrown 10 feet"}
         _hazard_trait_pre_process(trait, None, None)
         assert (trait["name"], trait["value"]) == ("thrown", "10 feet")
+
+    def test_a_split_that_does_not_resolve_is_rolled_back(self, monkeypatch):
+        # Otherwise an unknown two-word trait is reshaped into something
+        # plausible and the DB never gets to reject it.
+        monkeypatch.setattr("pfsrd2.hazard.fetch_trait_by_name", lambda curs, name: None)
+        trait = {"name": "utter nonsense"}
+        _hazard_trait_pre_process(trait, None, None)
+        assert trait == {"name": "utter nonsense"}
 
     def test_unknown_single_word_trait_is_left_for_the_db_to_reject(self, monkeypatch):
         monkeypatch.setattr("pfsrd2.hazard.fetch_trait_by_name", lambda curs, name: None)
@@ -384,3 +400,54 @@ class TestFilenames:
                 "glyph_of_warding_263.json",
                 "glyph_of_warding_266.json",
             ], order
+
+
+class TestFieldFlattening:
+    def test_action_spans_in_a_field_become_bracket_text(self):
+        # A Routine or Disable can name an action inline, and the markdown
+        # pass accepts no tags.
+        hazard = {"routine": '<span class="action" title="Reaction">[reaction]</span> then strike'}
+        _unwrap_field_links(hazard)
+        assert hazard["routine"] == "[reaction] then strike"
+
+    def test_links_in_a_field_are_collected_and_unwrapped(self):
+        hazard = {"disable": '<a game-obj="Skills" aonid="17">Thievery</a> DC 12'}
+        _unwrap_field_links(hazard)
+        assert hazard["disable"] == "Thievery DC 12"
+        assert [link["name"] for link in hazard["links"]] == ["Thievery"]
+
+    def test_a_field_with_no_markup_is_left_alone(self):
+        hazard = {"complexity": "Simple"}
+        _unwrap_field_links(hazard)
+        assert hazard == {"complexity": "Simple"}
+
+
+class TestAbilityLeftovers:
+    def test_prose_between_abilities_is_not_dropped(self):
+        # _extract_abilities removes every node from the first ability bold
+        # onward; anything the ability parser cannot claim has to come back.
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Pitfall</b> "
+            '<span class="action" title="Reaction">[reaction]</span> '
+            "<b>Effect</b> The creature falls in.<br/>"
+            "Both traps share one trigger."
+        )
+        hazard = _parsed(text=text)
+        assert hazard["abilities"][0]["name"] == "Pitfall"
+        assert "Both traps share one trigger." in hazard["text"]
+
+    def test_an_attack_line_keeps_its_damage(self):
+        # Melee/Ranged are published like abilities and are parsed as such.
+        # They are not yet modelled as attacks (PFSRD2-Parser-3t8p),
+        # so this pins that nothing is lost in the meantime.
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Melee</b> "
+            '<span class="action" title="Single Action">[one-action]</span> '
+            "scythe +25 <b>Damage</b> 2d12+4 slashing"
+        )
+        ability = _parsed(text=text)["abilities"][0]
+        assert ability["name"] == "Melee"
+        assert ability["damage"][0]["formula"] == "2d12+4"
+        assert ability["damage"][0]["damage_type"] == "slashing"

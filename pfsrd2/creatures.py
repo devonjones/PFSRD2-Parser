@@ -68,6 +68,7 @@ from universal.utils import (
     extract_pfs_availability,
     extract_pfs_note,
     get_text,
+    handle_trait_value,
     is_tag_named,
     log_element,
     normalize_pfs_to_object,
@@ -375,26 +376,14 @@ def markdown_valid_set(struct, name, path, validset):
         validset.add("a")
 
 
-_CREATURE_PREFIX_TRAITS = ["versatile", "reload", "precious", "attached"]
+# "range" is listed so "range increment 30 feet" keeps its historical creature
+# shape (value "increment 30 feet") rather than the equipment/hazard one.
+_CREATURE_PREFIX_TRAITS = ["range", "versatile", "reload", "precious", "attached"]
 
 
 def _creature_handle_value(trait):
-    """Extract value from creature trait names like 'range increment 30 feet'."""
-    if trait["name"].startswith("range increment"):
-        trait["value"] = trait["name"].replace("range ", "")
-        trait["name"] = "range"
-        return
-    m = re.search(r"(.*) (\+?d?[0-9]+.*)", trait["name"])
-    if m:
-        name, value = m.groups()
-        trait["name"] = name
-        trait["value"] = value
-        return
-    for prefix in _CREATURE_PREFIX_TRAITS:
-        if trait["name"].startswith(prefix + " "):
-            trait["value"] = trait["name"][len(prefix) + 1 :]
-            trait["name"] = prefix
-            return
+    """Creature traits split on a numeric value or one of the known prefixes."""
+    handle_trait_value(trait, prefix_traits=_CREATURE_PREFIX_TRAITS)
 
 
 def _creature_handle_alignment(trait, parent, curs):
