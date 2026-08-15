@@ -14,6 +14,7 @@ from pfsrd2.hazard import (
     _extract_traits,
     _hazard_filename,
     _hazard_trait_pre_process,
+    _looks_like_traits,
     _parse_defenses,
     _structure_fields,
     _unwrap_field_links,
@@ -691,7 +692,7 @@ class TestAttacks:
         assert [t["name"] for t in attack["traits"]] == ["divine", "range 120 feet"]
 
     def test_a_strike_published_whole_is_parsed_the_creature_way(self):
-        # 14 attack lines across 11 hazards put the damage on the same line.
+        # 14 attack lines leave the Damage label unbolded, so it stays in the text.
         text = self.SOURCE + "<b>Melee</b> water jet +11, Damage 2d8 piercing"
         attack = _parsed(text=text)["attacks"][0]
         assert (attack["weapon"], attack["damage"][0]["damage_type"]) == ("water jet", "piercing")
@@ -786,6 +787,13 @@ class TestStealth:
         assert hazard["stealth"]["proficiency"] == "trained"
         assert hazard["stealth"]["note"] == "behind the arras"
 
+    def test_notes_from_inside_and_after_the_parenthetical_are_both_kept(self):
+        # The two note sources meet here; keeping only one loses published text.
+        hazard = _parsed(
+            text=self.SOURCE + "<b>Stealth</b> +0 (the lake is obvious) unless it is night"
+        )
+        assert hazard["stealth"]["note"] == "the lake is obvious unless it is night"
+
 
 class TestSavingThrow:
     SOURCE = '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
@@ -850,6 +858,19 @@ class TestAttackExtractionOrder:
             ("spike", "ranged"),
         ]
 
+    def test_a_linked_ability_name_after_an_attack_is_not_swallowed(self):
+        # The source writes a linked ability name as <a><b>Name</b></a>, so
+        # the bold is nested; checking only for a bold sibling swallows it into
+        # the attack's damage.
+        text = (
+            self.SOURCE + "<b>Melee</b> lash +20, <b>Damage</b> 2d6 bludgeoning plus "
+            '<a game-obj="MonsterAbilities" aonid="57"><b>Constrict</b></a> '
+            "<b>Effect</b> The target is squeezed."
+        )
+        hazard = _parsed(text=text)
+        assert [a["weapon"] for a in hazard["attacks"]] == ["lash"]
+        assert "Constrict" in [a["name"] for a in hazard["abilities"]]
+
     def test_the_action_type_is_kept(self):
         text = (
             self.SOURCE + "<b>Melee</b> "
@@ -886,6 +907,56 @@ class TestUnlinkedAttackTraits:
         )
         attack = _parsed(text=text)["attacks"][0]
         assert attack["note"] == "can target any creature in area A8"
-        # parse_attack_action always sets traits; remove_empty_fields drops the
-        # empty list later in the pipeline.
+        # parse_attack_action sets traits whenever it captures a parenthetical;
+        # remove_empty_fields drops the empty list later in the pipeline.
         assert not attack["traits"]
+
+
+class TestTraitsVersusNote:
+    """The heuristic that decides whether an unlinked parenthetical is traits.
+
+    One notch more permissive and a genuinely unlinked trait list becomes a
+    note: the traits vanish, nothing asserts, and the output still validates.
+    Fixtures are drawn from parentheticals the corpus actually publishes.
+    """
+
+    @pytest.mark.parametrize(
+        "inner",
+        [
+            "magical",
+            "mental",
+            "agile",
+            "deadly 1d12",
+            "reach 40 feet",
+            "range increment 30 feet",
+            "magical, reach 40 feet",
+            "poison, range increment 30 feet, reload 1",
+            "negative, range 120 feet",
+            "agile, thrown 10 feet, versatile S",
+        ],
+    )
+    def test_published_trait_lists_read_as_traits(self, inner):
+        assert _looks_like_traits(inner)
+
+    @pytest.mark.parametrize(
+        "inner",
+        [
+            "can target any creature in area A8",
+            "DC 16 Fortitude negates the poison damage",
+            "on a critical hit, the target automatically fails the Will save",
+            "the tar lake is blatantly obvious",
+            # pins the word threshold: six words is a clause, not a trait
+            "roll a DC 20 Reflex save",
+            # pins the "the" clause: short prose is still prose
+            "only in the area",
+        ],
+    )
+    def test_published_notes_read_as_notes(self, inner):
+        assert not _looks_like_traits(inner)
+
+    def test_an_empty_parenthetical_is_not_traits(self):
+        assert not _looks_like_traits("   ")
+
+    def test_every_part_must_look_like_a_trait(self):
+        # "all", not "any" — one prose clause makes the whole thing a note.
+        assert not _looks_like_traits("agile, the target is knocked prone")

@@ -1,8 +1,9 @@
 """Tests for universal/attack.py.
 
 The module was nested inside pfsrd2/creatures.py until it was hoisted for
-hazards to share, so it had only ever been exercised through full-corpus
-parser runs. These cover it directly.
+hazards to share. parse_attack_damage had tests via test_creatures.py;
+parse_attack_action and remove_html_weapon were private and had none, so most
+of the module was only ever exercised through full-corpus parser runs.
 """
 
 import pytest
@@ -42,7 +43,8 @@ class TestAttackBonus:
         assert _attack("rusty blade -2, Damage 1d6 slashing")["bonus"]["bonuses"] == [-2]
 
     def test_a_space_between_the_sign_and_the_digits(self):
-        # The source writes "+ 14" occasionally.
+        # Defensive: the hoisted normalisation exists for HTML5 spacing
+        # artefacts, though no current attack line carries one.
         assert _attack("pincer + 14, Damage 1d8 bludgeoning")["bonus"]["bonuses"] == [14]
 
     def test_an_unparseable_line_fails_loudly(self):
@@ -100,6 +102,7 @@ class TestDamage:
         assert damage.get("splash") is True
 
     def test_an_en_dash_is_normalised_to_a_minus(self):
+        # Not on any attack line today; the normalisation came with the hoist.
         assert parse_attack_damage("2d6–1 slashing")[0]["formula"] == "2d6-1"
 
     def test_a_redundant_damage_suffix_is_dropped(self):
@@ -124,3 +127,24 @@ class TestDamage:
     def test_an_effect_tail_becomes_an_effect_entry(self):
         damages = parse_attack_damage("2d6 slashing plus grab")
         assert damages[1]["effect"] == "grab"
+
+
+class TestAbilityDamageDelegation:
+    """universal/ability.py parses ability damage with this module.
+
+    The link used to be a lazy import wrapped in `except ImportError: pass`,
+    so when it broke the damage silently degraded to an unparsed blob. Nothing
+    else pins that ability.py still calls through.
+    """
+
+    def test_ability_damage_is_parsed_not_dumped_into_effect(self):
+        from universal.ability import _parse_damage
+
+        damage = _parse_damage("2d6 fire")[0]
+        assert (damage["formula"], damage["damage_type"]) == ("2d6", "fire")
+        assert "effect" not in damage
+
+    def test_empty_damage_yields_nothing(self):
+        from universal.ability import _parse_damage
+
+        assert _parse_damage("") == []

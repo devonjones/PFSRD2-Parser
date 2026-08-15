@@ -431,14 +431,32 @@ def _looks_like_traits(inner):
     return bool(parts) and all(len(p.split()) <= 4 and " the " not in f" {p} " for p in parts)
 
 
+def _starts_next_entry(node):
+    """Does this node begin the entry after the attack line?
+
+    The Damage and Effect labels belong to the attack, so the run continues
+    through them. Anything else in bold ends it — including a bold nested in
+    a link, which is how the source writes an ability whose name is a link
+    ("<a href=MonsterAbilities...><b>Constrict</b></a>"). Checking only for a
+    bold sibling misses those and swallows the ability.
+    """
+    if getattr(node, "name", None) is None:
+        return False
+    bold = node if node.name == "b" else node.find("b")
+    if bold is None:
+        return False
+    return get_text(bold).strip() not in ("Damage", "Effect")
+
+
 def _extract_attacks(hazard, bs):
     """Pull Melee/Ranged Strikes out before the ability parser sees them.
 
-    A hazard publishes a Strike character for character the way a creature
-    does — "<b>Melee</b> [one-action] jaws +17 (agile), <b>Damage</b> 2d6" — so
-    the creature parser handles it unchanged. It has to run first: the ability
-    parser unwraps every <a>, which would strip the trait markup the attack
-    line carries, and splits <b>Damage</b> off into its own field.
+    A hazard publishes a Strike in the creature's grammar, minus the
+    multiple-attack bracket no hazard prints — "<b>Melee</b> [one-action] jaws
+    +17 (agile), <b>Damage</b> 2d6" — so the creature parser handles it
+    unchanged. It has to run first: the ability parser unwraps every <a>, which
+    would strip the trait markup the attack line carries, and splits
+    <b>Damage</b> off into its own field.
     """
     attacks = []
     for bold in list(bs.find_all("b")):
@@ -450,10 +468,7 @@ def _extract_attacks(hazard, bs):
         run = []
         node = bold.next_sibling
         while node is not None:
-            if getattr(node, "name", None) == "b" and get_text(node).strip() not in (
-                "Damage",
-                "Effect",
-            ):
+            if _starts_next_entry(node):
                 break
             run.append(node)
             node = node.next_sibling
@@ -463,30 +478,46 @@ def _extract_attacks(hazard, bs):
             section["action_type"] = action
         section["text"] = text.strip()
         line = section["text"]
+        assert line.count("(") == line.count(")"), (
+            f"{name} of hazard {hazard.get('name')!r} has an unbalanced parenthesis in "
+            f"{_plain(line)!r} — the attack run stopped part way through the line"
+        )
         parse_attack_action(section, name.lower())
         attack = section["attack"]
         assert attack.get(
             "weapon"
         ), f"{name} of hazard {hazard.get('name')!r} parsed no weapon from {line!r}"
+        assert "(" not in attack["weapon"], (
+            f"{name} of hazard {hazard.get('name')!r} parsed the weapon as "
+            f"{attack['weapon']!r} — a parenthetical ended up inside the name"
+        )
         # extract_starting_traits only objects to a parenthetical where SOME
         # traits are linked; one with none silently yields nothing. The fix for
         # an unlinked trait is to link it in the source, so say so. Only the
         # parenthetical before the Damage label holds traits — later ones are
         # notes on the damage.
+        # A parenthetical the attack parser did not turn into traits is either
+        # a source problem or a note, and which one is decidable rather than
+        # guessable: if it carries trait links, they ARE traits and the line
+        # shape defeated the parser; if it carries none, judge the plain text.
         head = re.split(r"(?:<b>\s*)?\b(?:Damage|Effect)\b", line)[0]
         paren = re.search(r"\(([^)]*)\)", head)
         if paren and paren.group(1).strip() and not attack.get("traits"):
             inner = paren.group(1)
-            assert not _looks_like_traits(inner), (
-                f"{name} of hazard {hazard.get('name')!r} publishes ({inner}) with no "
-                "trait links, so the traits are lost — link them in the source"
+            assert "Traits.aspx" not in inner and 'game-obj="Traits"' not in inner, (
+                f"{name} of hazard {hazard.get('name')!r} publishes ({_plain(inner)}) "
+                "as linked traits but the attack parser did not read them — the line "
+                "puts the parenthetical somewhere it does not expect, so fix the order "
+                "in the source"
+            )
+            assert not _looks_like_traits(_plain(inner)), (
+                f"{name} of hazard {hazard.get('name')!r} publishes ({_plain(inner)}) "
+                "with no trait links, so the traits are lost — link them in the source"
             )
             # A note in the traits slot ("can target any creature in area A8")
             # is published content; parse_attack_action discards it with the
             # traits it could not find.
             attack["note"] = _plain(inner)
-        if "links" in section:
-            attack.setdefault("links", []).extend(section["links"])
         attacks.append(attack)
         for node in run:
             node.extract()
@@ -613,7 +644,8 @@ def _extract_component_durability(hazard, bs):
         # appends), and neither is something to discover in the output.
         assert (component, stat) not in seen, (
             f"{stat} of component {component!r} appears twice on hazard "
-            f"{hazard.get('name')!r} — the second value would silently replace the first"
+            f"{hazard.get('name')!r} — a durability stat would be replaced and a save "
+            "duplicated, and neither is something to find in the output"
         )
         seen.add((component, stat))
         entry = components.setdefault(
@@ -694,15 +726,6 @@ _STEALTH = re.compile(
     re.I,
 )
 
-# "DC 21 Fortitude" and "Fortitude DC 21" both appear.
-_SAVE_DC = re.compile(
-    r"(?:DC\s*(?P<dc1>\d+)\s*(?P<save1>Fortitude|Reflex|Will)"
-    r"|(?P<save2>Fortitude|Reflex|Will)\s*DC\s*(?P<dc2>\d+))",
-    re.I,
-)
-
-_SAVE_NAMES = {"fortitude": "Fort", "reflex": "Ref", "will": "Will"}
-
 
 def _structure_stealth(hazard):
     """Stealth is a DC for a simple hazard and a modifier for a complex one.
@@ -717,7 +740,7 @@ def _structure_stealth(hazard):
         return
     match = _STEALTH.match(raw.strip())
     # A bare number says neither which it is nor which the hazard needs, and
-    # guessing from the complexity would be wrong 21 times over — the corpus
+    # guessing from the complexity would be wrong 25 times over — the corpus
     # has Complex hazards publishing a DC and Simple ones a modifier.
     assert match, (
         f"Stealth of hazard {hazard.get('name')!r} is {raw!r} — a Stealth entry is a "
