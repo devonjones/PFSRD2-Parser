@@ -14,6 +14,7 @@ from pfsrd2.hazard import (
     _extract_traits,
     _hazard_filename,
     _hazard_trait_pre_process,
+    _looks_like_traits,
     _parse_defenses,
     _structure_fields,
     _unwrap_field_links,
@@ -115,7 +116,7 @@ class TestFields:
     def test_labelled_fields(self):
         hazard = _parsed()
         assert hazard["complexity"] == "Simple"
-        assert hazard["stealth"] == "DC 18"
+        assert hazard["stealth"]["dc"] == 18
         assert hazard["description"] == "A wooden trapdoor covers a pit."
         assert hazard["disable"] == "Thievery DC 12"
 
@@ -459,39 +460,6 @@ class TestAbilityLeftovers:
         assert hazard["abilities"][0]["name"] == "Pitfall"
         assert "Both traps share one trigger." in hazard["text"]
 
-    def test_an_attack_line_keeps_its_damage(self):
-        # Melee/Ranged are published like abilities and are parsed as such.
-        # They are not yet modelled as attacks (PFSRD2-Parser-3t8p),
-        # so this pins that nothing is lost in the meantime.
-        text = (
-            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
-            "<b>Melee</b> "
-            '<span class="action" title="Single Action">[one-action]</span> '
-            "scythe +25 <b>Damage</b> 2d12+4 slashing"
-        )
-        ability = _parsed(text=text)["abilities"][0]
-        assert ability["name"] == "Melee"
-        assert ability["damage"][0]["formula"] == "2d12+4"
-        assert ability["damage"][0]["damage_type"] == "slashing"
-
-
-class TestComponentAssertions:
-    def test_an_unparseable_component_stat_fails_loudly(self):
-        text = (
-            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
-            "<b>Trapdoor Hardness</b> —"
-        )
-        with pytest.raises(AssertionError, match="no number in it"):
-            _parsed(text=text)
-
-
-class TestTrailingDetails:
-    def test_an_unstructured_trailing_detail_fails_loudly(self):
-        details = _details()
-        details.append("leftover prose")
-        with pytest.raises(AssertionError, match="Unstructured trailing detail"):
-            restructure_hazard_pass(details)
-
 
 class TestStatQualifiers:
     def test_a_per_component_qualifier_is_kept(self):
@@ -662,3 +630,381 @@ class TestSplitComponentGuard:
             "<b>Effect</b> The creature falls in."
         )
         assert _parsed(text=text)["abilities"][0]["name"] == "Pitfall"
+
+
+class TestDuplicateComponentLabels:
+    def test_a_repeated_component_stat_fails_loudly(self):
+        # Same silent-overwrite class the hazard-level guard catches.
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Spout HP</b> 32<br/><b>Spout HP</b> 40"
+        )
+        with pytest.raises(AssertionError, match="appears twice on hazard"):
+            _parsed(text=text)
+
+    def test_different_stats_on_one_component_are_fine(self):
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Spout Hardness</b> 8, <b>Spout HP</b> 32"
+        )
+        component = _parsed(text=text)["components"][0]
+        assert (component["hardness"], component["hp"]) == (8, 32)
+
+    def test_the_same_stat_on_two_components_is_fine(self):
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Spout HP</b> 32, <b>Trapdoor HP</b> 60"
+        )
+        assert [c["hp"] for c in _parsed(text=text)["components"]] == [32, 60]
+
+
+class TestAttacks:
+    """Melee/Ranged are Strikes, modelled the way creatures model them."""
+
+    SOURCE = '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+
+    def test_a_strike_becomes_an_attack_not_an_ability(self):
+        text = (
+            self.SOURCE + "<b>Melee</b> "
+            '<span class="action" title="Single Action">[one-action]</span> '
+            "clockwork fist +29, <b>Damage</b> 2d10+18 bludgeoning"
+        )
+        hazard = _parsed(text=text)
+        assert "abilities" not in hazard
+        attack = hazard["attacks"][0]
+        assert attack["weapon"] == "clockwork fist"
+        assert attack["attack_type"] == "melee"
+        assert attack["bonus"]["bonuses"] == [29]
+        assert attack["damage"][0]["formula"] == "2d10+18"
+
+    def test_a_ranged_strike_keeps_its_traits(self):
+        text = (
+            self.SOURCE + "<b>Ranged</b> eye beam +20 "
+            '(<a game-obj="Traits" aonid="102">divine</a>, '
+            '<a game-obj="Traits" aonid="248">range 120 feet</a>), '
+            "<b>Damage</b> 4d6 fire"
+        )
+        attack = _parsed(text=text)["attacks"][0]
+        assert attack["attack_type"] == "ranged"
+        # Attacks are pulled out before the ability parser unwraps the links,
+        # so the shared creature parser reads the traits off the live markup.
+        # The magnitude is split off later, by trait_db_pass.
+        assert [t["name"] for t in attack["traits"]] == ["divine", "range 120 feet"]
+
+    def test_a_strike_published_whole_is_parsed_the_creature_way(self):
+        # 14 attack lines leave the Damage label unbolded, so it stays in the text.
+        text = self.SOURCE + "<b>Melee</b> water jet +11, Damage 2d8 piercing"
+        attack = _parsed(text=text)["attacks"][0]
+        assert (attack["weapon"], attack["damage"][0]["damage_type"]) == ("water jet", "piercing")
+
+    def test_a_strike_that_resolves_to_an_effect(self):
+        # "jaws +17, Effect devour" — creatures model this as damage carrying
+        # the effect text rather than a formula.
+        text = self.SOURCE + "<b>Melee</b> jaws +17, <b>Effect</b> the target is devoured"
+        attack = _parsed(text=text)["attacks"][0]
+        assert attack["weapon"] == "jaws"
+        assert attack["damage"][0]["effect"] == "the target is devoured"
+
+    def test_a_strike_with_neither_damage_nor_effect_fails_loudly(self):
+        text = self.SOURCE + "<b>Melee</b> stalactite +16"
+        with pytest.raises(AssertionError, match="Failed to parse"):
+            _parsed(text=text)
+
+    def test_a_trait_appearing_twice_is_kept_once(self):
+        # A trait named twice on one line is one trait on the Strike.
+        text = (
+            self.SOURCE + "<b>Melee</b> breath +20 "
+            '(<a game-obj="Traits" aonid="1">fear</a>), <b>Damage</b> 4d6 mental plus '
+            '<a game-obj="Traits" aonid="1">fear</a>'
+        )
+        attack = _parsed(text=text)["attacks"][0]
+        assert [t["name"] for t in attack["traits"]] == ["fear"]
+
+    def test_a_condition_in_the_damage_is_not_mistaken_for_a_trait(self):
+        text = (
+            self.SOURCE + "<b>Melee</b> claw +20 "
+            '(<a game-obj="Traits" aonid="1">agile</a>), <b>Damage</b> 2d6 slashing plus '
+            '<a game-obj="Conditions" aonid="29">bleed</a>'
+        )
+        attack = _parsed(text=text)["attacks"][0]
+        assert [t["name"] for t in attack["traits"]] == ["agile"]
+        # A condition named in the damage belongs to that damage entry, which
+        # is where creatures put it, not to the Strike as a whole.
+        assert [link["name"] for link in attack["damage"][1]["links"]] == ["bleed"]
+
+    def test_other_abilities_are_left_alone(self):
+        text = (
+            self.SOURCE + "<b>Pitfall</b> "
+            '<span class="action" title="Reaction">[reaction]</span> '
+            "<b>Effect</b> The creature falls in."
+        )
+        hazard = _parsed(text=text)
+        assert "attacks" not in hazard
+        assert hazard["abilities"][0]["name"] == "Pitfall"
+
+
+class TestStealth:
+    SOURCE = '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+
+    def test_a_simple_hazard_publishes_a_detection_dc(self):
+        hazard = _parsed(text=self.SOURCE + "<b>Stealth</b> DC 37 (expert)")
+        assert hazard["stealth"]["dc"] == 37
+        assert hazard["stealth"]["proficiency"] == "expert"
+        assert "value" not in hazard["stealth"]
+
+    def test_a_complex_hazard_publishes_an_initiative_modifier(self):
+        # GM Core 100: a modifier for a complex hazard, a DC for a simple one.
+        hazard = _parsed(text=self.SOURCE + "<b>Stealth</b> +17 (trained)")
+        assert hazard["stealth"]["value"] == 17
+        assert "dc" not in hazard["stealth"]
+
+    def test_a_negative_modifier(self):
+        assert _parsed(text=self.SOURCE + "<b>Stealth</b> -10")["stealth"]["value"] == -10
+
+    def test_prose_after_the_value_is_kept(self):
+        hazard = _parsed(text=self.SOURCE + "<b>Stealth</b> +38 (master) to hear the sounds")
+        assert hazard["stealth"]["proficiency"] == "master"
+        assert hazard["stealth"]["note"] == "to hear the sounds"
+
+    def test_a_parenthetical_that_is_not_a_proficiency_is_a_note(self):
+        hazard = _parsed(text=self.SOURCE + "<b>Stealth</b> +0 (the lake is obvious)")
+        assert "proficiency" not in hazard["stealth"]
+        assert hazard["stealth"]["note"] == "the lake is obvious"
+
+    def test_an_unparseable_stealth_fails_loudly(self):
+        with pytest.raises(AssertionError, match="and this is neither"):
+            _parsed(text=self.SOURCE + "<b>Stealth</b> obvious")
+
+    def test_a_bare_number_fails_loudly(self):
+        # It says neither which it is nor which the hazard needs, and the
+        # corpus has Complex hazards publishing a DC and Simple ones a
+        # modifier, so the complexity cannot decide it either.
+        with pytest.raises(AssertionError, match="and this is neither"):
+            _parsed(text=self.SOURCE + "<b>Stealth</b> 28")
+
+    def test_a_proficiency_followed_by_prose_keeps_both(self):
+        hazard = _parsed(text=self.SOURCE + "<b>Stealth</b> DC 30 (trained; behind the arras)")
+        assert hazard["stealth"]["proficiency"] == "trained"
+        assert hazard["stealth"]["note"] == "behind the arras"
+
+    def test_notes_from_inside_and_after_the_parenthetical_are_both_kept(self):
+        # The two note sources meet here; keeping only one loses published text.
+        hazard = _parsed(
+            text=self.SOURCE + "<b>Stealth</b> +0 (the lake is obvious) unless it is night"
+        )
+        assert hazard["stealth"]["note"] == "the lake is obvious unless it is night"
+
+
+class TestSavingThrow:
+    SOURCE = '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+
+    def test_dc_first(self):
+        save = _parsed(text=self.SOURCE + "<b>Saving Throw</b> DC 21 Fortitude")["saving_throw"]
+        assert (save["save_type"], save["dc"]) == ("Fort", 21)
+
+    def test_save_first(self):
+        # Both orders appear in the corpus.
+        save = _parsed(text=self.SOURCE + "<b>Saving Throw</b> Fortitude DC 21")["saving_throw"]
+        assert (save["save_type"], save["dc"]) == ("Fort", 21)
+
+    def test_the_published_text_is_kept(self):
+        save = _parsed(text=self.SOURCE + "<b>Saving Throw</b> DC 17 Will")["saving_throw"]
+        assert save["text"] == "DC 17 Will" and save["save_type"] == "Will"
+
+    def test_an_unparseable_saving_throw_fails_loudly(self):
+        with pytest.raises(AssertionError, match="Saves must have DCs"):
+            _parsed(text=self.SOURCE + "<b>Saving Throw</b> see below")
+
+
+class TestTrailingDetails:
+    def test_an_unstructured_trailing_detail_fails_loudly(self):
+        details = _details()
+        details.append("leftover prose")
+        with pytest.raises(AssertionError, match="Unstructured trailing detail"):
+            restructure_hazard_pass(details)
+
+
+class TestAttackExtractionOrder:
+    """Attacks come out before the ability parser, which is what makes the
+    shared creature parser usable on them."""
+
+    SOURCE = '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+
+    def test_the_attack_is_not_also_left_as_an_ability(self):
+        text = self.SOURCE + "<b>Melee</b> claw +20, <b>Damage</b> 2d6 slashing"
+        hazard = _parsed(text=text)
+        assert len(hazard["attacks"]) == 1
+        assert "abilities" not in hazard
+
+    def test_an_ability_after_an_attack_still_parses(self):
+        text = (
+            self.SOURCE + "<b>Melee</b> claw +20, <b>Damage</b> 2d6 slashing<br/>"
+            "<b>Pitfall</b> "
+            '<span class="action" title="Reaction">[reaction]</span> '
+            "<b>Effect</b> The creature falls in."
+        )
+        hazard = _parsed(text=text)
+        assert [a["weapon"] for a in hazard["attacks"]] == ["claw"]
+        assert [a["name"] for a in hazard["abilities"]] == ["Pitfall"]
+
+    def test_two_attacks_both_survive(self):
+        text = (
+            self.SOURCE + "<b>Melee</b> claw +20, <b>Damage</b> 2d6 slashing<br/>"
+            "<b>Ranged</b> spike +18, <b>Damage</b> 1d8 piercing"
+        )
+        attacks = _parsed(text=text)["attacks"]
+        assert [(a["weapon"], a["attack_type"]) for a in attacks] == [
+            ("claw", "melee"),
+            ("spike", "ranged"),
+        ]
+
+    def test_a_linked_ability_name_after_an_attack_is_not_swallowed(self):
+        # The source writes a linked ability name as <a><b>Name</b></a>, so
+        # the bold is nested; checking only for a bold sibling swallows it into
+        # the attack's damage.
+        text = (
+            self.SOURCE + "<b>Melee</b> lash +20, <b>Damage</b> 2d6 bludgeoning plus "
+            '<a game-obj="MonsterAbilities" aonid="57"><b>Constrict</b></a> '
+            "<b>Effect</b> The target is squeezed."
+        )
+        hazard = _parsed(text=text)
+        assert [a["weapon"] for a in hazard["attacks"]] == ["lash"]
+        assert "Constrict" in [a["name"] for a in hazard["abilities"]]
+
+    def test_a_bolded_list_in_the_effect_stays_with_the_attack(self):
+        # Only a bold inside a LINK ends the run. Descending into any tag stops
+        # at a <ul> whose <li> headers are bold, which hands the Strike's own
+        # list to whichever ability came before it.
+        text = (
+            self.SOURCE + "<b>Ranged</b> eye beam +20, <b>Effect</b> as below."
+            "<ul><li><b>Black Eye Beam</b> blinded for 1 round.</li>"
+            "<li><b>Blue Eye Beam</b> petrified for 1 round.</li></ul>"
+        )
+        hazard = _parsed(text=text)
+        effect = " ".join(d.get("effect", "") for d in hazard["attacks"][0]["damage"])
+        assert "Black Eye Beam" in effect
+        assert "abilities" not in hazard
+
+    def test_the_action_type_is_kept(self):
+        text = (
+            self.SOURCE + "<b>Melee</b> "
+            '<span class="action" title="Single Action">[one-action]</span> '
+            "claw +20, <b>Damage</b> 2d6 slashing"
+        )
+        assert _parsed(text=text)["attacks"][0]["action_type"]["name"] == "One Action"
+
+
+class TestUnlinkedAttackTraits:
+    """An unlinked trait is a source problem, so it has to be visible."""
+
+    SOURCE = '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+
+    def test_an_unlinked_trait_fails_loudly(self):
+        # extract_starting_traits only objects when SOME traits are linked, so
+        # a wholly unlinked parenthetical would otherwise vanish.
+        text = self.SOURCE + "<b>Melee</b> claw +20 (magical), <b>Damage</b> 2d6 slashing"
+        with pytest.raises(AssertionError, match="link them in the source"):
+            _parsed(text=text)
+
+    def test_a_linked_trait_is_fine(self):
+        text = (
+            self.SOURCE + "<b>Melee</b> claw +20 "
+            '(<a game-obj="Traits" aonid="103">magical</a>), <b>Damage</b> 2d6 slashing'
+        )
+        assert [t["name"] for t in _parsed(text=text)["attacks"][0]["traits"]] == ["magical"]
+
+    def test_a_note_in_the_traits_slot_is_kept_not_flagged(self):
+        # "can target any creature in area A8" is published content, not traits.
+        text = (
+            self.SOURCE + "<b>Melee</b> bolt +35 (can target any creature in area A8), "
+            "<b>Damage</b> 4d10 force"
+        )
+        attack = _parsed(text=text)["attacks"][0]
+        assert attack["note"] == "can target any creature in area A8"
+        # parse_attack_action sets traits whenever it captures a parenthetical;
+        # remove_empty_fields drops the empty list later in the pipeline.
+        assert not attack["traits"]
+
+
+class TestTraitsVersusNote:
+    """The heuristic that decides whether an unlinked parenthetical is traits.
+
+    One notch more permissive and a genuinely unlinked trait list becomes a
+    note: the traits vanish, nothing asserts, and the output still validates.
+    Fixtures are drawn from parentheticals the corpus actually publishes.
+    """
+
+    @pytest.mark.parametrize(
+        "inner",
+        [
+            "magical",
+            "mental",
+            "agile",
+            "deadly 1d12",
+            "reach 40 feet",
+            "range increment 30 feet",
+            "magical, reach 40 feet",
+            "poison, range increment 30 feet, reload 1",
+            "negative, range 120 feet",
+            "agile, thrown 10 feet, versatile S",
+        ],
+    )
+    def test_published_trait_lists_read_as_traits(self, inner):
+        assert _looks_like_traits(inner)
+
+    @pytest.mark.parametrize(
+        "inner",
+        [
+            "can target any creature in area A8",
+            "DC 16 Fortitude negates the poison damage",
+            "on a critical hit, the target automatically fails the Will save",
+            "the tar lake is blatantly obvious",
+            # pins the word threshold: six words is a clause, not a trait
+            "roll a DC 20 Reflex save",
+            # pins the "the" clause: short prose is still prose
+            "only in the area",
+        ],
+    )
+    def test_published_notes_read_as_notes(self, inner):
+        assert not _looks_like_traits(inner)
+
+    def test_an_empty_parenthetical_is_not_traits(self):
+        assert not _looks_like_traits("   ")
+
+    def test_every_part_must_look_like_a_trait(self):
+        # "all", not "any" — one prose clause makes the whole thing a note.
+        assert not _looks_like_traits("agile, the target is knocked prone")
+
+
+class TestAttackLineGuards:
+    """The asserts that stand between a misread line and plausible-looking output."""
+
+    SOURCE = '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+
+    def test_a_parenthetical_inside_the_weapon_name_fails_loudly(self):
+        # "claw (agile) +20" leaves the trait in the weapon and traits empty,
+        # which is schema-valid and reads as real data.
+        text = self.SOURCE + "<b>Melee</b> claw (agile) +20, <b>Damage</b> 2d6 slashing"
+        with pytest.raises(AssertionError, match="ended up inside the name"):
+            _parsed(text=text)
+
+    def test_a_linked_trait_inside_the_weapon_name_also_fails(self):
+        text = (
+            self.SOURCE + "<b>Melee</b> claw "
+            '(<a game-obj="Traits" aonid="170">agile</a>) +20, <b>Damage</b> 2d6 slashing'
+        )
+        with pytest.raises(AssertionError, match="ended up inside the name"):
+            _parsed(text=text)
+
+    def test_an_unbalanced_parenthesis_fails_loudly(self):
+        # The run stopping mid-line is how five fabricated abilities appeared.
+        text = self.SOURCE + "<b>Melee</b> claw +20 (agile, <b>Damage</b> 2d6 slashing"
+        with pytest.raises(AssertionError, match="unbalanced parenthesis"):
+            _parsed(text=text)
+
+    def test_an_empty_weapon_fails_loudly(self):
+        # Empty <a>/<i> markup is a known AoN artefact; an empty weapon string
+        # is schema-valid, so nothing downstream would notice.
+        text = self.SOURCE + "<b>Melee</b> <i></i> +20, <b>Damage</b> 2d6 slashing"
+        with pytest.raises(AssertionError, match="parsed no weapon"):
+            _parsed(text=text)

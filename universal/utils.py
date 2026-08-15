@@ -389,6 +389,18 @@ def flatten_field_links(value, links_out):
     return str(bs).strip()
 
 
+def split_list(text, splits):
+    """Split text on each separator in turn ("a plus b and c" -> three parts)."""
+    elements = text.split(splits[0])
+    newelements = []
+    if len(splits) > 1:
+        for element in elements:
+            newelements.extend(split_list(element, splits[1:]))
+    else:
+        newelements.extend(elements)
+    return newelements
+
+
 def parse_defense_line(text, subtype):
     """Split an Immunities/Weaknesses/Resistances line into protection objects.
 
