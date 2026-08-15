@@ -40,6 +40,7 @@ from universal.universal import (
     RESULT_LABELS,
     aon_pass,
     build_object,
+    drop_marker_sections,
     edition_from_alternate_link,
     edition_pass,
     entity_pass,
@@ -164,9 +165,7 @@ def parse_hazard(filename, options):
     aon_pass(struct, basename)
     restructure_pass(struct, "hazard", find_hazard)
     struct["edition"] = edition_from_alternate_link(struct) or edition_pass(struct["sections"])
-    struct["sections"] = [
-        s for s in struct["sections"] if s.get("name") not in ("Legacy Content", "Traits")
-    ]
+    drop_marker_sections(struct)
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
     # A hazard ability can name a universal monster ability; the same DB pass
@@ -252,12 +251,13 @@ def restructure_hazard_pass(details):
     # Two layouts: legacy pages wrap the stat block in a "Legacy Content"
     # section, remastered ones carry the text on the entry itself.
     body_sections = list(first.get("sections", []))
-    if first.get("text"):
-        sb["text"] = first["text"]
-    else:
-        text = take_stat_block_text(body_sections)
-        assert text, f"No stat block text found for {name!r}"
-        sb["text"] = text
+    # Carrier first, matching the original precedence: when a page carries
+    # text in both places the wrapped stat block is the real one.
+    text = take_stat_block_text(body_sections)
+    if text is None:
+        text = first.get("text")
+    assert text, f"No stat block text found for {name!r}"
+    sb["text"] = text
 
     top = {"name": name, "type": "hazard", "sections": [sb]}
     top["sections"].extend(body_sections)

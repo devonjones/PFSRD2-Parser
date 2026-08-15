@@ -67,7 +67,10 @@ def disambiguated_filename(jsondir, struct, label):
     suffixed = f"{stem}_{struct['aonid']}.json"
     if not os.path.exists(base):
         # A sibling already claimed a suffix, so this name is known to collide.
-        return suffixed if glob.glob(f"{stem}_*.json") else base
+        # _[0-9]* not _*: char_replace turns spaces into underscores, so a
+        # bare _* also matches unrelated longer names ("glyph_of_warding" would
+        # match "glyph_of_warding_trap"). 51 such pairs exist under monsters/.
+        return suffixed if glob.glob(f"{stem}_[0-9]*.json") else base
 
     with open(base) as fp:
         try:

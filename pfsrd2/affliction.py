@@ -37,6 +37,7 @@ from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.universal import (
     aon_pass,
     build_object,
+    drop_marker_sections,
     edition_from_alternate_link,
     edition_pass,
     entity_pass,
@@ -106,9 +107,6 @@ def _level_varies_re(subtype):
 # "clumsy 1 (1 day)" — the trailing parenthetical is the stage's duration.
 _STAGE_DURATION = re.compile(r"\(([^)]*)\)\s*$")
 
-# "a high spell DC for a monster of its level" mentions DC without giving one.
-_NUMERIC_DC = re.compile(r"\bDC\s*\d+")
-
 AFFLICTION_TYPES = {"curse": "curses", "disease": "diseases"}
 
 _TEXT_FIELDS = ("effect", "usage", "special", "tempted_curse", "onset", "maximum_duration")
@@ -149,20 +147,7 @@ def parse_affliction(filename, options):
     aon_pass(struct, basename)
     restructure_pass(struct, "affliction", find_affliction)
     struct["edition"] = edition_from_alternate_link(struct) or edition_pass(struct["sections"])
-    # These two are markers, not content: "Legacy Content" has had its text
-    # taken by take_stat_block_text and "Traits" is consumed by the trait
-    # extractor. Dropping either while it still carries something would be
-    # silent data loss, so check before dropping rather than after.
-    kept = []
-    for section in struct["sections"]:
-        if section.get("name") not in ("Legacy Content", "Traits"):
-            kept.append(section)
-            continue
-        assert not section.get("text"), (
-            f"{section['name']!r} section on {struct['name']!r} still carries text; "
-            "dropping it here would lose data"
-        )
-    struct["sections"] = kept
+    drop_marker_sections(struct)
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
     trait_db_pass(struct)
@@ -236,12 +221,13 @@ def restructure_affliction_pass(details, subtype):
         sb["level_text"] = subname
 
     body_sections = list(first.get("sections", []))
-    if first.get("text"):
-        sb["text"] = first["text"]
-    else:
-        text = take_stat_block_text(body_sections)
-        assert text, f"No stat block text found for {name!r}"
-        sb["text"] = text
+    # Carrier first, matching the original precedence: when a page carries
+    # text in both places the wrapped stat block is the real one.
+    text = take_stat_block_text(body_sections)
+    if text is None:
+        text = first.get("text")
+    assert text, f"No stat block text found for {name!r}"
+    sb["text"] = text
 
     top = {"name": name, "type": "affliction", "sections": [sb]}
     top["sections"].extend(body_sections)
@@ -269,8 +255,11 @@ def affliction_extract_pass(struct):
 
     extract_span_traits(affliction, bs)
     _extract_sources(affliction, bs)
-    # Stages first: their labels are Stage N rather than members of the closed
-    # set, so extract_bold_fields would treat them as unknown.
+    # Stages and escalations need their own extractors because their labels
+    # are patterns, not members of the closed set. extract_bold_fields leaves
+    # a label it does not recognise in place and stops the preceding value run
+    # at it, so the three are order-independent — but the stage extractors
+    # must still run, or the labels reach _assert_no_unknown_labels.
     _extract_stages(affliction, bs)
     _extract_escalations(affliction, bs, affliction["affliction_type"])
     extract_bold_fields(affliction, bs, FIELD_LABELS, decompose=True)
@@ -324,6 +313,14 @@ def _labelled_blocks(bs, pattern):
         match = pattern.match(get_text(bold).strip())
         if not match:
             continue
+        # find_all is snapshotted, so a bold nested inside an earlier value
+        # run has already been extracted with it. Walking its siblings now
+        # would silently merge two entries; the label is real, so it is a
+        # markup shape the parser has not understood.
+        assert bold.find_parent() is not None, (
+            f"{match.group(0)!r} was consumed by an earlier value run — "
+            "it is nested rather than a sibling, which this parser cannot read"
+        )
         nodes = nodes_after(bold)
         value = "".join(str(n) for n in nodes).strip()
         for node in nodes:
@@ -451,7 +448,7 @@ def _structure_fields(affliction):
     if raw:
         # Harvest before flattening: the save line links its save type and any
         # condition it inflicts, and plain text alone would drop them.
-        links = get_links(BeautifulSoup(raw, "html.parser"), unwrap=True)
+        links = _block_links(raw)
         if links:
             affliction.setdefault("links", []).extend(links)
         plain = plain_text(raw).strip(" ;,")

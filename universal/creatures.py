@@ -254,15 +254,19 @@ def parse_save_dc(text, strict=False):
     """
     if not text:
         return {"type": "stat_block_section", "subtype": "save_dc", "text": ""}
-    if _NUMERIC_DC.search(text):
-        if strict:
-            return universal_handle_save_dc(text)
+    if "DC" in text:
+        # Everyone tries the full parser first: it reads more than numbers,
+        # including "DC varies" and flat checks, and gating on a numeric DC
+        # would throw that away.
         try:
             return universal_handle_save_dc(text)
         except (ValueError, AssertionError):
             # Known case: non-numeric DCs like "the high spell DC for the
-            # ghoul's level" that still print the letters DC.
-            pass
+            # ghoul's level" that still print the letters DC. But a DC that
+            # prints an actual number and still will not parse is a bug, and
+            # strict callers refuse to degrade it to prose.
+            if strict and _NUMERIC_DC.search(text):
+                raise
     save_dc = {"type": "stat_block_section", "subtype": "save_dc", "text": text}
     for name, abbrev in _SAVE_TYPES.items():
         if name in text:

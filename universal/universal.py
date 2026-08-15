@@ -1018,3 +1018,34 @@ def take_stat_block_text(sections):
         if found:
             return found
     return None
+
+
+# Sections that exist to be read and then discarded: "Legacy Content" is the
+# carrier edition_pass reads the edition off, "Traits" is consumed by the
+# trait extractor.
+MARKER_SECTIONS = ("Legacy Content", "Traits")
+
+
+def drop_marker_sections(struct, names=MARKER_SECTIONS):
+    """Remove the marker sections, once they are known to be empty.
+
+    Dropping one by name while it still carries text would be silent data
+    loss, so this asserts rather than trusting that an earlier pass emptied
+    it. Must run after edition_pass, which needs the Legacy Content name.
+
+    Recurses, because a spoiler warning nests the carrier a level deeper and
+    remove_empty_sections_pass only clears empty `sections` keys — it never
+    removes an element from a parent list, so a nested husk would otherwise
+    ship with the document.
+    """
+    kept = []
+    for section in struct.get("sections", []):
+        drop_marker_sections(section, names)
+        if section.get("name") in names:
+            assert not section.get("text"), (
+                f"{section['name']!r} section on {struct.get('name')!r} still carries text; "
+                "dropping it here would lose data"
+            )
+            continue
+        kept.append(section)
+    struct["sections"] = kept
