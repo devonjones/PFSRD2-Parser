@@ -57,7 +57,13 @@ def disambiguated_filename(jsondir, struct, label):
     EVERY entry sharing it takes its aonid, however many there are and in
     whatever order they are parsed.
 
-    Only aonid is compared against what is already on disk. Comparing bodies
+    A collision is only a collision when the two entries are actually
+    different. game-id is md5("source: page: name"), so two entries sharing
+    one are the same publication listed twice — AoN does this for 19 GM Core
+    curses — and the later write simply wins. game-id is meant to be unique,
+    so keeping both would break the key consumers index on.
+
+    Only ids are compared against what is already on disk. Comparing bodies
     would make any parser change fail the next run against its own stale
     output, and CLAUDE.md guarantees the data directory need not be cleared
     between runs.
@@ -79,6 +85,10 @@ def disambiguated_filename(jsondir, struct, label):
             raise ValueError(f"Existing {label} file {base} is not readable JSON") from e
     assert "aonid" in existing, f"Existing {label} file {base} has no aonid"
     if existing["aonid"] == struct["aonid"]:
+        return base
+    if existing.get("game-id") and existing["game-id"] == struct.get("game-id"):
+        # Same source, page and name: one entry AoN lists twice. Take the
+        # later one rather than shipping two documents under one game-id.
         return base
     # Move the squatter aside under its own aonid, then take a suffix too.
     os.rename(base, f"{stem}_{existing['aonid']}.json")

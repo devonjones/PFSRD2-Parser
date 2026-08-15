@@ -185,3 +185,41 @@ class TestDisambiguatedFilenameGuards:
         (tmp_path / "hidden_pit.json").write_text("not json")
         with pytest.raises(ValueError, match="not readable JSON"):
             disambiguated_filename(str(tmp_path), {"name": "Hidden Pit", "aonid": 1}, "hazard")
+
+
+class TestGameIdUniqueness:
+    """game-id is meant to be unique, so a collision decides the filename.
+
+    game-id is md5("source: page: name"). Two entries sharing one are the same
+    publication listed twice — AoN does this for 19 GM Core curses — and the
+    later write wins. Two entries with different game-ids that happen to share
+    a name are different things, and both must survive.
+    """
+
+    def _write(self, tmp_path, aonid, game_id, name="Curse of Nightmares"):
+        import json as _json
+
+        from universal.files import disambiguated_filename
+
+        struct = {"name": name, "aonid": aonid, "game-id": game_id}
+        path = disambiguated_filename(str(tmp_path), struct, "affliction")
+        with open(path, "w") as fp:
+            _json.dump(struct, fp)
+        return __import__("os").path.basename(path)
+
+    def test_matching_game_ids_collapse_to_one_file(self, tmp_path):
+        first = self._write(tmp_path, 28, "same-id")
+        second = self._write(tmp_path, 90, "same-id")
+        assert first == second == "curse_of_nightmares.json"
+        assert len(list(tmp_path.glob("*.json"))) == 1
+        # the later write is the one that survives
+        import json as _json
+
+        assert _json.load(open(tmp_path / "curse_of_nightmares.json"))["aonid"] == 90
+
+    def test_differing_game_ids_both_survive(self, tmp_path):
+        # Two Pathfinder #184 "Glyph of Warding" hazards, different pages.
+        self._write(tmp_path, 263, "id-page-28", name="Glyph of Warding")
+        self._write(tmp_path, 266, "id-page-50", name="Glyph of Warding")
+        names = sorted(p.name for p in tmp_path.glob("*.json"))
+        assert names == ["glyph_of_warding_263.json", "glyph_of_warding_266.json"]
