@@ -881,9 +881,9 @@
           "type": "string"
         },
         "spell_rank": {
-          "type": "integer",
+          "maximum": 10,
           "minimum": 1,
-          "maximum": 10
+          "type": "integer"
         },
         "spell_slots": {
           "$ref": "#/definitions/spell_slots"
@@ -2091,9 +2091,9 @@
         "rank": {
           "oneOf": [
             {
-              "type": "integer",
+              "maximum": 10,
               "minimum": 1,
-              "maximum": 10
+              "type": "integer"
             },
             {
               "enum": [

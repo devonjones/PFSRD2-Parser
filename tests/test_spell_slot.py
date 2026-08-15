@@ -192,7 +192,8 @@ class TestTemplatePass:
 
     def test_variants_carry_their_rank(self):
         struct = _template(
-            "Magic Wand", "Wands",
+            "Magic Wand",
+            "Wands",
             ["Magic Wand (1st-rank Spell)", "Magic Wand (5th-rank Spell)"],
         )
         spell_slot_pass(struct)
@@ -200,7 +201,9 @@ class TestTemplatePass:
 
     def test_fixed_spell_wand(self):
         struct = _template(
-            "Wand of Shardstorm", "Wands", ["Wand of Shardstorm (1st-rank Spell)"],
+            "Wand of Shardstorm",
+            "Wands",
+            ["Wand of Shardstorm (1st-rank Spell)"],
             craft="Supply a casting of *force barrage* of the appropriate rank.",
             links=[{"game-obj": "Spells", "name": "force barrage", "aonid": 999}],
         )
@@ -211,7 +214,9 @@ class TestTemplatePass:
 
     def test_open_slot_wand_records_no_constraint(self):
         struct = _template(
-            "Magic Wand", "Wands", ["Magic Wand (1st-rank Spell)"],
+            "Magic Wand",
+            "Wands",
+            ["Magic Wand (1st-rank Spell)"],
             craft="Supply a casting of the spell at the listed rank.",
         )
         spell_slot_pass(struct)

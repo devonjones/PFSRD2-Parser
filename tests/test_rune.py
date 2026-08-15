@@ -129,8 +129,7 @@ class TestRunePass:
         assert [d["value"] for d in dice] == [2, 3, 4]
         assert all(d["operation"] == "replace" for d in dice)
         assert all(
-            d["target"] == "$.stat_block.offense.weapon_modes[*].damage[*].dice_count"
-            for d in dice
+            d["target"] == "$.stat_block.offense.weapon_modes[*].damage[*].dice_count" for d in dice
         )
 
     def test_potency_grants_property_slots(self):
@@ -149,9 +148,7 @@ class TestRunePass:
         assert [a["modifier"]["bonus_value"] for a in attack] == [1, 2, 3]
         assert all(a["modifier"]["bonus_type"] == "item" for a in attack)
         assert all(a["operation"] == "add_modifier" for a in attack)
-        assert all(
-            a["target"] == "$.stat_block.offense.weapon_modes[*].modifiers" for a in attack
-        )
+        assert all(a["target"] == "$.stat_block.offense.weapon_modes[*].modifiers" for a in attack)
 
     def test_armor_potency_grants_an_item_bonus_to_ac(self):
         struct = _stat_block(
