@@ -256,10 +256,11 @@ def affliction_extract_pass(struct):
     extract_span_traits(affliction, bs)
     _extract_sources(affliction, bs)
     # Stages and escalations need their own extractors because their labels
-    # are patterns, not members of the closed set. extract_bold_fields leaves
-    # a label it does not recognise in place and stops the preceding value run
-    # at it, so the three are order-independent — but the stage extractors
-    # must still run, or the labels reach _assert_no_unknown_labels.
+    # are patterns rather than members of the closed set, and they must run
+    # FIRST. extract_bold_fields stops a value run at the next sibling bold,
+    # but a Stage bold nested inside an inline tag is not a sibling — the
+    # whole tag is swallowed into the preceding field and the stage is gone.
+    # No page publishes that shape today; the order is what keeps it that way.
     _extract_stages(affliction, bs)
     _extract_escalations(affliction, bs, affliction["affliction_type"])
     extract_bold_fields(affliction, bs, FIELD_LABELS, decompose=True)

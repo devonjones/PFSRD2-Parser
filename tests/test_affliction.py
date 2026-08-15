@@ -410,3 +410,28 @@ class TestFindAffliction:
     def test_a_struct_with_no_stat_block_fails_loudly(self):
         with pytest.raises(AssertionError, match="No affliction stat block found"):
             find_affliction({"name": "Ghoul Fever", "sections": [{"subtype": "other"}]})
+
+
+class TestExtractionOrder:
+    """Stages must be claimed before extract_bold_fields runs.
+
+    extract_bold_fields ends a value run at the next *sibling* bold. A Stage
+    bold nested inside an inline tag is not a sibling, so the whole tag —
+    stage included — is swallowed into the preceding field. No page publishes
+    that shape today, which is exactly why the order needs a test rather than
+    a comment.
+    """
+
+    NESTED = (
+        '<b>Source</b> <a aonid="1" game-obj="Sources">Core pg. 1</a>'
+        "<br/><b>Onset</b> 1 day <i>and <b>Stage 1</b> sickened 1 (1 day)</i>"
+    )
+
+    def test_a_nested_stage_is_still_extracted(self):
+        affliction = _parsed(text=self.NESTED)
+        assert [s["stage"] for s in affliction["stages"]] == [1]
+        assert affliction["stages"][0]["effect"] == "sickened 1"
+        assert affliction["onset"].startswith("1 day")
+
+    def test_the_field_does_not_swallow_the_nested_stage(self):
+        assert "Stage 1" not in _parsed(text=self.NESTED)["onset"]

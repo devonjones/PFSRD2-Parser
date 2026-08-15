@@ -1022,7 +1022,9 @@ def take_stat_block_text(sections):
 
 # Sections that exist to be read and then discarded: "Legacy Content" is the
 # carrier edition_pass reads the edition off, "Traits" is consumed by the
-# trait extractor.
+# trait extractor. No page in the current corpus produces a "Traits" section —
+# it is kept because it costs a word and the alternative is one leaking into
+# output the day a page does.
 MARKER_SECTIONS = ("Legacy Content", "Traits")
 
 

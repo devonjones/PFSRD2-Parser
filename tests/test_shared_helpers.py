@@ -167,3 +167,21 @@ class TestSharedHelpers:
         assert disambiguated_filename(str(tmp_path), struct, "hazard").endswith(
             "glyph_of_warding.json"
         )
+
+
+class TestDisambiguatedFilenameGuards:
+    def test_an_existing_file_without_an_aonid_fails_loudly(self, tmp_path):
+        # Two writers share this now, so a foreign file in the output tree
+        # must not be silently treated as a collision partner.
+        from universal.files import disambiguated_filename
+
+        (tmp_path / "hidden_pit.json").write_text("{}")
+        with pytest.raises(AssertionError, match="has no aonid"):
+            disambiguated_filename(str(tmp_path), {"name": "Hidden Pit", "aonid": 1}, "hazard")
+
+    def test_unreadable_json_says_which_file(self, tmp_path):
+        from universal.files import disambiguated_filename
+
+        (tmp_path / "hidden_pit.json").write_text("not json")
+        with pytest.raises(ValueError, match="not readable JSON"):
+            disambiguated_filename(str(tmp_path), {"name": "Hidden Pit", "aonid": 1}, "hazard")
