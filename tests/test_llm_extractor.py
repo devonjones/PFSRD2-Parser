@@ -104,7 +104,7 @@ class TestFrequencyLLM:
     def test_simple_once_per_day(self):
         result = self._extract(
             "Corrupt Water",
-            "The dragon permanently befouls 10 cubic feet of liquid within 90 feet.",
+            "The dragon permanently befouls 10 cubic feet of liquid within " "90 feet.",
         )
         # No frequency in this text
         assert result is None
@@ -212,7 +212,7 @@ class TestDCLLM:
     def test_escape_dc_from_text(self):
         result = self._extract(
             "Hurl Net",
-            "On a hit, the target is flat-footed. The DC to Escape the net is 16.",
+            "On a hit, the target is flat-footed. " "The DC to Escape the net is 16.",
         )
         assert result is not None
         assert any(s["dc"] == 16 for s in result)
@@ -245,7 +245,7 @@ class TestDCLLM:
     def test_variable_dc_not_extracted(self):
         result = self._extract(
             "Infectious Aura",
-            "all adjacent creatures are exposed to the same disease, at the same DC.",
+            "all adjacent creatures are exposed to the same disease, " "at the same DC.",
         )
         assert result is None
 
@@ -303,7 +303,7 @@ class TestDamageLLM:
     def test_untyped_with_dc(self):
         result = self._extract(
             "Resanguinate",
-            "any living creature within 30 feet takes 4d6 damage (DC 33 basic Fortitude save).",
+            "any living creature within 30 feet takes 4d6 damage " "(DC 33 basic Fortitude save).",
         )
         assert result is not None
         assert any(d["formula"] == "4d6" for d in result)

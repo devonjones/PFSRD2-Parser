@@ -803,7 +803,7 @@ def parse_equipment_v2(filename, options):
 
     # 5. Validate + write
     if not options.skip_schema:
-        struct["schema_version"] = 1.1
+        struct["schema_version"] = 1.0
         validate_against_schema(struct, config["schema_file"])
     if not options.dryrun:
         output = options.output

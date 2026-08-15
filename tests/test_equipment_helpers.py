@@ -619,7 +619,7 @@ class TestExtractAffliction:
 
     def test_normalizes_whitespace_in_stages(self):
         """Should collapse whitespace and fix spaces before punctuation."""
-        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Stage 1</b> stupefied\n1 (1\nhour)"
+        html = "<b>Saving Throw</b> DC 20 Fortitude; " "<b>Stage 1</b> stupefied\n1 (1\nhour)"
         soup = BeautifulSoup(html, "html.parser")
 
         affliction, _ = _extract_affliction(soup, "Test Item")
@@ -628,7 +628,7 @@ class TestExtractAffliction:
 
     def test_parses_effect_field(self):
         """Should parse Effect field."""
-        html = "<b>Saving Throw</b> DC 20 Fortitude; <b>Effect</b> The target is dazed"
+        html = "<b>Saving Throw</b> DC 20 Fortitude; " "<b>Effect</b> The target is dazed"
         soup = BeautifulSoup(html, "html.parser")
 
         affliction, _ = _extract_affliction(soup, "Test Item")
@@ -844,7 +844,7 @@ class TestFindAbilityBolds:
 
     def test_finds_multiple_abilities(self):
         """Should find multiple ability bolds."""
-        html = "<b>Activate</b> command; <b>Frequency</b> once per day; <b>Activate</b> Interact"
+        html = "<b>Activate</b> command; <b>Frequency</b> once per day; " "<b>Activate</b> Interact"
         soup = BeautifulSoup(html, "html.parser")
 
         result = _find_ability_bolds(soup)
@@ -1266,7 +1266,8 @@ class TestNormalizeActivateToAbility:
         """Should include unlinked traits (legacy activate uses include_unlinked_traits=True)."""
         statistics = {
             "activate": (
-                '<span class="action" title="Single Action">[one-action]</span> command (magical)'
+                '<span class="action" title="Single Action">[one-action]</span> '
+                "command (magical)"
             )
         }
         sb = {}
@@ -1879,7 +1880,13 @@ class TestExtractInlineIntelligentItem:
 
     def test_non_intelligent_bold_stops_collection(self):
         """Should stop collecting at non-intelligent-item bold like Activate."""
-        html = "<b>Perception</b> +30<br><b>Communication</b> speech<br><b>Activate</b> command"
+        html = (
+            "<b>Perception</b> +30"
+            "<br>"
+            "<b>Communication</b> speech"
+            "<br>"
+            "<b>Activate</b> command"
+        )
         bs = BeautifulSoup(html, "html.parser")
         sb = {}
         _extract_inline_intelligent_item(bs, sb)
@@ -1970,7 +1977,7 @@ class TestCollectBoldFieldValues:
 
     def test_collects_matching_fields(self):
         """Should collect fields matching the given field names."""
-        html = "<b>Perception</b> +30<br><b>Skills</b> Diplomacy +28"
+        html = "<b>Perception</b> +30" "<br>" "<b>Skills</b> Diplomacy +28"
         bs = BeautifulSoup(html, "html.parser")
         fields, elements = _collect_bold_field_values(
             bs, {"Perception", "Skills", "Communication"}, "Perception"
@@ -1982,7 +1989,7 @@ class TestCollectBoldFieldValues:
 
     def test_stops_at_non_matching_bold(self):
         """Should stop collecting at a bold not in field_names."""
-        html = "<b>Perception</b> +30<br><b>Activate</b> command"
+        html = "<b>Perception</b> +30" "<br>" "<b>Activate</b> command"
         bs = BeautifulSoup(html, "html.parser")
         fields, elements = _collect_bold_field_values(bs, {"Perception", "Skills"}, "Perception")
         assert "Perception" in fields

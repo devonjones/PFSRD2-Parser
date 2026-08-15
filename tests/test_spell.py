@@ -326,7 +326,7 @@ class TestExtractHeightened:
 
     def test_multiple_heightened(self):
         spell = {}
-        text = "<b>Heightened (+1)</b> More damage<br/><b>Heightened (4th)</b> Extra targets"
+        text = "<b>Heightened (+1)</b> More damage<br/>" "<b>Heightened (4th)</b> Extra targets"
         _extract_heightened(spell, text)
         assert len(spell["heightened"]) == 2
 

@@ -114,7 +114,7 @@ class TestExtractIntelligentItemSection:
         assert section["will"] == "+15"
 
     def test_partial_fields(self):
-        html = "<hr/><b>Perception</b> +10<br/><b>Will</b> +8<br/><hr/>"
+        html = "<hr/>" "<b>Perception</b> +10<br/>" "<b>Will</b> +8<br/>" "<hr/>"
         soup = BeautifulSoup(html, "html.parser")
         sb = {}
         _extract_intelligent_item_section(soup, sb)
@@ -140,7 +140,7 @@ class TestExtractIntelligentItemSection:
         assert section["links"][0]["name"] == "detect magic"
 
     def test_elements_removed_from_soup(self):
-        html = "before<hr/><b>Perception</b> +10<br/><b>Will</b> +8<br/><hr/>after"
+        html = "before<hr/>" "<b>Perception</b> +10<br/>" "<b>Will</b> +8<br/>" "<hr/>after"
         soup = BeautifulSoup(html, "html.parser")
         sb = {}
         _extract_intelligent_item_section(soup, sb)

@@ -2610,7 +2610,7 @@
     },
     "schema_version": {
       "enum": [
-        1.1
+        1.0
       ]
     },
     "sections": {
