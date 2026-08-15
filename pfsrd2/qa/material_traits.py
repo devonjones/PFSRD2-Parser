@@ -21,8 +21,10 @@ from pfsrd2.material import RARITIES
 from pfsrd2.qa import load_equipment
 
 # Precious-material use pages that legitimately carry no base_material.
-# Elven Chain is a specific armor made of dawnsilver rather than a generic
-# "<material> Armor" page, so AoN states no base material for it.
+# Elven Chain is a specific armor rather than a generic "<material> Armor"
+# page, so AoN states no base material for it. Its material differs by
+# edition (mithral in the legacy Core Rulebook, dawnsilver in the GM Core
+# remaster), which is why both editions are covered by the one name.
 NO_BASE_MATERIAL = frozenset({"Elven Chain"})
 
 
@@ -48,9 +50,9 @@ def check_propagation(materials, uses):
         base = (stat_block.get("base_material") or {}).get("name")
         if not base:
             # Scoped like the Dragonhide fix, not blanket-skipped: Elven Chain
-            # is a specific armor that happens to be dawnsilver, so it has no
-            # base_material by design. Any OTHER use page missing one is a
-            # page this verifier cannot check, which must be reported.
+            # is a specific armor (mithral in legacy, dawnsilver remastered),
+            # so it has no base_material by design. Any OTHER use page missing
+            # one is a page this verifier cannot check, which must be reported.
             if doc["name"] not in NO_BASE_MATERIAL:
                 problems.append(f"{doc['name']}: material_use page has no base_material")
             continue

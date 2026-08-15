@@ -47,6 +47,6 @@ class TestContinuationLines:
         assert abilities[0].get("frequency") == "once per day"
 
     def test_excluded_label_value_does_not_glue(self):
-        html = "<b>Slam</b> Hits hard.<br/>" "<b>Source</b> <i>Bestiary pg. 5</i>"
+        html = "<b>Slam</b> Hits hard.<br/><b>Source</b> <i>Bestiary pg. 5</i>"
         abilities = parse_abilities_from_nodes(_nodes(html))
         assert "Bestiary" not in abilities[0]["text"]

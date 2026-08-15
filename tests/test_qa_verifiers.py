@@ -61,6 +61,12 @@ class TestResolve:
     def test_missing_intermediate_does_not_raise(self):
         assert resolve({}, "$.a.b[*].c") == []
 
+    def test_descending_past_a_scalar_yields_nothing(self):
+        # The isinstance(value, dict) guard: statistics resolves to a string,
+        # so the next segment has nothing to descend into.
+        doc = {"stat_block": {"statistics": "not-a-dict"}}
+        assert resolve(doc, "$.stat_block.statistics.category") == []
+
     def test_scalar_where_a_wildcard_was_expected(self):
         doc = {"stat_block": {"traits": {"name": "Solo"}}}
         assert resolve(doc, "$.stat_block.traits[*].name") == ["Solo"]
@@ -480,4 +486,114 @@ class TestVerifierMain:
 
     def test_rune_main_fails_with_no_rune_data(self, data_root):
         self._hosts(data_root)
+        assert rune_main() == 1
+
+
+class TestEveryCheckReachesTheExitCode:
+    """Each check must be wired into main(), not merely defined.
+
+    Every check below is unit-tested in isolation, but a check that gets
+    unwired from main() stops failing the build while its own tests keep
+    passing — the same silent-disabling failure mode the vacuous-success
+    guards exist to prevent. These drive main() with data that violates one
+    check at a time and assert a non-zero exit.
+    """
+
+    @pytest.fixture
+    def data_root(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        return tmp_path
+
+    def _write(self, root, relative, doc):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(doc))
+
+    def _material(self, grants=("Uncommon",), precious=True, grades=("high",), stats=True):
+        block = {"precious": precious, "grants_traits": list(grants)}
+        if grades:
+            block["grades"] = [{"grade": g} for g in grades]
+        if stats:
+            block["statistics"] = [{"form": "item", "hardness": 1}]
+        return {
+            "name": "Adamantine",
+            "edition": "remastered",
+            "stat_block": {"item_category": "Materials", "material": block},
+        }
+
+    def _use(self, traits=("Uncommon",), variant_use=None):
+        return {
+            "name": "Adamantine Armor",
+            "edition": "remastered",
+            "stat_block": {
+                "material_use": {"host": "armor"},
+                "base_material": {"name": "Adamantine"},
+                "traits": [{"name": t} for t in traits],
+                "variants": [
+                    {
+                        "name": "Adamantine Armor (High-Grade)",
+                        "material_use": (
+                            variant_use
+                            if variant_use is not None
+                            else {"grade": "high", "item_form": "armor"}
+                        ),
+                    }
+                ],
+            },
+        }
+
+    def _seed(self, root, material, use):
+        self._write(root, "equipment/b/material.json", material)
+        self._write(root, "equipment/b/use.json", use)
+
+    def test_baseline_is_clean(self, data_root):
+        self._seed(data_root, self._material(), self._use())
+        assert material_main() == 0
+
+    def test_check_grades_reaches_the_exit_code(self, data_root):
+        # precious but no grades
+        self._seed(data_root, self._material(grades=()), self._use())
+        assert material_main() == 1
+
+    def test_check_statistics_reaches_the_exit_code(self, data_root):
+        self._seed(data_root, self._material(stats=False), self._use())
+        assert material_main() == 1
+
+    def test_check_rarity_reaches_the_exit_code(self, data_root):
+        self._seed(
+            data_root,
+            self._material(grants=("Rare", "Uncommon")),
+            self._use(traits=("Rare", "Uncommon")),
+        )
+        assert material_main() == 1
+
+    def test_check_variant_grades_reaches_the_exit_code(self, data_root):
+        self._seed(data_root, self._material(), self._use(variant_use={"item_form": "armor"}))
+        assert material_main() == 1
+
+    def test_check_review_exclusivity_reaches_the_exit_code(self, data_root):
+        for kind, doc in (
+            ("weapons", WEAPON),
+            ("armor", {"name": "Chain Shirt"}),
+            ("shields", {"name": "Buckler"}),
+        ):
+            self._write(data_root, f"{kind}/x.json", doc)
+        self._write(
+            data_root,
+            "equipment/b/shadow.json",
+            {
+                "name": "Shadow",
+                "edition": "remastered",
+                "stat_block": {
+                    "item_category": "Runes",
+                    "rune": {
+                        "host": "weapon",
+                        "needs_review": True,
+                        "requires": [
+                            {"path": "$.stat_block.traits[*].name", "op": "in", "values": ["Monk"]}
+                        ],
+                    },
+                },
+            },
+        )
         assert rune_main() == 1

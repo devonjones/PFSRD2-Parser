@@ -110,8 +110,6 @@ def parse_stat_table(text):
         if not line.startswith("|") or set(line) <= set("|- "):
             continue
         cells = _cell_values(line)
-        if not cells:
-            continue
         label = cells[0].lower().rstrip(":")
         stats = _ints(cells[1:])
 

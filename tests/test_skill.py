@@ -448,7 +448,7 @@ class TestContentFilter:
 
     def test_only_first_span_with_h1_unwrapped(self):
         soup = self._make_soup(
-            '<div id="main">' "<span><h1>Title</h1></span>" "<span>Other span</span>" "</div>"
+            '<div id="main"><span><h1>Title</h1></span><span>Other span</span></div>'
         )
         _content_filter(soup)
         main = soup.find(id="main")

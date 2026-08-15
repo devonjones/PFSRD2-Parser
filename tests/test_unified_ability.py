@@ -137,9 +137,7 @@ class TestParseAbilitiesFromNodes:
 
     def test_saving_throw_without_dc(self):
         """Freeform saving throw text should still produce array."""
-        nodes = _make_nodes(
-            "<b>Curse</b> " "<b>Saving Throw</b> Fortitude; " "<b>Stage 1</b> doomed 1"
-        )
+        nodes = _make_nodes("<b>Curse</b> <b>Saving Throw</b> Fortitude; <b>Stage 1</b> doomed 1")
         abilities = parse_abilities_from_nodes(nodes)
         st = abilities[0]["saving_throw"]
         assert isinstance(st, list)
@@ -446,7 +444,7 @@ class TestCollectAbilityNodes:
     def test_skips_bold_in_table(self):
 
         bs = BeautifulSoup(
-            "<table><tr><td><b>Table Bold</b></td></tr></table>" "<b>Real Ability</b> text",
+            "<table><tr><td><b>Table Bold</b></td></tr></table><b>Real Ability</b> text",
             "html.parser",
         )
         nodes = collect_ability_nodes(bs)

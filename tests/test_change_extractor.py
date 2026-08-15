@@ -828,7 +828,7 @@ class TestChoiceAbilityEffects:
     def test_choice_pool_builds_select(self):
         effects = _build_ability_effects(
             self.ABILITIES,
-            "The rumored cryptid might have one or both of the following " "optional abilities.",
+            "The rumored cryptid might have one or both of the following optional abilities.",
         )
         assert len(effects) == 1
         sel = effects[0]["selection"]

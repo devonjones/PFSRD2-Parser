@@ -131,7 +131,7 @@ class TestCreatureTypeDBPass:
         monkeypatch.setattr(
             creatures,
             "get_enrichment_db_connection",
-            lambda: (called.append(True) or _KeepOpenConn(db_with_types)),
+            lambda: called.append(True) or _KeepOpenConn(db_with_types),
         )
         creatures.creature_type_db_pass({"stat_block": {"creature_type": {}}})
         creatures.creature_type_db_pass({"stat_block": {"creature_type": {"creature_types": []}}})

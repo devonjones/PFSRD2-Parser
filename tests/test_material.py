@@ -319,7 +319,8 @@ class TestUsePass:
         assert "hardness" not in use
 
     def test_specific_armor_falls_back_to_the_host_form(self):
-        # Elven Chain is a specific armor that happens to be dawnsilver, so
+        # Elven Chain is a specific armor (mithral in legacy, dawnsilver in
+        # the remaster) rather than a generic material use page, so
         # its name carries no material to strip and nothing distinguishes the
         # form. "armor" is the honest answer; guessing "elven chain" from the
         # leftover would be a naming coincidence, not a form.
@@ -358,7 +359,8 @@ class TestUsePass:
         ]
 
     def test_stat_override_without_the_and_conjunction(self):
-        # Siccatite's six variants state stats without the "and" before BT.
+        # Siccatite's four shield variants state stats without the "and"
+        # before BT; its armor and weapon variants carry no stat text at all.
         struct = _use(
             "Siccatite Shield",
             "Shields",
@@ -390,6 +392,11 @@ class TestUsePass:
         )
         with pytest.raises(AssertionError, match="Unrecognized precious-material item form"):
             material_pass(struct)
+
+    def test_struct_without_a_stat_block_is_a_no_op(self):
+        struct = {"name": "Broken"}
+        material_pass(struct)
+        assert struct == {"name": "Broken"}
 
     def test_non_material_equipment_is_untouched(self):
         struct = {"name": "Longsword", "stat_block": {"item_category": "Weapons"}}
