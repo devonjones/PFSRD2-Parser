@@ -5,7 +5,8 @@ an item must be for the rune to go on it, and `variants[].text` says what each
 grade does. This module decorates rune items with the structured equivalents:
 
   stat_block.rune     — form/slot/host and the parsed usage requirements
-  stat_block.effects  — what the rune does, as a closed vocabulary of subjects
+  stat_block.effects  — what the rune does to its host, as target/operation
+                        effects the template engine can apply
 
 Deliberately NOT stored anywhere: property rune capacity (a function of the
 potency rune's grade), whether a specific magic item can take property runes
@@ -214,74 +215,110 @@ def parse_usage(text):
 # detection; property runes need that machinery anyway, so build it once there.
 
 
-def _set(subject, value):
+# Targets are JSONPaths into a host item's document, and operations are drawn
+# from the vocabulary the template engine in pfsrd2-data-api already
+# implements (add_modifier, replace, adjustment). An item is a stat_block
+# document like a creature, so the same engine can apply these; a second
+# effect vocabulary would be accidental complexity.
+
+WEAPON_MODIFIERS = "$.stat_block.offense.weapon_modes[*].modifiers"
+WEAPON_DAMAGE_DICE = "$.stat_block.offense.weapon_modes[*].damage[*].dice_count"
+ARMOR_MODIFIERS = "$.stat_block.defense.modifiers"
+SHIELD_HARDNESS = "$.stat_block.defense.hitpoints.hardness"
+SHIELD_HP = "$.stat_block.defense.hitpoints.hp"
+SHIELD_BT = "$.stat_block.defense.hitpoints.break_threshold"
+
+
+def _modifier(target, subtype, value):
+    """Append an item bonus to a modifier array on the host.
+
+    add_modifier creates the array when the target is missing, which is why a
+    potency rune can grant an attack bonus to base weapons that carry no
+    modifier list of their own.
+    """
     return {
         "type": "stat_block_section",
         "subtype": "rune_effect",
-        "operation": "set",
-        "subject": subject,
-        "value": value,
-    }
-
-
-def _bonus(subject, value, maximum=None):
-    """An item bonus to `subject`.
-
-    Every fundamental rune bonus is an item bonus per the rules text, armor
-    potency included — so a consumer combines it with the base armor's own
-    (bonus_type "armor") AC bonus rather than taking the higher of the two.
-    """
-    effect = {
-        "type": "stat_block_section",
-        "subtype": "rune_effect",
         "operation": "add_modifier",
-        "subject": subject,
+        "target": target,
         "modifier": {
             "type": "bonus",
-            "subtype": subject,
+            "subtype": subtype,
             "bonus_type": "item",
             "bonus_value": value,
         },
     }
-    if maximum is not None:
-        effect["maximum"] = maximum
-    return effect
+
+
+def _replace(target, value):
+    """Set a value outright, as striking does with the weapon's damage dice."""
+    return {
+        "type": "stat_block_section",
+        "subtype": "rune_effect",
+        "operation": "replace",
+        "target": target,
+        "value": value,
+    }
+
+
+def _adjust(target, value, maximum):
+    """Increase a value by a delta, as reinforcing does to a shield.
+
+    The rules phrase these as increases with a ceiling ("Hardness increases by
+    3 ... maximum 8"), and the engine's adjustment operation both adds the
+    delta and syncs the sibling display text. The engine does not yet honour
+    `maximum` — tracked separately; the cap ships here so it is available the
+    moment it does.
+    """
+    return {
+        "type": "stat_block_section",
+        "subtype": "rune_effect",
+        "operation": "adjustment",
+        "target": target,
+        "value": value,
+        "maximum": maximum,
+    }
 
 
 def _reinforcing(hardness, hardness_max, hit_points, hit_points_max, bt, bt_max):
     return [
-        _bonus("hardness", hardness, hardness_max),
-        _bonus("hit_points", hit_points, hit_points_max),
-        _bonus("break_threshold", bt, bt_max),
+        _adjust(SHIELD_HARDNESS, hardness, hardness_max),
+        _adjust(SHIELD_HP, hit_points, hit_points_max),
+        _adjust(SHIELD_BT, bt, bt_max),
     ]
 
 
+# Property rune capacity is NOT an effect: it mutates nothing on the host, it
+# describes how many property runes the potency grade permits. It rides on the
+# rune block as grants_property_slots instead.
+_PROPERTY_SLOTS = {
+    ("weapon potency", "weapon potency (+1)"): 1,
+    ("weapon potency", "weapon potency (+2)"): 2,
+    ("weapon potency", "weapon potency (+3)"): 3,
+    ("mythic weapon potency", None): 4,
+    ("armor potency", "armor potency (+1)"): 1,
+    ("armor potency", "armor potency (+2)"): 2,
+    ("armor potency", "armor potency (+3)"): 3,
+    ("mythic armor potency", None): 4,
+}
+
 _FUNDAMENTAL_EFFECTS = {
-    ("weapon potency", "weapon potency (+1)"): [
-        _bonus("attack", 1),
-        _set("property_rune_slots", 1),
-    ],
-    ("weapon potency", "weapon potency (+2)"): [
-        _bonus("attack", 2),
-        _set("property_rune_slots", 2),
-    ],
-    ("weapon potency", "weapon potency (+3)"): [
-        _bonus("attack", 3),
-        _set("property_rune_slots", 3),
-    ],
-    ("mythic weapon potency", None): [_bonus("attack", 4), _set("property_rune_slots", 4)],
-    ("armor potency", "armor potency (+1)"): [_bonus("ac", 1), _set("property_rune_slots", 1)],
-    ("armor potency", "armor potency (+2)"): [_bonus("ac", 2), _set("property_rune_slots", 2)],
-    ("armor potency", "armor potency (+3)"): [_bonus("ac", 3), _set("property_rune_slots", 3)],
-    ("mythic armor potency", None): [_bonus("ac", 4), _set("property_rune_slots", 4)],
-    ("striking", "striking"): [_set("weapon_damage_dice", 2)],
-    ("striking", "striking (greater)"): [_set("weapon_damage_dice", 3)],
-    ("striking", "striking (major)"): [_set("weapon_damage_dice", 4)],
-    ("mythic striking", None): [_set("weapon_damage_dice", 5)],
-    ("resilient", "resilient"): [_bonus("save", 1)],
-    ("resilient", "resilient (greater)"): [_bonus("save", 2)],
-    ("resilient", "resilient (major)"): [_bonus("save", 3)],
-    ("mythic resilent", None): [_bonus("save", 4)],
+    ("weapon potency", "weapon potency (+1)"): [_modifier(WEAPON_MODIFIERS, "attack", 1)],
+    ("weapon potency", "weapon potency (+2)"): [_modifier(WEAPON_MODIFIERS, "attack", 2)],
+    ("weapon potency", "weapon potency (+3)"): [_modifier(WEAPON_MODIFIERS, "attack", 3)],
+    ("mythic weapon potency", None): [_modifier(WEAPON_MODIFIERS, "attack", 4)],
+    ("armor potency", "armor potency (+1)"): [_modifier(ARMOR_MODIFIERS, "ac", 1)],
+    ("armor potency", "armor potency (+2)"): [_modifier(ARMOR_MODIFIERS, "ac", 2)],
+    ("armor potency", "armor potency (+3)"): [_modifier(ARMOR_MODIFIERS, "ac", 3)],
+    ("mythic armor potency", None): [_modifier(ARMOR_MODIFIERS, "ac", 4)],
+    ("striking", "striking"): [_replace(WEAPON_DAMAGE_DICE, 2)],
+    ("striking", "striking (greater)"): [_replace(WEAPON_DAMAGE_DICE, 3)],
+    ("striking", "striking (major)"): [_replace(WEAPON_DAMAGE_DICE, 4)],
+    ("mythic striking", None): [_replace(WEAPON_DAMAGE_DICE, 5)],
+    ("resilient", "resilient"): [_modifier(ARMOR_MODIFIERS, "save", 1)],
+    ("resilient", "resilient (greater)"): [_modifier(ARMOR_MODIFIERS, "save", 2)],
+    ("resilient", "resilient (major)"): [_modifier(ARMOR_MODIFIERS, "save", 3)],
+    ("mythic resilent", None): [_modifier(ARMOR_MODIFIERS, "save", 4)],
     ("reinforcing rune", "reinforcing rune (minor)"): _reinforcing(3, 8, 44, 64, 22, 32),
     ("reinforcing rune", "reinforcing rune (lesser)"): _reinforcing(3, 10, 52, 80, 26, 40),
     ("reinforcing rune", "reinforcing rune (moderate)"): _reinforcing(3, 13, 64, 104, 32, 52),
@@ -289,6 +326,10 @@ _FUNDAMENTAL_EFFECTS = {
     ("reinforcing rune", "reinforcing rune (major)"): _reinforcing(5, 17, 84, 136, 42, 68),
     ("reinforcing rune", "reinforcing rune (supreme)"): _reinforcing(7, 20, 108, 160, 54, 80),
 }
+
+
+def _property_slots_for(name, variant_name):
+    return _PROPERTY_SLOTS.get((name.lower(), variant_name.lower() if variant_name else None))
 
 
 def _effects_for(name, variant_name):
@@ -382,17 +423,27 @@ def rune_pass(struct):
     base_effects = _effects_for(name, None)
     if base_effects:
         stat_block["effects"] = base_effects
+    base_slots = _property_slots_for(name, None)
+    if base_slots:
+        rune["grants_property_slots"] = base_slots
     for variant in variants:
         variant_effects = _effects_for(name, variant.get("name"))
         if variant_effects:
             variant["effects"] = variant_effects
+        slots = _property_slots_for(name, variant.get("name"))
+        if slots:
+            variant["rune"]["grants_property_slots"] = slots
 
     if form == "fundamental":
         # Every fundamental rune grade is hand-authored, and every consumer
         # depends on them — a new or renamed one must fail the parse rather
         # than ship silently undecorated.
-        undecorated = [v["name"] for v in variants if not v.get("effects")]
-        if not variants and not base_effects:
+        undecorated = [
+            v["name"]
+            for v in variants
+            if not v.get("effects") and not v["rune"].get("grants_property_slots")
+        ]
+        if not variants and not base_effects and not base_slots:
             undecorated = [name]
         assert not undecorated, (
             f"Fundamental rune {name!r} has grades with no effects: {undecorated}. "

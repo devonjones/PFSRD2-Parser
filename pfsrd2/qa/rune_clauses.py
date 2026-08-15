@@ -82,6 +82,36 @@ def check_clauses(runes, hosts):
     return problems
 
 
+def check_effect_targets(runes, hosts):
+    """Every effect target resolves against a real host item.
+
+    An effect whose target matches nothing is the same defect class as a dead
+    requires clause: the template engine resolves the path against the host
+    document and an unresolvable one either errors or silently does nothing.
+    add_modifier is exempt — the engine creates its target array when absent,
+    which is exactly how a potency rune grants an attack bonus to a base
+    weapon that carries no modifier list.
+    """
+    problems = []
+    for rune_doc in runes:
+        stat_block = rune_doc["stat_block"]
+        block = stat_block.get("rune") or {}
+        items = hosts.get(block.get("host"), [])
+        groups = [(None, stat_block.get("effects") or [])]
+        groups += [(v.get("name"), v.get("effects") or []) for v in stat_block.get("variants", [])]
+        for variant, effects in groups:
+            for effect in effects:
+                if effect["operation"] == "add_modifier":
+                    continue
+                target = effect["target"]
+                if not any(resolve(item, target) for item in items):
+                    where = f"{rune_doc['name']}{f' / {variant}' if variant else ''}"
+                    problems.append(
+                        (where, f"effect target resolves on no {block.get('host')}: {target}")
+                    )
+    return problems
+
+
 def check_review_exclusivity(runes):
     """needs_review and requires are mutually exclusive.
 
@@ -111,7 +141,11 @@ def main():
         # otherwise pass silently.
         print(f"no items loaded for host(s): {', '.join(empty)} — check the data directories")
         return 1
-    problems = check_clauses(runes, hosts) + check_review_exclusivity(runes)
+    problems = (
+        check_clauses(runes, hosts)
+        + check_effect_targets(runes, hosts)
+        + check_review_exclusivity(runes)
+    )
     review = [r["name"] for r in runes if r["stat_block"].get("rune", {}).get("needs_review")]
 
     print(f"runes checked: {len(runes)}")
