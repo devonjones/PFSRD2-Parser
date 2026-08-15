@@ -633,7 +633,17 @@ class TestSplitComponentGuard:
             '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
             "<b>Spout</b> HP 32 (BT 16);"
         )
-        with pytest.raises(AssertionError, match="separate bolds"):
+        with pytest.raises(AssertionError, match="component stat in its body"):
+            _parsed(text=text)
+
+    def test_a_qualifier_in_the_bold_label_fails_loudly(self):
+        # The other half of the same split: "<b>HP (per mannequin)</b> 70"
+        # puts the stat in the ability's name rather than its body.
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>HP (per mannequin)</b> 70 (BT 35);"
+        )
+        with pytest.raises(AssertionError, match="component stat in its name"):
             _parsed(text=text)
 
     def test_the_joined_form_is_a_component(self):

@@ -446,12 +446,15 @@ def _extract_abilities(hazard, bs):
         "field and did not parse as an ability — add it to FIELD_LABELS or fix the split"
     )
     for ability in abilities:
+        # Both halves of the split: "<b>Spout</b> HP 32" leaves the stat in the
+        # body, "<b>HP (per mannequin)</b> 70" leaves it in the name.
         body = _plain(ability.get("text") or ability.get("effect") or "")
-        assert not _SPLIT_COMPONENT.match(body), (
-            f"Ability {ability['name']!r} of hazard {hazard.get('name')!r} starts with "
-            f"{body[:40]!r} — that is a component's stat with the name and the stat in "
-            'separate bolds; the source should join them ("Spout HP")'
-        )
+        for part, where in ((ability["name"], "name"), (body, "body")):
+            assert not _SPLIT_COMPONENT.match(part), (
+                f"Ability {ability['name']!r} of hazard {hazard.get('name')!r} has a "
+                f"component stat in its {where} ({part[:40]!r}) — the source should "
+                'join the part and the stat in one bold ("Spout HP")'
+            )
     hazard["abilities"] = abilities
 
     # Nodes the ability parser could not claim are real published content, so
