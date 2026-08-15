@@ -183,7 +183,6 @@ class TestComponents:
         [
             ("Trapdoor Hardness", ("Trapdoor", "Hardness")),
             ("Scythe Blade HP", ("Scythe Blade", "HP")),
-            ("HP (per mannequin)", ("per mannequin", "HP")),
             ("Hardness", None),
             ("Complexity", None),
         ],
@@ -624,3 +623,32 @@ class TestComponentQualifiers:
         component = _parsed(text=text)["components"][0]
         assert [(s["name"], s["value"]) for s in component["saves"]] == [("Fort", 11)]
         assert not any(k.endswith("_note") for k in component)
+
+
+class TestSplitComponentGuard:
+    def test_a_component_split_across_two_bolds_fails_loudly(self):
+        # "<b>Spout</b> HP 32" reads as an ability named Spout whose body is a
+        # stat line; silently it becomes junk and the component loses its stats.
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Spout</b> HP 32 (BT 16);"
+        )
+        with pytest.raises(AssertionError, match="separate bolds"):
+            _parsed(text=text)
+
+    def test_the_joined_form_is_a_component(self):
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Spout HP</b> 32 (BT 16);"
+        )
+        component = _parsed(text=text)["components"][0]
+        assert (component["name"], component["hp"], component["bt"]) == ("Spout", 32, 16)
+
+    def test_a_real_ability_is_untouched(self):
+        text = (
+            '<b>Source</b> <a game-obj="Sources" aonid="1"><i>Core pg. 1</i></a><br/>'
+            "<b>Pitfall</b> "
+            '<span class="action" title="Reaction">[reaction]</span> '
+            "<b>Effect</b> The creature falls in."
+        )
+        assert _parsed(text=text)["abilities"][0]["name"] == "Pitfall"

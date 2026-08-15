@@ -96,11 +96,14 @@ FIELD_LABELS = {
 # instead of overwriting the hazard's.
 _COMPONENT_STATS = "Hardness|HP|BT|AC|Fort|Ref|Will|Immunities|Weaknesses|Resistances"
 _COMPONENT_DURABILITY = re.compile(rf"^(?P<component>.+?)\s+(?P<stat>{_COMPONENT_STATS})$")
-_QUALIFIED_DURABILITY = re.compile(rf"^(?P<stat>{_COMPONENT_STATS})\s*\((?P<component>[^)]+)\)$")
 
 # Same names creature.schema.json uses, so a consumer sees one save shape
 # across both content types.
 _SAVE_LABELS = {"Fort": "Fort", "Ref": "Ref", "Will": "Will"}
+
+# "<b>Spout</b> HP 32" — a component whose name and stat are separate bolds,
+# so the name reads as an ability and the stat as its body.
+_SPLIT_COMPONENT = re.compile(rf"^\s*(?:{_COMPONENT_STATS})\b", re.I)
 
 _DEFENSE_SUBTYPES = {
     "Immunities": "immunity",
@@ -442,6 +445,13 @@ def _extract_abilities(hazard, bs):
         f"Bold label {get_text(start).strip()!r} on {hazard.get('name')!r} is not a known "
         "field and did not parse as an ability — add it to FIELD_LABELS or fix the split"
     )
+    for ability in abilities:
+        body = _plain(ability.get("text") or ability.get("effect") or "")
+        assert not _SPLIT_COMPONENT.match(body), (
+            f"Ability {ability['name']!r} of hazard {hazard.get('name')!r} starts with "
+            f"{body[:40]!r} — that is a component's stat with the name and the stat in "
+            'separate bolds; the source should join them ("Spout HP")'
+        )
     hazard["abilities"] = abilities
 
     # Nodes the ability parser could not claim are real published content, so
@@ -492,10 +502,9 @@ def _unwrap_field_links(hazard):
 
 def _component_label(label):
     """(component, stat) for a durability label naming a part, else None."""
-    for pattern in (_QUALIFIED_DURABILITY, _COMPONENT_DURABILITY):
-        match = pattern.match(label)
-        if match:
-            return match.group("component").strip(), match.group("stat")
+    match = _COMPONENT_DURABILITY.match(label)
+    if match:
+        return match.group("component").strip(), match.group("stat")
     return None
 
 
@@ -602,13 +611,14 @@ def _structure_fields(hazard):
     # The break threshold rides along inside HP ("90 (BT 45)") — it is never
     # published as its own bold label, so reading only the first integer drops
     # it. _extract_component_durability already does this for named parts.
-    raw_hp = hazard.get("hp")
-    break_threshold = _BREAK_THRESHOLD.search(_plain(raw_hp)) if raw_hp else None
+    break_threshold = None
 
     for key in ("ac", "hardness", "hp"):
         if key not in hazard:
             continue
-        value, _, note = _stat_value(hazard[key])
+        value, bt, note = _stat_value(hazard[key])
+        if key == "hp":
+            break_threshold = bt
         assert value is not None, (
             f"{key.upper()} of hazard {hazard.get('name')!r} is {hazard[key]!r}, "
             "which has no number in it — the field was published but not understood"
@@ -617,8 +627,8 @@ def _structure_fields(hazard):
         if note:
             hazard[key + "_note"] = note
 
-    if break_threshold:
-        hazard["bt"] = int(break_threshold.group(1))
+    if break_threshold is not None:
+        hazard["bt"] = break_threshold
 
     for key, subtype in (
         ("immunities", "immunity"),

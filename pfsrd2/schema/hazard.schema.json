@@ -619,6 +619,10 @@
           "description": "What the component's BT value is qualified by, e.g. 'per spider'.",
           "type": "string"
         },
+        "fort_note": {
+          "description": "What the component's Fortitude save is qualified by.",
+          "type": "string"
+        },
         "hardness": {
           "type": "integer"
         },
@@ -641,6 +645,10 @@
           "type": "array"
         },
         "name": {
+          "type": "string"
+        },
+        "ref_note": {
+          "description": "What the component's Reflex save is qualified by.",
           "type": "string"
         },
         "resistances": {
@@ -673,6 +681,10 @@
             "$ref": "#/definitions/protection"
           },
           "type": "array"
+        },
+        "will_note": {
+          "description": "What the component's Will save is qualified by.",
+          "type": "string"
         }
       },
       "required": [
