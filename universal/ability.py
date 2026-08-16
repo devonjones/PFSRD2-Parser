@@ -548,11 +548,14 @@ def _apply_addon(ability, addon_name, addon_nodes):
         elif key == "prerequisites":
             key = "prerequisite"
         if value:
-            # A repeated label silently overwrites the earlier value here, and
-            # two published sentences vanish. Asserting on it surfaces 13 files
-            # with real pre-existing loss (11 hazards, 2 monster families), so
-            # the guard lands with those fixes rather than breaking the parse:
-            # PFSRD2-Parser-xzij.
+            # A label may appear once per ability. A repeat means the second
+            # value silently overwrites the first and a published sentence
+            # exists nowhere in the output — which is how confounding_betrayal
+            # shipped without Unmask's first Critical Success.
+            assert key not in ability, (
+                f"{ability.get('name')!r} publishes {addon_name!r} twice; the second "
+                f"value would overwrite {ability[key]!r}"
+            )
             ability[key] = value
 
 

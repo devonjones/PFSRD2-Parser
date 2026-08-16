@@ -305,6 +305,7 @@ def hazard_extract_pass(struct):
     # Fields first: the ability grab takes everything from the first non-field
     # bold onward, so a trailing Reset would be swallowed into the last ability.
     _extract_component_durability(hazard, bs)
+    _absorb_routine_results(bs)
     _assert_no_duplicate_labels(hazard, bs)
     extract_bold_fields(hazard, bs, FIELD_LABELS, decompose=True)
     _extract_abilities(hazard, bs)
@@ -334,6 +335,39 @@ def _extract_sources(hazard, bs):
     source = extract_source_from_bs(bs)
     assert source, f"No source found for hazard {hazard.get('name')!r}"
     hazard["sources"] = [source]
+
+
+def _absorb_routine_results(bs):
+    """Let a Routine keep the degrees of success its own save publishes.
+
+    A routine that calls for a save prints its outcomes straight after it:
+
+        <b>Routine</b> (1 action) ... must attempt a DC 20 Will save.
+        <b>Critical Success</b> ... <b>Success</b> ... <b>Failure</b> ...
+
+    extract_bold_fields ends a value at the next bold, so those blocks are
+    orphaned, and removing the Routine field then leaves them adjacent to the
+    preceding ability — which swallows them and overwrites its own degrees.
+    That is 10 hazards, and confounding_betrayal shipped without Unmask's
+    first Critical Success at all.
+
+    Unwrapping the degree bolds keeps them inside the Routine's value run, so
+    the published text lands in `routine` where it belongs. Stops at the first
+    bold that is not a degree, so an ability following the routine still starts
+    its own entry.
+    """
+    for bold in list(bs.find_all("b")):
+        if get_text(bold).strip() != "Routine":
+            continue
+        node = bold.next_sibling
+        while node is not None and getattr(node, "name", None) != "b":
+            node = node.next_sibling
+        while node is not None and get_text(node).strip() in RESULT_LABELS:
+            following = node.next_sibling
+            node.unwrap()
+            node = following
+            while node is not None and getattr(node, "name", None) != "b":
+                node = node.next_sibling
 
 
 def _assert_no_duplicate_labels(hazard, bs):
