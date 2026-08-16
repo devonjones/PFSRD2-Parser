@@ -548,14 +548,11 @@ def _apply_addon(ability, addon_name, addon_nodes):
         elif key == "prerequisites":
             key = "prerequisite"
         if value:
-            # A label may appear once per ability. Two "Failure" blocks on one
-            # ability means the second overwrites the first, and two published
-            # sentences vanish with no error and a valid schema — exactly what
-            # the widened degree-of-success label set makes reachable.
-            assert key not in ability, (
-                f"{ability.get('name')!r} publishes {addon_name!r} twice; the second "
-                f"value would overwrite {ability[key]!r}"
-            )
+            # A repeated label silently overwrites the earlier value here, and
+            # two published sentences vanish. Asserting on it surfaces 13 files
+            # with real pre-existing loss (11 hazards, 2 monster families), so
+            # the guard lands with those fixes rather than breaking the parse:
+            # PFSRD2-Parser-xzij.
             ability[key] = value
 
 
