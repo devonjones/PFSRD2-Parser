@@ -12,6 +12,7 @@ families and templates now do the same.
 
 import json
 
+import pytest
 from bs4 import BeautifulSoup
 
 from universal.ability import (
@@ -136,19 +137,17 @@ class TestShapesWhereTheWiderSetCostsSomething:
     here the day they are fixed rather than silently changing shape.
     """
 
-    def test_a_repeated_degree_silently_overwrites(self):
-        # PFSRD2-Parser-xzij. Two "Failure" blocks used to be two visible
-        # entries; folding them onto one parent means the second clobbers the
-        # first and FIRST outcome exists nowhere. The guard for this fires on
-        # 13 files with real pre-existing loss, so it lands with those fixes.
+    def test_a_repeated_degree_fails_instead_of_overwriting(self):
+        # Two "Failure" blocks on one ability meant the second clobbered the
+        # first and FIRST outcome existed nowhere. That is how
+        # confounding_betrayal shipped without Unmask's first Critical Success.
         html = (
             "<b>Twin Gaze</b> Two saves."
             "<br/><b>Failure</b> FIRST outcome."
             "<br/><b>Failure</b> SECOND outcome."
         )
-        ability = _abilities(html)[0]
-        assert ability["failure"] == "SECOND outcome."
-        assert "FIRST outcome" not in json.dumps(ability)
+        with pytest.raises(AssertionError, match="publishes 'Failure' twice"):
+            _abilities(html)
 
     def test_a_continuation_after_a_degree_is_currently_dropped(self):
         # PFSRD2-Parser-4bcm. The paragraph belongs to Big Attack and lives
