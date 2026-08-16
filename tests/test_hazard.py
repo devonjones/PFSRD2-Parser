@@ -1045,10 +1045,52 @@ class TestRoutineResults:
         hazard_extract_pass(struct)
         return struct["sections"][0]
 
-    def test_the_routine_keeps_its_own_degrees(self):
-        routine = self._hazard()["routine"]
-        assert "ROUTINE crit success." in routine
-        assert "ROUTINE failure." in routine
+    def test_the_routine_degrees_are_structured_not_prose(self):
+        # A degree of success is modelled everywhere else in this schema;
+        # flattening it into the routine string would lose that.
+        hazard = self._hazard()
+        assert hazard["routine_results"]["critical_success"] == "ROUTINE crit success."
+        assert hazard["routine_results"]["failure"] == "ROUTINE failure."
+        assert "Critical Success" not in hazard["routine"]
+
+    def test_prose_after_the_degrees_is_not_pulled_into_the_routine(self):
+        # Absorption is bounded to the degree blocks: an earlier version ran
+        # on to the next real bold and dragged trailing prose in with it.
+        from bs4 import BeautifulSoup
+
+        from pfsrd2.hazard import _extract_routine_results
+
+        # Asserted at the extractor, not through the whole pipeline: the
+        # ability splitter has its own gap with a linked header after a
+        # routine (PFSRD2-Parser-qqzm), which is not what this fix is about.
+        bs = BeautifulSoup(
+            "<b>Routine</b> (1 action) save."
+            "<br/><b>Critical Success</b> ROUTINE cs."
+            "<br/><b>Failure</b> ROUTINE f."
+            '<br/><a game-obj="MonsterAbilities" aonid="9"><b>Constrict</b></a> '
+            "<b>Critical Success</b> ABILITY TWO cs.",
+            "html.parser",
+        )
+        hazard = {"name": "T"}
+        _extract_routine_results(hazard, bs)
+        assert hazard["routine_results"] == {
+            "critical_success": "ROUTINE cs.",
+            "failure": "ROUTINE f.",
+        }
+        assert "ABILITY TWO cs." in str(bs)
+
+    def test_links_inside_a_degree_are_kept(self):
+        # plain_text() dropped every <a> before links were harvested, so the
+        # condition a degree inflicts reached neither the text nor links.
+        block = self.ROUTINE_BLOCK.replace(
+            "<b>Failure</b> ROUTINE failure.",
+            '<b>Failure</b> The creature is <a game-obj="Conditions" aonid="93">stunned</a> 1.',
+        )
+        struct = restructure_hazard_pass(_details(text=block))
+        hazard_extract_pass(struct)
+        hazard = struct["sections"][0]
+        assert hazard["routine_results"]["failure"] == "The creature is stunned 1."
+        assert "stunned" in [link["name"] for link in hazard["links"]]
 
     def test_the_ability_keeps_its_own_degrees(self):
         # Without the fix the routine's degrees overwrite these two.
@@ -1065,3 +1107,32 @@ class TestRoutineResults:
             "ROUTINE failure.",
         ):
             assert sentence in blob, f"{sentence!r} vanished"
+
+    def test_a_linked_ability_header_stops_the_absorption(self):
+        # Hazards write ability names bare AND wrapped in
+        # <a href="MonsterAbilities..."><b>Name</b></a>. Stopping only on a
+        # direct <b> steps over the linked form, so the next ability's degrees
+        # get absorbed into the routine. ID_509 is one source edit from this.
+        #
+        # Asserted at the extractor rather than through the whole pipeline:
+        # the ability splitter has its own gap with a linked header after a
+        # routine (PFSRD2-Parser-qqzm), which is not what this fix is about.
+        from bs4 import BeautifulSoup
+
+        from pfsrd2.hazard import _extract_routine_results
+
+        bs = BeautifulSoup(
+            "<b>Routine</b> (1 action) save."
+            "<br/><b>Critical Success</b> ROUTINE cs."
+            "<br/><b>Failure</b> ROUTINE f."
+            '<br/><a game-obj="MonsterAbilities" aonid="9"><b>Constrict</b></a> '
+            "<b>Critical Success</b> ABILITY TWO cs.",
+            "html.parser",
+        )
+        hazard = {"name": "T"}
+        _extract_routine_results(hazard, bs)
+        assert hazard["routine_results"] == {
+            "critical_success": "ROUTINE cs.",
+            "failure": "ROUTINE f.",
+        }
+        assert "ABILITY TWO cs." in str(bs)

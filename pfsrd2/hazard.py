@@ -61,6 +61,7 @@ from universal.utils import (
     content_filter,
     extract_pfs_availability,
     extract_pfs_note,
+    flatten_field_links,
     flatten_fields,
     get_text,
     handle_trait_value,
@@ -306,7 +307,7 @@ def hazard_extract_pass(struct):
     # Fields first: the ability grab takes everything from the first non-field
     # bold onward, so a trailing Reset would be swallowed into the last ability.
     _extract_component_durability(hazard, bs)
-    _absorb_routine_results(bs)
+    _extract_routine_results(hazard, bs)
     _assert_no_duplicate_labels(hazard, bs)
     extract_bold_fields(hazard, bs, FIELD_LABELS, decompose=True)
     _extract_abilities(hazard, bs)
@@ -338,37 +339,81 @@ def _extract_sources(hazard, bs):
     hazard["sources"] = [source]
 
 
-def _absorb_routine_results(bs):
-    """Let a Routine keep the degrees of success its own save publishes.
+def _is_label_bold(node):
+    """A bold that ends a value run, including a linked ability header.
 
-    A routine that calls for a save prints its outcomes straight after it:
+    Hazards write ability names both bare and wrapped:
+    <b>Name</b> and <a href="MonsterAbilities..."><b>Name</b></a>. Stopping
+    only on a direct <b> steps straight over the linked form, so a following
+    ability's degrees would be absorbed into the routine with nothing firing.
+    _starts_next_entry in this module documents the same two shapes.
+    """
+    name = getattr(node, "name", None)
+    if name == "b":
+        return True
+    return name == "a" and node.find("b") is not None
+
+
+def _extract_routine_results(hazard, bs):
+    """A routine's save publishes its degrees of success straight after it.
 
         <b>Routine</b> (1 action) ... must attempt a DC 20 Will save.
         <b>Critical Success</b> ... <b>Success</b> ... <b>Failure</b> ...
 
     extract_bold_fields ends a value at the next bold, so those blocks are
-    orphaned, and removing the Routine field then leaves them adjacent to the
-    preceding ability — which swallows them and overwrites its own degrees.
+    orphaned; removing the Routine field then leaves them adjacent to the
+    preceding ability, which swallows them and overwrites its own degrees.
     That is 10 hazards, and confounding_betrayal shipped without Unmask's
     first Critical Success at all.
 
-    Unwrapping the degree bolds keeps them inside the Routine's value run, so
-    the published text lands in `routine` where it belongs. Stops at the first
-    bold that is not a degree, so an ability following the routine still starts
-    its own entry.
+    They are pulled out as structure rather than flattened into the routine
+    string: a degree of success is a modelled mechanic everywhere else in this
+    schema, and burying it in prose would lose that (and the <b> that makes a
+    parse failure visible). Bounded strictly to the degree blocks, so prose
+    following them stays where it was published.
     """
     for bold in list(bs.find_all("b")):
         if get_text(bold).strip() != "Routine":
             continue
         node = bold.next_sibling
-        while node is not None and getattr(node, "name", None) != "b":
+        # Step over the routine's own value to reach the first degree.
+        while node is not None and not _is_label_bold(node):
             node = node.next_sibling
+        results = {}
         while node is not None and get_text(node).strip() in RESULT_LABELS:
+            label = get_text(node).strip()
+            value_nodes = []
             following = node.next_sibling
-            node.unwrap()
+            while following is not None and not _is_label_bold(following):
+                value_nodes.append(following)
+                following = following.next_sibling
+            # flatten_field_links, not plain_text: a degree names the condition
+            # it inflicts, and dropping the <a> would lose the link from the
+            # text AND from hazard["links"].
+            html = "".join(str(n) for n in value_nodes)
+            text = flatten_field_links(html, hazard.setdefault("links", []))
+            # Same trailing-separator trim extract_bold_fields applies.
+            text = re.sub(r"<br/?>[\s]*$", "", text).strip(" ;,")
+            assert text, (
+                f"Routine {label!r} on {hazard.get('name')!r} has no text — the degree "
+                "was published but not understood"
+            )
+            key = RESULT_LABELS[label]
+            assert (
+                key not in results
+            ), f"Routine on {hazard.get('name')!r} publishes {label!r} twice"
+            results[key] = text
+            # Leave a trailing <br/> in place: it is the separator that starts
+            # whatever follows the routine, and extracting it glues the next
+            # ability onto the previous one.
+            if value_nodes and getattr(value_nodes[-1], "name", None) == "br":
+                value_nodes = value_nodes[:-1]
+            for n in value_nodes:
+                n.extract()
+            node.decompose()
             node = following
-            while node is not None and getattr(node, "name", None) != "b":
-                node = node.next_sibling
+        if results:
+            hazard["routine_results"] = results
 
 
 def _assert_no_duplicate_labels(hazard, bs):

@@ -537,9 +537,9 @@ def _apply_addon(ability, addon_name, addon_nodes):
             stage["text"] = value
         ability.setdefault("stages", []).append(stage)
     elif addon_name == "Saving Throw":
-        ability["saving_throw"] = [_parse_save_dc(value)]
+        _set_once(ability, "saving_throw", [_parse_save_dc(value)], addon_name)
     elif addon_name == "Damage":
-        ability["damage"] = _parse_damage(value)
+        _set_once(ability, "damage", _parse_damage(value), addon_name)
     else:
         key = addon_name.lower().replace(" ", "_")
         # Standard normalizations
@@ -548,15 +548,23 @@ def _apply_addon(ability, addon_name, addon_nodes):
         elif key == "prerequisites":
             key = "prerequisite"
         if value:
-            # A label may appear once per ability. A repeat means the second
-            # value silently overwrites the first and a published sentence
-            # exists nowhere in the output — which is how confounding_betrayal
-            # shipped without Unmask's first Critical Success.
-            assert key not in ability, (
-                f"{ability.get('name')!r} publishes {addon_name!r} twice; the second "
-                f"value would overwrite {ability[key]!r}"
-            )
-            ability[key] = value
+            _set_once(ability, key, value, addon_name)
+
+
+def _set_once(ability, key, value, addon_name):
+    """Assign an addon field, refusing to overwrite one already set.
+
+    A label may appear once per ability. A repeat means the second value
+    silently replaces the first and a published sentence exists nowhere in the
+    output — which is how confounding_betrayal shipped without Unmask's first
+    Critical Success. Saving Throw and Damage go through here too: they are
+    the same bare assignment, and Saving Throw is on the affliction path.
+    """
+    assert key not in ability, (
+        f"{ability.get('name')!r} publishes {addon_name!r} twice; the second "
+        f"value would overwrite {ability[key]!r}"
+    )
+    ability[key] = value
 
 
 # Fields that may contain HTML with <a> tags from bold-field or result-block extraction

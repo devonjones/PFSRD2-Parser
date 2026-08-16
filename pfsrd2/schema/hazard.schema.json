@@ -607,6 +607,9 @@
         "routine": {
           "type": "string"
         },
+        "routine_results": {
+          "$ref": "#/definitions/routine_results"
+        },
         "saves": {
           "additionalItems": false,
           "items": {
@@ -1151,6 +1154,25 @@
         "range",
         "unit"
       ],
+      "type": "object"
+    },
+    "routine_results": {
+      "additionalProperties": false,
+      "description": "Degrees of success for the save a routine calls for. Modelled rather than left in the routine prose, matching how an ability's degrees are modelled.",
+      "properties": {
+        "critical_failure": {
+          "type": "string"
+        },
+        "critical_success": {
+          "type": "string"
+        },
+        "failure": {
+          "type": "string"
+        },
+        "success": {
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "save": {
