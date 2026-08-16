@@ -24,7 +24,7 @@ import os
 import re
 import sys
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 
 from pfsrd2.action import extract_action_type
 from pfsrd2.license import license_consolidation_pass, license_pass
@@ -369,8 +369,9 @@ def _extract_routine_results(hazard, bs):
     They are pulled out as structure rather than flattened into the routine
     string: a degree of success is a modelled mechanic everywhere else in this
     schema, and burying it in prose would lose that (and the <b> that makes a
-    parse failure visible). Bounded strictly to the degree blocks, so prose
-    following them stays where it was published.
+    parse failure visible). A degree block runs from its bold label to the next
+    <br/> separator, so prose published after the last degree — which belongs to
+    the routine, not to a save outcome — stays where it was published.
     """
     for bold in list(bs.find_all("b")):
         if get_text(bold).strip() != "Routine":
@@ -380,13 +381,37 @@ def _extract_routine_results(hazard, bs):
         while node is not None and not _is_label_bold(node):
             node = node.next_sibling
         results = {}
-        while node is not None and get_text(node).strip() in RESULT_LABELS:
+        # _is_label_bold first: now that a degree run ends at its separator, the
+        # node after the last degree can be trailing prose rather than a bold.
+        while node is not None and _is_label_bold(node) and get_text(node).strip() in RESULT_LABELS:
             label = get_text(node).strip()
+            # A degree block is one <br/>-delimited run. Stopping only at the
+            # next bold leaves the LAST degree unbounded — there is no bold
+            # after it — so prose belonging to the routine as a whole was
+            # absorbed into critical_failure and published as the outcome of a
+            # save. Stop at the separator instead.
             value_nodes = []
             following = node.next_sibling
-            while following is not None and not _is_label_bold(following):
+            while (
+                following is not None
+                and not _is_label_bold(following)
+                and getattr(following, "name", None) != "br"
+            ):
                 value_nodes.append(following)
                 following = following.next_sibling
+            # Step over the separator itself; whatever follows either starts the
+            # next degree or is prose that stays where it was published.
+            separator = following if getattr(following, "name", None) == "br" else None
+            if separator is not None:
+                following = separator.next_sibling
+                # The source pretty-prints, so the next degree's bold is usually
+                # preceded by indentation. Whitespace is not published content.
+                while (
+                    following is not None
+                    and isinstance(following, NavigableString)
+                    and not following.strip()
+                ):
+                    following = following.next_sibling
             # flatten_field_links, not plain_text: a degree names the condition
             # it inflicts, and dropping the <a> would lose the link from the
             # text AND from hazard["links"].
@@ -403,11 +428,9 @@ def _extract_routine_results(hazard, bs):
                 key not in results
             ), f"Routine on {hazard.get('name')!r} publishes {label!r} twice"
             results[key] = text
-            # Leave a trailing <br/> in place: it is the separator that starts
-            # whatever follows the routine, and extracting it glues the next
+            # The separator is deliberately never extracted: it is what starts
+            # whatever follows the routine, and removing it glues the next
             # ability onto the previous one.
-            if value_nodes and getattr(value_nodes[-1], "name", None) == "br":
-                value_nodes = value_nodes[:-1]
             for n in value_nodes:
                 n.extract()
             node.decompose()
@@ -434,7 +457,13 @@ def _extract_routine_results(hazard, bs):
                 f"structure — bold it in the source"
             )
         if results:
-            hazard["routine_results"] = results
+            # type/subtype like every other modelled object in this schema, so a
+            # consumer discriminates on the pair rather than on the field name.
+            hazard["routine_results"] = {
+                "type": "stat_block_section",
+                "subtype": "routine_results",
+                **results,
+            }
 
 
 def _assert_no_duplicate_labels(hazard, bs):

@@ -1169,10 +1169,24 @@
         "failure": {
           "type": "string"
         },
+        "subtype": {
+          "enum": [
+            "routine_results"
+          ]
+        },
         "success": {
           "type": "string"
+        },
+        "type": {
+          "enum": [
+            "stat_block_section"
+          ]
         }
       },
+      "required": [
+        "type",
+        "subtype"
+      ],
       "type": "object"
     },
     "save": {
