@@ -13,13 +13,12 @@ from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.prose_changes import _prose_changes_for_line
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
-from universal.ability import DEFAULT_ADDON_LABELS, parse_abilities_from_nodes
+from universal.ability import ADDON_LABELS_WITH_RESULTS, parse_abilities_from_nodes
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.monster_ability import monster_ability_db_pass
 from universal.spells import is_spell_name, parse_spell_block
 from universal.universal import (
-    RESULT_LABELS,
     aon_pass,
     entity_pass,
     extract_source_from_bs,
@@ -32,11 +31,6 @@ from universal.universal import (
     source_pass,
 )
 from universal.utils import get_text, remove_empty_fields, strip_block_tags
-
-# A degree of success belongs to the ability that rolled the check, not
-# beside it. Without these an unrecognised bold starts a new ability, so
-# every "Success" became its own entry — 68 of them across the corpus.
-_FAMILY_ADDON_LABELS = DEFAULT_ADDON_LABELS | set(RESULT_LABELS)
 
 
 def parse_monster_family(filename, options):
@@ -534,7 +528,7 @@ def _extract_abilities_from_bs(bs):
     spells, ability_nodes = _split_spell_nodes(all_nodes)
 
     abilities = (
-        parse_abilities_from_nodes(ability_nodes, addon_labels=_FAMILY_ADDON_LABELS)
+        parse_abilities_from_nodes(ability_nodes, addon_labels=ADDON_LABELS_WITH_RESULTS)
         if ability_nodes
         else None
     )

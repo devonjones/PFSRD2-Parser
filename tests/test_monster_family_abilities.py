@@ -12,9 +12,11 @@ families and templates now do the same.
 
 from bs4 import BeautifulSoup
 
-from pfsrd2.monster_family import _FAMILY_ADDON_LABELS
-from pfsrd2.monster_template import _FAMILY_ADDON_LABELS as _TEMPLATE_ADDON_LABELS
-from universal.ability import DEFAULT_ADDON_LABELS, parse_abilities_from_nodes
+from universal.ability import (
+    ADDON_LABELS_WITH_RESULTS,
+    DEFAULT_ADDON_LABELS,
+    parse_abilities_from_nodes,
+)
 from universal.universal import RESULT_LABELS
 
 BREATH = (
@@ -25,21 +27,32 @@ BREATH = (
 )
 
 
-def _abilities(html, labels=_FAMILY_ADDON_LABELS):
+def _abilities(html, labels=ADDON_LABELS_WITH_RESULTS):
     nodes = list(BeautifulSoup(html, "html.parser").children)
     return parse_abilities_from_nodes(nodes, addon_labels=labels)
 
 
 class TestAddonLabelSets:
     def test_the_family_set_covers_every_degree_of_success(self):
-        assert set(RESULT_LABELS) <= _FAMILY_ADDON_LABELS
+        assert set(RESULT_LABELS) <= ADDON_LABELS_WITH_RESULTS
 
-    def test_templates_use_the_same_set(self):
-        assert _TEMPLATE_ADDON_LABELS == _FAMILY_ADDON_LABELS
+    def test_hazards_families_and_templates_share_one_set(self):
+        # Three copies of `DEFAULT_ADDON_LABELS | set(RESULT_LABELS)` existed
+        # before this; the set now lives once in universal/ability.py.
+        import pfsrd2.hazard
+        import pfsrd2.monster_family
+        import pfsrd2.monster_template
+
+        assert (
+            pfsrd2.hazard.ADDON_LABELS_WITH_RESULTS
+            is pfsrd2.monster_family.ADDON_LABELS_WITH_RESULTS
+            is pfsrd2.monster_template.ADDON_LABELS_WITH_RESULTS
+            is ADDON_LABELS_WITH_RESULTS
+        )
 
     def test_it_is_a_superset_of_the_default(self):
         # Widened, not replaced — Trigger/Effect/Requirements still apply.
-        assert DEFAULT_ADDON_LABELS < _FAMILY_ADDON_LABELS
+        assert DEFAULT_ADDON_LABELS < ADDON_LABELS_WITH_RESULTS
 
 
 class TestDegreesFoldIntoTheirAbility:
