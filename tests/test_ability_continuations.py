@@ -193,10 +193,16 @@ class TestTemplateGuardPermissiveDirection:
     """The half of the guard the whole corpus depends on.
 
     Every mutation run against this guard so far attacked the strict
-    direction — making it accept something it should reject. The permissive
-    direction is what keeps 55 templates green, and nothing pinned it:
-    turning the whitespace assert into `assert False` survived the entire
-    suite.
+    direction — making it accept something it should reject. Nothing pinned
+    the permissive direction: turning the whitespace assert into
+    `assert False` survived the entire suite.
+
+    It survived for a reason worth stating rather than hiding. That branch
+    keeps ZERO templates green today — all 24 unclaimed nodes in the corpus
+    are <br/>, and the newlines that do reach the node list arrive with
+    `current` truthy and get consumed. The whitespace allowance is a hedge
+    against a shape the corpus does not currently contain, which is exactly
+    the kind of branch that gets "cleaned up" by a future edit. Hence a test.
     """
 
     def _extract(self, html):
@@ -205,10 +211,13 @@ class TestTemplateGuardPermissiveDirection:
         return _extract_abilities_from_bs(BeautifulSoup(html, "html.parser"))
 
     def test_pretty_printer_whitespace_is_not_a_dropped_node(self):
-        # The live shape in 27 of 55 template files: a newline between the
-        # <br/> and the next <b>. The <br/> is CONSUMED here, so
-        # test_separators_alone_are_not_a_failure does not stand in for this —
-        # the unclaimed node is the bare newline string.
+        # A newline between the <br/> and the next <b>. The <br/> is CONSUMED
+        # here, so test_separators_alone_are_not_a_failure does not stand in
+        # for this — the unclaimed node is the bare newline string.
+        #
+        # 27 of 55 template files contain this byte shape, but none of them
+        # reach the guard with the newline unclaimed. This fixture constructs
+        # the case rather than sampling it.
         abilities = self._extract(
             "<b>Grab</b> The creature grabs.<br/>\n<b>Constrict</b> It squeezes.<br/>\n"
         )
@@ -234,7 +243,7 @@ class TestTemplateCallerWriteBackOrdering:
         # Related Groups yields no abilities, and is live in 86 family files.
         # The <ul> is load-bearing, not decoration: the write this class is
         # named for is the one inside the <ul> branch. Without a <ul>
-        # that branch never runs and the test pins only the gate — moving the
+        # that branch never runs and the test pins only the gate — moving
         # that write below the extraction call survived the whole suite, and
         # with a <ul> present it empties the section outright.
         html = (

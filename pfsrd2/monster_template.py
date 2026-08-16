@@ -275,8 +275,10 @@ def _assert_only_separators_were_unclaimed(nodes, consumed):
     and they split two ways. Two of them produce everything this guard ALLOWS:
     the <br> branch, whose _consume sits inside `if current:`, and the loop's
     final `if current:` fall-through. Between them they account for every
-    unclaimed node in the corpus — the 24 <br/>s and the pretty-printer
-    newlines.
+    unclaimed node in the corpus — all 24 of which are <br/>. The whitespace
+    half of the allow-list has ZERO live instances: pretty-printer newlines do
+    reach the node list in 8 files, but every one arrives with `current`
+    truthy and is consumed. It is a hedge, not load-bearing.
 
     The other three are the levers if this fires: the _LEAD_IN_RE branch,
     which skips a lead-in on the grounds that it "already lives in the
