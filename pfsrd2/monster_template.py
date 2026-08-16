@@ -271,11 +271,18 @@ def _assert_only_separators_were_unclaimed(nodes, consumed):
     are <br/> separators and pretty-printer whitespace — so assert that, which
     is both the measured invariant and the stricter one.
 
-    Three paths in universal.ability._split_nodes leave a node unclaimed: the
-    _LEAD_IN_RE branch, which skips a lead-in on the grounds that it "already
-    lives in the sections text" — a premise this file breaks by overwriting
-    that text; the _NOT_ABILITY_NAMES branch, which drops a label and its
-    value line together; and a continuation the glue rules refuse.
+    Five paths in universal.ability._split_nodes can leave a node unclaimed,
+    and they split two ways. Two of them produce everything this guard ALLOWS:
+    the <br> branch, whose _consume sits inside `if current:`, and the loop's
+    final `if current:` fall-through. Between them they account for every
+    unclaimed node in the corpus — the 24 <br/>s and the pretty-printer
+    newlines.
+
+    The other three are the levers if this fires: the _LEAD_IN_RE branch,
+    which skips a lead-in on the grounds that it "already lives in the
+    sections text" — a premise this file breaks by overwriting that text; the
+    _NOT_ABILITY_NAMES branch, which drops a label and its value line
+    together; and a continuation the glue rules refuse.
     """
     for node in nodes:
         if id(node) in consumed:

@@ -229,7 +229,13 @@ class TestTemplateCallerWriteBackOrdering:
         from pfsrd2.monster_template import _try_extract_changes
 
         # Related Groups yields no abilities, and is live in 86 family files.
+        # The <ul> is load-bearing, not decoration: the write this class is
+        # named for is the one at :216, inside the <ul> branch. Without a <ul>
+        # that branch never runs and the test pins only the gate — moving the
+        # :216 write below the extraction call survived the whole suite, and
+        # with a <ul> present it empties the section outright.
         html = (
+            "<ul><li>Increase the creature's level by 1.</li></ul>"
             '<b>Related Groups</b> <a game-obj="MonsterFamilies" aonid="595">Geniekin</a>'
             "<br/>Many immortals dwell upon the planes."
         )
