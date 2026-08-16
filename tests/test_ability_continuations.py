@@ -277,3 +277,32 @@ class TestTemplateCallerWriteBackOrdering:
             "Increase the creature's level" in json.dumps(c, ensure_ascii=False)
             for c in mt["changes"]
         )
+
+    def test_a_section_with_abilities_gives_up_its_markup(self):
+        # The positive half, and the one the whole guard is premised on: when
+        # there ARE abilities the caller overwrites the section text with what
+        # survived extraction. That write is what makes an unclaimed node a
+        # LOSS rather than a duplicate — without it the abilities ship twice,
+        # once structurally and once as raw markup left in the text.
+        #
+        # Deleting it left the suite green. It hides from the granted-ability
+        # tests because the _GRANTS_ABILITIES / choice_bounds branch reassigns
+        # the text a few lines further down; only the plain-pool path is
+        # exposed, and nothing looked at the text there.
+        #
+        # <b> surviving into a text field is this project's tripwire for a
+        # parser that failed to extract structure, so the assertion is on <b>
+        # specifically, not just on the text having changed.
+        from pfsrd2.monster_template import _try_extract_changes
+
+        source_section = {
+            "type": "section",
+            "name": "S",
+            "text": "<b>Grab</b> The creature grabs.<br/><b>Constrict</b> It squeezes.",
+            "sections": [],
+        }
+        _try_extract_changes(source_section, {})
+        assert "<b>" not in source_section["text"], (
+            "the ability markup survived in the section text, so the abilities "
+            "ship twice and an unclaimed node would be a duplicate, not a loss"
+        )
