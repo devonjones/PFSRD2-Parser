@@ -412,6 +412,27 @@ def _extract_routine_results(hazard, bs):
                 n.extract()
             node.decompose()
             node = following
+        # Mirror guard: a source that bolds SOME degrees and writes the rest as
+        # bare prose would half-populate routine_results and leave the others
+        # buried in the routine string, with none of the asserts above able to
+        # see it. Scan what is left of the routine's own value for a degree
+        # label that never got bolded.
+        tail = []
+        probe = bold.next_sibling
+        while probe is not None and not _is_label_bold(probe):
+            # A routine can hold an <ol>/<ul> of sub-actions (a d4 table), and a
+            # sub-action carries its own properly-bolded degrees. Those belong to
+            # the list item, not to the routine, so do not read them as bare text.
+            if getattr(probe, "name", None) not in ("ol", "ul"):
+                tail.append(str(probe))
+            probe = probe.next_sibling
+        leftover = plain_text("".join(tail))
+        for label in RESULT_LABELS:
+            assert not re.search(rf"(?<![\w']){re.escape(label)}\b", leftover), (
+                f"Routine on {hazard.get('name')!r} publishes {label!r} without bolding it, "
+                f"so it stays buried in the routine text while other degrees became "
+                f"structure — bold it in the source"
+            )
         if results:
             hazard["routine_results"] = results
 
