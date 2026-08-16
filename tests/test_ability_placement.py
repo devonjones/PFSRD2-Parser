@@ -191,3 +191,103 @@ class TestDeterministicAbilityCategory:
         assert deterministic_ability_category({"action_type": None}) is None
         assert deterministic_ability_category({"action_type": "Reaction"}) is None
         assert deterministic_ability_category({"action_type": {}}) is None
+
+
+class TestTemplateAbilityEnrichmentPass:
+    """What makes the template pass different from the creature pass.
+
+    Its docstring's distinguishing claim is that it creates NO creature links,
+    because a template's abilities describe what to ADD to a creature rather
+    than what some creature has. Nothing tested that, so the pass could have
+    started writing links — poisoning the very category votes that
+    lookup_ability_category reads — with a green suite.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_llm(self):
+        # Inline enrichment reaches for the LLM extractor on new records.
+        from pfsrd2.ability_enrichment import set_inline_enrich
+
+        set_inline_enrich(False)
+        yield
+        set_inline_enrich(True)
+
+    def _struct(self, *abilities):
+        return {
+            "edition": "remastered",
+            "sections": [{"abilities": list(abilities)}],
+        }
+
+    def test_it_creates_no_creature_links(self, db):
+        from pfsrd2.ability_enrichment import template_ability_enrichment_pass
+
+        struct = self._struct({"name": "Grab", "subtype": "ability", "text": "The creature grabs."})
+        template_ability_enrichment_pass(struct, conn=db)
+        curs = db.cursor()
+        curs.execute("SELECT COUNT(*) AS n FROM ability_creature_links")
+        assert curs.fetchone()["n"] == 0
+
+    def test_it_records_the_ability(self, db):
+        from pfsrd2.ability_enrichment import template_ability_enrichment_pass
+
+        struct = self._struct({"name": "Grab", "subtype": "ability", "text": "The creature grabs."})
+        template_ability_enrichment_pass(struct, conn=db)
+        curs = db.cursor()
+        curs.execute("SELECT name FROM ability_records")
+        assert [r["name"] for r in curs.fetchall()] == ["Grab"]
+
+    def test_it_applies_the_deterministic_category_in_place(self, db):
+        from pfsrd2.ability_enrichment import template_ability_enrichment_pass
+
+        ability = {
+            "name": "Retributive Strike",
+            "subtype": "ability",
+            "action_type": {"name": "Reaction"},
+            "text": "The creature strikes back.",
+        }
+        template_ability_enrichment_pass(self._struct(ability), conn=db)
+        assert ability["ability_category"] == "reactive"
+
+    def test_the_walker_filters_a_non_ability_before_enrichment_sees_it(self, db):
+        from pfsrd2.ability_enrichment import template_ability_enrichment_pass
+
+        # Named for what it actually pins: _walk_all_abilities never yields
+        # this, so the subtype guard inside _enrich_abilities is not what
+        # keeps the spell out. That guard is pinned separately below.
+        spell = {"name": "Fireball", "subtype": "spell", "text": "It burns."}
+        template_ability_enrichment_pass(self._struct(spell), conn=db)
+        curs = db.cursor()
+        curs.execute("SELECT COUNT(*) AS n FROM ability_records")
+        assert curs.fetchone()["n"] == 0
+        assert "ability_category" not in spell
+
+    def test_the_same_ability_twice_reuses_one_record(self, db):
+        # Identity is the hash, not the name — two templates granting the same
+        # ability must not each mint a record, or the category vote doubles.
+        from pfsrd2.ability_enrichment import template_ability_enrichment_pass
+
+        make = lambda: {  # noqa: E731
+            "name": "Grab",
+            "subtype": "ability",
+            "text": "The creature grabs.",
+        }
+        template_ability_enrichment_pass(self._struct(make()), conn=db)
+        template_ability_enrichment_pass(self._struct(make()), conn=db)
+        curs = db.cursor()
+        curs.execute("SELECT COUNT(*) AS n FROM ability_records")
+        assert curs.fetchone()["n"] == 1
+
+    def test_enrich_abilities_guards_subtype_itself(self, db):
+        # _walk_all_abilities already filters by subtype, so a test driven
+        # through the pass cannot fail when the guard inside _enrich_abilities
+        # is deleted — it is unreachable from that direction. _enrich_abilities
+        # is called directly by other callers, so the guard is real; drive it
+        # directly to pin it.
+        from pfsrd2.ability_enrichment import _enrich_abilities
+
+        spell = {"name": "Fireball", "subtype": "spell", "text": "It burns."}
+        _enrich_abilities([spell], db)
+        db.commit()
+        curs = db.cursor()
+        curs.execute("SELECT COUNT(*) AS n FROM ability_records")
+        assert curs.fetchone()["n"] == 0
