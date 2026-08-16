@@ -440,7 +440,10 @@ def _extract_routine_results(hazard, bs):
             html = "".join(str(n) for n in value_nodes)
             text = flatten_field_links(html, hazard.setdefault("links", []))
             text = text.strip()
-            assert text, (
+            # strip(" ;,") in the assert, not in the value: a degree whose whole
+            # text is punctuation is "published but not understood" just as much
+            # as an empty one, and plain strip() would let it through as ";".
+            assert text.strip(" ;,"), (
                 f"Routine {label!r} on {hazard.get('name')!r} has no text — the degree "
                 "was published but not understood"
             )

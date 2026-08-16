@@ -1343,10 +1343,11 @@ class TestDegreeRunTerminators:
         assert "Each successful check" in str(bs)
 
     def test_a_linked_header_right_after_the_routine_value_is_not_stepped_over(self):
-        # _is_label_bold has TWO call sites. The linked-header test pins the
-        # inner one (the degree run's bound); this pins the outer skip over the
-        # routine's own value, which is the site whose failure the docstring
-        # actually describes — step over a linked <a><b> header there and the
+        # _is_label_bold has FOUR call sites (the outer skip, the degree-loop
+        # guard, the run bound, and the mirror guard). The linked-header test
+        # pins the run bound; this pins the outer skip over the routine's own
+        # value, which is the site whose failure the docstring actually
+        # describes — step over a linked <a><b> header there and the
         # FOLLOWING ability's degrees are absorbed as the routine's own.
         #
         # No hazard puts a linked header directly after a Routine value today,
@@ -1389,3 +1390,14 @@ class TestDegreeRunTerminators:
             "The creature is stunned 1 and drops its <i>rapier</i>."
         )
         assert "stunned" in [link["name"] for link in hazard["links"]]
+
+    def test_a_punctuation_only_degree_fails_the_parse(self):
+        # Simplifying the value trim to strip() meant a degree of ";" survived
+        # as text and published as `failure: ";"`. The assert trims the
+        # punctuation even though the stored value does not.
+        with pytest.raises(AssertionError, match="has no text"):
+            self._extract(
+                "<b>Routine</b> (1 action) save."
+                "<br/><b>Failure</b> ;"
+                "<br/><b>Critical Failure</b> Full damage."
+            )
