@@ -371,3 +371,87 @@ class TestParseDCResponse:
 
         result = _parse_dc_response(["DC 30 Reflex", "DC 30 Reflex"], "DC 30 Reflex")
         assert len(result) == 1
+
+
+class TestClassifyAbilityCategoryNormalization:
+    """The gate between a language model and the creature schema.
+
+    An LLM answers in whatever words it likes — "Sense", "defensive",
+    "reaction". Everything downstream (ability_placement.CATEGORY_TARGETS, the
+    enrichment DB's category votes) assumes one of VALID_CATEGORIES, so this
+    normalization is what stops a plausible-sounding answer becoming a category
+    nothing recognises. Stubs the model: these pin the mapping, not the model.
+    """
+
+    def _classify(self, monkeypatch, response):
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setattr(llm_extractor, "_query_ollama", lambda *a, **k: response)
+        return llm_extractor.classify_ability_category_llm("Grab", "The creature grabs.")
+
+    @pytest.mark.parametrize(
+        "response,expected",
+        [
+            ("sense", "special_sense"),
+            ("senses", "special_sense"),
+            ("perception", "special_sense"),
+            ("defense", "automatic"),
+            ("defensive", "automatic"),
+            ("passive", "automatic"),
+            ("offense", "offensive"),
+            ("attack", "offensive"),
+            ("proactive", "offensive"),
+            ("reaction", "reactive"),
+            ("hp", "hp_automatic"),
+            ("hitpoints", "hp_automatic"),
+            ("hit_points", "hp_automatic"),
+            ("healing", "hp_automatic"),
+        ],
+    )
+    def test_a_synonym_maps_to_its_canonical_category(self, monkeypatch, response, expected):
+        assert self._classify(monkeypatch, response) == expected
+
+    @pytest.mark.parametrize(
+        "category",
+        sorted(
+            {
+                "offensive",
+                "automatic",
+                "reactive",
+                "interaction",
+                "special_sense",
+                "hp_automatic",
+                "communication",
+            }
+        ),
+    )
+    def test_a_canonical_category_passes_through(self, monkeypatch, category):
+        assert self._classify(monkeypatch, category) == category
+
+    @pytest.mark.parametrize(
+        "response,expected",
+        [
+            ("Special Sense", "special_sense"),
+            ("  SPECIAL SENSE  ", "special_sense"),
+            ("Hit Points", "hp_automatic"),
+            ("special_sense\n", "special_sense"),
+            ("\n  Reaction \n", "reactive"),
+        ],
+    )
+    def test_case_and_spacing_are_normalized(self, monkeypatch, response, expected):
+        # Paired, not disjunctive: asserting the result was in a set of two let
+        # the hp synonyms be repointed at special_sense without failing. The
+        # newline cases are here because the comment claimed them and did not
+        # exercise them — models answer with a trailing newline constantly.
+        assert self._classify(monkeypatch, response) == expected
+
+    def test_an_unrecognised_answer_is_rejected_rather_than_invented(self, monkeypatch):
+        # The point of the VALID_CATEGORIES gate: a confident wrong word must
+        # not reach CATEGORY_TARGETS, where it would silently take
+        # DEFAULT_TARGET and look like a real placement decision.
+        assert self._classify(monkeypatch, "melee") is None
+        assert self._classify(monkeypatch, "I think this is an attack ability") is None
+
+    def test_no_answer_is_no_category(self, monkeypatch):
+        assert self._classify(monkeypatch, "") is None
+        assert self._classify(monkeypatch, None) is None
