@@ -10,6 +10,9 @@ Hazards already solved this by unioning RESULT_LABELS into their addon set;
 families and templates now do the same.
 """
 
+import json
+
+import pytest
 from bs4 import BeautifulSoup
 
 from universal.ability import (
@@ -21,6 +24,7 @@ from universal.universal import RESULT_LABELS
 
 BREATH = (
     "<b>Cloud of Ashes</b> The dragon exhales a cloud of ash."
+    "<br/><b>Critical Success</b> The creature avoids the cloud entirely."
     "<br/><b>Success</b> The creature is unaffected."
     "<br/><b>Failure</b> The creature begins coughing."
     "<br/><b>Critical Failure</b> As failure, plus it spends its next action coughing."
@@ -62,6 +66,9 @@ class TestDegreesFoldIntoTheirAbility:
 
     def test_the_degree_text_lands_on_the_ability(self):
         ability = _abilities(BREATH)[0]
+        # All four degrees, not three: narrowing the set to drop just
+        # "Critical Success" otherwise passes, and 17 shipped files carry one.
+        assert ability["critical_success"] == "The creature avoids the cloud entirely."
         assert ability["success"] == "The creature is unaffected."
         assert ability["failure"] == "The creature begins coughing."
         assert ability["critical_failure"].startswith("As failure")
@@ -69,7 +76,13 @@ class TestDegreesFoldIntoTheirAbility:
     def test_without_the_result_labels_they_split_apart(self):
         # Pins why the set has to be widened: this is the shipped bug.
         names = [a["name"] for a in _abilities(BREATH, labels=DEFAULT_ADDON_LABELS)]
-        assert names == ["Cloud of Ashes", "Success", "Failure", "Critical Failure"]
+        assert names == [
+            "Cloud of Ashes",
+            "Critical Success",
+            "Success",
+            "Failure",
+            "Critical Failure",
+        ]
 
     def test_a_real_ability_after_the_degrees_still_starts_its_own_entry(self):
         html = BREATH + "<br/><b>Change Shape</b> The dragon takes another form."
@@ -97,3 +110,63 @@ class TestTheCallSitesAreWired:
         abilities = _extract_abilities_from_bs(BeautifulSoup(BREATH, "html.parser"))
         assert [a["name"] for a in abilities] == ["Cloud of Ashes"]
         assert abilities[0]["critical_failure"].startswith("As failure")
+
+    def test_change_extraction_passes_the_labels(self):
+        # "Add the following abilities" blocks on templates and families go
+        # through a fourth call site. No <li> in the current corpus publishes a
+        # degree bold, so a regression here would be invisible to a parser run.
+        from bs4 import NavigableString
+
+        from pfsrd2.change_extraction import _extract_abilities_from_li
+
+        html = f"<li>The creature gains the following abilities: {BREATH}</li>"
+        li = BeautifulSoup(html, "html.parser").find("li")
+        assert any(
+            isinstance(n, NavigableString) and "following abilit" in str(n) for n in li.children
+        )
+        abilities = _extract_abilities_from_li(li)
+        assert [a["name"] for a in abilities] == ["Cloud of Ashes"]
+
+
+class TestShapesWhereTheWiderSetCostsSomething:
+    """Widening the label set makes three lossy shapes reachable.
+
+    None occur in the current corpus. They are pinned here so a future
+    refactor can tell the current behaviour from an intention, and so the two
+    that are still open (PFSRD2-Parser-4bcm, PFSRD2-Parser-mgz4) fail loudly
+    here the day they are fixed rather than silently changing shape.
+    """
+
+    def test_a_repeated_degree_fails_instead_of_overwriting(self):
+        # Two "Failure" blocks used to be two visible entries; folding them
+        # onto one parent means the second silently clobbers the first.
+        html = (
+            "<b>Twin Gaze</b> Two saves."
+            "<br/><b>Failure</b> FIRST outcome."
+            "<br/><b>Failure</b> SECOND outcome."
+        )
+        with pytest.raises(AssertionError, match="publishes 'Failure' twice"):
+            _abilities(html)
+
+    def test_a_continuation_after_a_degree_is_currently_dropped(self):
+        # PFSRD2-Parser-4bcm. The paragraph belongs to Big Attack and lives
+        # nowhere else; families/templates do not thread `consumed`, so it is
+        # gone. Pinned, not endorsed.
+        html = (
+            "<b>Big Attack</b> The dragon breathes."
+            "<br/><b>Success</b> Half damage."
+            "<br/>This trailing paragraph belongs to Big Attack."
+        )
+        abilities = _abilities(html)
+        assert [a["name"] for a in abilities] == ["Big Attack"]
+        assert abilities[0]["success"] == "Half damage."
+        assert "trailing paragraph" not in json.dumps(abilities)
+
+    def test_an_empty_degree_disappears(self):
+        # PFSRD2-Parser-mgz4. `_apply_addon` guards with `if value:`, so an
+        # empty published degree leaves no trace at all — before the wider set
+        # it was at least a visible (if wrong) entry.
+        html = "<b>Gaze</b> Save.<br/><b>Success</b><br/><b>Failure</b> Dazzled."
+        ability = _abilities(html)[0]
+        assert ability["failure"] == "Dazzled."
+        assert "success" not in ability

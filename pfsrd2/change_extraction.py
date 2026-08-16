@@ -9,7 +9,7 @@ import re
 
 from bs4 import BeautifulSoup, NavigableString
 
-from universal.ability import parse_abilities_from_nodes
+from universal.ability import ADDON_LABELS_WITH_RESULTS, parse_abilities_from_nodes
 from universal.universal import build_object, get_links
 from universal.utils import get_text
 
@@ -89,7 +89,12 @@ def _extract_abilities_from_li(li):
             continue
         ability_nodes.append(node)
     consumed = set()
-    abilities = parse_abilities_from_nodes(ability_nodes, consumed=consumed)
+    # Same label set as the parsers that own these documents: an "Add the
+    # following abilities" block publishes degrees of success the same way,
+    # and a narrower set would split them into standalone abilities here.
+    abilities = parse_abilities_from_nodes(
+        ability_nodes, addon_labels=ADDON_LABELS_WITH_RESULTS, consumed=consumed
+    )
     if abilities:
         for node in ability_nodes:
             if id(node) in consumed:
