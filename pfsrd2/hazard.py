@@ -30,14 +30,13 @@ from pfsrd2.action import extract_action_type
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.traits import fetch_trait_by_name, trait_db_pass
-from universal.ability import DEFAULT_ADDON_LABELS, parse_abilities_from_nodes
+from universal.ability import ADDON_LABELS_WITH_RESULTS, parse_abilities_from_nodes
 from universal.attack import parse_attack_action
 from universal.creatures import universal_handle_save_dc
 from universal.files import char_replace, disambiguated_filename, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.monster_ability import monster_ability_db_pass
 from universal.universal import (
-    RESULT_LABELS,
     aon_pass,
     build_object,
     drop_marker_sections,
@@ -123,11 +122,6 @@ _LEVEL_RE = re.compile(r"Hazard\s+(-?\d+)", re.I)
 # The break threshold is published inside the HP value ("90 (BT 45)"), never
 # as its own bold label.
 _BREAK_THRESHOLD = re.compile(r"BT\s+(-?\d+)")
-
-# A hazard's degrees of success belong to the ability that rolled the save, not
-# beside it. Without these, every bold "Success" starts a new ability, because
-# an unrecognised bold is what starts one.
-_HAZARD_ADDON_LABELS = DEFAULT_ADDON_LABELS | set(RESULT_LABELS)
 
 
 def parse_hazard(filename, options):
@@ -502,7 +496,7 @@ def _extract_abilities(hazard, bs):
 
     consumed = set()
     abilities = parse_abilities_from_nodes(
-        nodes, addon_labels=_HAZARD_ADDON_LABELS, consumed=consumed
+        nodes, addon_labels=ADDON_LABELS_WITH_RESULTS, consumed=consumed
     )
     assert abilities, (
         f"Bold label {get_text(start).strip()!r} on {hazard.get('name')!r} is not a known "

@@ -18,6 +18,7 @@ from pfsrd2.trait import extract_starting_traits
 from universal.attack import parse_attack_damage
 from universal.creatures import parse_save_dc, universal_handle_range, universal_handle_save_dc
 from universal.universal import (
+    RESULT_LABELS,
     build_object,
     extract_bold_fields,
     extract_link,
@@ -50,6 +51,12 @@ DEFAULT_ADDON_LABELS = {
     "Onset",
     "Maximum Duration",
 }
+
+# The same set plus the degrees of success. A degree belongs to the ability
+# that rolled the check, not beside it: an unrecognised bold starts a new
+# ability, so without these every published "Success" becomes its own entry.
+# Used by hazards, monster families and monster templates alike.
+ADDON_LABELS_WITH_RESULTS = DEFAULT_ADDON_LABELS | set(RESULT_LABELS)
 
 _STAGE_RE = re.compile(r"^Stage\s+\d+$", re.IGNORECASE)
 
@@ -541,6 +548,11 @@ def _apply_addon(ability, addon_name, addon_nodes):
         elif key == "prerequisites":
             key = "prerequisite"
         if value:
+            # A repeated label silently overwrites the earlier value here, and
+            # two published sentences vanish. Asserting on it surfaces 13 files
+            # with real pre-existing loss (11 hazards, 2 monster families), so
+            # the guard lands with those fixes rather than breaking the parse:
+            # PFSRD2-Parser-xzij.
             ability[key] = value
 
 

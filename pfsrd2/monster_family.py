@@ -13,7 +13,7 @@ from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.prose_changes import _prose_changes_for_line
 from pfsrd2.schema import validate_against_schema
 from pfsrd2.sql.sources import set_edition_from_db_pass
-from universal.ability import parse_abilities_from_nodes
+from universal.ability import ADDON_LABELS_WITH_RESULTS, parse_abilities_from_nodes
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.monster_ability import monster_ability_db_pass
@@ -527,7 +527,11 @@ def _extract_abilities_from_bs(bs):
     # Split into spell blocks and ability nodes
     spells, ability_nodes = _split_spell_nodes(all_nodes)
 
-    abilities = parse_abilities_from_nodes(ability_nodes) if ability_nodes else None
+    abilities = (
+        parse_abilities_from_nodes(ability_nodes, addon_labels=ADDON_LABELS_WITH_RESULTS)
+        if ability_nodes
+        else None
+    )
     return abilities, spells if spells else None
 
 
