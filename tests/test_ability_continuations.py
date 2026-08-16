@@ -1,5 +1,7 @@
 """Continuation-line handling in _split_nodes (PR #133 review round)."""
 
+import json
+
 import pytest
 from bs4 import BeautifulSoup
 
@@ -167,8 +169,71 @@ class TestMonsterFamilyKeepsItsSectionText:
         _extract_section_abilities(struct)
         section = struct["sections"][0]
         assert [a["name"] for a in section["abilities"]] == ["Big Attack"]
+        # The prose must be genuinely UNCLAIMED, or this test passes for the
+        # wrong reason: with the glue rules relaxed the parser attaches it to
+        # Big Attack and the invariant is never exercised. PFSRD2-Parser-9oge
+        # is the open ticket to change exactly that glue rule, so this guard
+        # is what makes the test fail loudly instead of silently going inert.
+        assert prose not in json.dumps(section["abilities"]), (
+            "the prose was claimed by an ability, so this test is no longer "
+            "exercising the unclaimed-node path it exists for"
+        )
         assert prose in section["text"], (
             "monster_family reassigned or consumed its section text; the "
             "template guard's scope argument no longer holds"
         )
         assert "Big Attack" in section["text"]
+
+
+class TestTemplateGuardPermissiveDirection:
+    """The half of the guard the whole corpus depends on.
+
+    Every mutation run against this guard so far attacked the strict
+    direction — making it accept something it should reject. The permissive
+    direction is what keeps 55 templates green, and nothing pinned it:
+    turning the whitespace assert into `assert False` survived the entire
+    suite.
+    """
+
+    def _extract(self, html):
+        from pfsrd2.monster_template import _extract_abilities_from_bs
+
+        return _extract_abilities_from_bs(BeautifulSoup(html, "html.parser"))
+
+    def test_pretty_printer_whitespace_is_not_a_dropped_node(self):
+        # The live shape in 27 of 55 template files: a newline between the
+        # <br/> and the next <b>. The <br/> is CONSUMED here, so
+        # test_separators_alone_are_not_a_failure does not stand in for this —
+        # the unclaimed node is the bare newline string.
+        abilities = self._extract(
+            "<b>Grab</b> The creature grabs.<br/>\n<b>Constrict</b> It squeezes.<br/>\n"
+        )
+        assert [a["name"] for a in abilities] == ["Grab", "Constrict"]
+
+
+class TestTemplateCallerWriteBackOrdering:
+    """Why `if abilities:` is a safe gate — pinned, not just asserted in prose.
+
+    The guard runs only when there are abilities, because that is when the
+    caller overwrites the section text. The <ul> branch DOES also write, at
+    monster_template.py:216, but it does so BEFORE collect_ability_nodes
+    mutates the tree, so it snapshots the pre-extraction string.
+
+    Ordering is the whole safety argument, and nothing held it in place:
+    moving that write-back below the extraction call, or ungating the
+    ability write-back, both survived the entire suite while emptying a
+    section outright.
+    """
+
+    def test_a_section_with_no_parseable_abilities_keeps_its_text(self):
+        from pfsrd2.monster_template import _try_extract_changes
+
+        # Related Groups yields no abilities, and is live in 86 family files.
+        html = (
+            '<b>Related Groups</b> <a game-obj="MonsterFamilies" aonid="595">Geniekin</a>'
+            "<br/>Many immortals dwell upon the planes."
+        )
+        source_section = {"type": "section", "name": "S", "text": html, "sections": []}
+        _try_extract_changes(source_section, {})
+        assert "Many immortals dwell upon the planes." in source_section["text"]
+        assert "Related Groups" in source_section["text"]
