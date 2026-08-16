@@ -370,8 +370,10 @@ def _extract_routine_results(hazard, bs):
     string: a degree of success is a modelled mechanic everywhere else in this
     schema, and burying it in prose would lose that (and the <b> that makes a
     parse failure visible). A degree block runs from its bold label to the next
-    <br/> separator, so prose published after the last degree — which belongs to
-    the routine, not to a save outcome — stays where it was published.
+    <br/> separator, and stops dead at a sub-action list, a bold that is not a
+    degree, or the end of the run. So prose and lists published after the last
+    degree stay in the routine block where the source put them, instead of being
+    published as the outcome of a save.
     """
     for bold in list(bs.find_all("b")):
         if get_text(bold).strip() != "Routine":
@@ -395,16 +397,19 @@ def _extract_routine_results(hazard, bs):
             while (
                 following is not None
                 and not _is_label_bold(following)
-                and getattr(following, "name", None) != "br"
+                and getattr(following, "name", None) not in ("br", "ul", "ol")
             ):
                 value_nodes.append(following)
                 following = following.next_sibling
-            # Step over the separator itself; whatever follows either starts the
-            # next degree or is prose that stays where it was published.
+            # A <br/> is not the only thing that ends a degree: perilous_flash_flood
+            # follows its degrees with a <ul> of five flood variants, and an
+            # identical <ul> BEFORE the degrees (ID_397, ID_307) stays with the
+            # routine. Absorbing it into critical_failure published the whole list
+            # as one save outcome. Step over a <br/> separator; stop dead at a list.
             separator = following if getattr(following, "name", None) == "br" else None
             if separator is not None:
                 following = separator.next_sibling
-                # The source pretty-prints, so the next degree's bold is usually
+                # The source pretty-prints, so the next degree's bold is often
                 # preceded by indentation. Whitespace is not published content.
                 while (
                     following is not None
@@ -417,8 +422,7 @@ def _extract_routine_results(hazard, bs):
             # text AND from hazard["links"].
             html = "".join(str(n) for n in value_nodes)
             text = flatten_field_links(html, hazard.setdefault("links", []))
-            # Same trailing-separator trim extract_bold_fields applies.
-            text = re.sub(r"<br/?>[\s]*$", "", text).strip(" ;,")
+            text = text.strip(" ;,")
             assert text, (
                 f"Routine {label!r} on {hazard.get('name')!r} has no text — the degree "
                 "was published but not understood"
@@ -428,9 +432,12 @@ def _extract_routine_results(hazard, bs):
                 key not in results
             ), f"Routine on {hazard.get('name')!r} publishes {label!r} twice"
             results[key] = text
-            # The separator is deliberately never extracted: it is what starts
-            # whatever follows the routine, and removing it glues the next
-            # ability onto the previous one.
+            # Extract the separator with its degree. The <br/> that OPENS the
+            # first degree stays behind in the routine's own value and does the
+            # delimiting; leaving one behind per degree stacked up to six blank
+            # lines in front of the routine's trailing prose.
+            if separator is not None:
+                separator.extract()
             for n in value_nodes:
                 n.extract()
             node.decompose()
@@ -442,7 +449,13 @@ def _extract_routine_results(hazard, bs):
         # label that never got bolded.
         tail = []
         probe = bold.next_sibling
-        while probe is not None and not _is_label_bold(probe):
+        # Stop only on a NON-degree bold. Stopping on any bold made this guard
+        # vacuous in the one case it exists for: a degree the loop failed to
+        # consume is itself a bolded degree, so the walk halted on it and its
+        # label never reached `leftover`.
+        while probe is not None and not (
+            _is_label_bold(probe) and get_text(probe).strip() not in RESULT_LABELS
+        ):
             # A routine can hold an <ol>/<ul> of sub-actions (a d4 table), and a
             # sub-action carries its own properly-bolded degrees. Those belong to
             # the list item, not to the routine, so do not read them as bare text.
@@ -451,7 +464,7 @@ def _extract_routine_results(hazard, bs):
             probe = probe.next_sibling
         leftover = plain_text("".join(tail))
         for label in RESULT_LABELS:
-            assert not re.search(rf"(?<![\w']){re.escape(label)}\b", leftover), (
+            assert not re.search(rf"\b{re.escape(label)}\b", leftover), (
                 f"Routine on {hazard.get('name')!r} publishes {label!r} without bolding it, "
                 f"so it stays buried in the routine text while other degrees became "
                 f"structure — bold it in the source"
