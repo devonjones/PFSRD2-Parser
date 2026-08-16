@@ -428,11 +428,22 @@ class TestClassifyAbilityCategoryNormalization:
     def test_a_canonical_category_passes_through(self, monkeypatch, category):
         assert self._classify(monkeypatch, category) == category
 
-    @pytest.mark.parametrize("response", ["Special Sense", "  SPECIAL SENSE  ", "Hit Points"])
-    def test_case_and_spacing_are_normalized(self, monkeypatch, response):
-        # The prompt asks for one token; models answer in title case, with
-        # spaces, and with trailing newlines.
-        assert self._classify(monkeypatch, response) in ("special_sense", "hp_automatic")
+    @pytest.mark.parametrize(
+        "response,expected",
+        [
+            ("Special Sense", "special_sense"),
+            ("  SPECIAL SENSE  ", "special_sense"),
+            ("Hit Points", "hp_automatic"),
+            ("special_sense\n", "special_sense"),
+            ("\n  Reaction \n", "reactive"),
+        ],
+    )
+    def test_case_and_spacing_are_normalized(self, monkeypatch, response, expected):
+        # Paired, not disjunctive: asserting the result was in a set of two let
+        # the hp synonyms be repointed at special_sense without failing. The
+        # newline cases are here because the comment claimed them and did not
+        # exercise them — models answer with a trailing newline constantly.
+        assert self._classify(monkeypatch, response) == expected
 
     def test_an_unrecognised_answer_is_rejected_rather_than_invented(self, monkeypatch):
         # The point of the VALID_CATEGORIES gate: a confident wrong word must

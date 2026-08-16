@@ -6,6 +6,7 @@ appears in across existing creatures.
 """
 
 from pfsrd2.sql.enrichment import get_enrichment_db_connection
+from pfsrd2.sql.enrichment.queries import fetch_majority_category_for_name
 
 # Mapping from enrichment DB category to the JSONPath target in the creature schema
 CATEGORY_TARGETS = {
@@ -42,18 +43,36 @@ def deterministic_ability_category(ability):
     return None
 
 
+def _target_for(category, name):
+    """Map a category to its schema target, refusing to guess.
+
+    The fallback this replaces could only fire when someone added a category
+    without adding its mapping — it existed solely to hide that, and it hid it
+    by routing a whole category into DEFAULT_TARGET where it reads as a real
+    placement decision. Every category the enrichment DB actually holds is a
+    key here (verified: 7 for 7).
+    """
+    assert category in CATEGORY_TARGETS, (
+        f"Ability {name!r} is filed under category {category!r}, which has no "
+        f"CATEGORY_TARGETS entry — it would be routed to {DEFAULT_TARGET} and "
+        "look like a real placement decision"
+    )
+    return CATEGORY_TARGETS[category]
+
+
 def ability_target(ability):
     """Pick the schema target for an ability using action_type, then DB history.
 
-    Returns a JSONPath string from CATEGORY_TARGETS, or DEFAULT_TARGET if the
-    ability's category can't be determined. A nameless ability is a parser
-    bug — assert rather than silently return a default.
+    A nameless ability is a parser bug — assert rather than silently return a
+    default. The assert comes first: the only production caller already
+    guarantees a name, so accepting a nameless ability on the action_type path
+    was a gap rather than a feature.
     """
-    category = deterministic_ability_category(ability)
-    if category:
-        return CATEGORY_TARGETS.get(category, DEFAULT_TARGET)
     name = ability.get("name")
     assert name, f"Ability missing required 'name' field: {ability!r}"
+    category = deterministic_ability_category(ability)
+    if category:
+        return _target_for(category, name)
     _, target = lookup_ability_category(name)
     return target
 
@@ -61,69 +80,42 @@ def ability_target(ability):
 def lookup_ability_category(ability_name, conn=None):
     """Look up the most common category for an ability by name.
 
-    Returns (category, target) where category is the enrichment DB category
-    and target is the JSONPath in the creature schema. Returns (None, DEFAULT_TARGET)
-    if the ability is not found.
+    Returns (category, target), or (None, DEFAULT_TARGET) when no creature has
+    this ability yet — a template may legitimately name one, so that is normal
+    input rather than a data error.
 
-    Case-insensitive lookup. When an ability appears in multiple categories,
-    returns the most common one.
+    The query lives in queries.fetch_majority_category_for_name. This module
+    used to carry its own copy, and the batch form below carried a third, so
+    the three could drift apart silently.
     """
     close_conn = False
     if conn is None:
         conn = get_enrichment_db_connection()
         close_conn = True
     try:
-        curs = conn.cursor()
-        curs.execute(
-            "SELECT acl.ability_category, COUNT(*) as cnt "
-            "FROM ability_records ar "
-            "JOIN ability_creature_links acl ON ar.ability_id = acl.ability_id "
-            "WHERE LOWER(ar.name) = LOWER(?) "
-            "GROUP BY acl.ability_category "
-            "ORDER BY cnt DESC",
-            (ability_name,),
-        )
-        rows = curs.fetchall()
-        if rows:
-            category = rows[0]["ability_category"]
-            target = CATEGORY_TARGETS.get(category, DEFAULT_TARGET)
-            return category, target
-        return None, DEFAULT_TARGET
+        row = fetch_majority_category_for_name(conn.cursor(), ability_name)
+        if row is None:
+            return None, DEFAULT_TARGET
+        return row[0], _target_for(row[0], ability_name)
     finally:
         if close_conn:
             conn.close()
 
 
 def lookup_ability_categories(ability_names, conn=None):
-    """Batch lookup for multiple ability names.
-
-    Returns a dict of {name: (category, target)} for each name.
-    More efficient than calling lookup_ability_category repeatedly.
-    """
+    """Batch lookup. Returns {name: (category, target)} for every name asked."""
     close_conn = False
     if conn is None:
         conn = get_enrichment_db_connection()
         close_conn = True
     try:
-        result = {}
         curs = conn.cursor()
+        result = {}
         for name in ability_names:
-            curs.execute(
-                "SELECT acl.ability_category, COUNT(*) as cnt "
-                "FROM ability_records ar "
-                "JOIN ability_creature_links acl ON ar.ability_id = acl.ability_id "
-                "WHERE LOWER(ar.name) = LOWER(?) "
-                "GROUP BY acl.ability_category "
-                "ORDER BY cnt DESC",
-                (name,),
+            row = fetch_majority_category_for_name(curs, name)
+            result[name] = (
+                (None, DEFAULT_TARGET) if row is None else (row[0], _target_for(row[0], name))
             )
-            rows = curs.fetchall()
-            if rows:
-                category = rows[0]["ability_category"]
-                target = CATEGORY_TARGETS.get(category, DEFAULT_TARGET)
-                result[name] = (category, target)
-            else:
-                result[name] = (None, DEFAULT_TARGET)
         return result
     finally:
         if close_conn:

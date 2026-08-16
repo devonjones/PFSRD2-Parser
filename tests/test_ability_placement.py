@@ -76,13 +76,15 @@ class TestLookupAbilityCategory:
         assert lookup_ability_category("darkvision", conn=db)[0] == "special_sense"
         assert lookup_ability_category("DARKVISION", conn=db)[0] == "special_sense"
 
-    def test_a_category_with_no_target_falls_back_to_the_default(self, db):
-        # The DB can hold a category string CATEGORY_TARGETS has no entry for.
-        # The category is still reported truthfully; only the target defaults.
+    def test_an_unmapped_category_fails_instead_of_defaulting(self, db):
+        # This used to return the category with DEFAULT_TARGET. The fallback
+        # could only fire when someone added a category without adding its
+        # mapping, so it existed solely to hide that — and hid it by routing a
+        # whole category into $.defense.automatic_abilities, where it reads as
+        # a real placement decision.
         _record(db, "Odd One", "not_a_real_category")
-        category, target = lookup_ability_category("Odd One", conn=db)
-        assert category == "not_a_real_category"
-        assert target == DEFAULT_TARGET
+        with pytest.raises(AssertionError, match="no CATEGORY_TARGETS entry"):
+            lookup_ability_category("Odd One", conn=db)
 
     def test_an_ability_with_no_creature_links_is_a_miss(self, db):
         # The record exists but nothing says where it belongs, so there is no
@@ -92,20 +94,45 @@ class TestLookupAbilityCategory:
         db.commit()
         assert lookup_ability_category("Orphan", conn=db) == (None, DEFAULT_TARGET)
 
-    def test_every_mapped_category_resolves_to_its_own_target(self, db):
-        # Guards the mapping itself: a typo in CATEGORY_TARGETS would quietly
-        # send a whole category to DEFAULT_TARGET.
-        for category, expected in CATEGORY_TARGETS.items():
-            _record(db, f"Ability {category}", category)
-            assert lookup_ability_category(f"Ability {category}", conn=db) == (
-                category,
-                expected,
-            )
+    # Literal, not derived from CATEGORY_TARGETS. Looping the mapping and
+    # asserting production returns the same item compares it against itself:
+    # repointing special_sense at "$.senses.wrong_place" survived the entire
+    # suite, because nothing anywhere pinned these JSONPaths.
+    EXPECTED_TARGETS = {
+        "automatic": "$.defense.automatic_abilities",
+        "reactive": "$.defense.reactive_abilities",
+        "hp_automatic": "$.defense.hitpoints[*].automatic_abilities",
+        "interaction": "$.interaction_abilities",
+        "communication": "$.statistics.languages.communication_abilities",
+        "offensive": "$.offense.offensive_actions",
+        "special_sense": "$.senses.special_senses",
+    }
+
+    def test_the_mapping_is_exactly_these_seven_targets(self):
+        # Set equality, so a new key cannot appear without this test naming it,
+        # and a JSONPath cannot be edited without failing here.
+        assert CATEGORY_TARGETS == self.EXPECTED_TARGETS
+
+    def test_the_default_target_is_one_of_them(self):
+        assert self.EXPECTED_TARGETS["automatic"] == DEFAULT_TARGET
+
+    @pytest.mark.parametrize("category", sorted(EXPECTED_TARGETS))
+    def test_each_category_resolves_to_its_literal_target(self, db, category):
+        _record(db, f"Ability {category}", category)
+        assert lookup_ability_category(f"Ability {category}", conn=db) == (
+            category,
+            self.EXPECTED_TARGETS[category],
+        )
 
 
 class TestLookupAbilityCategoriesBatch:
-    """The batch form had no test at all, and it duplicates the single form's
-    SQL rather than calling it — so the two can drift apart silently."""
+    """The batch form had no test at all.
+
+    It used to carry its own copy of the single form's SQL — and a third copy
+    lived in queries.fetch_majority_category_for_name, which is the helper both
+    should have been calling. They now do, so these tests guard against the
+    duplication coming back rather than against drift between two live copies.
+    """
 
     def test_it_answers_for_every_name_including_the_misses(self, db):
         # A caller indexes the result by name; a missing key would be a
@@ -117,21 +144,18 @@ class TestLookupAbilityCategoriesBatch:
         assert result["Nonexistent"] == (None, DEFAULT_TARGET)
 
     def test_it_agrees_with_the_single_lookup(self, db):
-        # Pins the duplication. If either query changes, this fails.
+        # Both forms now call queries.fetch_majority_category_for_name, so this
+        # is a guard against either growing its own copy again. The case
+        # variants matter: with every name spelled as inserted, removing
+        # LOWER() from the batch query alone survived the whole suite.
         _record(db, "Grab", "offensive", "offensive", "reactive")
         _record(db, "Darkvision", "special_sense")
-        names = ["Grab", "Darkvision", "Missing"]
+        names = ["Grab", "darkvision", "DARKVISION", "Missing"]
         batch = lookup_ability_categories(names, conn=db)
         assert batch == {n: lookup_ability_category(n, conn=db) for n in names}
 
     def test_an_empty_request_is_an_empty_answer(self, db):
         assert lookup_ability_categories([], conn=db) == {}
-
-    def test_a_repeated_name_collapses_rather_than_duplicating(self, db):
-        _record(db, "Grab", "offensive")
-        assert lookup_ability_categories(["Grab", "Grab"], conn=db) == {
-            "Grab": ("offensive", CATEGORY_TARGETS["offensive"])
-        }
 
 
 class TestAbilityTarget:
@@ -160,10 +184,14 @@ class TestAbilityTarget:
         with pytest.raises(AssertionError, match="missing required 'name'"):
             ability_target({"text": "Something happened."})
 
-    def test_a_nameless_ability_with_a_decisive_action_type_still_places(self):
-        # The assert guards the DB path only. action_type alone is enough, so
-        # this must NOT raise — otherwise the assert is too eager.
-        assert ability_target({"action_type": {"name": "Reaction"}}) == CATEGORY_TARGETS["reactive"]
+    def test_a_nameless_ability_fails_even_with_a_decisive_action_type(self):
+        # This test used to assert the opposite, and by doing so it protected a
+        # gap: the only production caller already guarantees a name, so the
+        # nameless-but-typed case was unreachable, and allowing it meant the
+        # assert did not mean what its message said. Hardening the code broke
+        # exactly one test in the repo — this one.
+        with pytest.raises(AssertionError, match="missing required 'name'"):
+            ability_target({"action_type": {"name": "Reaction"}})
 
 
 class TestDeterministicAbilityCategory:
@@ -204,13 +232,17 @@ class TestTemplateAbilityEnrichmentPass:
     """
 
     @pytest.fixture(autouse=True)
-    def _no_llm(self):
-        # Inline enrichment reaches for the LLM extractor on new records.
-        from pfsrd2.ability_enrichment import set_inline_enrich
+    def _no_llm(self, monkeypatch):
+        # Belt and braces: inline enrichment reaches for the LLM extractor on
+        # new records. For these abilities extract_all() finds nothing and
+        # short-circuits before any import, so this is currently inert — but it
+        # stops a richer fixture from quietly acquiring a model dependency.
+        # monkeypatch, not set_inline_enrich(True) in teardown: the latter
+        # restores a guessed value rather than the prior one, and would turn
+        # the LLM ON for everything after if the flag were ever off on entry.
+        import pfsrd2.ability_enrichment as ae
 
-        set_inline_enrich(False)
-        yield
-        set_inline_enrich(True)
+        monkeypatch.setattr(ae, "_inline_enrich", False)
 
     def _struct(self, *abilities):
         return {
@@ -248,22 +280,10 @@ class TestTemplateAbilityEnrichmentPass:
         template_ability_enrichment_pass(self._struct(ability), conn=db)
         assert ability["ability_category"] == "reactive"
 
-    def test_the_walker_filters_a_non_ability_before_enrichment_sees_it(self, db):
-        from pfsrd2.ability_enrichment import template_ability_enrichment_pass
-
-        # Named for what it actually pins: _walk_all_abilities never yields
-        # this, so the subtype guard inside _enrich_abilities is not what
-        # keeps the spell out. That guard is pinned separately below.
-        spell = {"name": "Fireball", "subtype": "spell", "text": "It burns."}
-        template_ability_enrichment_pass(self._struct(spell), conn=db)
-        curs = db.cursor()
-        curs.execute("SELECT COUNT(*) AS n FROM ability_records")
-        assert curs.fetchone()["n"] == 0
-        assert "ability_category" not in spell
-
     def test_the_same_ability_twice_reuses_one_record(self, db):
-        # Identity is the hash, not the name — two templates granting the same
-        # ability must not each mint a record, or the category vote doubles.
+        # Two templates granting the same ability must not each mint a record.
+        # What this pins is the fetch-by-hash reuse; that the hash covers more
+        # than the name is pinned by tests/test_ability_identity.py.
         from pfsrd2.ability_enrichment import template_ability_enrichment_pass
 
         make = lambda: {  # noqa: E731
@@ -279,10 +299,9 @@ class TestTemplateAbilityEnrichmentPass:
 
     def test_enrich_abilities_guards_subtype_itself(self, db):
         # _walk_all_abilities already filters by subtype, so a test driven
-        # through the pass cannot fail when the guard inside _enrich_abilities
-        # is deleted — it is unreachable from that direction. _enrich_abilities
-        # is called directly by other callers, so the guard is real; drive it
-        # directly to pin it.
+        # through the pass cannot fail when this guard is deleted — the two are
+        # redundant along that path. Drive _enrich_abilities directly so the
+        # guard is pinned on its own rather than by its neighbour.
         from pfsrd2.ability_enrichment import _enrich_abilities
 
         spell = {"name": "Fireball", "subtype": "spell", "text": "It burns."}
@@ -291,3 +310,46 @@ class TestTemplateAbilityEnrichmentPass:
         curs = db.cursor()
         curs.execute("SELECT COUNT(*) AS n FROM ability_records")
         assert curs.fetchone()["n"] == 0
+
+    def test_a_category_already_on_the_record_is_applied(self, db):
+        # The half of the categorization decision that is NOT action_type: an
+        # ability with no decisive action gets its category from what the DB
+        # already learned. Deleting that branch left the whole suite green, so
+        # the silent-misplacement mode the module exists to prevent was dark.
+        from pfsrd2.ability_enrichment import template_ability_enrichment_pass
+        from pfsrd2.sql.enrichment.queries import update_ability_category
+
+        first = {"name": "Darkvision", "subtype": "ability", "text": "It sees."}
+        template_ability_enrichment_pass(self._struct(first), conn=db)
+        assert "ability_category" not in first
+
+        curs = db.cursor()
+        curs.execute("SELECT ability_id FROM ability_records WHERE name = 'Darkvision'")
+        update_ability_category(curs, curs.fetchone()["ability_id"], "special_sense")
+        db.commit()
+
+        second = {"name": "Darkvision", "subtype": "ability", "text": "It sees."}
+        template_ability_enrichment_pass(self._struct(second), conn=db)
+        assert second["ability_category"] == "special_sense"
+
+    def test_a_decisive_action_type_is_not_overwritten_by_the_record(self, db):
+        # The branch is guarded on "ability_category" not already being set.
+        # The ability's own action_type is direct evidence and must win.
+        from pfsrd2.ability_enrichment import template_ability_enrichment_pass
+        from pfsrd2.sql.enrichment.queries import update_ability_category
+
+        first = {
+            "name": "Retributive Strike",
+            "subtype": "ability",
+            "action_type": {"name": "Reaction"},
+            "text": "It strikes back.",
+        }
+        template_ability_enrichment_pass(self._struct(first), conn=db)
+        curs = db.cursor()
+        curs.execute("SELECT ability_id FROM ability_records WHERE name = 'Retributive Strike'")
+        update_ability_category(curs, curs.fetchone()["ability_id"], "offensive")
+        db.commit()
+
+        second = dict(first)
+        template_ability_enrichment_pass(self._struct(second), conn=db)
+        assert second["ability_category"] == "reactive"
