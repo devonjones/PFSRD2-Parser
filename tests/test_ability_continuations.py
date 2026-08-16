@@ -296,14 +296,27 @@ class TestTemplateCallerWriteBackOrdering:
         # specifically, not just on the text having changed.
         from pfsrd2.monster_template import _try_extract_changes
 
+        # The fixture carries leading prose, matching the live NPC-ancestry
+        # shape: collect_ability_nodes starts at the first non-table <b>, so
+        # the prose stays behind and IS the `remaining` that gets written.
+        #
+        # Without it the correct `remaining` is '', and then asserting only
+        # that <b> is absent cannot tell "wrote what survived" from "wrote
+        # nothing" — `source_section["text"] = ""` survived the whole suite,
+        # while on the corpus it strips published prose from 24 files.
+        prose = "Merfolk have humanlike torsos, fish tails, and fins."
         source_section = {
             "type": "section",
             "name": "S",
-            "text": "<b>Grab</b> The creature grabs.<br/><b>Constrict</b> It squeezes.",
+            "text": prose + "<br/><b>Grab</b> The creature grabs.",
             "sections": [],
         }
         _try_extract_changes(source_section, {})
         assert "<b>" not in source_section["text"], (
             "the ability markup survived in the section text, so the abilities "
             "ship twice and an unclaimed node would be a duplicate, not a loss"
+        )
+        assert prose in source_section["text"], (
+            "the section text was overwritten with something other than what "
+            "survived extraction, discarding published prose"
         )
