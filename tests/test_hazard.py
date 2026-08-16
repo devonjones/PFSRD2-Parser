@@ -1009,3 +1009,395 @@ class TestAttackLineGuards:
         text = self.SOURCE + "<b>Melee</b> <i></i> +20, <b>Damage</b> 2d6 slashing"
         with pytest.raises(AssertionError, match="parsed no weapon"):
             _parsed(text=text)
+
+
+class TestRoutineResults:
+    """A routine's save publishes its degrees of success after it.
+
+    extract_bold_fields ends a value at the next bold, so those blocks were
+    orphaned; removing the Routine field then left them adjacent to the
+    preceding ability, which swallowed them and overwrote its own degrees.
+    confounding_betrayal shipped without Unmask's first Critical Success.
+
+    The tests that can be are driven through hazard_extract_pass rather than
+    calling the helper directly: the first version of this fix used
+    RESULT_LABELS without importing it, every unit test passed, and only a
+    corpus run caught it. The rest call _extract_routine_results directly,
+    because the shapes they pin (a linked ability header, a list after the
+    degrees) collide with gaps in the ability splitter that are not this fix.
+    """
+
+    ROUTINE_BLOCK = (
+        TRAITS + "<br/>"
+        '<b>Source</b> <a game-obj="Sources" aonid="1"><i>GM Core pg. 1</i></a><br/>'
+        "<b>Complexity</b> Complex<br/>"
+        "<b>Stealth</b> DC 30<br/>"
+        "<b>Description</b> A haunt.<hr/>"
+        '<b>Unmask</b> <span class="action" title="Reaction">[reaction]</span> '
+        "<b>Trigger</b> A creature enters. "
+        "<b>Critical Success</b> ABILITY crit success. "
+        "<b>Failure</b> ABILITY failure.<br/>"
+        "<b>Routine</b> (1 action) Each creature must attempt a DC 20 Will save.<br/>"
+        "<b>Critical Success</b> ROUTINE crit success.<br/>"
+        "<b>Failure</b> ROUTINE failure.<hr/>"
+        "<b>Reset</b> The haunt resets."
+    )
+
+    def _hazard(self):
+        struct = restructure_hazard_pass(_details(text=self.ROUTINE_BLOCK))
+        hazard_extract_pass(struct)
+        return struct["sections"][0]
+
+    def test_the_routine_degrees_are_structured_not_prose(self):
+        # A degree of success is modelled everywhere else in this schema;
+        # flattening it into the routine string would lose that.
+        hazard = self._hazard()
+        assert hazard["routine_results"]["critical_success"] == "ROUTINE crit success."
+        assert hazard["routine_results"]["failure"] == "ROUTINE failure."
+        assert "Critical Success" not in hazard["routine"]
+        # The TEXT too, not just the label: without the extract/decompose every
+        # degree ships twice, as prose in the routine and again as structure,
+        # and a label-only assertion cannot see that.
+        assert "ROUTINE crit success." not in hazard["routine"]
+        assert "ROUTINE failure." not in hazard["routine"]
+
+    def test_prose_after_the_last_degree_stays_in_the_routine(self):
+        # The LAST degree has no bold after it, so a run bounded only by the
+        # next bold swallowed everything up to <b>Reset</b> — and published it
+        # as the outcome of a save. Five shipped hazards read that way
+        # (flensing_blades, lichen_monstrosity, twist_of_fate, ice_prison_trap,
+        # planar_tear). A degree block ends at its <br/> separator instead.
+        #
+        # The previous version of this test used a fixture whose next node was
+        # a bold ability header, which is the case the test below covers; it
+        # could not fail on this bug.
+        from bs4 import BeautifulSoup
+
+        from pfsrd2.hazard import _extract_routine_results
+
+        bs = BeautifulSoup(
+            "<b>Routine</b> (1 action) save."
+            "<br/><b>Critical Success</b> ROUTINE cs."
+            "<br/><b>Critical Failure</b> ROUTINE cf."
+            "<br/>Each successful check reduces the haunt's movement by 30 feet.",
+            "html.parser",
+        )
+        hazard = {"name": "T"}
+        _extract_routine_results(hazard, bs)
+        assert hazard["routine_results"]["critical_failure"] == "ROUTINE cf."
+        assert "movement by 30 feet" not in json.dumps(hazard["routine_results"])
+        assert "movement by 30 feet" in str(bs)
+
+    def test_a_degree_is_still_bounded_when_a_bold_follows_it(self):
+        # The separator bound must not break the ordinary case: degree, <br/>,
+        # next degree.
+        from bs4 import BeautifulSoup
+
+        from pfsrd2.hazard import _extract_routine_results
+
+        bs = BeautifulSoup(
+            "<b>Routine</b> (1 action) save."
+            "<br/><b>Success</b> ROUTINE s."
+            "<br/><b>Failure</b> ROUTINE f."
+            "<br/><b>Reset</b> The haunt resets.",
+            "html.parser",
+        )
+        hazard = {"name": "T"}
+        _extract_routine_results(hazard, bs)
+        assert hazard["routine_results"]["success"] == "ROUTINE s."
+        assert hazard["routine_results"]["failure"] == "ROUTINE f."
+        assert "The haunt resets." in str(bs)
+
+    def test_the_object_carries_a_type_discriminator(self):
+        # Every other modelled object in this schema carries type/subtype, so a
+        # consumer discriminates on the pair rather than on the field name.
+        results = self._hazard()["routine_results"]
+        assert results["type"] == "stat_block_section"
+        assert results["subtype"] == "routine_results"
+
+    def test_links_inside_a_degree_are_kept(self):
+        # plain_text() dropped every <a> before links were harvested, so the
+        # condition a degree inflicts reached neither the text nor links.
+        block = self.ROUTINE_BLOCK.replace(
+            "<b>Failure</b> ROUTINE failure.",
+            '<b>Failure</b> The creature is <a game-obj="Conditions" aonid="93">stunned</a> 1.',
+        )
+        struct = restructure_hazard_pass(_details(text=block))
+        hazard_extract_pass(struct)
+        hazard = struct["sections"][0]
+        assert hazard["routine_results"]["failure"] == "The creature is stunned 1."
+        assert "stunned" in [link["name"] for link in hazard["links"]]
+
+    def test_the_ability_keeps_its_own_degrees(self):
+        # Without the fix the routine's degrees overwrite these two.
+        ability = [a for a in self._hazard()["abilities"] if a["name"] == "Unmask"][0]
+        assert ability["critical_success"] == "ABILITY crit success."
+        assert ability["failure"] == "ABILITY failure."
+
+    def test_nothing_published_is_dropped(self):
+        blob = json.dumps(self._hazard())
+        for sentence in (
+            "ABILITY crit success.",
+            "ABILITY failure.",
+            "ROUTINE crit success.",
+            "ROUTINE failure.",
+        ):
+            assert sentence in blob, f"{sentence!r} vanished"
+
+    def test_a_linked_ability_header_stops_the_absorption(self):
+        # Hazards write ability names bare AND wrapped in
+        # <a href="MonsterAbilities..."><b>Name</b></a>. Stopping only on a
+        # direct <b> steps over the linked form, so the next ability's degrees
+        # get absorbed into the routine.
+        #
+        # The linked header deliberately has NO <br/> in front of it: with a
+        # separator there the degree run ends at the separator and _is_label_bold
+        # is never consulted, which is what made an earlier version of this test
+        # pass with the linked branch deleted. ID_509 is the nearest real shape,
+        # but it needs two source edits to reach this, not one.
+        #
+        # Asserted at the extractor rather than through the whole pipeline:
+        # the ability splitter has its own gap with a linked header after a
+        # routine (PFSRD2-Parser-qqzm), which is not what this fix is about.
+        from bs4 import BeautifulSoup
+
+        from pfsrd2.hazard import _extract_routine_results
+
+        bs = BeautifulSoup(
+            "<b>Routine</b> (1 action) save."
+            "<br/><b>Critical Success</b> ROUTINE cs."
+            '<br/><b>Failure</b> ROUTINE f. <a game-obj="MonsterAbilities" aonid="9">'
+            "<b>Constrict</b></a> "
+            "<b>Critical Success</b> ABILITY TWO cs.",
+            "html.parser",
+        )
+        hazard = {"name": "T"}
+        _extract_routine_results(hazard, bs)
+        assert hazard["routine_results"] == {
+            "type": "stat_block_section",
+            "subtype": "routine_results",
+            "critical_success": "ROUTINE cs.",
+            "failure": "ROUTINE f.",
+        }
+        assert "ABILITY TWO cs." in str(bs)
+
+
+class TestUnboldedDegreeGuard:
+    """A degree the source did not bold must fail, not half-populate.
+
+    _extract_routine_results only sees degrees the source bolded. A source
+    that bolds some and writes the rest as prose left the others buried in the
+    routine string while the bolded ones became structure, and none of the
+    other asserts could see that shape: not an error, not a duplicate, not an
+    empty degree. Hazards ID_297 shipped that way.
+    """
+
+    def _extract(self, html):
+        from bs4 import BeautifulSoup
+
+        from pfsrd2.hazard import _extract_routine_results
+
+        hazard = {"name": "T"}
+        _extract_routine_results(hazard, BeautifulSoup(html, "html.parser"))
+        return hazard
+
+    def test_an_unbolded_degree_fails_the_parse(self):
+        # ID_297: Critical Success and Success were prose, Failure and Critical
+        # Failure were bold, so the hazard published two degrees out of four.
+        with pytest.raises(AssertionError, match="without bolding it"):
+            self._extract(
+                "<b>Routine</b> (1 action) Each creature must attempt a DC 42 Will save. "
+                "Critical Success The creature is unaffected."
+                "<br/><b>Failure</b> The creature is stupefied 1."
+            )
+
+    @pytest.mark.parametrize("tag", ["ol", "ul"])
+    def test_degrees_inside_a_sub_action_list_are_not_read_as_bare_text(self, tag):
+        # A routine can roll over an <ol> of sub-actions, and a sub-action
+        # carries its own properly-bolded degrees (ID_307's Tornado, ID_397's
+        # disaster types). Those belong to the list item, not the routine —
+        # reading them as the routine's own text fired the guard on two files
+        # that have nothing wrong with them. Modelling them is
+        # PFSRD2-Parser-8o3p. Both list tags are exercised: ID_307 uses <ol>,
+        # ID_397 and ID_67 use <ul>. Each half of the skip set was
+        # independently droppable while the suite stayed green.
+        hazard = self._extract(
+            "<b>Routine</b> (4 actions) Roll a d4."
+            f"<{tag}><li><b>Tornado</b> A funnel strikes a PC."
+            "<br/><b>Critical Success</b> The PC escapes."
+            f"<br/><b>Failure</b> The PC is hurled.</li></{tag}>"
+        )
+        assert "routine_results" not in hazard
+
+    def test_lowercase_prose_about_failure_does_not_fire(self):
+        # Routines discuss outcomes in running prose constantly ("on a failure
+        # the creature is pulled"). The guard is case-sensitive precisely so
+        # that prose does not have to be exempted case by case.
+        hazard = self._extract(
+            "<b>Routine</b> (1 action) Attempt a DC 30 save; on a failure the "
+            "creature is pulled, and a critical success avoids it entirely."
+            "<br/><b>Failure</b> The creature is pulled 10 feet."
+        )
+        assert hazard["routine_results"]["failure"] == "The creature is pulled 10 feet."
+
+    def test_a_degree_label_inside_a_longer_word_does_not_fire(self):
+        # \b at the end of the label: "Successes" is not "Success".
+        hazard = self._extract(
+            "<b>Routine</b> (1 action) Successes accumulate over rounds."
+            "<br/><b>Success</b> The creature is unaffected."
+        )
+        assert hazard["routine_results"]["success"] == "The creature is unaffected."
+
+
+class TestDegreeRunTerminators:
+    """A degree run ends at more than a <br/>, and each terminator earns a test.
+
+    A degree's text runs until any bold, any node that is not inline, or the
+    end of the siblings — whichever comes first. Only the <br/> separator was
+    pinned when the bound was introduced, and the unpinned terminators were
+    where the data was still wrong.
+    """
+
+    def _extract(self, html):
+        from bs4 import BeautifulSoup
+
+        from pfsrd2.hazard import _extract_routine_results
+
+        hazard = {"name": "T"}
+        bs = BeautifulSoup(html, "html.parser")
+        _extract_routine_results(hazard, bs)
+        return hazard, bs
+
+    @pytest.mark.parametrize("tag", ["ul", "ol"])
+    def test_a_list_after_the_last_degree_stays_with_the_routine(self, tag):
+        # perilous_flash_flood (ID_46) follows its degrees with a <ul> of five
+        # flood variants and no separator, so a run that stopped only at <br/>
+        # published the whole list as the critical-failure outcome of a save.
+        # They are branching options of the routine, not one save's outcome.
+        hazard, bs = self._extract(
+            "<b>Routine</b> (1 action) save."
+            "<br/><b>Critical Failure</b> The creature takes double damage."
+            f"<{tag}><li><b>Flash Flood</b> Water rushes through the area.</li></{tag}>"
+        )
+        assert hazard["routine_results"]["critical_failure"] == (
+            "The creature takes double damage."
+        )
+        assert "Water rushes through the area." in str(bs)
+
+    def test_indentation_between_degrees_does_not_end_the_run(self):
+        # The source pretty-prints. Without the whitespace skip the run ends at
+        # the indent after the separator and every degree past the first is
+        # left behind.
+        hazard, _bs = self._extract(
+            "<b>Routine</b> (1 action) save."
+            "<br/>\n    <b>Success</b> Half damage."
+            "<br/>\n    <b>Failure</b> Full damage."
+        )
+        assert hazard["routine_results"]["success"] == "Half damage."
+        assert hazard["routine_results"]["failure"] == "Full damage."
+
+    def test_a_degree_stranded_by_an_early_terminator_fails_the_parse(self):
+        # The mirror guard used to stop its scan at ANY bold, which made it
+        # vacuous in the one case it exists for: a degree the loop never
+        # consumed is itself a bolded degree, so the scan halted on it and the
+        # label never reached the leftover text. Here the <ul> ends the run
+        # early and Failure is stranded.
+        with pytest.raises(AssertionError, match="without bolding it"):
+            self._extract(
+                "<b>Routine</b> (1 action) save."
+                "<br/><b>Success</b> Half damage."
+                "<ul><li>A sub-action.</li></ul>"
+                "<br/><b>Failure</b> Full damage."
+            )
+
+    def test_a_degree_with_no_text_fails_the_parse(self):
+        with pytest.raises(AssertionError, match="has no text"):
+            self._extract(
+                "<b>Routine</b> (1 action) save."
+                "<br/><b>Success</b>"
+                "<br/><b>Failure</b> Full damage."
+            )
+
+    def test_a_degree_published_twice_fails_the_parse(self):
+        # Assignment would silently keep the second value and the first outcome
+        # would exist nowhere.
+        with pytest.raises(AssertionError, match="publishes 'Failure' twice"):
+            self._extract(
+                "<b>Routine</b> (1 action) save."
+                "<br/><b>Failure</b> FIRST outcome."
+                "<br/><b>Failure</b> SECOND outcome."
+            )
+
+    def test_each_degree_takes_its_separator_with_it(self):
+        # The <br/> that OPENS the first degree stays behind and delimits the
+        # routine's value; the rest go with the degrees they separated. Leaving
+        # one behind per degree stacked up to six blank lines in front of the
+        # routine's trailing prose in five shipped files.
+        _hazard, bs = self._extract(
+            "<b>Routine</b> (1 action) save."
+            "<br/><b>Success</b> Half damage."
+            "<br/><b>Failure</b> Full damage."
+            "<br/>Each successful check reduces the haunt's movement."
+        )
+        assert str(bs).count("<br/>") == 1
+        assert "Each successful check" in str(bs)
+
+    def test_a_linked_header_right_after_the_routine_value_is_not_stepped_over(self):
+        # _is_label_bold has FOUR call sites (the outer skip, the degree-loop
+        # guard, the run bound, and the mirror guard). The linked-header test
+        # pins the run bound; this pins the outer skip over the routine's own
+        # value, which is the site whose failure the docstring actually
+        # describes — step over a linked <a><b> header there and the
+        # FOLLOWING ability's degrees are absorbed as the routine's own.
+        #
+        # No hazard puts a linked header directly after a Routine value today,
+        # so this branch is defensive and has no corpus witness.
+        hazard, _bs = self._extract(
+            "<b>Routine</b> (1 action) Each creature must attempt a save. "
+            '<a game-obj="MonsterAbilities" aonid="9"><b>Constrict</b></a> '
+            "<b>Critical Success</b> ABILITY cs."
+            "<br/><b>Failure</b> ABILITY f."
+        )
+        assert "routine_results" not in hazard
+
+    def test_a_block_tag_the_allowlist_does_not_know_ends_the_degree(self):
+        # The terminator test is an allowlist of what may CONTINUE a degree,
+        # not a denylist of what ends one. A denylist fails open: <table> is in
+        # the markdown validset, so a table after the last degree would have
+        # been published as a save outcome and passed every check silently —
+        # the ID_46 bug with no tripwire. No hazard publishes one today.
+        hazard, bs = self._extract(
+            "<b>Routine</b> (1 action) save."
+            "<br/><b>Critical Failure</b> The creature takes double damage."
+            "<table><tr><td>1d4</td><td>Effect</td></tr></table>"
+        )
+        assert hazard["routine_results"]["critical_failure"] == (
+            "The creature takes double damage."
+        )
+        assert "<table>" in str(bs)
+
+    def test_inline_markup_does_not_end_the_degree(self):
+        # The other half of the allowlist: <a> and <i> continue a degree, and
+        # three shipped degrees carry an <i>. The <i> survives as a tag here —
+        # the markdown pass runs later in the pipeline — while the <a> is
+        # flattened to its text and harvested into links.
+        hazard, _bs = self._extract(
+            "<b>Routine</b> (1 action) save."
+            '<br/><b>Failure</b> The creature is <a game-obj="Conditions" aonid="93">'
+            "stunned</a> 1 and drops its <i>rapier</i>."
+        )
+        assert hazard["routine_results"]["failure"] == (
+            "The creature is stunned 1 and drops its <i>rapier</i>."
+        )
+        assert "stunned" in [link["name"] for link in hazard["links"]]
+
+    def test_a_punctuation_only_degree_fails_the_parse(self):
+        # Simplifying the value trim to strip() meant a degree of ";" survived
+        # as text and published as `failure: ";"`. The assert trims the
+        # punctuation even though the stored value does not.
+        with pytest.raises(AssertionError, match="has no text"):
+            self._extract(
+                "<b>Routine</b> (1 action) save."
+                "<br/><b>Failure</b> ;"
+                "<br/><b>Critical Failure</b> Full damage."
+            )

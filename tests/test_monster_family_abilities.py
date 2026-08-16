@@ -12,6 +12,7 @@ families and templates now do the same.
 
 import json
 
+import pytest
 from bs4 import BeautifulSoup
 
 from universal.ability import (
@@ -136,19 +137,17 @@ class TestShapesWhereTheWiderSetCostsSomething:
     here the day they are fixed rather than silently changing shape.
     """
 
-    def test_a_repeated_degree_silently_overwrites(self):
-        # PFSRD2-Parser-xzij. Two "Failure" blocks used to be two visible
-        # entries; folding them onto one parent means the second clobbers the
-        # first and FIRST outcome exists nowhere. The guard for this fires on
-        # 13 files with real pre-existing loss, so it lands with those fixes.
+    def test_a_repeated_degree_fails_instead_of_overwriting(self):
+        # Two "Failure" blocks on one ability meant the second clobbered the
+        # first and FIRST outcome existed nowhere. That is how
+        # confounding_betrayal shipped without Unmask's first Critical Success.
         html = (
             "<b>Twin Gaze</b> Two saves."
             "<br/><b>Failure</b> FIRST outcome."
             "<br/><b>Failure</b> SECOND outcome."
         )
-        ability = _abilities(html)[0]
-        assert ability["failure"] == "SECOND outcome."
-        assert "FIRST outcome" not in json.dumps(ability)
+        with pytest.raises(AssertionError, match="publishes 'Failure' twice"):
+            _abilities(html)
 
     def test_a_continuation_after_a_degree_is_currently_dropped(self):
         # PFSRD2-Parser-4bcm. The paragraph belongs to Big Attack and lives
@@ -172,3 +171,32 @@ class TestShapesWhereTheWiderSetCostsSomething:
         ability = _abilities(html)[0]
         assert ability["failure"] == "Dazzled."
         assert "success" not in ability
+
+
+class TestSetOnceCoversItsOwnCallSites:
+    """_set_once guards three call sites; only the generic one was tested.
+
+    The docstring on _set_once names the Saving Throw path specifically, and
+    both Saving Throw and Damage reach it through their own branches in
+    _apply_addon rather than through the generic `else`. Reverting either to a
+    bare assignment left the whole suite green, so the guard's own docstring
+    was an untested claim.
+    """
+
+    def test_a_repeated_saving_throw_fails_instead_of_overwriting(self):
+        html = (
+            "<b>Withering Gaze</b> The creature stares."
+            "<br/><b>Saving Throw</b> DC 20 Will"
+            "<br/><b>Saving Throw</b> DC 30 Fortitude"
+        )
+        with pytest.raises(AssertionError, match="publishes 'Saving Throw' twice"):
+            _abilities(html)
+
+    def test_a_repeated_damage_fails_instead_of_overwriting(self):
+        html = (
+            "<b>Rending Bite</b> The creature bites."
+            "<br/><b>Damage</b> 1d6 piercing"
+            "<br/><b>Damage</b> 2d6 fire"
+        )
+        with pytest.raises(AssertionError, match="publishes 'Damage' twice"):
+            _abilities(html)

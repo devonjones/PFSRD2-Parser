@@ -24,7 +24,7 @@ import os
 import re
 import sys
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 
 from pfsrd2.action import extract_action_type
 from pfsrd2.license import license_consolidation_pass, license_pass
@@ -37,6 +37,7 @@ from universal.files import char_replace, disambiguated_filename, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.monster_ability import monster_ability_db_pass
 from universal.universal import (
+    RESULT_LABELS,
     aon_pass,
     build_object,
     drop_marker_sections,
@@ -60,6 +61,7 @@ from universal.utils import (
     content_filter,
     extract_pfs_availability,
     extract_pfs_note,
+    flatten_field_links,
     flatten_fields,
     get_text,
     handle_trait_value,
@@ -305,6 +307,7 @@ def hazard_extract_pass(struct):
     # Fields first: the ability grab takes everything from the first non-field
     # bold onward, so a trailing Reset would be swallowed into the last ability.
     _extract_component_durability(hazard, bs)
+    _extract_routine_results(hazard, bs)
     _assert_no_duplicate_labels(hazard, bs)
     extract_bold_fields(hazard, bs, FIELD_LABELS, decompose=True)
     _extract_abilities(hazard, bs)
@@ -334,6 +337,170 @@ def _extract_sources(hazard, bs):
     source = extract_source_from_bs(bs)
     assert source, f"No source found for hazard {hazard.get('name')!r}"
     hazard["sources"] = [source]
+
+
+# What may continue a degree's text. Everything else ends it. An allowlist
+# because the denylist failed open: `table` is in the markdown validset, so a
+# table after the last degree would have been published as a save outcome and
+# passed every check silently — the ID_46 bug with no tripwire.
+_INLINE_TAGS = {"a", "i", "em", "span", "strong", "u", "sup", "sub"}
+
+
+def _continues_a_degree(node):
+    if isinstance(node, NavigableString):
+        return True
+    return node.name in _INLINE_TAGS
+
+
+def _is_label_bold(node):
+    """A bold that ends a value run, including a linked ability header.
+
+    Hazards write ability names both bare and wrapped:
+    <b>Name</b> and <a href="MonsterAbilities..."><b>Name</b></a>. Stopping
+    only on a direct <b> steps straight over the linked form, so a following
+    ability's degrees would be absorbed into the routine with nothing firing.
+    _starts_next_entry in this module documents the same two shapes.
+    """
+    name = getattr(node, "name", None)
+    if name == "b":
+        return True
+    return name == "a" and node.find("b") is not None
+
+
+def _extract_routine_results(hazard, bs):
+    """A routine's save publishes its degrees of success straight after it.
+
+        <b>Routine</b> (1 action) ... must attempt a DC 20 Will save.
+        <b>Critical Success</b> ... <b>Success</b> ... <b>Failure</b> ...
+
+    extract_bold_fields ends a value at the next bold, so those blocks are
+    orphaned; removing the Routine field then leaves them adjacent to the
+    preceding ability, which swallows them and overwrites its own degrees.
+    That is 10 hazards, and confounding_betrayal shipped without Unmask's
+    first Critical Success at all.
+
+    They are pulled out as structure rather than flattened into the routine
+    string: a degree of success is a modelled mechanic everywhere else in this
+    schema, and burying it in prose would lose that (and the <b> that makes a
+    parse failure visible). A degree block runs from its bold label to the next
+    <br/> separator. Its text runs until any bold, any node that is not inline,
+    or the end of the siblings — whichever comes first; the outer loop then
+    decides whether that bold was another degree or the end of the degrees. So
+    prose and lists published after the last degree stay in the routine block
+    where the source put them, instead of being published as a save outcome.
+    """
+    for bold in list(bs.find_all("b")):
+        if get_text(bold).strip() != "Routine":
+            continue
+        node = bold.next_sibling
+        # Step over the routine's own value to reach the first degree.
+        while node is not None and not _is_label_bold(node):
+            node = node.next_sibling
+        results = {}
+        # _is_label_bold first: now that a degree run ends at its separator, the
+        # node after the last degree can be trailing prose rather than a bold.
+        while node is not None and _is_label_bold(node) and get_text(node).strip() in RESULT_LABELS:
+            label = get_text(node).strip()
+            # A degree block is one <br/>-delimited run. Stopping only at the
+            # next bold leaves the LAST degree unbounded — there is no bold
+            # after it — so prose belonging to the routine as a whole was
+            # absorbed into critical_failure and published as the outcome of a
+            # save. Stop at the separator instead.
+            value_nodes = []
+            following = node.next_sibling
+            while (
+                following is not None
+                and not _is_label_bold(following)
+                and _continues_a_degree(following)
+            ):
+                value_nodes.append(following)
+                following = following.next_sibling
+            # A <br/> is not the only thing that ends a degree: perilous_flash_flood
+            # (ID_46) follows its degrees with a <ul> of five flood VARIANTS, which
+            # are branching options of the routine, not the outcome of one save.
+            # Absorbing the list into critical_failure published all five that way.
+            # (ID_397 and ID_307 also carry lists, but theirs hold the degrees
+            # themselves and never reach this loop — see PFSRD2-Parser-8o3p. They
+            # are not a counter-case either way.)
+            # Step over a <br/> separator; stop dead at anything non-inline.
+            separator = following if getattr(following, "name", None) == "br" else None
+            if separator is not None:
+                following = separator.next_sibling
+                # The source pretty-prints, so the next degree's bold is often
+                # preceded by indentation. Whitespace is not published content.
+                while (
+                    following is not None
+                    and isinstance(following, NavigableString)
+                    and not following.strip()
+                ):
+                    following = following.next_sibling
+            # flatten_field_links, not plain_text: a degree names the condition
+            # it inflicts, and dropping the <a> would lose the link from the
+            # text AND from hazard["links"].
+            html = "".join(str(n) for n in value_nodes)
+            text = flatten_field_links(html, hazard.setdefault("links", []))
+            text = text.strip()
+            # strip(" ;,") in the assert, not in the value: a degree whose whole
+            # text is punctuation is "published but not understood" just as much
+            # as an empty one, and plain strip() would let it through as ";".
+            assert text.strip(" ;,"), (
+                f"Routine {label!r} on {hazard.get('name')!r} has no text — the degree "
+                "was published but not understood"
+            )
+            key = RESULT_LABELS[label]
+            assert (
+                key not in results
+            ), f"Routine on {hazard.get('name')!r} publishes {label!r} twice"
+            results[key] = text
+            # Extract the separator with its degree. The <br/> that OPENS the
+            # first degree stays behind in the routine's own value and does the
+            # delimiting; leaving one behind per degree stacked up to six blank
+            # lines in front of the routine's trailing prose.
+            if separator is not None:
+                separator.extract()
+            for n in value_nodes:
+                n.extract()
+            node.decompose()
+            node = following
+        # Mirror guard: a source that bolds SOME degrees and writes the rest as
+        # bare prose would half-populate routine_results and leave the others
+        # buried in the routine string, with none of the asserts above able to
+        # see it. Scan what is left of the routine's own value for a degree
+        # label that never got bolded.
+        tail = []
+        probe = bold.next_sibling
+        # Stop only on a NON-degree bold. The bare-prose case above (ID_297) was
+        # caught either way; what stopping on ANY bold missed was a degree that
+        # is properly BOLDED but stranded because the run ended early — the walk
+        # halted on it and its label never reached `leftover`. No corpus file is
+        # in that shape, so this is a tripwire, not a fix for shipped data.
+        while probe is not None and not (
+            _is_label_bold(probe) and get_text(probe).strip() not in RESULT_LABELS
+        ):
+            # A routine can hold an <ol>/<ul> of sub-actions (a d4 table), and a
+            # sub-action carries its own properly-bolded degrees. Those belong to
+            # the list item, not to the routine, so do not read them as bare text.
+            if getattr(probe, "name", None) not in ("ol", "ul"):
+                tail.append(str(probe))
+            probe = probe.next_sibling
+        leftover = plain_text("".join(tail))
+        # \b on both sides, so "Successes" does not match. It deliberately DOES
+        # match after an apostrophe; a quoted 'Success' in routine prose would
+        # fire, which has no corpus instance and is the safe direction to err.
+        for label in RESULT_LABELS:
+            assert not re.search(rf"\b{re.escape(label)}\b", leftover), (
+                f"Routine on {hazard.get('name')!r} publishes {label!r} without bolding it, "
+                f"so it stays buried in the routine text while other degrees became "
+                f"structure — bold it in the source"
+            )
+        if results:
+            # type/subtype like every other modelled object in this schema, so a
+            # consumer discriminates on the pair rather than on the field name.
+            hazard["routine_results"] = {
+                "type": "stat_block_section",
+                "subtype": "routine_results",
+                **results,
+            }
 
 
 def _assert_no_duplicate_labels(hazard, bs):
