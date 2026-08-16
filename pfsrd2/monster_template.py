@@ -35,7 +35,7 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.utils import get_text, remove_empty_fields, strip_block_tags
+from universal.utils import get_text, plain_text, remove_empty_fields, strip_block_tags
 
 # Section intros that unconditionally grant their abilities (vs choose-from
 # pools, which the engine must never auto-apply).
@@ -263,11 +263,38 @@ def _try_extract_changes(source_section, mt):
 
 
 def _extract_abilities_from_bs(bs):
-    """Extract abilities from a BS object using the unified parser."""
+    """Extract abilities from a BS object using the unified parser.
+
+    collect_ability_nodes EXTRACTS its nodes from the tree, and the caller
+    writes str(bs) back over the section text, so any node the ability parser
+    does not claim is gone from the output with nothing said. Today the only
+    unclaimed nodes across all 55 templates are the <br/> separators between
+    abilities, which is why nothing has been lost yet.
+
+    Rather than putting the separators back — they would render as stray hard
+    breaks — assert that nothing with published text was dropped. That turns
+    the one genuinely silent drop in this file into a loud failure without
+    changing any output.
+
+    monster_family.py deliberately does NOT need this: it parses a COPY and
+    never reassigns section["text"], so its unclaimed nodes stay in the
+    section. See PFSRD2-Parser-4bcm, and PFSRD2-Parser-9oge for the separate
+    question of attaching continuation prose to its ability.
+    """
     nodes = collect_ability_nodes(bs)
     if not nodes:
         return None
-    return parse_abilities_from_nodes(nodes, addon_labels=ADDON_LABELS_WITH_RESULTS)
+    consumed = set()
+    abilities = parse_abilities_from_nodes(
+        nodes, addon_labels=ADDON_LABELS_WITH_RESULTS, consumed=consumed
+    )
+    leftover = plain_text("".join(str(n) for n in nodes if id(n) not in consumed))
+    assert not leftover.strip(), (
+        f"The ability parser did not claim {leftover.strip()!r}, and this text is "
+        "about to be dropped: collect_ability_nodes already removed it from the "
+        "tree and the section text is overwritten from what remains"
+    )
+    return abilities
 
 
 def _extract_adjustments_pass(struct):

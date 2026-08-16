@@ -50,3 +50,49 @@ class TestContinuationLines:
         html = "<b>Slam</b> Hits hard.<br/>" "<b>Source</b> <i>Bestiary pg. 5</i>"
         abilities = parse_abilities_from_nodes(_nodes(html))
         assert "Bestiary" not in abilities[0]["text"]
+
+
+class TestTemplateUnclaimedNodesFailLoudly:
+    """A template's unclaimed ability nodes are dropped, so they must assert.
+
+    collect_ability_nodes EXTRACTS its nodes from the tree, and
+    monster_template writes str(bs) back over the section text — so anything
+    the ability parser does not claim is gone from the output with nothing
+    said. monster_family is not exposed to this: it parses a COPY and never
+    reassigns section["text"].
+
+    PFSRD2-Parser-4bcm proposed putting the unclaimed nodes back. Measured
+    across all 55 templates, the only unclaimed nodes are the <br/> separators
+    between abilities, so restoring them would render as stray hard breaks and
+    fix nothing. The guard is the useful half.
+    """
+
+    def _extract(self, html):
+        from bs4 import BeautifulSoup
+
+        from pfsrd2.monster_template import _extract_abilities_from_bs
+
+        return _extract_abilities_from_bs(BeautifulSoup(html, "html.parser"))
+
+    def test_separators_alone_are_not_a_failure(self):
+        # The shape every real template is in today: <br/> between abilities,
+        # nothing else unclaimed. This must stay quiet or the guard is useless.
+        abilities = self._extract(
+            "<b>Grab</b> The creature grabs.<br/><br/>"
+            "<b>Constrict</b> The creature squeezes.<br/>"
+        )
+        assert [a["name"] for a in abilities] == ["Grab", "Constrict"]
+
+    def test_unclaimed_prose_fails_instead_of_vanishing(self):
+        # The shape 4bcm was filed for: _split_nodes blocks the continuation
+        # branch after a degree label, so this paragraph is claimed by nothing
+        # and would be dropped silently. No template is in this shape today —
+        # the guard is here so that stays true.
+        import pytest
+
+        with pytest.raises(AssertionError, match="about to be dropped"):
+            self._extract(
+                "<b>Big Attack</b> The dragon breathes.<br/>"
+                "<b>Success</b> Half damage.<br/>"
+                "This trailing paragraph belongs to Big Attack and lives nowhere else."
+            )
