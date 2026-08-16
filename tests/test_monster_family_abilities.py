@@ -163,14 +163,15 @@ class TestShapesWhereTheWiderSetCostsSomething:
         assert abilities[0]["success"] == "Half damage."
         assert "trailing paragraph" not in json.dumps(abilities)
 
-    def test_an_empty_degree_disappears(self):
-        # PFSRD2-Parser-mgz4. `_apply_addon` guards with `if value:`, so an
-        # empty published degree leaves no trace at all — before the wider set
-        # it was at least a visible (if wrong) entry.
+    def test_an_empty_degree_fails_instead_of_disappearing(self):
+        # Was PFSRD2-Parser-mgz4, and this test used to pin the bug rather than
+        # the fix: `_apply_addon` guarded with `if value:`, so an empty
+        # published degree left no trace at all — not an empty field, not an
+        # error. Before the wider label set it was at least a visible (wrong)
+        # ability entry; after it, nothing.
         html = "<b>Gaze</b> Save.<br/><b>Success</b><br/><b>Failure</b> Dazzled."
-        ability = _abilities(html)[0]
-        assert ability["failure"] == "Dazzled."
-        assert "success" not in ability
+        with pytest.raises(AssertionError, match="publishes 'Success' with no value"):
+            _abilities(html)
 
 
 class TestSetOnceCoversItsOwnCallSites:

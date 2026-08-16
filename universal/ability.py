@@ -547,8 +547,16 @@ def _apply_addon(ability, addon_name, addon_nodes):
             key = "requirement"
         elif key == "prerequisites":
             key = "prerequisite"
-        if value:
-            _set_once(ability, key, value, addon_name)
+        # An empty published label is an HTML bug in the source, and dropping
+        # it leaves no trace at all — not an empty field, not an error. Before
+        # the degree labels joined this set an empty "Success" was at least a
+        # visible (wrong) ability entry; silently it is nothing.
+        assert value, (
+            f"{ability.get('name')!r} publishes {addon_name!r} with no value. An "
+            "empty label is a source bug — fix the HTML rather than letting the "
+            "field vanish"
+        )
+        _set_once(ability, key, value, addon_name)
 
 
 def _set_once(ability, key, value, addon_name):
