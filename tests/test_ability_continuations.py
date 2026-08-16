@@ -152,7 +152,7 @@ class TestMonsterFamilyKeepsItsSectionText:
         # The shape the ability parser leaves unclaimed: a continuation after
         # a degree label. In a template this is dropped and now asserts; here
         # it must simply still be there afterwards.
-        prose = "This trailing paragraph belongs to Big Attack and lives nowhere else."
+        prose = "This trailing paragraph belongs to the dragon\u2019s Big Attack alone."
         struct = {
             "sections": [
                 {
@@ -174,7 +174,11 @@ class TestMonsterFamilyKeepsItsSectionText:
         # Big Attack and the invariant is never exercised. PFSRD2-Parser-9oge
         # is the open ticket to change exactly that glue rule, so this guard
         # is what makes the test fail loudly instead of silently going inert.
-        assert prose not in json.dumps(section["abilities"]), (
+        # ensure_ascii=False is load-bearing: json.dumps escapes non-ASCII by
+        # default, so a single curly apostrophe in `prose` would make this
+        # assertion vacuously true — and 44 of 55 template files carry one.
+        # The guard against this test going inert must not itself go inert.
+        assert prose not in json.dumps(section["abilities"], ensure_ascii=False), (
             "the prose was claimed by an ability, so this test is no longer "
             "exercising the unclaimed-node path it exists for"
         )
@@ -215,8 +219,7 @@ class TestTemplateCallerWriteBackOrdering:
     """Why `if abilities:` is a safe gate — pinned, not just asserted in prose.
 
     The guard runs only when there are abilities, because that is when the
-    caller overwrites the section text. The <ul> branch DOES also write, at
-    monster_template.py:216, but it does so BEFORE collect_ability_nodes
+    caller overwrites the section text. The <ul> branch DOES also write, but it does so BEFORE collect_ability_nodes
     mutates the tree, so it snapshots the pre-extraction string.
 
     Ordering is the whole safety argument, and nothing held it in place:
@@ -230,9 +233,9 @@ class TestTemplateCallerWriteBackOrdering:
 
         # Related Groups yields no abilities, and is live in 86 family files.
         # The <ul> is load-bearing, not decoration: the write this class is
-        # named for is the one at :216, inside the <ul> branch. Without a <ul>
+        # named for is the one inside the <ul> branch. Without a <ul>
         # that branch never runs and the test pins only the gate — moving the
-        # :216 write below the extraction call survived the whole suite, and
+        # that write below the extraction call survived the whole suite, and
         # with a <ul> present it empties the section outright.
         html = (
             "<ul><li>Increase the creature's level by 1.</li></ul>"
@@ -243,3 +246,25 @@ class TestTemplateCallerWriteBackOrdering:
         _try_extract_changes(source_section, {})
         assert "Many immortals dwell upon the planes." in source_section["text"]
         assert "Related Groups" in source_section["text"]
+
+    def test_the_ul_changes_survive_extraction(self):
+        # A second consequence of the same ordering, and a worse one than lost
+        # text: collect_ability_nodes extracts from the first non-table <b>
+        # onward, so a <b> standing BEFORE the <ul> takes the whole <ul> with
+        # it. Run the extraction first and bs.find("ul") returns None, every
+        # <li> change is silently lost, and `found` still comes back True.
+        from pfsrd2.monster_template import _try_extract_changes
+
+        html = (
+            "<b>All host creatures gain the following abilities.</b>"
+            "<ul><li>Increase the creature's level by 1.</li></ul>"
+            "<b>Grab</b> The creature grabs."
+        )
+        mt = {}
+        source_section = {"type": "section", "name": "S", "text": html, "sections": []}
+        _try_extract_changes(source_section, mt)
+        assert mt.get("changes"), "the <ul> changes were lost"
+        assert any(
+            "Increase the creature's level" in json.dumps(c, ensure_ascii=False)
+            for c in mt["changes"]
+        )

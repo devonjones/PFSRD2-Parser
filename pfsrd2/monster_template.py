@@ -319,8 +319,8 @@ def _extract_abilities_from_bs(bs):
 
     The assert runs only when there ARE abilities, because that is exactly when
     the caller overwrites the section text with what survived extraction. The
-    <ul> branch also writes, but at :216 — BEFORE collect_ability_nodes mutates
-    the tree — so it snapshots the pre-extraction string. Ordering, not the
+    <ul> branch also writes, but it does so BEFORE collect_ability_nodes
+    mutates the tree, so it snapshots the pre-extraction string. Ordering, not the
     absence of a write, is what makes the gate safe, and
     TestTemplateCallerWriteBackOrdering pins it. Ungated, this would fail a
     build over content that still ships.
