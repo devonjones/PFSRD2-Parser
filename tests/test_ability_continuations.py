@@ -176,8 +176,10 @@ class TestMonsterFamilyKeepsItsSectionText:
         # is what makes the test fail loudly instead of silently going inert.
         # ensure_ascii=False is load-bearing: json.dumps escapes non-ASCII by
         # default, so a single curly apostrophe in `prose` would make this
-        # assertion vacuously true — and 44 of 55 template files carry one.
-        # The guard against this test going inert must not itself go inert.
+        # assertion vacuously true. The fixture carries one deliberately, so
+        # the escaping path is the one under test rather than an absent
+        # hazard. The guard against this test going inert must not itself go
+        # inert.
         assert prose not in json.dumps(section["abilities"], ensure_ascii=False), (
             "the prose was claimed by an ability, so this test is no longer "
             "exercising the unclaimed-node path it exists for"
@@ -197,12 +199,11 @@ class TestTemplateGuardPermissiveDirection:
     the permissive direction: turning the whitespace assert into
     `assert False` survived the entire suite.
 
-    It survived for a reason worth stating rather than hiding. That branch
-    keeps ZERO templates green today — all 24 unclaimed nodes in the corpus
-    are <br/>, and the newlines that do reach the node list arrive with
-    `current` truthy and get consumed. The whitespace allowance is a hedge
-    against a shape the corpus does not currently contain, which is exactly
-    the kind of branch that gets "cleaned up" by a future edit. Hence a test.
+    It survived because that branch has no live instance — see the census in
+    _assert_only_separators_were_unclaimed, which is the one place that
+    number is kept. The whitespace allowance is a hedge against a shape the
+    corpus does not currently contain, which is exactly the kind of branch
+    that gets "cleaned up" by a future edit. Hence a test.
     """
 
     def _extract(self, html):
@@ -215,9 +216,9 @@ class TestTemplateGuardPermissiveDirection:
         # here, so test_separators_alone_are_not_a_failure does not stand in
         # for this — the unclaimed node is the bare newline string.
         #
-        # 27 of 55 template files contain this byte shape, but none of them
-        # reach the guard with the newline unclaimed. This fixture constructs
-        # the case rather than sampling it.
+        # This fixture constructs the case rather than sampling it: no
+        # template reaches the guard with a newline unclaimed. See the census
+        # in _assert_only_separators_were_unclaimed.
         abilities = self._extract(
             "<b>Grab</b> The creature grabs.<br/>\n<b>Constrict</b> It squeezes.<br/>\n"
         )
