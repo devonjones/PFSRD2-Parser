@@ -37,6 +37,7 @@ from universal.files import char_replace, disambiguated_filename, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.monster_ability import monster_ability_db_pass
 from universal.universal import (
+    RESULT_LABELS,
     aon_pass,
     build_object,
     drop_marker_sections,

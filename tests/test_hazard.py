@@ -1009,3 +1009,59 @@ class TestAttackLineGuards:
         text = self.SOURCE + "<b>Melee</b> <i></i> +20, <b>Damage</b> 2d6 slashing"
         with pytest.raises(AssertionError, match="parsed no weapon"):
             _parsed(text=text)
+
+
+class TestRoutineResults:
+    """A routine's save publishes its degrees of success after it.
+
+    extract_bold_fields ends a value at the next bold, so those blocks were
+    orphaned; removing the Routine field then left them adjacent to the
+    preceding ability, which swallowed them and overwrote its own degrees.
+    confounding_betrayal shipped without Unmask's first Critical Success.
+
+    Driven through hazard_extract_pass rather than calling the helper
+    directly: the first version of this fix used RESULT_LABELS without
+    importing it, every unit test passed, and only a corpus run caught it.
+    """
+
+    ROUTINE_BLOCK = (
+        TRAITS + "<br/>"
+        '<b>Source</b> <a game-obj="Sources" aonid="1"><i>GM Core pg. 1</i></a><br/>'
+        "<b>Complexity</b> Complex<br/>"
+        "<b>Stealth</b> DC 30<br/>"
+        "<b>Description</b> A haunt.<hr/>"
+        '<b>Unmask</b> <span class="action" title="Reaction">[reaction]</span> '
+        "<b>Trigger</b> A creature enters. "
+        "<b>Critical Success</b> ABILITY crit success. "
+        "<b>Failure</b> ABILITY failure.<br/>"
+        "<b>Routine</b> (1 action) Each creature must attempt a DC 20 Will save.<br/>"
+        "<b>Critical Success</b> ROUTINE crit success.<br/>"
+        "<b>Failure</b> ROUTINE failure.<hr/>"
+        "<b>Reset</b> The haunt resets."
+    )
+
+    def _hazard(self):
+        struct = restructure_hazard_pass(_details(text=self.ROUTINE_BLOCK))
+        hazard_extract_pass(struct)
+        return struct["sections"][0]
+
+    def test_the_routine_keeps_its_own_degrees(self):
+        routine = self._hazard()["routine"]
+        assert "ROUTINE crit success." in routine
+        assert "ROUTINE failure." in routine
+
+    def test_the_ability_keeps_its_own_degrees(self):
+        # Without the fix the routine's degrees overwrite these two.
+        ability = [a for a in self._hazard()["abilities"] if a["name"] == "Unmask"][0]
+        assert ability["critical_success"] == "ABILITY crit success."
+        assert ability["failure"] == "ABILITY failure."
+
+    def test_nothing_published_is_dropped(self):
+        blob = json.dumps(self._hazard())
+        for sentence in (
+            "ABILITY crit success.",
+            "ABILITY failure.",
+            "ROUTINE crit success.",
+            "ROUTINE failure.",
+        ):
+            assert sentence in blob, f"{sentence!r} vanished"
