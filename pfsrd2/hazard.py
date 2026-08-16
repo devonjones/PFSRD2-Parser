@@ -339,6 +339,19 @@ def _extract_sources(hazard, bs):
     hazard["sources"] = [source]
 
 
+# What may continue a degree's text. Everything else ends it. An allowlist
+# because the denylist failed open: `table` is in the markdown validset, so a
+# table after the last degree would have been published as a save outcome and
+# passed every check silently — the ID_46 bug with no tripwire.
+_INLINE_TAGS = {"a", "i", "em", "span", "strong", "u", "sup", "sub"}
+
+
+def _continues_a_degree(node):
+    if isinstance(node, NavigableString):
+        return True
+    return node.name in _INLINE_TAGS
+
+
 def _is_label_bold(node):
     """A bold that ends a value run, including a linked ability header.
 
@@ -370,10 +383,11 @@ def _extract_routine_results(hazard, bs):
     string: a degree of success is a modelled mechanic everywhere else in this
     schema, and burying it in prose would lose that (and the <b> that makes a
     parse failure visible). A degree block runs from its bold label to the next
-    <br/> separator, and stops dead at a sub-action list, a bold that is not a
-    degree, or the end of the run. So prose and lists published after the last
-    degree stay in the routine block where the source put them, instead of being
-    published as the outcome of a save.
+    <br/> separator. Its text runs until any bold, any node that is not inline,
+    or the end of the siblings — whichever comes first; the outer loop then
+    decides whether that bold was another degree or the end of the degrees. So
+    prose and lists published after the last degree stay in the routine block
+    where the source put them, instead of being published as a save outcome.
     """
     for bold in list(bs.find_all("b")):
         if get_text(bold).strip() != "Routine":
@@ -397,15 +411,18 @@ def _extract_routine_results(hazard, bs):
             while (
                 following is not None
                 and not _is_label_bold(following)
-                and getattr(following, "name", None) not in ("br", "ul", "ol")
+                and _continues_a_degree(following)
             ):
                 value_nodes.append(following)
                 following = following.next_sibling
             # A <br/> is not the only thing that ends a degree: perilous_flash_flood
-            # follows its degrees with a <ul> of five flood variants, and an
-            # identical <ul> BEFORE the degrees (ID_397, ID_307) stays with the
-            # routine. Absorbing it into critical_failure published the whole list
-            # as one save outcome. Step over a <br/> separator; stop dead at a list.
+            # (ID_46) follows its degrees with a <ul> of five flood VARIANTS, which
+            # are branching options of the routine, not the outcome of one save.
+            # Absorbing the list into critical_failure published all five that way.
+            # (ID_397 and ID_307 also carry lists, but theirs hold the degrees
+            # themselves and never reach this loop — see PFSRD2-Parser-8o3p. They
+            # are not a counter-case either way.)
+            # Step over a <br/> separator; stop dead at anything non-inline.
             separator = following if getattr(following, "name", None) == "br" else None
             if separator is not None:
                 following = separator.next_sibling
@@ -422,7 +439,7 @@ def _extract_routine_results(hazard, bs):
             # text AND from hazard["links"].
             html = "".join(str(n) for n in value_nodes)
             text = flatten_field_links(html, hazard.setdefault("links", []))
-            text = text.strip(" ;,")
+            text = text.strip()
             assert text, (
                 f"Routine {label!r} on {hazard.get('name')!r} has no text — the degree "
                 "was published but not understood"
@@ -449,10 +466,11 @@ def _extract_routine_results(hazard, bs):
         # label that never got bolded.
         tail = []
         probe = bold.next_sibling
-        # Stop only on a NON-degree bold. Stopping on any bold made this guard
-        # vacuous in the one case it exists for: a degree the loop failed to
-        # consume is itself a bolded degree, so the walk halted on it and its
-        # label never reached `leftover`.
+        # Stop only on a NON-degree bold. The bare-prose case above (ID_297) was
+        # caught either way; what stopping on ANY bold missed was a degree that
+        # is properly BOLDED but stranded because the run ended early — the walk
+        # halted on it and its label never reached `leftover`. No corpus file is
+        # in that shape, so this is a tripwire, not a fix for shipped data.
         while probe is not None and not (
             _is_label_bold(probe) and get_text(probe).strip() not in RESULT_LABELS
         ):
@@ -463,6 +481,9 @@ def _extract_routine_results(hazard, bs):
                 tail.append(str(probe))
             probe = probe.next_sibling
         leftover = plain_text("".join(tail))
+        # \b on both sides, so "Successes" does not match. It deliberately DOES
+        # match after an apostrophe; a quoted 'Success' in routine prose would
+        # fire, which has no corpus instance and is the safe direction to err.
         for label in RESULT_LABELS:
             assert not re.search(rf"\b{re.escape(label)}\b", leftover), (
                 f"Routine on {hazard.get('name')!r} publishes {label!r} without bolding it, "

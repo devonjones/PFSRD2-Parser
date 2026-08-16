@@ -171,3 +171,32 @@ class TestShapesWhereTheWiderSetCostsSomething:
         ability = _abilities(html)[0]
         assert ability["failure"] == "Dazzled."
         assert "success" not in ability
+
+
+class TestSetOnceCoversItsOwnCallSites:
+    """_set_once guards three call sites; only the generic one was tested.
+
+    The docstring on _set_once names the Saving Throw path specifically, and
+    both Saving Throw and Damage reach it through their own branches in
+    _apply_addon rather than through the generic `else`. Reverting either to a
+    bare assignment left the whole suite green, so the guard's own docstring
+    was an untested claim.
+    """
+
+    def test_a_repeated_saving_throw_fails_instead_of_overwriting(self):
+        html = (
+            "<b>Withering Gaze</b> The creature stares."
+            "<br/><b>Saving Throw</b> DC 20 Will"
+            "<br/><b>Saving Throw</b> DC 30 Fortitude"
+        )
+        with pytest.raises(AssertionError, match="publishes 'Saving Throw' twice"):
+            _abilities(html)
+
+    def test_a_repeated_damage_fails_instead_of_overwriting(self):
+        html = (
+            "<b>Rending Bite</b> The creature bites."
+            "<br/><b>Damage</b> 1d6 piercing"
+            "<br/><b>Damage</b> 2d6 fire"
+        )
+        with pytest.raises(AssertionError, match="publishes 'Damage' twice"):
+            _abilities(html)

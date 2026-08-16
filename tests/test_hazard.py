@@ -1211,18 +1211,21 @@ class TestUnboldedDegreeGuard:
                 "<br/><b>Failure</b> The creature is stupefied 1."
             )
 
-    def test_degrees_inside_a_sub_action_list_are_not_read_as_bare_text(self):
+    @pytest.mark.parametrize("tag", ["ol", "ul"])
+    def test_degrees_inside_a_sub_action_list_are_not_read_as_bare_text(self, tag):
         # A routine can roll over an <ol> of sub-actions, and a sub-action
         # carries its own properly-bolded degrees (ID_307's Tornado, ID_397's
         # disaster types). Those belong to the list item, not the routine —
         # reading them as the routine's own text fired the guard on two files
         # that have nothing wrong with them. Modelling them is
-        # PFSRD2-Parser-8o3p.
+        # PFSRD2-Parser-8o3p. Both list tags are exercised: ID_307 uses <ol>,
+        # ID_397 and ID_67 use <ul>. Each half of the skip set was
+        # independently droppable while the suite stayed green.
         hazard = self._extract(
             "<b>Routine</b> (4 actions) Roll a d4."
-            "<ol><li><b>Tornado</b> A funnel strikes a PC."
+            f"<{tag}><li><b>Tornado</b> A funnel strikes a PC."
             "<br/><b>Critical Success</b> The PC escapes."
-            "<br/><b>Failure</b> The PC is hurled.</li></ol>"
+            f"<br/><b>Failure</b> The PC is hurled.</li></{tag}>"
         )
         assert "routine_results" not in hazard
 
@@ -1249,10 +1252,10 @@ class TestUnboldedDegreeGuard:
 class TestDegreeRunTerminators:
     """A degree run ends at more than a <br/>, and each terminator earns a test.
 
-    The run is bounded by the first of: a <br/> separator, a sub-action list, a
-    bold that is not a degree, or the end of the siblings. Only the first was
-    pinned when the bound was introduced, and the unpinned ones were where the
-    data was still wrong.
+    A degree's text runs until any bold, any node that is not inline, or the
+    end of the siblings — whichever comes first. Only the <br/> separator was
+    pinned when the bound was introduced, and the unpinned terminators were
+    where the data was still wrong.
     """
 
     def _extract(self, html):
@@ -1265,16 +1268,16 @@ class TestDegreeRunTerminators:
         _extract_routine_results(hazard, bs)
         return hazard, bs
 
-    def test_a_list_after_the_last_degree_stays_with_the_routine(self):
+    @pytest.mark.parametrize("tag", ["ul", "ol"])
+    def test_a_list_after_the_last_degree_stays_with_the_routine(self, tag):
         # perilous_flash_flood (ID_46) follows its degrees with a <ul> of five
         # flood variants and no separator, so a run that stopped only at <br/>
         # published the whole list as the critical-failure outcome of a save.
-        # An identical <ul> BEFORE the degrees (ID_397, ID_307) stays with the
-        # routine, which is what fixes the placement question.
+        # They are branching options of the routine, not one save's outcome.
         hazard, bs = self._extract(
             "<b>Routine</b> (1 action) save."
             "<br/><b>Critical Failure</b> The creature takes double damage."
-            "<ul><li><b>Flash Flood</b> Water rushes through the area.</li></ul>"
+            f"<{tag}><li><b>Flash Flood</b> Water rushes through the area.</li></{tag}>"
         )
         assert hazard["routine_results"]["critical_failure"] == (
             "The creature takes double damage."
@@ -1338,3 +1341,51 @@ class TestDegreeRunTerminators:
         )
         assert str(bs).count("<br/>") == 1
         assert "Each successful check" in str(bs)
+
+    def test_a_linked_header_right_after_the_routine_value_is_not_stepped_over(self):
+        # _is_label_bold has TWO call sites. The linked-header test pins the
+        # inner one (the degree run's bound); this pins the outer skip over the
+        # routine's own value, which is the site whose failure the docstring
+        # actually describes — step over a linked <a><b> header there and the
+        # FOLLOWING ability's degrees are absorbed as the routine's own.
+        #
+        # No hazard puts a linked header directly after a Routine value today,
+        # so this branch is defensive and has no corpus witness.
+        hazard, _bs = self._extract(
+            "<b>Routine</b> (1 action) Each creature must attempt a save. "
+            '<a game-obj="MonsterAbilities" aonid="9"><b>Constrict</b></a> '
+            "<b>Critical Success</b> ABILITY cs."
+            "<br/><b>Failure</b> ABILITY f."
+        )
+        assert "routine_results" not in hazard
+
+    def test_a_block_tag_the_allowlist_does_not_know_ends_the_degree(self):
+        # The terminator test is an allowlist of what may CONTINUE a degree,
+        # not a denylist of what ends one. A denylist fails open: <table> is in
+        # the markdown validset, so a table after the last degree would have
+        # been published as a save outcome and passed every check silently —
+        # the ID_46 bug with no tripwire. No hazard publishes one today.
+        hazard, bs = self._extract(
+            "<b>Routine</b> (1 action) save."
+            "<br/><b>Critical Failure</b> The creature takes double damage."
+            "<table><tr><td>1d4</td><td>Effect</td></tr></table>"
+        )
+        assert hazard["routine_results"]["critical_failure"] == (
+            "The creature takes double damage."
+        )
+        assert "<table>" in str(bs)
+
+    def test_inline_markup_does_not_end_the_degree(self):
+        # The other half of the allowlist: <a> and <i> continue a degree, and
+        # three shipped degrees carry an <i>. The <i> survives as a tag here —
+        # the markdown pass runs later in the pipeline — while the <a> is
+        # flattened to its text and harvested into links.
+        hazard, _bs = self._extract(
+            "<b>Routine</b> (1 action) save."
+            '<br/><b>Failure</b> The creature is <a game-obj="Conditions" aonid="93">'
+            "stunned</a> 1 and drops its <i>rapier</i>."
+        )
+        assert hazard["routine_results"]["failure"] == (
+            "The creature is stunned 1 and drops its <i>rapier</i>."
+        )
+        assert "stunned" in [link["name"] for link in hazard["links"]]

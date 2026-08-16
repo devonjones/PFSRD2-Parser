@@ -72,14 +72,15 @@ Everything else is optional, and **absence is meaningful** — see below.
 | `reset` | 382 | string |
 | `ac` / `saves` | 284 | integer / array of `save` |
 | `immunities` | 266 | array of `protection` |
-| `routine` | 266 | string |
+| `routine` | 254 | string |
+| `routine_results` | 41 | object — degrees of success for the routine's save |
 | `hp` | 209 | integer |
 | `bt` | 174 | integer (break threshold) |
 | `hardness` | 155 | integer |
 | `attacks` | 124 | array of `attack` — *identical to creature's* |
 | `components` | 83 | array of `hazard_component` |
 | `weaknesses` | 61 | array of `protection` |
-| `text` | 32 | residual published prose |
+| `text` | 27 | residual published prose |
 | `hp_note` / `hardness_note` | 27 / 6 | what the number is qualified by |
 | `saving_throw` | 24 | `save_dc` |
 | `maximum_duration` | 19 | string |
@@ -378,3 +379,37 @@ The lesson for you as a consumer: if a hazard looks wrong, it may well be
 wrong. File it against the parser rather than working around it downstream —
 47 source errors in `pfsrd2-web` were fixed during this work, and that is the
 layer such problems belong in.
+
+## `routine_results` — degrees of success on the routine's save
+
+A routine that calls for a save publishes its degrees straight after it, and
+41 hazards carry them as structure rather than prose:
+
+```json
+"routine_results": {
+  "type": "stat_block_section",
+  "subtype": "routine_results",
+  "critical_success": "The creature is unaffected.",
+  "success": "The creature is stupefied 1 for 1 round.",
+  "failure": "As success, but ...",
+  "critical_failure": "The creature is stupefied 2 and confused."
+}
+```
+
+Read it the way you read an ability's degrees — same four keys, same meaning.
+Discriminate on `type`/`subtype`, never on the field name.
+
+**All four degrees are optional.** 38 of the 41 publish all four; 3 publish
+three, because the source does. Treat a missing degree as "the source did not
+say", not as "no effect".
+
+**A routine can branch instead of resolving to one save.** Some routines roll
+over a list of sub-actions, and those keep their own degrees inside the
+routine prose rather than in `routine_results` — see `PFSRD2-Parser-8o3p`. If
+`routine` mentions degrees and `routine_results` is absent, that is why.
+
+**`text` shrank from 32 hazards to 27.** Prose published after the routine's
+degrees now stays in `routine`, where the source put it. Its previous home in
+`text` was a side effect of the degrees being unparsed: they ended the routine
+field's value, and the prose after them fell through to the residual bucket.
+If you were reading `text` for routine-scoped prose, read `routine`.
