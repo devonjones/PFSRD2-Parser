@@ -3,6 +3,9 @@
 ```json
 {
   "defaults_version_checked": "1.3.0",
+  "bots": {
+    "gemini": false
+  },
   "disabled": [
     "silent-failure-hunter",
     "comment-analyzer",
