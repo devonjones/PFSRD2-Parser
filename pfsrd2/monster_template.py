@@ -3,7 +3,7 @@ import os
 import re
 import sys
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 
 from pfsrd2.ability_enrichment import template_ability_enrichment_pass
 from pfsrd2.change_enrichment import change_enrichment_pass
@@ -262,12 +262,90 @@ def _try_extract_changes(source_section, mt):
     return found
 
 
+def _assert_only_separators_were_unclaimed(nodes, consumed):
+    """Every node the ability parser did not claim must be a separator.
+
+    Shape, not emptiness: plain_text() measures an <img> or an attribute-only
+    <a> as empty, so testing for empty text would let a text-free node drop as
+    silently as before. What the corpus actually shows is that unclaimed nodes
+    are <br/> separators and pretty-printer whitespace — so assert that, which
+    is both the measured invariant and the stricter one.
+
+    Five paths in universal.ability._split_nodes can leave a node unclaimed,
+    and they split two ways. Two of them produce everything this guard ALLOWS:
+    the <br> branch, whose _consume sits inside `if current:`, and the loop's
+    final `if current:` fall-through. Between them they account for every
+    unclaimed node in the corpus. This is the ONE place that census is kept,
+    because the same fact stated in several places is what rotted the line
+    references and inverted the whitespace claim in earlier revisions:
+
+        55 templates, 8 leftover sites across 7 files, 24 unclaimed nodes,
+        all of them <br/>. Whitespace reaches the node list in 8 files and
+        none of it goes unclaimed, so the whitespace half of the allow-list
+        is a hedge with no live instance, not load-bearing.
+
+    The other three are the levers if this fires: the _LEAD_IN_RE branch,
+    which skips a lead-in on the grounds that it "already lives in the
+    sections text" — a premise this file breaks by overwriting that text; the
+    _NOT_ABILITY_NAMES branch, which drops a label and its value line
+    together; and a continuation the glue rules refuse.
+    """
+    for node in nodes:
+        if id(node) in consumed:
+            continue
+        if isinstance(node, NavigableString):
+            assert not node.strip(), (
+                f"The ability parser did not claim the text {str(node).strip()!r}, and "
+                "it is about to be dropped: collect_ability_nodes removed it from the "
+                "tree and this section's text is overwritten from what remains. See "
+                "universal.ability._split_nodes (_LEAD_IN_RE, or the continuation glue)"
+            )
+        else:
+            assert node.name == "br", (
+                f"The ability parser did not claim a <{node.name}>, and it is about to "
+                "be dropped: collect_ability_nodes removed it from the tree and this "
+                "section's text is overwritten from what remains. Only <br/> separators "
+                "are expected to go unclaimed"
+            )
+
+
 def _extract_abilities_from_bs(bs):
-    """Extract abilities from a BS object using the unified parser."""
+    """Extract abilities from a BS object using the unified parser.
+
+    collect_ability_nodes EXTRACTS its nodes from the tree, and when this
+    returns abilities the caller overwrites the section text with str(bs) — so
+    any node the ability parser did not claim is gone from the output with
+    nothing said. Across all 55 templates the only unclaimed nodes are the
+    <br/> separators between abilities, which is why nothing has been lost yet.
+
+    Rather than putting the separators back — they would render as stray hard
+    breaks — assert that only separators went unclaimed. That turns the one
+    genuinely silent drop in this file into a loud failure without changing any
+    output.
+
+    The assert runs only when there ARE abilities, because that is exactly when
+    the caller overwrites the section text with what survived extraction. The
+    <ul> branch also writes, but it does so BEFORE collect_ability_nodes
+    mutates the tree, so it snapshots the pre-extraction string. Ordering, not the
+    absence of a write, is what makes the gate safe, and
+    TestTemplateCallerWriteBackOrdering pins it. Ungated, this would fail a
+    build over content that still ships.
+
+    monster_family.py deliberately does NOT need this: it parses a COPY and
+    never reassigns section["text"]. See PFSRD2-Parser-4bcm, and
+    PFSRD2-Parser-9oge for the separate question of attaching continuation
+    prose to its ability.
+    """
     nodes = collect_ability_nodes(bs)
     if not nodes:
         return None
-    return parse_abilities_from_nodes(nodes, addon_labels=ADDON_LABELS_WITH_RESULTS)
+    consumed = set()
+    abilities = parse_abilities_from_nodes(
+        nodes, addon_labels=ADDON_LABELS_WITH_RESULTS, consumed=consumed
+    )
+    if abilities:
+        _assert_only_separators_were_unclaimed(nodes, consumed)
+    return abilities
 
 
 def _extract_adjustments_pass(struct):
