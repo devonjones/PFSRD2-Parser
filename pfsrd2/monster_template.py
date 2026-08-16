@@ -3,7 +3,7 @@ import os
 import re
 import sys
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 
 from pfsrd2.ability_enrichment import template_ability_enrichment_pass
 from pfsrd2.change_enrichment import change_enrichment_pass
@@ -35,7 +35,7 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.utils import get_text, plain_text, remove_empty_fields, strip_block_tags
+from universal.utils import get_text, remove_empty_fields, strip_block_tags
 
 # Section intros that unconditionally grant their abilities (vs choose-from
 # pools, which the engine must never auto-apply).
@@ -262,24 +262,63 @@ def _try_extract_changes(source_section, mt):
     return found
 
 
+def _assert_only_separators_were_unclaimed(nodes, consumed):
+    """Every node the ability parser did not claim must be a separator.
+
+    Shape, not emptiness: plain_text() measures an <img> or an attribute-only
+    <a> as empty, so testing for empty text would let a text-free node drop as
+    silently as before. What the corpus actually shows is that unclaimed nodes
+    are <br/> separators and pretty-printer whitespace — so assert that, which
+    is both the measured invariant and the stricter one.
+
+    Two paths in universal.ability._split_nodes leave a node unclaimed: the
+    _LEAD_IN_RE branch, which skips a lead-in on the grounds that it "already
+    lives in the sections text" — a premise this file breaks by overwriting
+    that text — and a continuation the glue rules refuse. Those are the levers
+    if this fires.
+    """
+    for node in nodes:
+        if id(node) in consumed:
+            continue
+        if isinstance(node, NavigableString):
+            assert not node.strip(), (
+                f"The ability parser did not claim the text {str(node).strip()!r}, and "
+                "it is about to be dropped: collect_ability_nodes removed it from the "
+                "tree and this section's text is overwritten from what remains. See "
+                "universal.ability._split_nodes (_LEAD_IN_RE, or the continuation glue)"
+            )
+        else:
+            assert node.name == "br", (
+                f"The ability parser did not claim a <{node.name}>, and it is about to "
+                "be dropped: collect_ability_nodes removed it from the tree and this "
+                "section's text is overwritten from what remains. Only <br/> separators "
+                "are expected to go unclaimed"
+            )
+
+
 def _extract_abilities_from_bs(bs):
     """Extract abilities from a BS object using the unified parser.
 
-    collect_ability_nodes EXTRACTS its nodes from the tree, and the caller
-    writes str(bs) back over the section text, so any node the ability parser
-    does not claim is gone from the output with nothing said. Today the only
-    unclaimed nodes across all 55 templates are the <br/> separators between
-    abilities, which is why nothing has been lost yet.
+    collect_ability_nodes EXTRACTS its nodes from the tree, and when this
+    returns abilities the caller overwrites the section text with str(bs) — so
+    any node the ability parser did not claim is gone from the output with
+    nothing said. Across all 55 templates the only unclaimed nodes are the
+    <br/> separators between abilities, which is why nothing has been lost yet.
 
     Rather than putting the separators back — they would render as stray hard
-    breaks — assert that nothing with published text was dropped. That turns
-    the one genuinely silent drop in this file into a loud failure without
-    changing any output.
+    breaks — assert that only separators went unclaimed. That turns the one
+    genuinely silent drop in this file into a loud failure without changing any
+    output.
+
+    The assert runs only when there ARE abilities, because that is exactly when
+    the caller writes back. With no abilities the section text is left alone,
+    so nothing is dropped and asserting would fail a build over content that
+    still ships.
 
     monster_family.py deliberately does NOT need this: it parses a COPY and
-    never reassigns section["text"], so its unclaimed nodes stay in the
-    section. See PFSRD2-Parser-4bcm, and PFSRD2-Parser-9oge for the separate
-    question of attaching continuation prose to its ability.
+    never reassigns section["text"]. See PFSRD2-Parser-4bcm, and
+    PFSRD2-Parser-9oge for the separate question of attaching continuation
+    prose to its ability.
     """
     nodes = collect_ability_nodes(bs)
     if not nodes:
@@ -288,12 +327,8 @@ def _extract_abilities_from_bs(bs):
     abilities = parse_abilities_from_nodes(
         nodes, addon_labels=ADDON_LABELS_WITH_RESULTS, consumed=consumed
     )
-    leftover = plain_text("".join(str(n) for n in nodes if id(n) not in consumed))
-    assert not leftover.strip(), (
-        f"The ability parser did not claim {leftover.strip()!r}, and this text is "
-        "about to be dropped: collect_ability_nodes already removed it from the "
-        "tree and the section text is overwritten from what remains"
-    )
+    if abilities:
+        _assert_only_separators_were_unclaimed(nodes, consumed)
     return abilities
 
 
