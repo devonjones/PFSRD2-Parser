@@ -89,7 +89,12 @@ class TestTemplateUnclaimedNodesFailLoudly:
         # branch after a degree label, so this paragraph is claimed by nothing
         # and would be dropped silently. No template is in this shape today —
         # the guard is here so that stays true.
-        with pytest.raises(AssertionError, match="about to be dropped"):
+        # match= names the PROSE, not just the shared static tail: both guard
+        # arms end in "about to be dropped", so matching only that leaves the
+        # string arm's interpolation — the actual text about to be lost —
+        # pinned by nothing. Demoting its f-string to a plain string survived
+        # the whole suite.
+        with pytest.raises(AssertionError, match="lives nowhere else"):
             self._extract(
                 "<b>Big Attack</b> The dragon breathes.<br/>"
                 "<b>Success</b> Half damage.<br/>"
