@@ -533,6 +533,11 @@ def _apply_addon(ability, addon_name, addon_nodes):
             "subtype": "affliction_stage",
             "name": addon_name,
         }
+        # Deliberately NOT an assert, unlike the addon branch below: a
+        # text-less stage still emits a non-empty dict, and every schema that
+        # receives an affliction_stage lists `text` in its required set, so an
+        # empty stage already fails loudly at validation. The addon branch had
+        # no such backstop, which is why it needs its own guard.
         if value:
             stage["text"] = value
         ability.setdefault("stages", []).append(stage)
@@ -552,9 +557,10 @@ def _apply_addon(ability, addon_name, addon_nodes):
         # the degree labels joined this set an empty "Success" was at least a
         # visible (wrong) ability entry; silently it is nothing.
         assert value, (
-            f"{ability.get('name')!r} publishes {addon_name!r} with no value. An "
-            "empty label is a source bug — fix the HTML rather than letting the "
-            "field vanish"
+            f"{ability.get('name')!r} publishes {addon_name!r} with no value. Either "
+            "the label genuinely has none, or its value sits after a <br/> and the "
+            "continuation was blocked. Both are source bugs — fix the HTML rather "
+            "than letting the field vanish"
         )
         _set_once(ability, key, value, addon_name)
 

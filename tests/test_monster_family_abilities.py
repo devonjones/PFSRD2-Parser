@@ -131,10 +131,14 @@ class TestTheCallSitesAreWired:
 class TestShapesWhereTheWiderSetCostsSomething:
     """Widening the label set makes three lossy shapes reachable.
 
-    None occur in the current corpus. They are pinned here so a future
-    refactor can tell the current behaviour from an intention, and so the two
-    that are still open (PFSRD2-Parser-4bcm, PFSRD2-Parser-mgz4) fail loudly
-    here the day they are fixed rather than silently changing shape.
+    None occur in the current corpus on this path. They are pinned here so a
+    future refactor can tell the current behaviour from an intention, and so
+    that the tickets they name fail loudly here the day they are fixed rather
+    than silently changing shape.
+
+    That is not hypothetical: PFSRD2-Parser-4bcm and PFSRD2-Parser-mgz4 were
+    open when this was written and are now fixed, and both DID fail here
+    first, which is what the class is for.
     """
 
     def test_a_repeated_degree_fails_instead_of_overwriting(self):
