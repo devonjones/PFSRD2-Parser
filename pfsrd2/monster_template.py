@@ -271,11 +271,11 @@ def _assert_only_separators_were_unclaimed(nodes, consumed):
     are <br/> separators and pretty-printer whitespace — so assert that, which
     is both the measured invariant and the stricter one.
 
-    Two paths in universal.ability._split_nodes leave a node unclaimed: the
+    Three paths in universal.ability._split_nodes leave a node unclaimed: the
     _LEAD_IN_RE branch, which skips a lead-in on the grounds that it "already
     lives in the sections text" — a premise this file breaks by overwriting
-    that text — and a continuation the glue rules refuse. Those are the levers
-    if this fires.
+    that text; the _NOT_ABILITY_NAMES branch, which drops a label and its
+    value line together; and a continuation the glue rules refuse.
     """
     for node in nodes:
         if id(node) in consumed:
@@ -311,9 +311,12 @@ def _extract_abilities_from_bs(bs):
     output.
 
     The assert runs only when there ARE abilities, because that is exactly when
-    the caller writes back. With no abilities the section text is left alone,
-    so nothing is dropped and asserting would fail a build over content that
-    still ships.
+    the caller overwrites the section text with what survived extraction. The
+    <ul> branch also writes, but at :216 — BEFORE collect_ability_nodes mutates
+    the tree — so it snapshots the pre-extraction string. Ordering, not the
+    absence of a write, is what makes the gate safe, and
+    TestTemplateCallerWriteBackOrdering pins it. Ungated, this would fail a
+    build over content that still ships.
 
     monster_family.py deliberately does NOT need this: it parses a COPY and
     never reassigns section["text"]. See PFSRD2-Parser-4bcm, and
