@@ -281,10 +281,32 @@ class TestNodesAfterStopPredicate:
 class TestExtractResultBlocksWalksOnce:
     """The value and the extraction must describe the same nodes.
 
-    extract_result_blocks used two separate loops with the same stop condition
-    spelled out twice — change one and the stored value no longer describes
-    what was removed from the soup.
+    extract_result_blocks used two separate loops, and they had already
+    drifted: the value loop tested `while node:` and the extraction loop had
+    no such test, so the stored value could describe less than what was
+    removed from the soup. The tests below assert that equality directly
+    rather than asserting the number of walks, which is not observable.
     """
+
+    def test_the_value_describes_exactly_what_was_removed(self):
+        # The invariant the single walk exists to hold. Reconstructs the old
+        # divergence: a falsy NavigableString mid-run made the value stop
+        # early while the extraction loop carried on removing.
+        from bs4 import BeautifulSoup, NavigableString
+
+        from universal.universal import extract_result_blocks
+
+        bs = BeautifulSoup("<b>Success</b> first<b>Failure</b> second", "html.parser")
+        bold = bs.find("b")
+        bold.insert_after(NavigableString(""))
+        before = str(bs)
+        section = {}
+        extract_result_blocks(section, bs)
+        removed = before
+        for chunk in (section["success"], section["failure"]):
+            assert chunk in removed, "stored a value that was never in the soup"
+        assert "first" not in str(bs), "value kept but node left in the soup"
+        assert "second" not in str(bs)
 
     def test_a_non_degree_bold_inside_a_degree_survives_in_the_value(self):
         from bs4 import BeautifulSoup

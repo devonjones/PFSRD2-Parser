@@ -622,6 +622,16 @@ def nodes_after(bold, stop=None):
     returns True to stop. The default stops at every bold, which is what a
     stat-block field wants; extract_result_blocks passes a predicate because a
     degree's text may legitimately contain a bold that is not another degree.
+
+    A bold the predicate does NOT stop on is returned like any other node, so
+    a caller that extracts the returned list removes that bold from the tree
+    as well. Both callers rely on that: the value they store and the nodes
+    they remove have to be the same set.
+
+    The loop tests `is not None`, not `while node:` — an empty NavigableString
+    is falsy, so the inlined copies this replaces ended the run early on one
+    and truncated the value silently. Not reachable from html.parser output
+    alone, so this is hardening rather than a fix for observed data.
     """
     nodes = []
     node = bold.next_sibling

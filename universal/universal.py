@@ -595,22 +595,29 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
             If False (default), only stop at <b> tags that are result labels
             (skill/spell behavior - allows non-result bolds within result text).
     """
+    # Loop-invariant, so built once: a degree's text may legitimately contain a
+    # bold that is not another degree, and stopping at it would truncate the
+    # degree — unless the caller asks for any bold to end the run.
+    if break_on_any_bold:
+
+        def stops_the_run(node):
+            return True
+
+    else:
+
+        def stops_the_run(node):
+            return get_text(node).strip() in RESULT_LABELS
+
     for bold in list(bs.find_all("b")):
         label = get_text(bold).strip()
         if label not in RESULT_LABELS:
             continue
         key = RESULT_LABELS[label]
-
         # One walk, used for both the value and the extraction. These were two
-        # separate loops with the same stop condition spelled out twice, which
-        # is a shape that drifts: change one and the value no longer describes
-        # what was removed.
-        def _stops_the_run(node):
-            if break_on_any_bold:
-                return True
-            return get_text(node).strip() in RESULT_LABELS
-
-        value_nodes = nodes_after(bold, stop=_stops_the_run)
+        # separate loops and they had ALREADY drifted: the value loop tested
+        # `while node:` while the extraction loop had no such test, so the
+        # stored value could describe less than what was removed from the soup.
+        value_nodes = nodes_after(bold, stop=stops_the_run)
         value = "".join(str(n) for n in value_nodes).strip()
         value = re.sub(r"<br/?>[\s]*$", "", value)
         section[key] = value
@@ -644,16 +651,13 @@ def extract_bold_fields(section, bs, labels, decompose=False):
         label = get_text(bold).strip()
         if label not in labels:
             continue
-        nodes_to_remove = []
-        parts = []
-        node = bold.next_sibling
-        while node:
-            if getattr(node, "name", None) == "b":
-                break
-            parts.append(str(node))
-            nodes_to_remove.append(node)
-            node = node.next_sibling
-        value = "".join(parts).strip()
+        # The third and last inlined copy of the walk. It was byte-for-byte
+        # the loop _extract_stage_fields lost, including the `while node:`
+        # falsy test — leaving it here would have fixed that in two copies and
+        # not in the one ~8 parsers reach. PFSRD2-Parser-nlf1 changes WHERE
+        # this run terminates, which is orthogonal to whose walk it is.
+        nodes_to_remove = nodes_after(bold)
+        value = "".join(str(n) for n in nodes_to_remove).strip()
         value = re.sub(r"<br/?>[\s]*$", "", value)
         if value.endswith(";"):
             value = value[:-1].strip()
