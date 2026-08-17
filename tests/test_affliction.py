@@ -16,7 +16,6 @@ from pfsrd2.affliction import (
     _assert_no_unknown_labels,
     _extract_escalations,
     _extract_stages,
-    _split_trailing_prose,
     _structure_fields,
     affliction_extract_pass,
     find_affliction,
@@ -211,16 +210,38 @@ class TestSavingThrow:
 class TestTrailingProse:
     def test_the_last_field_does_not_swallow_the_description(self):
         # extract_bold_fields runs a value to the next bold, so Usage on a
-        # curse with no stages otherwise absorbs the entire description.
-        affliction = {"usage": "held in one hand<br/>The blade whispers to its wielder."}
-        prose = _split_trailing_prose(affliction)
+        # curse with no stages would otherwise absorb the entire description.
+        # This used to be undone afterwards by _split_trailing_prose; the run
+        # now stops at the break instead, so the test drives the extractor
+        # rather than the compensation that no longer exists.
+        from universal.universal import extract_bold_fields
+
+        affliction = {}
+        bs = _soup("<b>Usage</b> held in one hand<br/>The blade whispers to its wielder.")
+        extract_bold_fields(affliction, bs, FIELD_LABELS, decompose=True, stop_at_br=True)
         assert affliction["usage"] == "held in one hand"
-        assert prose == "The blade whispers to its wielder."
+        # The half it no longer swallows stays in the soup and arrives as
+        # residual description, which is the whole point of the change.
+        assert "The blade whispers to its wielder." in str(bs)
 
     def test_a_field_without_a_break_is_untouched(self):
-        affliction = {"effect": "you are cursed"}
-        assert _split_trailing_prose(affliction) == ""
+        from universal.universal import extract_bold_fields
+
+        affliction = {}
+        bs = _soup("<b>Effect</b> you are cursed")
+        extract_bold_fields(affliction, bs, FIELD_LABELS, decompose=True, stop_at_br=True)
         assert affliction["effect"] == "you are cursed"
+        assert str(bs).strip() == ""
+
+    def test_without_the_flag_the_field_still_swallows(self):
+        # Pins that stop_at_br is what does the work, not something else in
+        # the extractor: the same input without it reproduces the old bug.
+        from universal.universal import extract_bold_fields
+
+        affliction = {}
+        bs = _soup("<b>Usage</b> held in one hand<br/>The blade whispers to its wielder.")
+        extract_bold_fields(affliction, bs, FIELD_LABELS, decompose=True)
+        assert "whispers" in affliction["usage"]
 
 
 class TestUnknownLabels:

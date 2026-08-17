@@ -615,7 +615,7 @@ def plain_text(value):
     return get_text(BeautifulSoup(value, "html.parser")).strip()
 
 
-def nodes_after(bold, stop=None):
+def nodes_after(bold, stop=None, stop_at_br=False):
     """Sibling nodes up to the next bold label — a label's value run.
 
     `stop` overrides which bold ends the run. It receives each <b> node and
@@ -628,6 +628,14 @@ def nodes_after(bold, stop=None):
     as well. Both callers rely on that: the value they store and the nodes
     they remove have to be the same set.
 
+    `stop_at_br` ends the run at the first <br/> instead. It is a separate
+    argument rather than something `stop` could express, because `stop` is only
+    consulted for <b> nodes and a <br/> never reaches it. Afflictions want it:
+    a field's value never spans a break in that source, so without it the last
+    field in a block absorbs the description that follows. Hazards do NOT —
+    their routines deliberately keep prose published after the last degree, so
+    breaking there would truncate 14 of them.
+
     The loop tests `is not None`, not `while node:` — an empty NavigableString
     is falsy, so the inlined copies this replaces ended the run early on one
     and truncated the value silently. Neither html.parser nor lxml emits one —
@@ -637,9 +645,12 @@ def nodes_after(bold, stop=None):
     nodes = []
     node = bold.next_sibling
     while node is not None:
-        if getattr(node, "name", None) == "b":
+        name = getattr(node, "name", None)
+        if name == "b":
             if stop is None or stop(node):
                 break
+        elif stop_at_br and name == "br":
+            break
         nodes.append(node)
         node = node.next_sibling
     return nodes
