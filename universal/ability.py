@@ -544,6 +544,17 @@ def _apply_addon(ability, addon_name, addon_nodes):
     elif addon_name == "Saving Throw":
         _set_once(ability, "saving_throw", [_parse_save_dc(value)], addon_name)
     elif addon_name == "Damage":
+        # Damage has no schema backstop, unlike Stage N and Saving Throw: an
+        # empty value makes _parse_damage return [], _set_once writes it, and
+        # remove_empty_fields deletes it before validation — the same "no
+        # trace at all" outcome the else branch's assert exists to prevent,
+        # five lines away. Measured cost of asserting: zero.
+        assert value, (
+            f"{ability.get('name')!r} publishes {addon_name!r} with no value. Either "
+            "the label genuinely has none, or its value sits after a <br/> and the "
+            "continuation was blocked. Both are source bugs — fix the HTML rather "
+            "than letting the field vanish"
+        )
         _set_once(ability, "damage", _parse_damage(value), addon_name)
     else:
         key = addon_name.lower().replace(" ", "_")

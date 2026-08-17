@@ -205,3 +205,32 @@ class TestSetOnceCoversItsOwnCallSites:
         )
         with pytest.raises(AssertionError, match="publishes 'Damage' twice"):
             _abilities(html)
+
+
+class TestEveryBranchThatCanVanishIsGuarded:
+    """_apply_addon has four branches; only one had a guard.
+
+    Stage N and Saving Throw are covered by schema backstops — every schema
+    that receives an affliction_stage or a save_dc lists `text` in its
+    required set, so an empty one fails at validation. The generic `else`
+    branch had no backstop and now asserts. Damage had neither: an empty
+    value makes _parse_damage return [], _set_once writes it, and
+    remove_empty_fields deletes it before validation, which is the same
+    silent-vanish outcome five lines from the assert that condemns it.
+    """
+
+    def test_an_empty_damage_fails_instead_of_vanishing(self):
+        html = "<b>Claw</b> It swipes.<br/><b>Damage</b><br/><b>Effect</b> Bleeding."
+        with pytest.raises(AssertionError, match="publishes 'Damage' with no value"):
+            _abilities(html)
+
+    def test_an_empty_generic_addon_fails(self):
+        html = "<b>Gaze</b> Save.<br/><b>Effect</b><br/><b>Failure</b> Dazzled."
+        with pytest.raises(AssertionError, match="publishes 'Effect' with no value"):
+            _abilities(html)
+
+    def test_a_populated_damage_is_untouched(self):
+        # The guard must not disturb the ordinary case.
+        html = "<b>Claw</b> It swipes.<br/><b>Damage</b> 2d6 slashing"
+        ability = _abilities(html)[0]
+        assert ability["damage"][0]["formula"] == "2d6"
