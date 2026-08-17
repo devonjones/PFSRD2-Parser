@@ -228,3 +228,85 @@ class TestExtractBoldFields:
         section = {}
         extract_bold_fields(section, bs, labels)
         assert section["saving_throw"] == "DC 25 Fortitude"
+
+
+class TestNodesAfterStopPredicate:
+    """nodes_after is the canonical 'label's value run' walk.
+
+    universal/ inlined the same walk in three places (PFSRD2-Parser-8fbe).
+    Two now call this; the third is entangled with PFSRD2-Parser-nlf1.
+
+    The `stop` predicate exists because extract_result_blocks cannot use the
+    default: a degree's text may legitimately contain a bold that is not
+    another degree, and stopping at it would truncate the degree.
+    """
+
+    def _bold(self, html):
+        from bs4 import BeautifulSoup
+
+        return BeautifulSoup(html, "html.parser").find("b")
+
+    def test_the_default_stops_at_any_bold(self):
+        from universal.utils import nodes_after
+
+        bold = self._bold("<b>Label</b> value <b>Next</b> other")
+        assert "".join(str(n) for n in nodes_after(bold)).strip() == "value"
+
+    def test_a_predicate_lets_a_non_matching_bold_through(self):
+        # The behaviour extract_result_blocks depends on: a bold inside the
+        # value that is not a degree must NOT end the run.
+        from universal.utils import nodes_after
+
+        bold = self._bold("<b>Success</b> you gain <b>fire</b> resistance <b>Failure</b> no")
+        run = "".join(
+            str(n) for n in nodes_after(bold, stop=lambda n: n.get_text().strip() == "Failure")
+        )
+        assert "<b>fire</b>" in run
+        assert "Failure" not in run
+
+    def test_an_empty_string_node_does_not_end_the_run(self):
+        # The inlined copies used `while node:`, and an empty NavigableString
+        # is falsy — so a stray empty text node ended the run early and
+        # silently truncated the value. `is not None` is the correct test.
+        from bs4 import BeautifulSoup, NavigableString
+
+        from universal.utils import nodes_after
+
+        bs = BeautifulSoup("<b>Label</b>first<b>Next</b>", "html.parser")
+        bold = bs.find("b")
+        bold.insert_after(NavigableString(""))
+        assert "first" in "".join(str(n) for n in nodes_after(bold))
+
+
+class TestExtractResultBlocksWalksOnce:
+    """The value and the extraction must describe the same nodes.
+
+    extract_result_blocks used two separate loops with the same stop condition
+    spelled out twice — change one and the stored value no longer describes
+    what was removed from the soup.
+    """
+
+    def test_a_non_degree_bold_inside_a_degree_survives_in_the_value(self):
+        from bs4 import BeautifulSoup
+
+        from universal.universal import extract_result_blocks
+
+        bs = BeautifulSoup(
+            "<b>Success</b> you gain <b>fire</b> resistance" "<b>Failure</b> you do not",
+            "html.parser",
+        )
+        section = {}
+        extract_result_blocks(section, bs)
+        assert "<b>fire</b>" in section["success"]
+        assert section["failure"] == "you do not"
+
+    def test_break_on_any_bold_stops_at_the_inner_bold(self):
+        from bs4 import BeautifulSoup
+
+        from universal.universal import extract_result_blocks
+
+        bs = BeautifulSoup("<b>Success</b> you gain <b>fire</b> resistance", "html.parser")
+        section = {}
+        extract_result_blocks(section, bs, break_on_any_bold=True)
+        assert section["success"] == "you gain"
+        assert "<b>fire</b>" in str(bs)

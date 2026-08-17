@@ -12,6 +12,7 @@ from universal.utils import (
     filter_entities,
     get_text,
     has_name,
+    nodes_after,
     split_comma_and_semicolon,
 )
 
@@ -599,26 +600,21 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
         if label not in RESULT_LABELS:
             continue
         key = RESULT_LABELS[label]
-        parts = []
-        node = bold.next_sibling
-        while node:
-            if getattr(node, "name", None) == "b":
-                if break_on_any_bold:
-                    break
-                next_label = get_text(node).strip()
-                if next_label in RESULT_LABELS:
-                    break
-            parts.append(str(node))
-            node = node.next_sibling
-        value = "".join(parts).strip()
+
+        # One walk, used for both the value and the extraction. These were two
+        # separate loops with the same stop condition spelled out twice, which
+        # is a shape that drifts: change one and the value no longer describes
+        # what was removed.
+        def _stops_the_run(node):
+            if break_on_any_bold:
+                return True
+            return get_text(node).strip() in RESULT_LABELS
+
+        value_nodes = nodes_after(bold, stop=_stops_the_run)
+        value = "".join(str(n) for n in value_nodes).strip()
         value = re.sub(r"<br/?>[\s]*$", "", value)
         section[key] = value
-        for node in list(bold.next_siblings):
-            if getattr(node, "name", None) == "b":
-                if break_on_any_bold:
-                    break
-                if get_text(node).strip() in RESULT_LABELS:
-                    break
+        for node in value_nodes:
             node.extract()
         bold.decompose()
 

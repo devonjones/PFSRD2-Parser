@@ -25,7 +25,7 @@ from universal.universal import (
     extract_result_blocks,
     get_links,
 )
-from universal.utils import get_text, split_maintain_parens
+from universal.utils import get_text, nodes_after, split_maintain_parens
 
 # Default set of bold-labeled fields recognized across all parsers.
 # Parsers can pass a custom set to restrict or extend.
@@ -731,17 +731,8 @@ def _extract_stage_fields(ability, bs):
         label = get_text(bold).strip()
         if not _STAGE_RE.match(label):
             continue
-        # Collect value nodes until next <b>
-        parts = []
-        nodes_to_remove = []
-        node = bold.next_sibling
-        while node:
-            if getattr(node, "name", None) == "b":
-                break
-            parts.append(str(node))
-            nodes_to_remove.append(node)
-            node = node.next_sibling
-        value = "".join(parts).strip()
+        nodes_to_remove = nodes_after(bold)
+        value = "".join(str(n) for n in nodes_to_remove).strip()
         value = re.sub(r"<br/?>[\s]*$", "", value)
         if value.endswith(";"):
             value = value[:-1].strip()

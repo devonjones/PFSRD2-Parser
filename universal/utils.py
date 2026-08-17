@@ -615,11 +615,20 @@ def plain_text(value):
     return get_text(BeautifulSoup(value, "html.parser")).strip()
 
 
-def nodes_after(bold):
-    """Sibling nodes up to the next bold label — a label's value run."""
+def nodes_after(bold, stop=None):
+    """Sibling nodes up to the next bold label — a label's value run.
+
+    `stop` overrides which bold ends the run. It receives each <b> node and
+    returns True to stop. The default stops at every bold, which is what a
+    stat-block field wants; extract_result_blocks passes a predicate because a
+    degree's text may legitimately contain a bold that is not another degree.
+    """
     nodes = []
     node = bold.next_sibling
-    while node is not None and getattr(node, "name", None) != "b":
+    while node is not None:
+        if getattr(node, "name", None) == "b":
+            if stop is None or stop(node):
+                break
         nodes.append(node)
         node = node.next_sibling
     return nodes
