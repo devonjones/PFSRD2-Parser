@@ -630,7 +630,7 @@ _KEY_OVERRIDES = {
 }
 
 
-def extract_bold_fields(section, bs, labels, decompose=False):
+def extract_bold_fields(section, bs, labels, decompose=False, stop_at_br=False):
     """Extract bold-labeled fields from a BeautifulSoup object.
 
     Finds <b>Label</b> followed by value text, extracts each recognized
@@ -644,6 +644,11 @@ def extract_bold_fields(section, bs, labels, decompose=False):
         decompose: If True, remove extracted nodes from the BS tree.
             Use when operating on a live BS object that will be processed
             further (e.g. feat's _extract_bold_fields_from_bs).
+        stop_at_br: If True, add <br/> as a terminator for each value run —
+            the next bold still ends it too, whichever comes first. Use where
+            a field's value never spans a break, so the last field in a block
+            stops absorbing the prose that follows it and that prose falls out
+            as residual description.
     """
     for bold in list(bs.find_all("b")):
         label = get_text(bold).strip()
@@ -654,7 +659,7 @@ def extract_bold_fields(section, bs, labels, decompose=False):
         # falsy test — leaving it here would have fixed that in two copies and
         # not in the one ~8 parsers reach. PFSRD2-Parser-nlf1 changes WHERE
         # this run terminates, which is orthogonal to whose walk it is.
-        nodes_to_remove = nodes_after(bold)
+        nodes_to_remove = nodes_after(bold, stop_at_br=stop_at_br)
         value = "".join(str(n) for n in nodes_to_remove).strip()
         value = re.sub(r"<br/?>[\s]*$", "", value)
         if value.endswith(";"):

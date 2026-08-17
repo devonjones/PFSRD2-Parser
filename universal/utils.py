@@ -615,7 +615,7 @@ def plain_text(value):
     return get_text(BeautifulSoup(value, "html.parser")).strip()
 
 
-def nodes_after(bold, stop=None):
+def nodes_after(bold, stop=None, stop_at_br=False):
     """Sibling nodes up to the next bold label — a label's value run.
 
     `stop` overrides which bold ends the run. It receives each <b> node and
@@ -625,8 +625,21 @@ def nodes_after(bold, stop=None):
 
     A bold the predicate does NOT stop on is returned like any other node, so
     a caller that extracts the returned list removes that bold from the tree
-    as well. Both callers rely on that: the value they store and the nodes
-    they remove have to be the same set.
+    as well. The callers that extract rely on that: the value they store and
+    the nodes they remove have to be the same set. (Seven call sites now, not
+    the two this said when it was written.)
+
+    `stop_at_br` adds <br/> as a terminator. The bold terminator stays live:
+    the run ends at whichever comes first. It is a separate argument rather
+    than something `stop` could express, because `stop` is only consulted for
+    <b> nodes and a <br/> never reaches it, and widening it would change the
+    contract for every caller.
+
+    Afflictions want it: a field's value never spans a break in that source, so
+    without it the last field in a block absorbs the description that follows.
+    Hazards do NOT — their routines deliberately keep prose published after the
+    last degree (see pfsrd2/hazard.py::_extract_routine_results), so breaking
+    there would truncate them.
 
     The loop tests `is not None`, not `while node:` — an empty NavigableString
     is falsy, so the inlined copies this replaces ended the run early on one
@@ -637,9 +650,12 @@ def nodes_after(bold, stop=None):
     nodes = []
     node = bold.next_sibling
     while node is not None:
-        if getattr(node, "name", None) == "b":
+        name = getattr(node, "name", None)
+        if name == "b":
             if stop is None or stop(node):
                 break
+        elif stop_at_br and name == "br":
+            break
         nodes.append(node)
         node = node.next_sibling
     return nodes

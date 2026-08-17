@@ -263,29 +263,30 @@ def affliction_extract_pass(struct):
     # No page publishes that shape today; the order is what keeps it that way.
     _extract_stages(affliction, bs)
     _extract_escalations(affliction, bs, affliction["affliction_type"])
-    extract_bold_fields(affliction, bs, FIELD_LABELS, decompose=True)
-    prose = _split_trailing_prose(affliction)
+    # stop_at_br: a field's value never spans a break in this source, so
+    # without it the last field in a block — Usage on a curse with no stages —
+    # absorbs the whole description that follows. This replaces
+    # _split_trailing_prose, which used to hand the swallowed half back.
+    extract_bold_fields(affliction, bs, FIELD_LABELS, decompose=True, stop_at_br=True)
     _assert_no_unknown_labels(affliction, published, affliction["affliction_type"])
     flatten_fields(affliction, _TEXT_FIELDS)
     links = get_links(bs, unwrap=True)
     if links:
         affliction.setdefault("links", []).extend(links)
     _structure_fields(affliction)
-    _extract_description(affliction, bs, prose)
+    _extract_description(affliction, bs)
 
 
-def _extract_description(affliction, bs, prose):
+def _extract_description(affliction, bs):
     """Whatever prose is left once every label has taken its own.
 
     The description is published between the Source line and the first field
-    with no label of its own, and a last-in-block field can swallow a second
-    run of it, which _split_trailing_prose hands back here. Published order is
-    residual-then-recovered: the recovered half came from further down the
-    block.
+    with no label of its own. A last-in-block field used to swallow a second
+    run of it, which _split_trailing_prose handed back here; extract_bold_fields
+    now stops each value at its <br/>, so that half stays in the soup and
+    arrives as residual like the first.
     """
     residual = str(bs).strip()
-    if prose:
-        residual = f"{residual}<br/>{prose}" if residual else prose
     # Without this the punctuation left behind by the field run would ship as
     # a description of "<br/>;".
     leftover = re.sub(r"(<br/?>|\s|;|,)+", "", residual)
@@ -418,29 +419,6 @@ def _assert_no_unknown_labels(affliction, published, subtype):
             f"Unknown bold label {label!r} on affliction {affliction.get('name')!r} — "
             "add it to FIELD_LABELS or handle it explicitly"
         )
-
-
-def _split_trailing_prose(affliction):
-    """Give back the prose a last-in-block field swallowed.
-
-    A field's value never spans a <br/> in this source; the break separates the
-    labelled run from the description that follows. extract_bold_fields takes
-    everything up to the next bold, so the final field — Usage on a curse with
-    no stages — otherwise absorbs the whole description.
-    """
-    prose = []
-    for key in _TEXT_FIELDS:
-        value = affliction.get(key)
-        if value is None:
-            continue
-        assert isinstance(value, str), f"Field {key!r} is {type(value).__name__}, not text"
-        if "<br" not in value:
-            continue
-        parts = re.split(r"<br\s*/?>", value, maxsplit=1)
-        affliction[key] = parts[0].strip()
-        if len(parts) > 1 and parts[1].strip():
-            prose.append(parts[1].strip())
-    return "<br/>".join(prose)
 
 
 def _structure_fields(affliction):
