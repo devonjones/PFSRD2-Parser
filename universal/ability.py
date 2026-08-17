@@ -533,12 +533,28 @@ def _apply_addon(ability, addon_name, addon_nodes):
             "subtype": "affliction_stage",
             "name": addon_name,
         }
+        # Deliberately NOT an assert, unlike the addon branch below: a
+        # text-less stage still emits a non-empty dict, and every schema that
+        # receives an affliction_stage lists `text` in its required set, so an
+        # empty stage already fails loudly at validation. The addon branch had
+        # no such backstop, which is why it needs its own guard.
         if value:
             stage["text"] = value
         ability.setdefault("stages", []).append(stage)
     elif addon_name == "Saving Throw":
         _set_once(ability, "saving_throw", [_parse_save_dc(value)], addon_name)
     elif addon_name == "Damage":
+        # Damage has no schema backstop, unlike Stage N and Saving Throw: an
+        # empty value makes _parse_damage return [], _set_once writes it, and
+        # remove_empty_fields deletes it before validation — the same "no
+        # trace at all" outcome the else branch's assert exists to prevent,
+        # five lines away. Measured cost of asserting: zero.
+        assert value, (
+            f"{ability.get('name')!r} publishes {addon_name!r} with no value. Either "
+            "the label genuinely has none, or its value sits after a <br/> and the "
+            "continuation was blocked. Both are source bugs — fix the HTML rather "
+            "than letting the field vanish"
+        )
         _set_once(ability, "damage", _parse_damage(value), addon_name)
     else:
         key = addon_name.lower().replace(" ", "_")
@@ -547,8 +563,17 @@ def _apply_addon(ability, addon_name, addon_nodes):
             key = "requirement"
         elif key == "prerequisites":
             key = "prerequisite"
-        if value:
-            _set_once(ability, key, value, addon_name)
+        # An empty published label is an HTML bug in the source, and dropping
+        # it leaves no trace at all — not an empty field, not an error. Before
+        # the degree labels joined this set an empty "Success" was at least a
+        # visible (wrong) ability entry; silently it is nothing.
+        assert value, (
+            f"{ability.get('name')!r} publishes {addon_name!r} with no value. Either "
+            "the label genuinely has none, or its value sits after a <br/> and the "
+            "continuation was blocked. Both are source bugs — fix the HTML rather "
+            "than letting the field vanish"
+        )
+        _set_once(ability, key, value, addon_name)
 
 
 def _set_once(ability, key, value, addon_name):

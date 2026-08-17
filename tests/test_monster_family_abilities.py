@@ -131,10 +131,14 @@ class TestTheCallSitesAreWired:
 class TestShapesWhereTheWiderSetCostsSomething:
     """Widening the label set makes three lossy shapes reachable.
 
-    None occur in the current corpus. They are pinned here so a future
-    refactor can tell the current behaviour from an intention, and so the two
-    that are still open (PFSRD2-Parser-4bcm, PFSRD2-Parser-mgz4) fail loudly
-    here the day they are fixed rather than silently changing shape.
+    None occur in the current corpus on this path. They are pinned here so a
+    future refactor can tell the current behaviour from an intention, and so
+    that the tickets they name fail loudly here the day they are fixed rather
+    than silently changing shape.
+
+    That is not hypothetical: PFSRD2-Parser-4bcm and PFSRD2-Parser-mgz4 were
+    open when this was written and are now fixed, and both DID fail here
+    first, which is what the class is for.
     """
 
     def test_a_repeated_degree_fails_instead_of_overwriting(self):
@@ -163,14 +167,15 @@ class TestShapesWhereTheWiderSetCostsSomething:
         assert abilities[0]["success"] == "Half damage."
         assert "trailing paragraph" not in json.dumps(abilities)
 
-    def test_an_empty_degree_disappears(self):
-        # PFSRD2-Parser-mgz4. `_apply_addon` guards with `if value:`, so an
-        # empty published degree leaves no trace at all — before the wider set
-        # it was at least a visible (if wrong) entry.
+    def test_an_empty_degree_fails_instead_of_disappearing(self):
+        # Was PFSRD2-Parser-mgz4, and this test used to pin the bug rather than
+        # the fix: `_apply_addon` guarded with `if value:`, so an empty
+        # published degree left no trace at all — not an empty field, not an
+        # error. Before the wider label set it was at least a visible (wrong)
+        # ability entry; after it, nothing.
         html = "<b>Gaze</b> Save.<br/><b>Success</b><br/><b>Failure</b> Dazzled."
-        ability = _abilities(html)[0]
-        assert ability["failure"] == "Dazzled."
-        assert "success" not in ability
+        with pytest.raises(AssertionError, match="publishes 'Success' with no value"):
+            _abilities(html)
 
 
 class TestSetOnceCoversItsOwnCallSites:
@@ -200,3 +205,32 @@ class TestSetOnceCoversItsOwnCallSites:
         )
         with pytest.raises(AssertionError, match="publishes 'Damage' twice"):
             _abilities(html)
+
+
+class TestEveryBranchThatCanVanishIsGuarded:
+    """_apply_addon has four branches; only one had a guard.
+
+    Stage N and Saving Throw are covered by schema backstops — every schema
+    that receives an affliction_stage or a save_dc lists `text` in its
+    required set, so an empty one fails at validation. The generic `else`
+    branch had no backstop and now asserts. Damage had neither: an empty
+    value makes _parse_damage return [], _set_once writes it, and
+    remove_empty_fields deletes it before validation, which is the same
+    silent-vanish outcome five lines from the assert that condemns it.
+    """
+
+    def test_an_empty_damage_fails_instead_of_vanishing(self):
+        html = "<b>Claw</b> It swipes.<br/><b>Damage</b><br/><b>Effect</b> Bleeding."
+        with pytest.raises(AssertionError, match="publishes 'Damage' with no value"):
+            _abilities(html)
+
+    def test_an_empty_generic_addon_fails(self):
+        html = "<b>Gaze</b> Save.<br/><b>Effect</b><br/><b>Failure</b> Dazzled."
+        with pytest.raises(AssertionError, match="publishes 'Effect' with no value"):
+            _abilities(html)
+
+    def test_a_populated_damage_is_untouched(self):
+        # The guard must not disturb the ordinary case.
+        html = "<b>Claw</b> It swipes.<br/><b>Damage</b> 2d6 slashing"
+        ability = _abilities(html)[0]
+        assert ability["damage"][0]["formula"] == "2d6"
