@@ -630,8 +630,9 @@ def nodes_after(bold, stop=None):
 
     The loop tests `is not None`, not `while node:` — an empty NavigableString
     is falsy, so the inlined copies this replaces ended the run early on one
-    and truncated the value silently. Not reachable from html.parser output
-    alone, so this is hardening rather than a fix for observed data.
+    and truncated the value silently. Neither html.parser nor lxml emits one —
+    parse_universal uses lxml — so this is hardening rather than a fix for
+    observed data.
     """
     nodes = []
     node = bold.next_sibling

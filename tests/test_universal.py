@@ -299,12 +299,15 @@ class TestExtractResultBlocksWalksOnce:
         bs = BeautifulSoup("<b>Success</b> first<b>Failure</b> second", "html.parser")
         bold = bs.find("b")
         bold.insert_after(NavigableString(""))
-        before = str(bs)
         section = {}
         extract_result_blocks(section, bs)
-        removed = before
-        for chunk in (section["success"], section["failure"]):
-            assert chunk in removed, "stored a value that was never in the soup"
+        # Exact equality, not containment: a truncated value is "" and every
+        # truncation is a substring of the original, so `in` can never catch
+        # one. An earlier version asserted containment against the whole
+        # pre-extraction soup and passed with the two-loop shape restored —
+        # it could not fail on the bug it is named for.
+        assert section["success"] == "first"
+        assert section["failure"] == "second"
         assert "first" not in str(bs), "value kept but node left in the soup"
         assert "second" not in str(bs)
 

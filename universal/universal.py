@@ -585,6 +585,11 @@ RESULT_LABELS = {
 }
 
 
+def _stops_at_a_result_label(node):
+    """Only another degree ends a degree's run. Closes over nothing."""
+    return get_text(node).strip() in RESULT_LABELS
+
+
 def extract_result_blocks(section, bs, break_on_any_bold=False):
     """Extract Critical Success/Success/Failure/Critical Failure from description.
 
@@ -595,18 +600,11 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
             If False (default), only stop at <b> tags that are result labels
             (skill/spell behavior - allows non-result bolds within result text).
     """
-    # Loop-invariant, so built once: a degree's text may legitimately contain a
-    # bold that is not another degree, and stopping at it would truncate the
-    # degree — unless the caller asks for any bold to end the run.
-    if break_on_any_bold:
-
-        def stops_the_run(node):
-            return True
-
-    else:
-
-        def stops_the_run(node):
-            return get_text(node).strip() in RESULT_LABELS
+    # Loop-invariant, so resolved once: a degree's text may legitimately contain
+    # a bold that is not another degree, and stopping at it would truncate the
+    # degree. When the caller wants any bold to end the run, that IS
+    # nodes_after's default — pass None rather than writing it out longhand.
+    stops_the_run = None if break_on_any_bold else _stops_at_a_result_label
 
     for bold in list(bs.find_all("b")):
         label = get_text(bold).strip()
