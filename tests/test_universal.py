@@ -125,6 +125,24 @@ class TestExtractResultBlocks:
         assert section["success"] == "You get"
         assert section["failure"] == "You fail."
 
+    def test_the_extractor_sees_text_not_markup(self):
+        # extract_result_blocks runs BEFORE the passes that unwrap <a> out of
+        # field values, so a degree still carries its links here. The damage
+        # type is routinely linked ("2d6 <a>fire</a> damage"), which no damage
+        # pattern matches; feeding the extractor get_text() is what makes the
+        # call position irrelevant. The stored value keeps its markup.
+        html = (
+            "<b>Failure</b> The creature takes 2d6 "
+            '<a game-obj="Traits" aonid="1">fire</a> damage.'
+        )
+        bs = BeautifulSoup(html, "html.parser")
+        section = {}
+        extract_result_blocks(section, bs)
+        assert "<a" in section["failure"], "the published value keeps its links"
+        damage = section["degree_effects"][0]["damage"][0]
+        assert damage["formula"] == "2d6"
+        assert damage["damage_type"] == "fire"
+
     def test_nodes_removed_from_soup(self):
         html = "<b>Success</b> You succeed."
         bs = BeautifulSoup(html, "html.parser")

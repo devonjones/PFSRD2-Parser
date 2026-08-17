@@ -792,6 +792,34 @@ remove_empty_sections_pass(struct)
 
 **IMPORTANT:** If you're consuming the JSON output data, you should understand the versioning strategy.
 
+### Published schemas: add freely, rev on change
+
+Versioned schemas exist so consuming software can **migrate up** on its own
+schedule — pfsrd2-display reads a file, sees its `schema_version`, and knows how
+to render that format. A published version is a contract with that software.
+
+**Adding is compatible; changing is not.**
+
+- **Adding** an optional field does not break a consumer — code written against
+  the old version keeps working and simply ignores what it does not know. A
+  single addition like `degree_effects` can be published against the existing
+  version and passed upstream; no rev required.
+- **Changing** anything a consumer already reads — removing a field, renaming
+  it, changing its type or meaning — breaks that code. **That is when a rev is
+  critical**, and the old versioned file must be left exactly as it is so
+  anything still on it keeps working.
+- **Accumulating many additions** should rev even though each one is
+  compatible, so consumers get one clear signal rather than a version whose
+  meaning has quietly drifted.
+
+The trap to know about: `bin/copy_schema.sh <type>` overwrites the published
+file for whatever version the schema currently declares. That is what you want
+for an addition, and exactly what you must NOT do for a breaking change — bump
+`schema_version` in the schema and in the parser FIRST, so publishing writes a
+new file and leaves the old contract intact.
+
+See `docs/schema-guide.md` → "Published schemas: add freely, rev on change".
+
 ### Schema Version Branches
 
 The **pfsrd2-data** repository (JSON output) uses git branches for schema versioning:

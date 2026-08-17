@@ -256,6 +256,7 @@ _ACTION_ONLY_FIELDS = [
     "success",
     "failure",
     "critical_failure",
+    "degree_effects",
     "sample_tasks",
 ]
 
@@ -369,7 +370,14 @@ def _extract_action_text(section):
         action_type=section.get("action_type"),
         addon_labels=_SKILL_BOLD_LABELS,
     )
-    for key in ("text", "critical_success", "success", "failure", "critical_failure"):
+    for key in (
+        "text",
+        "critical_success",
+        "success",
+        "failure",
+        "critical_failure",
+        "degree_effects",
+    ):
         if key in post_ability:
             section[key] = post_ability[key]
     # Merge links from post-hr (text links) with pre-hr links (field links)

@@ -286,6 +286,58 @@ class TestExtractResultBlocks:
         assert spell["success"] == "You resist"
         assert spell["failure"] == "You take damage"
 
+    def test_a_spell_degree_is_modelled_like_any_other_degree(self):
+        # spell.py calls extract_result_blocks directly too. "Half damage" and
+        # "Double damage" carry no dice and correctly yield nothing; a degree
+        # that names its own dice does.
+        spell = {}
+        bs = BeautifulSoup(
+            "<b>Success</b> The creature takes 3d6 fire damage."
+            "<br/><b>Failure</b> The creature takes 6d6 fire damage"
+            " and 1d6 persistent fire damage.",
+            "html.parser",
+        )
+        extract_result_blocks(spell, bs)
+        effects = {e["degree"]: e for e in spell["degree_effects"]}
+        assert sorted(effects) == ["failure", "success"]
+        assert effects["success"]["damage"][0]["formula"] == "3d6"
+        assert len(effects["failure"]["damage"]) == 2
+        assert any(d.get("persistent") for d in effects["failure"]["damage"])
+
+    def test_degree_effects_travel_with_the_degrees_into_spell_defense(self):
+        # extract_result_blocks writes the degrees, and the modelling, onto the
+        # spell; _build_spell_defense then moves the degrees into a
+        # spell_defense object. Structure left behind on the spell is both
+        # stranded and rejected by the schema.
+        from pfsrd2.spell import _build_spell_defense
+
+        spell = {
+            "saving_throw": "basic Reflex",
+            "failure": "The creature takes 6d6 fire damage.",
+            "degree_effects": [
+                {
+                    "type": "stat_block_section",
+                    "subtype": "degree_effect",
+                    "degree": "failure",
+                    "damage": [{"formula": "6d6"}],
+                }
+            ],
+        }
+        _build_spell_defense(spell)
+        assert "degree_effects" not in spell
+        assert spell["defense"]["degree_effects"][0]["degree"] == "failure"
+
+    def test_a_degree_without_dice_gets_no_effect(self):
+        # The neighbouring fixture is "Half damage" / "Double damage" — real
+        # published wording that names damage without naming any. Emitting an
+        # effect for it would be an invented object.
+        spell = {}
+        bs = BeautifulSoup(
+            "<b>Success</b> Half damage<br/><b>Failure</b> Full damage", "html.parser"
+        )
+        extract_result_blocks(spell, bs)
+        assert "degree_effects" not in spell
+
     def test_non_result_bold_preserved(self):
         spell = {}
         html = "<b>Other Label</b> Some text<br/><b>Success</b> You win"

@@ -254,6 +254,23 @@ class TestExtractResultBlocks:
         assert section["failure"] == "You fail."
         assert "critical_success" not in section
 
+    def test_a_feat_degree_is_modelled_like_any_other_degree(self):
+        # feat.py calls extract_result_blocks directly rather than going
+        # through parse_ability_from_html, so a degree-modelling call attached
+        # to the ability path skips feats entirely. 35 published feat degrees
+        # carry extractable damage (PFSRD2-Parser-e01u).
+        section = {}
+        bs = BeautifulSoup(
+            "<b>Critical Success</b> The target falls and takes 2d6 bludgeoning damage."
+            "<b>Failure</b> The target is unaffected.",
+            "html.parser",
+        )
+        extract_result_blocks(section, bs, break_on_any_bold=True)
+        effects = section["degree_effects"]
+        assert [e["degree"] for e in effects] == ["critical_success"]
+        assert effects[0]["damage"][0]["formula"] == "2d6"
+        assert effects[0]["damage"][0]["damage_type"] == "bludgeoning"
+
     def test_ignores_non_result_bold(self):
         html = "<b>Note</b> some text<b>Success</b> You win."
         section = {}

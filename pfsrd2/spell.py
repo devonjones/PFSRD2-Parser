@@ -812,6 +812,11 @@ def _build_spell_defense(spell):
     for key in result_keys:
         if key in spell:
             defense[key] = spell.pop(key)
+    # extract_result_blocks models the degrees where it writes them, which is
+    # the spell; the degrees then move here, so their structure has to move
+    # with them or it is stranded on an object that no longer has the degrees.
+    if "degree_effects" in spell:
+        defense["degree_effects"] = spell.pop("degree_effects")
 
     spell["defense"] = defense
 

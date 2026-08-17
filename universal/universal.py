@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
+from pfsrd2.enrichment.regex_extractor import extract_all
 from universal.utils import (
     clear_end_whitespace,
     clear_tags,
@@ -622,6 +623,72 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
         for node in value_nodes:
             node.extract()
         bold.decompose()
+
+    # The degrees are final here. This is the one place feats, spells and
+    # every ability that goes through parse_ability_from_html write them, so
+    # modelling them here is what keeps degree_effects from being a field that
+    # exists for some parsers and silently not for others.
+    extract_degree_effects(section)
+
+
+_DEGREES = ("critical_success", "success", "failure", "critical_failure")
+
+
+def extract_degree_effects(ability):
+    """Model what a degree's text says, since the degree itself is a string.
+
+    Before the degrees were folded into their parent, each one was (wrongly)
+    parsed as its own ability — so the enrichment pipeline enriched it and its
+    damage came back as structure. Folding removed the record that carried
+    that, and nothing re-extracts from a plain string field. This puts it back
+    as degree_effects[] on the parent, keyed by degree.
+
+    The extractor is the enrichment regex pass, not _parse_damage: the latter
+    parses a Damage FIELD value ("2d6 slashing"), while a degree is prose
+    ("the target takes double damage and 2d6 persistent bleed damage"). Using
+    the same extractor that produced the original objects reproduces them
+    rather than inventing new ones. regex_extractor imports only json and re,
+    so this pulls in no DB and no LLM.
+
+    `damage` only, deliberately. 163 DCs appear in degree text corpus-wide and
+    only 46 are saving throws: 64 are Escape DCs, 45 are flat checks and 7 are
+    skill checks. Typing those as save_dc would claim something the source
+    never said, so saving_throw and skill_check wait for PFSRD2-Parser-2cby to
+    give skill checks their own type.
+
+    What comes back is damage the degree's text MENTIONS, which is not always
+    damage the degree's subject takes: 7 of the first run's 439 objects
+    describe damage dealt to someone else ("the morlock injures themself,
+    taking 2d6 damage"). A consumer that needs the subject must read the text.
+
+    Four places write a degree — this one, _apply_addon, creatures._apply_addons
+    and hazard._extract_routine_results — and each calls this once its degrees
+    are final. A fifth writer without a call is silent: the field simply does
+    not appear, which is exactly how the creature path shipped empty.
+    """
+    effects = []
+    for degree in _DEGREES:
+        text = ability.get(degree)
+        if not isinstance(text, str) or not text.strip():
+            continue
+        # extract_all reads "text" and "effect"; nothing else on the dict is
+        # consulted. _missed reports keywords it saw but could not structure,
+        # which is a corpus-coverage signal for the enrichment pass, not a
+        # per-degree one — PFSRD2-Parser-165k is where that gets measured.
+        enriched, _missed = extract_all({"text": get_text(BeautifulSoup(text, "html.parser"))})
+        damage = (enriched or {}).get("damage")
+        if not damage:
+            continue
+        effects.append(
+            {
+                "type": "stat_block_section",
+                "subtype": "degree_effect",
+                "degree": degree,
+                "damage": damage,
+            }
+        )
+    if effects:
+        ability["degree_effects"] = effects
 
 
 _KEY_OVERRIDES = {

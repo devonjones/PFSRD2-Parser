@@ -279,14 +279,67 @@ class TestDegreeEffects:
         assert "degree_effects" not in ability
 
     def test_a_dc_in_degree_text_does_NOT_become_a_saving_throw(self):
-        # Deliberate scope limit. Across the corpus 21 DCs appear in degree
-        # text and only 5 are saves: 11 are Escape DCs (a skill action) and 3
-        # are skill checks. Typing those as save_dc would claim something the
-        # source does not say, so saving_throw waits for PFSRD2-Parser-2cby.
+        # Deliberate scope limit. 163 DCs appear in degree text corpus-wide and
+        # only 46 are saves: 64 are Escape DCs, 45 are flat checks and 7 are
+        # skill checks. Typing those as save_dc would claim something the source
+        # does not say, so saving_throw waits for PFSRD2-Parser-2cby.
+        #
+        # The degree carries damage AND an Escape DC on purpose. A degree with
+        # only a DC produces no effect at all, so a test written on one asserts
+        # over an empty list and cannot fail.
         html = (
             "<b>Collapse</b> The ceiling gives way."
-            "<br/><b>Failure</b> The creature is immobilized by rubble (Escape DC 25)."
+            "<br/><b>Failure</b> The creature takes 2d6 bludgeoning damage"
+            " and is immobilized by rubble (Escape DC 25)."
         )
-        ability = _abilities(html)[0]
-        for effect in ability.get("degree_effects", []):
-            assert "saving_throw" not in effect
+        effects = _abilities(html)[0]["degree_effects"]
+        assert len(effects) == 1, effects
+        assert effects[0]["damage"][0]["formula"] == "2d6"
+        # The whole key set, not a "saving_throw not in" spot check: this fails
+        # if ANY new structure starts claiming the DC.
+        assert set(effects[0]) == {"type", "subtype", "degree", "damage"}
+
+
+class TestCreatureAddonDegrees:
+    """Creatures are the third place a degree becomes final.
+
+    The other two are inside parse_ability_from_html. Creatures bypass its
+    bold-field extraction entirely (addon_labels=set()) and hand the degrees
+    over as pre-consumed sections, which _apply_addons writes on AFTER that
+    function has returned. Without a call there, every automatic, reactive and
+    interaction ability in the creature corpus keeps unmodelled degrees.
+    """
+
+    SECTION = ("Rockfall", "The ceiling gives way.", None, None)
+    ADDONS = [
+        ("Failure", "The creature takes 2d6 bludgeoning damage.", None, None),
+        ("Critical Failure", "The creature takes 4d6 bludgeoning damage.", None, None),
+    ]
+
+    def _defensive(self):
+        from pfsrd2.creatures import process_defensive_ability
+
+        sb = {"defense": {}}
+        process_defensive_ability(self.SECTION, list(self.ADDONS), sb)
+        return sb["defense"]["automatic_abilities"][0]
+
+    def test_a_creature_degree_arriving_as_an_addon_gets_an_effect(self):
+        ability = self._defensive()
+        effects = {e["degree"]: e for e in ability["degree_effects"]}
+        assert sorted(effects) == ["critical_failure", "failure"]
+        assert effects["failure"]["damage"][0]["formula"] == "2d6"
+        assert effects["failure"]["damage"][0]["damage_type"] == "bludgeoning"
+        assert effects["critical_failure"]["damage"][0]["formula"] == "4d6"
+
+    def test_the_addon_degree_string_is_left_alone(self):
+        ability = self._defensive()
+        assert ability["failure"] == "The creature takes 2d6 bludgeoning damage."
+
+    def test_an_interaction_ability_takes_the_same_path(self):
+        from pfsrd2.creatures import process_interaction_ability
+
+        ability = process_interaction_ability({}, self.SECTION, list(self.ADDONS))
+        assert [e["degree"] for e in ability["degree_effects"]] == [
+            "failure",
+            "critical_failure",
+        ]
