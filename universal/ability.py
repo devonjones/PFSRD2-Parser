@@ -14,6 +14,7 @@ import re
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from pfsrd2.action import extract_action_type
+from pfsrd2.enrichment.regex_extractor import extract_all
 from pfsrd2.trait import extract_starting_traits
 from universal.attack import parse_attack_damage
 from universal.creatures import parse_save_dc, universal_handle_range, universal_handle_save_dc
@@ -275,6 +276,10 @@ def parse_ability_from_html(
     # Extract structured aura fields (range, damage, DC)
     _handle_aura(ability)
 
+    # After the degrees are final: a degree is a string, so what it says is
+    # modelled on the parent as degree_effects[]. See PFSRD2-Parser-e01u.
+    _extract_degree_effects(ability)
+
     # Strategic fragility: fail fast on unextracted frontmatter
     _assert_no_unextracted_frontmatter(ability)
 
@@ -505,6 +510,10 @@ def _build_ability_from_entry(entry, ability_type, labels):
 
     # Extract structured aura fields (range, damage, DC)
     _handle_aura(ability)
+
+    # After the degrees are final: a degree is a string, so what it says is
+    # modelled on the parent as degree_effects[]. See PFSRD2-Parser-e01u.
+    _extract_degree_effects(ability)
 
     # Strategic fragility: fail fast on unextracted frontmatter
     _assert_no_unextracted_frontmatter(ability)
@@ -814,6 +823,59 @@ def _detect_universal_monster_ability(ability):
 # --------------------------------------------------------------------------- #
 # Internal: Aura parsing
 # --------------------------------------------------------------------------- #
+
+
+_DEGREES = ("critical_success", "success", "failure", "critical_failure")
+
+
+def _extract_degree_effects(ability):
+    """Model what a degree's text says, since the degree itself is a string.
+
+    Before the degrees were folded into their parent, each one was (wrongly)
+    parsed as its own ability — so the enrichment pipeline enriched it and its
+    damage came back as structure. Folding removed the record that carried
+    that, and nothing re-extracts from a plain string field. This puts it back
+    as degree_effects[] on the parent, keyed by degree.
+
+    The extractor is the enrichment regex pass, not _parse_damage: the latter
+    parses a Damage FIELD value ("2d6 slashing"), while a degree is prose
+    ("the target takes double damage and 2d6 persistent bleed damage"). Using
+    the same extractor that produced the original objects reproduces them
+    rather than inventing new ones. regex_extractor imports only json and re,
+    so this pulls in no DB and no LLM.
+
+    `damage` only, deliberately. Across the corpus 21 DCs appear in degree
+    text and only 5 are saving throws — 11 are Escape DCs, which is a skill
+    action, and 3 are skill checks. Typing those as save_dc would claim
+    something the source never said, so saving_throw and skill_check wait for
+    PFSRD2-Parser-2cby to give skill checks their own type.
+    """
+    effects = []
+    for degree in _DEGREES:
+        text = ability.get(degree)
+        if not isinstance(text, str) or not text.strip():
+            continue
+        enriched, _missed = extract_all(
+            {
+                "name": ability.get("name", ""),
+                "type": "stat_block_section",
+                "subtype": "ability",
+                "text": text,
+            }
+        )
+        damage = (enriched or {}).get("damage")
+        if not damage:
+            continue
+        effects.append(
+            {
+                "type": "stat_block_section",
+                "subtype": "degree_effect",
+                "degree": degree,
+                "damage": damage,
+            }
+        )
+    if effects:
+        ability["degree_effects"] = effects
 
 
 def _handle_aura(ability):

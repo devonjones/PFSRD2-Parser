@@ -234,3 +234,59 @@ class TestEveryBranchThatCanVanishIsGuarded:
         html = "<b>Claw</b> It swipes.<br/><b>Damage</b> 2d6 slashing"
         ability = _abilities(html)[0]
         assert ability["damage"][0]["formula"] == "2d6"
+
+
+class TestDegreeEffects:
+    """A degree is a string, so what it says is modelled on the parent.
+
+    Before the degrees were folded in, each was (wrongly) its own ability, so
+    the enrichment pipeline enriched it and its damage came back as structure.
+    Folding removed the record that carried that. degree_effects[] puts it
+    back on the parent, keyed by degree (PFSRD2-Parser-e01u).
+    """
+
+    BREATH = (
+        "<b>Forceful Screech</b> The haunt screams."
+        "<br/><b>Critical Success</b> The creature is unaffected."
+        "<br/><b>Failure</b> The creature takes 2d8+9 force damage."
+        "<br/><b>Critical Failure</b> The creature takes 4d8+9 force damage."
+    )
+
+    def test_each_damage_bearing_degree_gets_an_effect(self):
+        ability = _abilities(self.BREATH)[0]
+        effects = {e["degree"]: e for e in ability["degree_effects"]}
+        assert sorted(effects) == ["critical_failure", "failure"]
+        assert effects["failure"]["damage"][0]["formula"] == "2d8+9"
+        assert effects["failure"]["damage"][0]["damage_type"] == "force"
+        assert effects["critical_failure"]["damage"][0]["formula"] == "4d8+9"
+
+    def test_a_degree_with_no_damage_gets_no_effect(self):
+        # critical_success here is "The creature is unaffected." — modelling an
+        # empty effect for it would be noise, not structure.
+        ability = _abilities(self.BREATH)[0]
+        assert "critical_success" not in {e["degree"] for e in ability["degree_effects"]}
+
+    def test_the_degree_text_is_left_alone(self):
+        # degree_effects is additive: the string field is untouched, which is
+        # what makes this non-breaking for existing consumers.
+        ability = _abilities(self.BREATH)[0]
+        assert ability["failure"] == "The creature takes 2d8+9 force damage."
+
+    def test_an_ability_with_no_degrees_gets_no_key(self):
+        # Absent rather than empty — remove_empty_fields would drop [] anyway,
+        # and an empty array would read as "checked, found nothing".
+        ability = _abilities("<b>Grab</b> The creature grabs.")[0]
+        assert "degree_effects" not in ability
+
+    def test_a_dc_in_degree_text_does_NOT_become_a_saving_throw(self):
+        # Deliberate scope limit. Across the corpus 21 DCs appear in degree
+        # text and only 5 are saves: 11 are Escape DCs (a skill action) and 3
+        # are skill checks. Typing those as save_dc would claim something the
+        # source does not say, so saving_throw waits for PFSRD2-Parser-2cby.
+        html = (
+            "<b>Collapse</b> The ceiling gives way."
+            "<br/><b>Failure</b> The creature is immobilized by rubble (Escape DC 25)."
+        )
+        ability = _abilities(html)[0]
+        for effect in ability.get("degree_effects", []):
+            assert "saving_throw" not in effect
