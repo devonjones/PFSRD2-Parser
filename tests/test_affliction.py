@@ -224,12 +224,19 @@ class TestTrailingProse:
         # residual description, which is the whole point of the change.
         assert "The blade whispers to its wielder." in str(bs)
 
-    def test_a_field_without_a_break_is_untouched(self):
+    @pytest.mark.parametrize("stop_at_br", [False, True])
+    def test_a_field_without_a_break_is_untouched(self, stop_at_br):
+        # Parametrized so "untouched" is a claim about the FLAG. With no <br/>
+        # in the input the flag is inert, so the single-value version of this
+        # test passed with the stop_at_br branch deleted from nodes_after
+        # entirely — no signal for the thing it is filed under. Its
+        # predecessor asserted _split_trailing_prose(...) == "", which was a
+        # real claim about the compensation being removed here.
         from universal.universal import extract_bold_fields
 
         affliction = {}
         bs = _soup("<b>Effect</b> you are cursed")
-        extract_bold_fields(affliction, bs, FIELD_LABELS, decompose=True, stop_at_br=True)
+        extract_bold_fields(affliction, bs, FIELD_LABELS, decompose=True, stop_at_br=stop_at_br)
         assert affliction["effect"] == "you are cursed"
         assert str(bs).strip() == ""
 

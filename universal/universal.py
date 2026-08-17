@@ -644,10 +644,11 @@ def extract_bold_fields(section, bs, labels, decompose=False, stop_at_br=False):
         decompose: If True, remove extracted nodes from the BS tree.
             Use when operating on a live BS object that will be processed
             further (e.g. feat's _extract_bold_fields_from_bs).
-        stop_at_br: If True, end each value run at the first <br/> rather than
-            at the next bold. Use where a field's value never spans a break,
-            so the last field in a block stops absorbing the prose that
-            follows it and that prose falls out as residual description.
+        stop_at_br: If True, add <br/> as a terminator for each value run —
+            the next bold still ends it too, whichever comes first. Use where
+            a field's value never spans a break, so the last field in a block
+            stops absorbing the prose that follows it and that prose falls out
+            as residual description.
     """
     for bold in list(bs.find_all("b")):
         label = get_text(bold).strip()
