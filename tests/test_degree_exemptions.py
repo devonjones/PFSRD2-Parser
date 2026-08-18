@@ -271,3 +271,34 @@ class TestMainDoesNotGradeItsOwnHomework:
         )
         assert degree_exemptions.main() == 1
         assert "Never Published" in capsys.readouterr().out
+
+
+class TestTheEquipmentCarryStaysPlain:
+    """equipment.py carries degrees into attack_roll with DEGREE_FIELDS, not the
+    WITH_EFFECTS form its sibling copy-lists use.
+
+    A round-3 review asked for WITH_EFFECTS there to pre-pay PFSRD2-Parser-qj3v.
+    It would ship invalid output the moment equipment starts modelling degrees,
+    because equipment.schema.json's attack_roll is additionalProperties: false
+    with no degree_effects property. The revert was correct and nothing pinned
+    the reason, so a future reader has no way to know not to redo it.
+    """
+
+    def test_the_schema_forbids_degree_effects_on_attack_roll(self):
+        from pfsrd2.schema import get_schema
+
+        attack_roll = get_schema("equipment.schema.json")["definitions"]["attack_roll"]
+        assert attack_roll["additionalProperties"] is False
+        assert "degree_effects" not in attack_roll["properties"], (
+            "if attack_roll gains degree_effects, equipment.py's carry should "
+            "become DEGREE_FIELDS_WITH_EFFECTS -- that is qj3v's job"
+        )
+
+    def test_equipment_carries_the_plain_field_list(self):
+        import pfsrd2.equipment as equipment
+        from universal.universal import DEGREE_FIELDS
+
+        assert equipment.DEGREE_FIELDS == DEGREE_FIELDS
+        assert not hasattr(
+            equipment, "DEGREE_FIELDS_WITH_EFFECTS"
+        ), "carrying degree_effects into attack_roll would violate the schema"

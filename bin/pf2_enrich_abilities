@@ -361,9 +361,7 @@ def run_llm(conn, args):
             result,
             combined,
             field_name,
-            name,
-            curs,
-            record["ability_id"],
+            (curs, record["ability_id"], name),
             mark=not args.dry_run,
         ):
             failed_count += 1

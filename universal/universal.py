@@ -592,8 +592,8 @@ RESULT_LABELS = {
 # Derived, not retyped. Every site that carries, strips or link-scans the degree
 # fields by name is a place a NEW degree field would be silently dropped —
 # which is exactly how skill.py and monster_ability.py both lost
-# degree_effects. No count here on purpose: it moved twice while this PR was
-# open. To audit, grep the four field names across pfsrd2/ and universal/ and
+# degree_effects. No count here on purpose -- it moves. To audit, grep the four
+# field names across pfsrd2/ and universal/ and
 # check every hit that is a retyped LIST or TUPLE of them; RESULT_LABELS, the
 # exemption keys in constants.py, equipment's label_map, and prose in comments
 # are the expected hits and are not copies.
@@ -681,10 +681,7 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
         # keeps the narrower predicate, because a bold between two degrees can
         # legitimately be part of the first one. The last degrees that carry a
         # bold are a handful corpus-wide and every one of them should be cut
-        # here; curse_of_death is the worked example above. A count sat here
-        # through two rounds and was wrong both times, so it is gone rather
-        # than re-measured a third time -- nothing checks a number in a
-        # comment.
+        # here; curse_of_death is the worked example above.
         # A handful of last degrees continue past their paragraph break instead
         # of returning to the parent object. The markup is identical, so they
         # are named in constants.py; see _continues_past_a_break.
@@ -735,10 +732,10 @@ def extract_degree_effects(ability, owner_name=None):
     check at all. Typing those as save_dc would claim something the source never
     said, so saving_throw and skill_check wait for PFSRD2-Parser-2cby.
 
-    The date is load-bearing. This census counts degree TEXT, and the degree
+    The date is load-bearing: this census counts degree TEXT, and the degree
     boundaries in this same module decide how much text there is, so it goes
-    stale whenever they move. Re-derive from the corpus before quoting it; the
-    published schema descriptions deliberately carry no tally at all.
+    stale whenever they move. Re-derive before quoting it. The published schema
+    descriptions deliberately carry no tally at all.
 
     What comes back is damage the degree's text MENTIONS, which is not always
     damage the degree's subject takes: a small minority describe damage dealt
@@ -785,9 +782,7 @@ def _is_exempt(obj, degree, plain, owner_name=None):
     four of them. Asserting on the phrase after matching the key would make an
     exemption written for one sentence halt the parse on its same-named
     neighbour, which is a worse failure than the one the pin exists to prevent.
-    (An earlier draft said 28. That was the count of (file, key) PAIRS, not of
-    keys -- the same unit error that made three other tallies in this change
-    wrong.)
+    Counts here are (name, degree) KEYS, not (file, key) pairs.
 
     Requiring the phrase makes the match exact, and makes the writer and the
     guard agree by construction: both ask the same question of the same degree

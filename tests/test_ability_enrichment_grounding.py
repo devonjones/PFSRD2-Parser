@@ -202,6 +202,14 @@ class TestTheNumberIsMatchedWhole:
         # invented and the guard rejected real data.
         assert ungrounded({"damage": "4d6+2"}, "takes 4d6 + 2 slashing") is None
 
+    def test_a_non_ascii_character_is_not_read_as_digits(self):
+        # json.dumps escapes non-ASCII unless ensure_ascii=False, and an en-dash
+        # becomes \u2013 -- whose digits the number regex then reads as "20132",
+        # a value no source could ever contain. Every record with a dash in its
+        # extracted text would be rejected as fabricated. This was found by
+        # measurement, not by reading the line.
+        assert ungrounded({"damage": "1\u20132 fire"}, "takes 1-2 fire damage") != "20132"
+
     def test_a_grounded_formula_passes(self):
         assert ungrounded({"damage": "2d10+9"}, "takes 2d10+9 piercing") is None
 
@@ -244,7 +252,7 @@ class TestRejectIfUngrounded:
     def test_an_invented_number_is_rejected_and_flagged(self, capsys):
         conn, curs, aid = self._db()
         assert reject_if_ungrounded(
-            {"dc": 30}, "a basic Reflex save", "saving_throw", "X", curs, aid
+            {"dc": 30}, "a basic Reflex save", "saving_throw", (curs, aid, "X")
         )
         assert "dc" in self._reason(curs, aid)
         assert "REJECTED" in capsys.readouterr().err
@@ -253,7 +261,7 @@ class TestRejectIfUngrounded:
     def test_a_grounded_number_is_not_rejected_and_nothing_is_flagged(self, capsys):
         conn, curs, aid = self._db()
         assert not reject_if_ungrounded(
-            {"damage": "2d6"}, "takes 2d6 fire", "damage", "X", curs, aid
+            {"damage": "2d6"}, "takes 2d6 fire", "damage", (curs, aid, "X")
         )
         assert self._reason(curs, aid) is None
         assert capsys.readouterr().err == ""
@@ -264,7 +272,7 @@ class TestRejectIfUngrounded:
         # would be the opposite of what the flag promises.
         conn, curs, aid = self._db()
         assert reject_if_ungrounded(
-            {"dc": 30}, "a basic Reflex save", "saving_throw", "X", curs, aid, mark=False
+            {"dc": 30}, "a basic Reflex save", "saving_throw", (curs, aid, "X"), mark=False
         )
         assert self._reason(curs, aid) is None
         assert "REJECTED" in capsys.readouterr().err
@@ -278,8 +286,8 @@ class TestRejectIfUngrounded:
         # queue -- with its damage value already cleared, nothing would ever
         # re-derive it.
         conn, curs, aid = self._db()
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", "X", curs, aid)
-        reject_if_ungrounded({"dc": 30}, "no dice here", "saving_throw", "X", curs, aid)
+        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", (curs, aid, "X"))
+        reject_if_ungrounded({"dc": 30}, "no dice here", "saving_throw", (curs, aid, "X"))
         reason = self._reason(curs, aid)
         assert "damage" in reason
         assert "dc" in reason
@@ -287,9 +295,9 @@ class TestRejectIfUngrounded:
 
     def test_the_same_rejection_twice_does_not_grow_the_reason(self):
         conn, curs, aid = self._db()
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", "X", curs, aid)
+        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", (curs, aid, "X"))
         once = self._reason(curs, aid)
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", "X", curs, aid)
+        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", (curs, aid, "X"))
         assert self._reason(curs, aid) == once
         conn.close()
 

@@ -90,7 +90,7 @@ def _try_inline_enrich(curs, ability_id, raw_json):
                 if not result.get(field_name):
                     llm_result = extractor_fn(name, combined)
                     rejected = reject_if_ungrounded(
-                        llm_result, combined, field_name, name, curs, ability_id
+                        llm_result, combined, field_name, (curs, ability_id, name)
                     )
                     if not rejected and llm_result:
                         result[field_name] = llm_result
@@ -138,33 +138,36 @@ def rejection_reason(field_name, ungrounded):
     )
 
 
-def reject_if_ungrounded(llm_result, source, field_name, name, curs, ability_id, mark=True):
+def reject_if_ungrounded(llm_result, source, field, record, mark=True):
     """True when the extractor invented a number, and the record is flagged.
 
-    Shared by both LLM paths on purpose. The guard first existed only on the
-    inline path, which covered 6 of the 63 poisoned records in
-    PFSRD2-Parser-l59s -- the other 57 came through bin/pf2_enrich_abilities
-    run_llm, an identical extractor loop with no check at all. A second
-    hand-written copy of the check is how that happened, so there is one copy.
+    `record` is (cursor, ability_id, ability name) -- one concept, the thing
+    being flagged, rather than three loose arguments. `mark` is False for a dry
+    run, where nothing should be written.
+
+    Shared by both LLM paths on purpose. This existed only on the inline path
+    at first, which covered 6 of the 63 poisoned records in
+    PFSRD2-Parser-l59s; the other 57 came through bin/pf2_enrich_abilities
+    run_llm, an identical extractor loop with no check. A second hand-written
+    copy is how that happened, so there is one copy.
 
     Rejected rather than asserted: an assert halts a 4500-file creature run on
-    a model hiccup, and the correct output is simply "no value".
-
-    stderr alone is not enough, which is why this also marks the record. The
-    result is cached, so the warning prints exactly once ever and every later
-    run is silent. needs_review is durable and queryable.
-
-    `mark` is False for a dry run, where nothing should be written.
+    a model hiccup, and the correct output is simply "no value". stderr alone
+    is not enough, because the result is cached -- the warning would print once
+    ever and every later run would be silent. needs_review is durable and
+    queryable, and add_review_reason accumulates so a second rejection does not
+    de-queue the first.
     """
+    curs, ability_id, name = record
     ungrounded = a_number_the_source_never_published(llm_result, source)
     if not ungrounded:
         return False
     sys.stderr.write(
-        f"REJECTED ungrounded {field_name} for {name!r}: {ungrounded!r} does "
+        f"REJECTED ungrounded {field} for {name!r}: {ungrounded!r} does "
         f"not occur in the ability text. {llm_result!r}\n"
     )
     if mark:
-        add_review_reason(curs, ability_id, rejection_reason(field_name, ungrounded))
+        add_review_reason(curs, ability_id, rejection_reason(field, ungrounded))
     return True
 
 

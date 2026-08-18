@@ -77,8 +77,11 @@ def published_degree_texts(docs):
     for doc in docs:
         for carrier, owner in degree_carriers(doc):
             for degree in DEGREE_FIELDS:
+                # No emptiness re-check: degree_carriers already decided that,
+                # and repeating the predicate here is how the three walkers
+                # drifted apart in the first place.
                 value = carrier.get(degree)
-                if isinstance(value, str) and value.strip():
+                if isinstance(value, str):
                     texts.setdefault((owner, degree), []).append(value)
     return texts
 

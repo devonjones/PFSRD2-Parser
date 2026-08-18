@@ -466,9 +466,8 @@ CREATURE_SPANS_ALLOWED = [
 # ordinary degree prose to key a rule on -- an unanchored "or" already
 # suppressed real damage in three files before it was anchored:
 # rusted_cage_trap, lifes_flowing_river and memory_of_nothing, each of which is
-# a regression test in tests/test_universal.py. Named rather than counted --
-# three separate tallies in this PR went stale between the measurement and the
-# review, and a name can be checked by grep while a count cannot.
+# a regression test in tests/test_universal.py. Named rather than counted, so
+# the claim can be checked by grep.
 #
 # Each entry PINS the phrase it was written against. If AoN rewords the degree
 # the phrase stops matching, the exemption stops applying, and
