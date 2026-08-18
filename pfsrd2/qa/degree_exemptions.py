@@ -31,7 +31,7 @@ from pfsrd2.constants import (
     DEGREE_EFFECT_NOT_THE_SUBJECTS,
 )
 from pfsrd2.qa import data_dir, load_json_dir
-from universal.universal import DEGREE_FIELDS
+from universal.universal import DEGREE_FIELDS, degree_carriers
 
 # The data directories equipment.schema.json covers -- the scope of the
 # modelling deferral. One parser writes this schema under six type configs
@@ -65,9 +65,8 @@ def content_dirs():
 def published_degree_texts(docs):
     """Every (owning name, degree) a document publishes -> the texts under it.
 
-    The name is the nearest enclosing named object, matching how _is_exempt
-    resolves a key -- a third of degree carriers (spell_defense,
-    save_results, routine_results) have no name of their own.
+    Walks with universal.degree_carriers, the same walker the parser's own
+    guard uses, so this cannot disagree with it about what counts as a carrier.
 
     A key maps to a LIST because a name is not a unique handle: 28 keys in the
     corpus match two carriers in the same file. Checking the pinned phrase
@@ -75,21 +74,12 @@ def published_degree_texts(docs):
     _is_exempt -- a parse only ever sees one degree at a time.
     """
     texts = {}
-
-    def walk(node, owner):
-        if isinstance(node, dict):
-            owner = node.get("name") or owner
-            for degree in DEGREE_FIELDS:
-                if isinstance(node.get(degree), str) and node[degree].strip():
-                    texts.setdefault((owner, degree), []).append(node[degree])
-            for value in node.values():
-                walk(value, owner)
-        elif isinstance(node, list):
-            for value in node:
-                walk(value, owner)
-
     for doc in docs:
-        walk(doc, None)
+        for carrier, owner in degree_carriers(doc):
+            for degree in DEGREE_FIELDS:
+                value = carrier.get(degree)
+                if isinstance(value, str) and value.strip():
+                    texts.setdefault((owner, degree), []).append(value)
     return texts
 
 
@@ -149,22 +139,7 @@ def unmodelled_outside_the_deferral():
 
 def count_deferred_carriers(docs):
     """Degree-carrying objects the modelling guard is currently skipping."""
-    total = 0
-
-    def walk(node):
-        nonlocal total
-        if isinstance(node, dict):
-            if any(isinstance(node.get(d), str) for d in DEGREE_FIELDS):
-                total += 1
-            for value in node.values():
-                walk(value)
-        elif isinstance(node, list):
-            for value in node:
-                walk(value)
-
-    for doc in docs:
-        walk(doc)
-    return total
+    return sum(1 for doc in docs for _ in degree_carriers(doc))
 
 
 def main():

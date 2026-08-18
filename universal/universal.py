@@ -997,32 +997,50 @@ def assert_every_degree_was_modelled(struct, schema_name):
         )
 
 
-def _unmodelled_degree_carriers(struct, owner_name=None):
-    """Walks output, carrying down the nearest enclosing name.
+def degree_carriers(struct, owner_name=None):
+    """Every object carrying a degree, with the name it inherits.
 
-    The name matters because degree_effects_for consults the exemption table
-    with it. Recomputing WITHOUT it would make this guard disagree with the
-    writer on every exempt degree that hangs off an unnamed carrier, and the
-    guard would report the writer as broken.
+    Yields (carrier, owner_name). The owner is the nearest enclosing NAMED
+    object, which is how _is_exempt resolves a key -- 836 of the corpus's 2582
+    carriers have no name of their own.
+
+    One walker, because there were three and they already disagreed on what
+    counts: one tested isinstance(str), another also required the string to be
+    non-empty after stripping. That difference decides whether an exemption on
+    a blank degree reads as live or dead, so it is not a detail. A degree that
+    is present but empty is a degree the parser wrote nothing into, and it
+    carries nothing -- so it does not count.
     """
     if isinstance(struct, dict):
         owner_name = struct.get("name") or owner_name
-        if any(isinstance(struct.get(d), str) for d in DEGREE_FIELDS):
-            expected = degree_effects_for(struct, owner_name)
-            actual = struct.get("degree_effects") or []
-            # Full structural equality, not just the degree NAMES. Comparing
-            # names only would pass an object whose degree_effects listed the
-            # right degrees with the wrong dice on them -- which is the shape
-            # of every bug this feature has actually shipped. Re-measured over
-            # the corpus: exact equality costs nothing, it finds the same zero
-            # disagreements.
-            if expected != actual:
-                yield struct, expected, owner_name
+        if any(
+            isinstance(struct.get(degree), str) and struct[degree].strip()
+            for degree in DEGREE_FIELDS
+        ):
+            yield struct, owner_name
         for value in struct.values():
-            yield from _unmodelled_degree_carriers(value, owner_name)
+            yield from degree_carriers(value, owner_name)
     elif isinstance(struct, list):
         for value in struct:
-            yield from _unmodelled_degree_carriers(value, owner_name)
+            yield from degree_carriers(value, owner_name)
+
+
+def _unmodelled_degree_carriers(struct, owner_name=None):
+    """Carriers whose published degree_effects disagree with their own text.
+
+    Recomputes with the same owner the writer would have resolved, so the two
+    cannot answer differently -- see degree_carriers.
+    """
+    for carrier, owner in degree_carriers(struct, owner_name):
+        expected = degree_effects_for(carrier, owner)
+        actual = carrier.get("degree_effects") or []
+        # Full structural equality, not just the degree NAMES. Comparing names
+        # only would pass an object whose degree_effects listed the right
+        # degrees with the wrong dice on them -- which is the shape of every
+        # bug this feature has actually shipped. Re-measured over the corpus:
+        # exact equality costs nothing, it finds the same zero disagreements.
+        if expected != actual:
+            yield carrier, expected, owner
 
 
 _KEY_OVERRIDES = {
