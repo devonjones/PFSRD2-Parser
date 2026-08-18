@@ -615,7 +615,26 @@ def plain_text(value):
     return get_text(BeautifulSoup(value, "html.parser")).strip()
 
 
-def nodes_after(bold, stop=None, stop_at_br=False):
+# Elements a degree of success cannot be part of. Deliberately a small,
+# explicit list rather than "not in _INLINE_TAGS": a tag nobody anticipated
+# should be absorbed and show up in review, not silently truncate a degree.
+_BLOCK_TAGS = frozenset(
+    {"h1", "h2", "h3", "h4", "h5", "h6", "table", "ul", "ol", "dl", "hr", "div"}
+)
+
+
+def _starts_a_blank_line(br):
+    """True when this <br/> is the first of a consecutive pair.
+
+    Whitespace between them is the source pretty-printing, not content.
+    """
+    node = br.next_sibling
+    while node is not None and isinstance(node, NavigableString) and not node.strip():
+        node = node.next_sibling
+    return getattr(node, "name", None) == "br"
+
+
+def nodes_after(bold, stop=None, stop_at_br=False, stop_at_blank_line=False, stop_at_block=False):
     """Sibling nodes up to the next bold label — a label's value run.
 
     `stop` overrides which bold ends the run. It receives each <b> node and
@@ -641,6 +660,26 @@ def nodes_after(bold, stop=None, stop_at_br=False):
     last degree (see pfsrd2/hazard.py::_extract_routine_results), so breaking
     there would truncate them.
 
+    `stop_at_blank_line` ends the run at a PARAGRAPH break -- a <br/> whose
+    next non-whitespace sibling is another <br/>. A single <br/> separates the
+    fields inside a block and must not end anything; two in a row is the source
+    saying this block is over.
+
+    Degrees want it. A degree of success is one sentence about one save
+    outcome, and it never spans a paragraph. Without this the LAST degree has
+    no terminator at all -- there is no bold after it -- so it swallowed
+    whatever the page printed next: an affliction's whole stat block into
+    purple_worm_sting's critical failure, a separate Depart ability into
+    summon_stampede's. Both were shipped that way and degree_effects then read
+    the buried dice as the degree's own damage.
+
+    `stop_at_block` ends the run at a block-level element. A degree is one
+    sentence about one save outcome; it cannot contain a heading, a table or a
+    list. unfathomable_song says "Roll 1d4+1 on the table below." and then
+    prints an <h2> and the table itself, all of which landed inside
+    critical_failure. A paragraph break would not have caught it, because there
+    is none -- the block element IS the separator.
+
     The loop tests `is not None`, not `while node:` — an empty NavigableString
     is falsy, so the inlined copies this replaces ended the run early on one
     and truncated the value silently. Neither html.parser nor lxml emits one —
@@ -654,7 +693,10 @@ def nodes_after(bold, stop=None, stop_at_br=False):
         if name == "b":
             if stop is None or stop(node):
                 break
-        elif stop_at_br and name == "br":
+        elif name == "br":
+            if stop_at_br or (stop_at_blank_line and _starts_a_blank_line(node)):
+                break
+        elif stop_at_block and name in _BLOCK_TAGS:
             break
         nodes.append(node)
         node = node.next_sibling

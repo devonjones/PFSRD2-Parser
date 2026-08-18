@@ -1,9 +1,13 @@
 """Unit tests for universal/universal.py shared functions."""
 
+import pytest
 from bs4 import BeautifulSoup
 
 from universal.universal import (
+    assert_every_degree_was_modelled,
+    degree_effects_for,
     extract_bold_fields,
+    extract_degree_effects,
     extract_result_blocks,
     extract_source_from_bs,
 )
@@ -353,3 +357,417 @@ class TestExtractResultBlocksWalksOnce:
         extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["success"] == "you gain"
         assert "<b>fire</b>" in str(bs)
+
+
+class TestEveryDegreeWasModelled:
+    """The one failure mode in this feature that is otherwise silent.
+
+    A new place that writes a degree, or a fixed key-list that copies degrees
+    without their structure, produces output that is VALID and simply missing
+    a field. Two review rounds found six such holes and none of them tripped
+    anything. The guard recomputes from finished output and compares.
+    """
+
+    def _struct(self, **extra):
+        return {
+            "name": "Rockfall",
+            "sections": [
+                {
+                    "name": "Rockfall",
+                    "subtype": "ability",
+                    "failure": "The creature takes 2d6 bludgeoning damage.",
+                    **extra,
+                }
+            ],
+        }
+
+    def test_a_degree_whose_damage_was_never_modelled_fails(self):
+        with pytest.raises(AssertionError, match="never called extract_degree_effects"):
+            assert_every_degree_was_modelled(self._struct(), "creature.schema.json")
+
+    def test_a_degree_that_was_modelled_passes(self):
+        struct = self._struct()
+        extract_degree_effects(struct["sections"][0])
+        assert_every_degree_was_modelled(struct, "creature.schema.json")
+
+    def test_a_degree_with_no_damage_needs_nothing(self):
+        struct = {"failure": "The creature is unaffected.", "subtype": "ability"}
+        assert_every_degree_was_modelled(struct, "creature.schema.json")
+
+    def test_the_equipment_deferral_is_scoped_to_equipment(self):
+        # PFSRD2-Parser-qj3v: the equipment parser has a degree-writer that
+        # does not model yet. The exemption must not leak to anything else --
+        # if it did, the guard would go quiet exactly where it is needed.
+        struct = self._struct()
+        assert_every_degree_was_modelled(struct, "equipment.schema.json")
+        for other in ("creature.schema.json", "hazard.schema.json", "feat.schema.json"):
+            with pytest.raises(AssertionError):
+                assert_every_degree_was_modelled(struct, other)
+
+    def test_degree_effects_for_does_not_touch_the_object(self):
+        section = self._struct()["sections"][0]
+        before = dict(section)
+        effects = degree_effects_for(section)
+        assert effects and section == before
+
+
+class TestDiceTheDegreeDoesNotDeal:
+    """A degree IS a save outcome, so dice carrying their OWN save are not its.
+
+    PFSRD2-Parser-bsw3: these stay prose. Three shipped hazards were wrong --
+    two claimed damage from a second, differently-gated effect, and one turned
+    a per-revolution rate into a flat amount.
+    """
+
+    def _f(self, text):
+        return [
+            (x.get("formula"), x.get("damage_type"))
+            for e in degree_effects_for({"failure": text})
+            for x in e["damage"]
+        ]
+
+    def test_a_rate_is_not_an_amount(self):
+        # test_of_endurance: 1d6 is per revolution, up to seven of them. The
+        # bare 1d6 is the damage at exactly one revolution and nowhere else.
+        assert (
+            self._f(
+                "The creature takes 1d6 cold damage for each revolution the wheel "
+                "has been rotated (max 7d6)."
+            )
+            == []
+        )
+
+    def test_dice_with_their_own_save_are_dropped_and_the_degrees_own_are_kept(self):
+        # wind_surge: the 20d6 is this degree's outcome; the 6d6 hits creatures
+        # in the water and rolls its own DC 29.
+        assert self._f(
+            "The creature takes 20d6 bludgeoning damage, is pushed 45 feet along "
+            "the line, is knocked prone, and is stunned 1 for 1 round.If the line "
+            "overlaps a body of water, the winds cause massive waves that deal 6d6 "
+            "bludgeoning damage to creatures in the water or within 15 feet of the "
+            "waterline (DC 29 basic Reflex save)."
+        ) == [("20d6", "bludgeoning")]
+
+    def test_a_nested_save_inside_the_degree_drops_only_its_own_dice(self):
+        # the_putrid_rise: 16d6 is the Vomit save's outcome; the 4d6 from the
+        # tumble is gated behind a second DC 32.
+        assert self._f(
+            "The creature takes 16d6 acid damage, is sickened 3, is knocked prone, "
+            "and then tumbles down the stairs. The creature takes an additional 4d6 "
+            "bludgeoning damage (DC 32 basic Reflex save) from the tumble."
+        ) == [("16d6", "acid")]
+
+    def test_an_escape_dc_after_the_damage_does_not_suppress_it(self):
+        # The guard must not fire on a DC that gates something OTHER than the
+        # damage. An Escape DC is a way out of a condition, not a damage save.
+        assert self._f(
+            "The creature takes 2d6 bludgeoning damage and is immobilized by "
+            "rubble (Escape DC 25)."
+        ) == [("2d6", "bludgeoning")]
+
+    def test_an_escape_dc_with_the_verb_OUTSIDE_the_parens_also_does_not(self):
+        # The spelling above is the one I invented; these two are the ones the
+        # corpus actually uses, and the first version of this guard fired on
+        # both -- dropping each degree's OWN damage and keeping the recurring
+        # damage instead. A parenthetical only counts if it names a save.
+        assert self._f(
+            "The creature's clothing is pulled into the clockworks. The creature "
+            "takes 4d8+18 bludgeoning damage and is restrained. Until the creature "
+            "Escapes (DC 24), it takes 2d8+9 bludgeoning damage each round."
+        ) == [("4d8+18", "bludgeoning"), ("2d8+9", "bludgeoning")]
+        assert self._f(
+            "As failure, but 30d6 piercing damage, 2d6 persistent bleed damage, "
+            "and is restrained until they escape (DC 37)."
+        ) == [("30d6", "piercing"), ("2d6", "bleed")]
+
+    def test_two_ordinary_instances_both_survive(self):
+        assert self._f("The creature takes 6d6 fire damage and 1d6 persistent fire damage.") == [
+            ("6d6", "fire"),
+            ("1d6", "fire"),
+        ]
+
+
+class TestADegreeStopsAtAParagraphBreak:
+    """The LAST degree has no bold after it, so without this it swallows the page.
+
+    Both shapes below were SHIPPED that way before this guard: the text itself
+    was wrong in committed data, and degree_effects then read the buried dice as
+    the degree's own damage. 21 spells carry a folded affliction block
+    (PFSRD2-Parser-t132); 6 more carry a trailing paragraph (-xqzp).
+    """
+
+    def _blocks(self, html):
+        bs = BeautifulSoup(html, "html.parser")
+        section = {}
+        extract_result_blocks(section, bs)
+        return section, str(bs)
+
+    def test_an_affliction_stat_block_is_not_part_of_the_degree(self):
+        # purple_worm_sting. The critical failure inflicts the venom AT stage 2;
+        # the stage table is the venom's, not the degree's.
+        section, soup = self._blocks(
+            "<b>Critical Failure</b> The target is afflicted with purple worm venom"
+            " at stage 2.<br /><br /><b>Purple Worm Venom</b> (poison); <b>Level</b>"
+            " 11; <b>Stage 1</b> 3d6 poison damage; <b>Stage 2</b> 4d6 poison damage."
+        )
+        assert section["critical_failure"] == (
+            "The target is afflicted with purple worm venom at stage 2."
+        )
+        assert "degree_effects" not in section, "13d6 at once is not what it deals"
+        assert "Purple Worm Venom" in soup, "the stage table stays on the page"
+
+    def test_a_trailing_paragraph_is_not_part_of_the_degree(self):
+        # door_to_beyond. The 4d6 hits anyone ending their turn in the space,
+        # with no save at all -- it is not the critical failure's damage.
+        section, soup = self._blocks(
+            "<b>Critical Failure</b> The creature is pulled 20 feet toward the door."
+            "<br /><br />The cracks are too thin, but decompressive effects deal 4d6"
+            " slashing damage to any creature that ends its turn in the space."
+        )
+        assert section["critical_failure"] == ("The creature is pulled 20 feet toward the door.")
+        assert "degree_effects" not in section
+        assert "decompressive" in soup
+
+    def test_a_result_table_is_not_part_of_the_degree(self):
+        # unfathomable_song. There is no paragraph break here at all -- the
+        # <h2> and <table> ARE the separator, so the blank-line rule alone
+        # would still swallow the whole result table into critical_failure.
+        section, soup = self._blocks(
+            "<b>Critical Failure</b> Roll 1d4+1 on the table below."
+            '<h2>Unfathomable Song</h2><table class="inner">'
+            "<tr><td>1</td><td>The target is frightened 2.</td></tr>"
+            "<tr><td>2</td><td>The target takes 4d6 sonic damage.</td></tr></table>"
+        )
+        assert section["critical_failure"] == "Roll 1d4+1 on the table below."
+        assert "degree_effects" not in section, "the table's dice are not the degree's"
+        assert "Unfathomable Song" in soup and "frightened 2" in soup
+
+    def test_an_affliction_with_no_separator_still_leaves_the_last_degree(self):
+        # curse_of_death. There is no <br/> at all before the affliction's
+        # bold, so the paragraph and block rules cannot see a boundary. After
+        # the LAST degree a new bold introduces a new thing, so it ends there.
+        section, soup = self._blocks(
+            "<b>Critical Failure</b> The target is afflicted with the curse of"
+            " death at stage 2. <b>Curse of Death</b> (curse, death, void)"
+            " <b>Stage 1</b> 4d6 void damage; <b>Stage 2</b> 8d6 void damage."
+        )
+        assert section["critical_failure"] == (
+            "The target is afflicted with the curse of death at stage 2."
+        )
+        assert "degree_effects" not in section, "24d6 at once is not what it deals"
+        assert "Curse of Death" in soup
+
+    def test_a_middle_degree_keeps_a_bold_of_its_own(self):
+        # The narrower predicate stays on middle degrees: a bold between two
+        # degrees can belong to the first. Only the LAST degree stops at any
+        # bold, because only it lacks a terminator.
+        section, _ = self._blocks(
+            "<b>Failure</b> The target is pushed back <b>10 feet</b> and falls"
+            " prone.<br /><b>Critical Failure</b> As failure, but 2d6 damage."
+        )
+        assert "10 feet" in section["failure"]
+        assert "falls prone" in section["failure"]
+
+    def test_a_middle_degree_keeps_its_own_paragraphs(self):
+        # tanglecurse. Failure says "roll 1d4 and consult the results below"
+        # and the results sit between it and Critical Failure -- so they are
+        # Failure's own content. The boundary must not fire here: a middle
+        # degree already has a terminator, the next degree's bold. Applying it
+        # anyway left the degree pointing at nothing.
+        section, _ = self._blocks(
+            "<b>Failure</b> The target is affected by the spores--roll 1d4 and"
+            " consult the results below.<br /><br /><b>1:</b> The target is"
+            " clumsy 1.<br /><b>2:</b> The target takes 2d6 poison damage."
+            "<br /><b>Critical Failure</b> As failure, but the bloom is 20 feet."
+        )
+        assert "consult the results below" in section["failure"]
+        assert "clumsy 1" in section["failure"], "the results are Failure's own"
+        assert "2d6 poison damage" in section["failure"]
+        assert section["critical_failure"] == "As failure, but the bloom is 20 feet."
+
+    def test_a_single_break_still_separates_degrees(self):
+        # The guard must not fire on the ordinary separator, or every degree
+        # after the first would be lost.
+        section, _ = self._blocks(
+            "<b>Success</b> Half damage.<br /><b>Failure</b> The creature takes"
+            " 6d6 fire damage.<br /><b>Critical Failure</b> Double damage."
+        )
+        assert section["success"] == "Half damage."
+        assert section["failure"] == "The creature takes 6d6 fire damage."
+        assert section["critical_failure"] == "Double damage."
+        assert [e["degree"] for e in section["degree_effects"]] == ["failure"]
+
+    def test_whitespace_between_the_two_breaks_still_counts(self):
+        # The source pretty-prints, so the pair is rarely adjacent.
+        section, _ = self._blocks(
+            "<b>Failure</b> The creature is pushed back.<br />\n  <br />\n"
+            "Something else entirely deals 9d6 fire damage."
+        )
+        assert section["failure"] == "The creature is pushed back."
+        assert "degree_effects" not in section
+
+
+class TestAlternativesAreNotCumulative:
+    """ "2d6 ... or 6d6" offers a choice; emitting both reads as 8d6.
+
+    Keeping the base case is the same call PFSRD2-Parser-bsw3 makes for scaling.
+    The false-positive tests matter more than the true positives here: an
+    unanchored "or" suppressed four files' worth of real damage, because
+    ordinary English "or" is everywhere.
+    """
+
+    def _f(self, text):
+        return [
+            x.get("formula") for e in degree_effects_for({"failure": text}) for x in e["damage"]
+        ]
+
+    def test_or_between_two_dice_drops_the_alternative(self):
+        assert self._f(
+            "You deal 2d6 damage of the chosen alignment type, or 6d6 damage if"
+            " you have legendary proficiency in Religion."
+        ) == ["2d6"]
+
+    def test_either_or_branch_is_not_added_to_the_base(self):
+        # kareq: the 6d6 always lands; the 1d6 only in the fire branch.
+        assert self._f(
+            "The creature takes 6d6 damage of the appropriate type and either is"
+            " deafened for 1 minute (if sonic damage) or takes 1d6 persistent"
+            " fire damage (if fire damage)."
+        ) == ["6d6"]
+
+    def test_instead_marks_the_alternative_not_the_value(self):
+        assert self._f(
+            "They take 3d8 mental damage. This ability is less effective if you"
+            " choose a basic action; the target takes 3d4 mental damage instead"
+            " if you choose a basic action."
+        ) == ["3d8"]
+
+    def test_instead_OF_is_the_value_itself(self):
+        # explosive_death_drop: "6d6 instead of 12d6" -- 6d6 IS the success
+        # damage, replacing another degree's. Suppressing it loses the outcome.
+        assert self._f(
+            "As critical success, but the target takes 6d6 fire damage instead"
+            " of 12d6, and creatures don't take persistent fire damage."
+        ) == ["6d6"]
+
+    def test_regained_hit_points_are_not_damage(self):
+        assert self._f("The target regains 8d6 Hit Points and a +1 bonus.") == []
+
+    def test_or_in_a_size_clause_is_not_an_alternative(self):
+        # rusted_cage_trap. No dice precede the "or", so it is ordinary English.
+        assert self._f(
+            "A Medium or smaller creature becomes trapped inside the cage"
+            " (Escape DC 20). A Large or larger creature takes 2d6+5"
+            " bludgeoning damage and is knocked prone."
+        ) == ["2d6+5"]
+
+    def test_or_in_a_subject_clause_is_not_an_alternative(self):
+        # lifes_flowing_river
+        assert self._f(
+            "If the creature is undead or a nindoru fiend, it takes 2d6 mental" " damage."
+        ) == ["2d6"]
+
+    def test_or_in_a_quantity_is_not_an_alternative(self):
+        # memory_of_nothing
+        assert self._f(
+            "For the next 3 rounds, if the target performs an activity that"
+            " requires three or more actions, they take 12d8 mental damage."
+        ) == ["12d8"]
+
+    def test_or_in_a_list_is_not_an_alternative(self):
+        # aegis_for_the_innocent
+        assert self._f(
+            "If a creature would be pushed into a solid barrier or another"
+            " creature, it stops at that point and takes 2d6 bludgeoning damage."
+        ) == ["2d6"]
+
+
+class TestNamedExemptions:
+    """Degrees the extractor cannot judge, listed by name in constants.py.
+
+    The list exists because the markers involved ("if", "until", "its Strikes")
+    are ordinary degree prose -- keying a rule on them suppressed four files of
+    real damage. What makes it more than a silent allowlist is the pinned
+    phrase: the exemption asserts if the sentence it was granted for changes.
+    """
+
+    def test_a_listed_degree_emits_nothing(self):
+        obj = {
+            "name": "Endsong",
+            "critical_failure": "As failure, but the target is confused for 1"
+            " hour. While confused, its Strikes resonate with Volnagur's song,"
+            " dealing an additional 1d6 sonic damage.",
+        }
+        assert degree_effects_for(obj) == []
+
+    def test_an_unlisted_degree_of_the_same_ability_is_untouched(self):
+        obj = {
+            "name": "Endsong",
+            "failure": "The target takes 4d6 sonic damage.",
+        }
+        assert [x["formula"] for e in degree_effects_for(obj) for x in e["damage"]] == ["4d6"]
+
+    def test_the_same_text_on_an_unlisted_ability_is_not_exempt(self):
+        # The key is (name, degree). A different ability with similar wording
+        # does not inherit the exemption.
+        obj = {
+            "name": "Some Other Ability",
+            "critical_failure": "While confused, its Strikes resonate, dealing"
+            " an additional 1d6 sonic damage.",
+        }
+        assert [x["formula"] for e in degree_effects_for(obj) for x in e["damage"]] == ["1d6"]
+
+    def test_a_reworded_degree_fails_loudly_instead_of_staying_exempt(self):
+        # The whole point: an exemption must not outlive the sentence it was
+        # granted for. AoN rewrites pages, and a stale exemption would silently
+        # drop damage that had become real.
+        obj = {
+            "name": "Endsong",
+            "critical_failure": "As failure, but the target takes 1d6 sonic" " damage directly.",
+        }
+        with pytest.raises(AssertionError, match="no longer in the degree"):
+            degree_effects_for(obj)
+
+
+class TestADegreeThatContinuesPastItsBreak:
+    """A named few last degrees own the paragraph after their break.
+
+    The markup is identical to the affliction fold -- "<b>Critical Failure</b>
+    ...<br /><br />..." either way -- so only the meaning separates them, and
+    that is why this is a list rather than a rule (PFSRD2-Parser-ts9n).
+    """
+
+    TEXT = (
+        "<b>Failure</b> During the first 5 minutes of the spell's duration, you"
+        " can Sustain the spell to modify a memory once each round.<br /><br />"
+        "Any memories you've altered remain changed as long as the spell is"
+        " active. If the target moves out of range before the 5 minutes is up,"
+        " you can't alter any further memories."
+    )
+
+    def _blocks(self, name, html):
+        bs = BeautifulSoup(html, "html.parser")
+        section = {"name": name}
+        extract_result_blocks(section, bs)
+        return section
+
+    def test_a_listed_degree_keeps_its_trailing_paragraph(self):
+        section = self._blocks("Rewrite Memory", self.TEXT)
+        assert "Any memories you've altered" in section["failure"]
+        assert (
+            "the 5 minutes is up" in section["failure"]
+        ), "the antecedent for 'the 5 minutes' is in the degree itself"
+
+    def test_an_unlisted_spell_with_the_same_shape_is_still_bounded(self):
+        # The exemption is keyed (name, degree); nothing else inherits it.
+        section = self._blocks("Some Other Spell", self.TEXT)
+        assert "Any memories you've altered" not in section["failure"]
+        assert section["failure"].endswith("once each round.")
+
+    def test_a_reworded_paragraph_fails_loudly(self):
+        html = (
+            "<b>Failure</b> You can modify a memory once each round.<br /><br />"
+            "The spell ends if you are interrupted."
+        )
+        with pytest.raises(AssertionError, match="no longer in the text"):
+            self._blocks("Rewrite Memory", html)

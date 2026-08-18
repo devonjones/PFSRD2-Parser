@@ -1071,8 +1071,6 @@ class TestRoutineResults:
         # The previous version of this test used a fixture whose next node was
         # a bold ability header, which is the case the test below covers; it
         # could not fail on this bug.
-        from bs4 import BeautifulSoup
-
         from pfsrd2.hazard import _extract_routine_results
 
         bs = BeautifulSoup(
@@ -1093,8 +1091,6 @@ class TestRoutineResults:
         # lives only on the ability paths leaves them prose while the identical
         # sentence on an ability becomes structure. 24 shipped hazards read
         # that way (PFSRD2-Parser-e01u).
-        from bs4 import BeautifulSoup
-
         from pfsrd2.hazard import _extract_routine_results
 
         bs = BeautifulSoup(
@@ -1118,8 +1114,6 @@ class TestRoutineResults:
     def test_a_degree_is_still_bounded_when_a_bold_follows_it(self):
         # The separator bound must not break the ordinary case: degree, <br/>,
         # next degree.
-        from bs4 import BeautifulSoup
-
         from pfsrd2.hazard import _extract_routine_results
 
         bs = BeautifulSoup(
@@ -1186,8 +1180,6 @@ class TestRoutineResults:
         # Asserted at the extractor rather than through the whole pipeline:
         # the ability splitter has its own gap with a linked header after a
         # routine (PFSRD2-Parser-qqzm), which is not what this fix is about.
-        from bs4 import BeautifulSoup
-
         from pfsrd2.hazard import _extract_routine_results
 
         bs = BeautifulSoup(
@@ -1220,8 +1212,6 @@ class TestUnboldedDegreeGuard:
     """
 
     def _extract(self, html):
-        from bs4 import BeautifulSoup
-
         from pfsrd2.hazard import _extract_routine_results
 
         hazard = {"name": "T"}
@@ -1286,8 +1276,6 @@ class TestDegreeRunTerminators:
     """
 
     def _extract(self, html):
-        from bs4 import BeautifulSoup
-
         from pfsrd2.hazard import _extract_routine_results
 
         hazard = {"name": "T"}

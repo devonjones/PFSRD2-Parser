@@ -459,6 +459,71 @@ CREATURE_SPANS_ALLOWED = [
     "Zombie Snake",
 ]
 
+# Degrees whose dice the extractor reads correctly but attributes wrongly. The
+# numbers are real and published; they are just not damage this degree's
+# subject takes on this save. Deciding that needs the sentence's meaning, and
+# the markers involved ("if", "until", "its Strikes") are far too common in
+# ordinary degree prose to key a rule on -- an unanchored "or" already
+# suppressed four files of real damage before it was anchored.
+#
+# Each entry PINS the phrase it was written against. If AoN rewords the degree
+# the phrase stops matching and the parser asserts, so an exemption cannot
+# outlive its justification. That is the difference between this and a bare
+# name list: the exception expires on its own.
+#
+# Keyed (ability name, degree) -> (phrase that must still be present, why).
+# Last degrees whose trailing paragraph CONTINUES them rather than returning to
+# the parent object. extract_result_blocks stops the last degree at a paragraph
+# break, which is right for an affliction's stat block or a separate Depart
+# ability -- but the markup is identical either way, so only the meaning tells
+# them apart.
+#
+# rewrite_memory's Failure ends "...to a maximum of 5 continuous minutes of
+# memory." and the paragraph after it opens "Any memories you've altered remain
+# changed... If the target moves out of range before the 5 minutes is up". That
+# "the 5 minutes" has no antecedent anywhere else in the spell, so relocating it
+# to the description orphans the reference.
+#
+# Keyed (object name, degree) -> (phrase that must still open the paragraph, why).
+# Same pinned-phrase contract as DEGREE_EFFECT_NOT_THE_SUBJECTS: if AoN rewords
+# it, the parser asserts rather than inheriting a stale exemption.
+DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK = {
+    ("Rewrite Memory", "failure"): (
+        "Any memories you've altered",
+        "the trailing paragraph continues Failure's own effect and refers to "
+        "'the 5 minutes' that only Failure introduces",
+    ),
+}
+
+DEGREE_EFFECT_NOT_THE_SUBJECTS = {
+    ("Endsong", "critical_failure"): (
+        "its Strikes resonate",
+        "1d6 sonic is damage the confused target DEALS to others, not takes",
+    ),
+    ("Bowl Over and Stomp", "success"): (
+        "If it is prone",
+        "the 1d6 persistent bleed only lands if the creature is already prone",
+    ),
+    ("Quick Stitch", "failure"): (
+        "tear out the stitching",
+        "the 1d6 happens only if the victim later spends an action to remove it",
+    ),
+    ("Quick Stitch", "critical_failure"): (
+        "tear out the stitching",
+        "as failure, with 2 actions and 2d6",
+    ),
+    ("Uncanny Tinker", "critical_failure"): (
+        "injures themself",
+        "the 3d6 is damage the MORLOCK takes on its own failed check, not "
+        "damage the degree's subject takes",
+    ),
+    ("Kraken's Call", "failure"): (
+        "still grabbed by a tentacle at the end of its turn",
+        "3d6 is recurring damage from the grabbed condition; the failure's own "
+        "damage is the ability's base, stated outside the degree",
+    ),
+}
+
 CREATURE_UL_ALLOWED = [
     "Archer Regiment",
     "First-Class Infantry",

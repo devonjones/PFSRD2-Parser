@@ -764,3 +764,42 @@ class TestCleanHtmlFields:
         struct = {"sections": [{"text": "already text", "name": "Test"}]}
         _clean_html_fields(struct)
         assert struct["sections"][0]["text"] == "already text"
+
+
+class TestDegreeEffectsSurviveTheCopyLists:
+    """skill.py rebuilds its section from a fixed key list, twice.
+
+    _extract_action_text copies chosen keys OFF the parsed ability, and
+    _strip_action_fields removes chosen keys when a section stops being an
+    action. A degree field missing from either list is dropped in silence:
+    the first drops the structure, the second leaves it on an object whose
+    schema has no degrees and fails the parse. Both lists are now derived from
+    DEGREE_FIELDS_WITH_EFFECTS, and these pin that they stay derived.
+    """
+
+    ACTION_TEXT = (
+        "<b>Trip</b> You try to knock a creature down.<hr/>"
+        "<b>Critical Success</b> The target falls and takes 1d6 bludgeoning damage."
+        "<b>Failure</b> You have no effect."
+    )
+
+    def test_the_copy_list_carries_degree_effects_off_the_ability(self):
+        section = {"name": "Trip", "text": self.ACTION_TEXT}
+        _extract_action_text(section)
+        effects = section["degree_effects"]
+        assert [e["degree"] for e in effects] == ["critical_success"]
+        assert effects[0]["damage"][0]["formula"] == "1d6"
+        assert effects[0]["damage"][0]["damage_type"] == "bludgeoning"
+
+    def test_reclassifying_a_section_strips_degree_effects_with_the_degrees(self):
+        from pfsrd2.skill import _strip_action_fields
+
+        section = {"name": "Trip", "text": self.ACTION_TEXT}
+        _extract_action_text(section)
+        assert "degree_effects" in section
+        _strip_action_fields(section)
+        assert "degree_effects" not in section, (
+            "a plain section has no degrees, so structure describing one is "
+            "rejected by the schema"
+        )
+        assert "critical_success" not in section

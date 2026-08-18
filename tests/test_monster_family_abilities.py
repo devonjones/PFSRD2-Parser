@@ -301,19 +301,29 @@ class TestDegreeEffects:
 
 
 class TestCreatureAddonDegrees:
-    """Creatures are the third place a degree becomes final.
+    """Creatures write their degrees where no other writer reaches.
 
-    The other two are inside parse_ability_from_html. Creatures bypass its
-    bold-field extraction entirely (addon_labels=set()) and hand the degrees
-    over as pre-consumed sections, which _apply_addons writes on AFTER that
-    function has returned. Without a call there, every automatic, reactive and
-    interaction ability in the creature corpus keeps unmodelled degrees.
+    They bypass parse_ability_from_html's bold-field extraction entirely
+    (addon_labels=set()) and hand the degrees over as pre-consumed sections,
+    which _apply_addons writes on AFTER that function has returned. Without a
+    call there, every automatic, reactive and interaction ability in the
+    creature corpus keeps unmodelled degrees.
+    universal.extract_degree_effects holds the list of writers; the count does
+    not get re-stated here, because a copy of it is a copy that goes stale.
     """
 
     SECTION = ("Rockfall", "The ceiling gives way.", None, None)
+    # The damage TYPE is wrapped, which is how it arrives from the source. A
+    # plain-text fixture cannot fail when the extractor stops stripping markup,
+    # or stops running at all.
     ADDONS = [
-        ("Failure", "The creature takes 2d6 bludgeoning damage.", None, None),
-        ("Critical Failure", "The creature takes 4d6 bludgeoning damage.", None, None),
+        ("Failure", "The creature takes 2d6 <i>bludgeoning</i> damage.", None, None),
+        (
+            "Critical Failure",
+            "The creature takes 4d6 <i>bludgeoning</i> damage.",
+            None,
+            None,
+        ),
     ]
 
     def _defensive(self):
@@ -331,9 +341,15 @@ class TestCreatureAddonDegrees:
         assert effects["failure"]["damage"][0]["damage_type"] == "bludgeoning"
         assert effects["critical_failure"]["damage"][0]["formula"] == "4d6"
 
-    def test_the_addon_degree_string_is_left_alone(self):
+    def test_the_addon_degree_string_keeps_its_markup(self):
+        # Two halves, and the old version of this test had only the first: the
+        # published string is untouched, AND the extractor read through the
+        # markup to the damage. Asserting only the string left the test green
+        # under a total no-op of the extractor.
         ability = self._defensive()
-        assert ability["failure"] == "The creature takes 2d6 bludgeoning damage."
+        assert ability["failure"] == "The creature takes 2d6 <i>bludgeoning</i> damage."
+        effect = next(e for e in ability["degree_effects"] if e["degree"] == "failure")
+        assert effect["damage"][0]["damage_type"] == "bludgeoning"
 
     def test_an_interaction_ability_takes_the_same_path(self):
         from pfsrd2.creatures import process_interaction_ability

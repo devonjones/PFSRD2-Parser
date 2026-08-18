@@ -1351,11 +1351,11 @@ def _apply_addons(ability, addons):
         ability[field_name] = value
         if links:
             ability.setdefault("links", []).extend(links)
-    # Creatures are the third place a degree becomes final. The other two are
-    # inside parse_ability_from_html, but _consume_addon_sections claims the
-    # four degree labels off the section list and writes them here, AFTER that
-    # function has returned — so without this call every creature degree stays
-    # an unmodelled string.
+    # One of the five functions that write a degree; universal.py's
+    # extract_degree_effects carries the list. _consume_addon_sections claims
+    # the four degree labels off the section list and writes them here, AFTER
+    # parse_ability_from_html has returned — so without this call every
+    # creature degree stays an unmodelled string.
     extract_degree_effects(ability)
 
 

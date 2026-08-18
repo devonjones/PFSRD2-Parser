@@ -13,5 +13,12 @@ def get_schema(schema_name):
 
 
 def validate_against_schema(data, schema_name):
+    # Imported here, not at module scope: universal.universal reaches back into
+    # pfsrd2.enrichment, and this module is pulled in early by every parser.
+    from universal.universal import assert_every_degree_was_modelled
+
     schema = get_schema(schema_name)
+    # Before the schema, because "valid but missing a field" is exactly what
+    # jsonschema cannot see and what this feature keeps shipping.
+    assert_every_degree_was_modelled(data, schema_name)
     return jsonschema.validate(data, schema)

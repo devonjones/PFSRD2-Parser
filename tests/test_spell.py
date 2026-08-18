@@ -313,7 +313,10 @@ class TestExtractResultBlocks:
 
         spell = {
             "saving_throw": "basic Reflex",
+            "critical_success": "No damage.",
+            "success": "Half damage.",
             "failure": "The creature takes 6d6 fire damage.",
+            "critical_failure": "Double damage.",
             "degree_effects": [
                 {
                     "type": "stat_block_section",
@@ -326,6 +329,12 @@ class TestExtractResultBlocks:
         _build_spell_defense(spell)
         assert "degree_effects" not in spell
         assert spell["defense"]["degree_effects"][0]["degree"] == "failure"
+        # All four degrees move, not just the ones a truncated list reaches:
+        # result_keys drives both the has_results test and the move, so a
+        # short list strands the tail on the spell and the schema rejects it.
+        for degree in ("critical_success", "success", "failure", "critical_failure"):
+            assert degree not in spell, f"{degree} stranded on the spell"
+            assert degree in spell["defense"]
 
     def test_a_degree_without_dice_gets_no_effect(self):
         # The neighbouring fixture is "Half damage" / "Double damage" — real

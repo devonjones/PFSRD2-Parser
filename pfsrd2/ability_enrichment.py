@@ -6,6 +6,7 @@ When enriched data exists, merges it into the ability objects.
 
 import json
 import re
+import sys
 
 from pfsrd2.ability_identity import ability_to_raw_json, compute_identity_hash
 from pfsrd2.ability_placement import deterministic_ability_category
@@ -80,7 +81,17 @@ def _try_inline_enrich(curs, ability_id, raw_json):
                 extractor_fn, field_name = _LLM_EXTRACTORS[keyword]
                 if not result.get(field_name):
                     llm_result = extractor_fn(name, combined)
-                    if llm_result:
+                    ungrounded = _a_number_the_source_never_published(llm_result, combined)
+                    if ungrounded:
+                        # PFSRD2-Parser-l59s. Rejected rather than asserted: an
+                        # assert here halts a 4500-file creature run on a model
+                        # hiccup, and the correct output is simply "no value".
+                        sys.stderr.write(
+                            f"REJECTED ungrounded {field_name} for {name!r}: "
+                            f"{ungrounded!r} does not occur in the ability text. "
+                            f"{llm_result!r}\n"
+                        )
+                    elif llm_result:
                         result[field_name] = llm_result
 
     if result is None:
@@ -88,6 +99,45 @@ def _try_inline_enrich(curs, ability_id, raw_json):
     enriched_json = json.dumps(result, sort_keys=True, ensure_ascii=False)
     update_enriched_json(curs, ability_id, enriched_json, ENRICHMENT_VERSION, "inline")
     return enriched_json
+
+
+# Dice first, so "4d6+2" is one token. Splitting it into 4, 6 and 2 and then
+# looking for a bare 4 fails: in "4d6" the digit is followed by a word character,
+# so there is no word boundary to match on, and every dice formula reads as
+# ungrounded.
+_A_NUMBER = re.compile(r"\d+d\d+(?:[+-]\d+)?|\d+")
+
+
+def _a_number_the_source_never_published(llm_result, source):
+    """The first number in an LLM answer that is absent from its own input.
+
+    PFSRD2-Parser-l59s: extract_dc_llm returned "DC 30 basic Reflex" -- character
+    for character its own few-shot example in DC_PROMPT -- for Repelling Blast,
+    whose text says only "a basic Reflex save of the same DC". "DC 30" occurs
+    nowhere on that source page. The value looked like ordinary game data and
+    took a corpus sweep to find.
+
+    The prompt already instructs the model not to extract a DC that references
+    another creature's, so this is not a prompting problem and better wording
+    will not close it. A model cannot invent a number that is already in the
+    text it was handed, so requiring every number to appear there is a cheap,
+    deterministic floor that needs no judgement.
+
+    Deliberately checks digits only. Damage TYPES and save names are words the
+    model may legitimately normalise ("negative" -> "void"); numbers are not.
+    Returns the offending number, or None when everything is grounded.
+    """
+    if not llm_result:
+        return None
+    # ensure_ascii=False, or an en-dash escapes to "\u2013" and its digits are
+    # read as a number: "a -2 circumstance penalty" produced the phantom "20132".
+    for number in _A_NUMBER.findall(json.dumps(llm_result, ensure_ascii=False)):
+        # A bare number must not be a fragment of a longer one -- "5" is not
+        # grounded by "50 feet". A dice formula is matched whole.
+        pattern = re.escape(number) if "d" in number else rf"(?<!\d){re.escape(number)}(?!\d)"
+        if not re.search(pattern, source):
+            return number
+    return None
 
 
 def _get_creature_metadata(struct):

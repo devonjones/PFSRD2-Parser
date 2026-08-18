@@ -502,10 +502,10 @@ def _extract_routine_results(hazard, bs):
                 "subtype": "routine_results",
                 **results,
             }
-            # A routine's degrees are written here and nowhere else, so this is
-            # the fourth and last place they become final. Without the call the
-            # 57 routine degrees that carry damage stay unmodelled while the
-            # identical text on an ability does not.
+            # A routine's degrees are written here and nowhere else; see
+            # universal.extract_degree_effects for the other four writers.
+            # Without the call the 57 routine degrees that carry damage stay
+            # unmodelled while the identical sentence on an ability does not.
             extract_degree_effects(hazard["routine_results"])
 
 
