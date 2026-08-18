@@ -29,7 +29,7 @@ from universal.creatures import (
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass
 from universal.universal import (
-    DEGREE_FIELDS_WITH_EFFECTS,
+    DEGREE_FIELDS,
     aon_pass,
     build_object,
     build_objects,
@@ -7045,11 +7045,14 @@ def _build_offense_bucket(stat_block):
         if "save_results" in stat_block:
             sr = stat_block["save_results"]
             attack_roll = {"type": "stat_block_section", "subtype": "attack_roll"}
-            # WITH_EFFECTS so that when qj3v starts modelling equipment's
-            # degrees, the structure moves with the degree it describes rather
-            # than being left behind on save_results. That is the exact shape
-            # of the bug skill.py and monster_ability.py both shipped.
-            for field in DEGREE_FIELDS_WITH_EFFECTS:
+            # Plain DEGREE_FIELDS, NOT the WITH_EFFECTS form, even though the
+            # sibling copy-lists use that: equipment.schema.json's attack_roll
+            # has no degree_effects property and forbids extras, so carrying
+            # the structure here would produce invalid output the moment
+            # PFSRD2-Parser-qj3v starts modelling equipment's degrees. The
+            # schema has to gain the property first; that is qj3v's job, and
+            # this line is one word away when it lands.
+            for field in DEGREE_FIELDS:
                 if field in sr:
                     attack_roll[field] = sr.pop(field)
             if len(attack_roll) > 2:

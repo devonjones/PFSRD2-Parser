@@ -17,7 +17,7 @@ import json
 from pfsrd2.ability_enrichment import (
     a_number_the_source_never_published as ungrounded,
 )
-from pfsrd2.ability_enrichment import rejection_reason
+from pfsrd2.ability_enrichment import reject_if_ungrounded, rejection_reason
 
 REPELLING_BLAST = (
     "The dragon expels scales from their body in a 50-foot emanation. Creatures "
@@ -92,7 +92,7 @@ class TestTheRejectPathActuallyRejects:
             lambda j: (json.loads(j) if isinstance(j, str) else dict(j), ["dc"]),
         )
         monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
-        monkeypatch.setattr(ae, "mark_needs_review", lambda c, i, r: marked.append((i, r)))
+        monkeypatch.setattr(ae, "add_review_reason", lambda c, i, r: marked.append((i, r)))
         import pfsrd2.enrichment.llm_extractor as le
 
         monkeypatch.setattr(le, "extract_dc_llm", lambda name, text: llm_result)
@@ -121,7 +121,7 @@ class TestTheRejectPathActuallyRejects:
             lambda j: (json.loads(j) if isinstance(j, str) else dict(j), ["dc"]),
         )
         monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
-        monkeypatch.setattr(ae, "mark_needs_review", lambda c, i, r: marked.append((i, r)))
+        monkeypatch.setattr(ae, "add_review_reason", lambda c, i, r: marked.append((i, r)))
         import pfsrd2.enrichment.llm_extractor as le
 
         monkeypatch.setattr(
@@ -195,3 +195,80 @@ class TestTheNumberIsMatchedWhole:
 
     def test_a_grounded_formula_passes(self):
         assert ungrounded({"damage": "2d10+9"}, "takes 2d10+9 piercing") is None
+
+
+class TestRejectIfUngrounded:
+    """The single shared copy of the guard, which both LLM paths now call.
+
+    Driven against a real in-memory enrichment DB rather than a stub cursor:
+    the behaviour that matters here is what lands in review_reason, and a stub
+    that just records calls cannot see it.
+    """
+
+    def _db(self):
+        from pfsrd2.sql.enrichment import get_enrichment_db_connection
+        from pfsrd2.sql.enrichment.queries import insert_ability_record
+
+        conn = get_enrichment_db_connection(":memory:")
+        curs = conn.cursor()
+        return conn, curs, insert_ability_record(curs, "Test Ability", "hash-1", "{}")
+
+    def _reason(self, curs, ability_id):
+        curs.execute(
+            "SELECT review_reason FROM ability_records WHERE ability_id = ?",
+            (ability_id,),
+        )
+        row = curs.fetchone()
+        return row["review_reason"] if isinstance(row, dict) else row[0]
+
+    def test_an_invented_number_is_rejected_and_flagged(self, capsys):
+        conn, curs, aid = self._db()
+        assert reject_if_ungrounded(
+            {"dc": 30}, "a basic Reflex save", "saving_throw", "X", curs, aid
+        )
+        assert "dc" in self._reason(curs, aid)
+        assert "REJECTED" in capsys.readouterr().err
+        conn.close()
+
+    def test_a_grounded_number_is_not_rejected_and_nothing_is_flagged(self, capsys):
+        conn, curs, aid = self._db()
+        assert not reject_if_ungrounded(
+            {"damage": "2d6"}, "takes 2d6 fire", "damage", "X", curs, aid
+        )
+        assert self._reason(curs, aid) is None
+        assert capsys.readouterr().err == ""
+        conn.close()
+
+    def test_a_dry_run_warns_without_writing(self, capsys):
+        # The CLI passes mark=not args.dry_run. A dry run that wrote to the DB
+        # would be the opposite of what the flag promises.
+        conn, curs, aid = self._db()
+        assert reject_if_ungrounded(
+            {"dc": 30}, "a basic Reflex save", "saving_throw", "X", curs, aid, mark=False
+        )
+        assert self._reason(curs, aid) is None
+        assert "REJECTED" in capsys.readouterr().err
+        conn.close()
+
+    def test_a_second_rejection_does_not_de_queue_the_first(self):
+        # The bug this replaced. mark_needs_review REPLACES review_reason, and
+        # bin/pf2_enrich_abilities selects records by substring-matching that
+        # reason against --llm-type. So a record rejected for damage and then
+        # for dc kept only the dc reason and silently fell out of the damage
+        # queue -- with its damage value already cleared, nothing would ever
+        # re-derive it.
+        conn, curs, aid = self._db()
+        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", "X", curs, aid)
+        reject_if_ungrounded({"dc": 30}, "no dice here", "saving_throw", "X", curs, aid)
+        reason = self._reason(curs, aid)
+        assert "damage" in reason
+        assert "dc" in reason
+        conn.close()
+
+    def test_the_same_rejection_twice_does_not_grow_the_reason(self):
+        conn, curs, aid = self._db()
+        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", "X", curs, aid)
+        once = self._reason(curs, aid)
+        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", "X", curs, aid)
+        assert self._reason(curs, aid) == once
+        conn.close()

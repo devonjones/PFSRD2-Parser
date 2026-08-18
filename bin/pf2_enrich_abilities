@@ -6,10 +6,7 @@ import json
 import re
 import sys
 
-from pfsrd2.ability_enrichment import (
-    a_number_the_source_never_published,
-    rejection_reason,
-)
+from pfsrd2.ability_enrichment import reject_if_ungrounded
 from pfsrd2.ability_placement import deterministic_ability_category
 from pfsrd2.enrichment.llm_extractor import (
     DEFAULT_MODEL,
@@ -154,6 +151,21 @@ def run_audit_enriched(conn, args):
     from pfsrd2.ability_enrichment import ENRICHMENT_FIELDS, _raws_equivalent
 
     curs = conn.cursor()
+
+    # A record with no enriched_json but a version set is invisible to every
+    # queue: fetch_unenriched selects on "enrichment_version IS NULL" and
+    # fetch_stale on "stale = 1", so it is neither. That state means "enriched,
+    # and the answer was nothing", which is false for a row whose value was
+    # cleared -- 61 rows were left that way by the PFSRD2-Parser-l59s sweep and
+    # nothing would ever have re-derived them. Clearing the version puts them
+    # back in front of the regex pass.
+    curs.execute(
+        "UPDATE ability_records SET enrichment_version = NULL"
+        " WHERE enriched_json IS NULL AND enrichment_version IS NOT NULL"
+    )
+    if curs.rowcount:
+        print(f"Requeued (cleared value still claimed a version): {curs.rowcount}")
+
     curs.execute(
         "SELECT * FROM ability_records"
         " WHERE stale = 0 AND enriched_json IS NOT NULL AND human_verified = 0"
@@ -313,22 +325,20 @@ def run_llm(conn, args):
 
         result = extractor_fn(name, combined, model=args.model)
 
-        # Same guard as the inline path in ability_enrichment. It lived only
-        # there at first, which covered 6 of the 63 poisoned records found by
-        # PFSRD2-Parser-l59s -- the other 57 came through HERE, with an
-        # identical extractor loop and no check at all.
-        ungrounded = a_number_the_source_never_published(result, combined)
-        if ungrounded:
-            sys.stderr.write(
-                f"REJECTED ungrounded {field_name} for {name!r}: {ungrounded!r} "
-                f"does not occur in the ability text. {result!r}\n"
-            )
-            if not args.dry_run:
-                mark_needs_review(
-                    curs,
-                    record["ability_id"],
-                    rejection_reason(field_name, ungrounded),
-                )
+        # ONE copy of this guard, shared with the inline path in
+        # ability_enrichment. It lived only there at first, which covered 6 of
+        # the 63 poisoned records found by PFSRD2-Parser-l59s -- the other 57
+        # came through HERE, with an identical extractor loop and no check at
+        # all. A second hand-written copy is exactly how that happened.
+        if reject_if_ungrounded(
+            result,
+            combined,
+            field_name,
+            name,
+            curs,
+            record["ability_id"],
+            mark=not args.dry_run,
+        ):
             failed_count += 1
             continue
 

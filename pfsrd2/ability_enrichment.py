@@ -13,11 +13,11 @@ from pfsrd2.ability_placement import deterministic_ability_category
 from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION, extract_all
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import (
+    add_review_reason,
     fetch_ability_by_hash,
     get_enrichment_db_connection,
     insert_ability_record,
     insert_creature_link,
-    mark_needs_review,
     mark_stale,
     refresh_raw_json,
     update_enriched_json,
@@ -83,27 +83,10 @@ def _try_inline_enrich(curs, ability_id, raw_json):
                 extractor_fn, field_name = _LLM_EXTRACTORS[keyword]
                 if not result.get(field_name):
                     llm_result = extractor_fn(name, combined)
-                    ungrounded = a_number_the_source_never_published(llm_result, combined)
-                    if ungrounded:
-                        # PFSRD2-Parser-l59s. Rejected rather than asserted: an
-                        # assert here halts a 4500-file creature run on a model
-                        # hiccup, and the correct output is simply "no value".
-                        #
-                        # stderr alone is not enough: the record is written to
-                        # the cache twelve lines below, so the warning prints
-                        # exactly once ever and every later run is silent.
-                        # needs_review is durable and queryable.
-                        sys.stderr.write(
-                            f"REJECTED ungrounded {field_name} for {name!r}: "
-                            f"{ungrounded!r} does not occur in the ability text. "
-                            f"{llm_result!r}\n"
-                        )
-                        mark_needs_review(
-                            curs,
-                            ability_id,
-                            rejection_reason(field_name, ungrounded),
-                        )
-                    elif llm_result:
+                    rejected = reject_if_ungrounded(
+                        llm_result, combined, field_name, name, curs, ability_id
+                    )
+                    if not rejected and llm_result:
                         result[field_name] = llm_result
 
     if result is None:
@@ -121,10 +104,10 @@ _A_NUMBER = re.compile(r"\d+d\d+(?:[+-]\d+)?|\d+")
 
 
 # bin/pf2_enrich_abilities re-queues a flagged record by substring-matching its
-# review_reason against the --llm-type. Two of the four types are not spelled
-# the way their FIELD is, so a reason naming only the field is a reason nothing
-# can re-queue: nine saving_throw rejections were parked permanently because
-# "dc" does not occur in "saving_throw".
+# review_reason against the --llm-type. One of the four types is not spelled
+# the way its FIELD is -- dc/saving_throw -- so a reason naming only the field
+# is a reason nothing can re-queue: nine saving_throw rejections were parked
+# permanently because "dc" does not occur in "saving_throw".
 _LLM_TYPE_OF_FIELD = {
     "damage": "damage",
     "saving_throw": "dc",
@@ -140,6 +123,36 @@ def rejection_reason(field_name, ungrounded):
         f"PFSRD2-Parser-l59s: LLM returned {ungrounded!r} for {field_name} "
         f"(--llm-type {llm_type}), absent from the ability text"
     )
+
+
+def reject_if_ungrounded(llm_result, source, field_name, name, curs, ability_id, mark=True):
+    """True when the extractor invented a number, and the record is flagged.
+
+    Shared by both LLM paths on purpose. The guard first existed only on the
+    inline path, which covered 6 of the 63 poisoned records in
+    PFSRD2-Parser-l59s -- the other 57 came through bin/pf2_enrich_abilities
+    run_llm, an identical extractor loop with no check at all. A second
+    hand-written copy of the check is how that happened, so there is one copy.
+
+    Rejected rather than asserted: an assert halts a 4500-file creature run on
+    a model hiccup, and the correct output is simply "no value".
+
+    stderr alone is not enough, which is why this also marks the record. The
+    result is cached, so the warning prints exactly once ever and every later
+    run is silent. needs_review is durable and queryable.
+
+    `mark` is False for a dry run, where nothing should be written.
+    """
+    ungrounded = a_number_the_source_never_published(llm_result, source)
+    if not ungrounded:
+        return False
+    sys.stderr.write(
+        f"REJECTED ungrounded {field_name} for {name!r}: {ungrounded!r} does "
+        f"not occur in the ability text. {llm_result!r}\n"
+    )
+    if mark:
+        add_review_reason(curs, ability_id, rejection_reason(field_name, ungrounded))
+    return True
 
 
 def a_number_the_source_never_published(llm_result, source):

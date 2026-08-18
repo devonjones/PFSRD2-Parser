@@ -638,7 +638,7 @@ class TestAlternativesAreNotCumulative:
 
     Keeping the base case is the same call PFSRD2-Parser-bsw3 makes for scaling.
     The false-positive tests matter more than the true positives here: an
-    unanchored "or" suppressed four files' worth of real damage, because
+    unanchored "or" suppressed three files' worth of real damage, because
     ordinary English "or" is everywhere.
     """
 
@@ -772,7 +772,7 @@ class TestNamedExemptions:
     """Degrees the extractor cannot judge, listed by name in constants.py.
 
     The list exists because the markers involved ("if", "until", "its Strikes")
-    are ordinary degree prose -- keying a rule on them suppressed four files of
+    are ordinary degree prose -- keying a rule on them suppressed three files of
     real damage. What makes it more than a silent allowlist is the pinned
     phrase: the exemption asserts if the sentence it was granted for changes.
     """

@@ -24,6 +24,8 @@ comment: _DEGREE_MODELLING_DEFERRED turns the modelling guard OFF for a whole
 schema, and how much data that covers is a measurement that drifts.
 """
 
+import os
+
 from pfsrd2.constants import (
     DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK,
     DEGREE_EFFECT_NOT_THE_SUBJECTS,
@@ -32,8 +34,12 @@ from pfsrd2.qa import data_dir, load_json_dir
 from universal.universal import DEGREE_FIELDS
 
 # The data directories equipment.schema.json covers -- the scope of the
-# modelling deferral. Six parsers write this schema, which is why the deferral
-# is much wider than "equipment".
+# modelling deferral. One parser writes this schema under six type configs
+# (equipment, weapon, armor, shield, siege_weapon, vehicle), which is why the
+# deferral reaches much further than the word "equipment" suggests. Hand-typed, and therefore cross-checked
+# against behaviour by unmodelled_outside_the_deferral() below rather than
+# trusted: this list and _DEGREE_MODELLING_DEFERRED are two spellings of one
+# fact and nothing else keeps them in step.
 DEFERRED_DIRS = (
     "equipment",
     "weapons",
@@ -42,6 +48,18 @@ DEFERRED_DIRS = (
     "siege_weapons",
     "vehicles",
 )
+
+
+def content_dirs():
+    """Top-level data directories, excluding git and the bug-report folder."""
+    root = data_dir()
+    return sorted(
+        name
+        for name in os.listdir(root)
+        if os.path.isdir(os.path.join(root, name))
+        and not name.startswith(".")
+        and name != "known_errors"
+    )
 
 
 def published_degree_texts(docs):
@@ -105,6 +123,30 @@ def dead_entries(table, texts):
     return dead
 
 
+def unmodelled_outside_the_deferral():
+    """Content directories that carry unmodelled degrees but are not deferred.
+
+    DEFERRED_DIRS is a hand-typed spelling of _DEGREE_MODELLING_DEFERRED. If it
+    goes stale -- a seventh parser starts writing equipment.schema.json, or a
+    deferred directory is renamed -- the deferral silently covers data this
+    list does not mention, and the printed scope understates it. Rather than
+    asserting the list is right, this asks the guard.
+    """
+    from universal.universal import assert_every_degree_was_modelled
+
+    stale = []
+    for name in content_dirs():
+        if name in DEFERRED_DIRS:
+            continue
+        for doc in load_json_dir(name):
+            try:
+                assert_every_degree_was_modelled(doc, "not-deferred.schema.json")
+            except AssertionError:
+                stale.append(name)
+                break
+    return stale
+
+
 def count_deferred_carriers(docs):
     """Degree-carrying objects the modelling guard is currently skipping."""
     total = 0
@@ -126,19 +168,12 @@ def count_deferred_carriers(docs):
 
 
 def main():
-    docs = load_json_dir(
-        "monsters",
-        "npcs",
-        "spells",
-        "feats",
-        "skills",
-        "hazards",
-        "weatherhazards",
-        "monster_abilities",
-        "monster_families",
-        "monster_templates",
-        "afflictions",
-    )
+    # Every content directory on disk, not a hand-typed list. A missing
+    # directory here would make every exemption under it read as dead -- the
+    # verifier would report a live entry as needing deletion, which is the one
+    # wrong answer it must never give. Walking what is actually there means a
+    # new content type is covered the day it lands.
+    docs = load_json_dir(*content_dirs())
     if not docs:
         print(f"no data found under {data_dir()} — run the parsers first")
         return 1
@@ -156,8 +191,9 @@ def main():
             problems.append((label, key, why, how))
 
     deferred = count_deferred_carriers(load_json_dir(*DEFERRED_DIRS))
+    stale_scope = unmodelled_outside_the_deferral()
 
-    print(f"degree-carrying objects loaded: {len(texts)} distinct (name, degree) keys")
+    print(f"distinct (name, degree) keys published: {len(texts)}")
     print(
         f"exemption entries: {len(DEGREE_EFFECT_NOT_THE_SUBJECTS)} suppressing, "
         f"{len(DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK)} extending"
@@ -166,6 +202,15 @@ def main():
         f"deferred by _DEGREE_MODELLING_DEFERRED: {deferred} degree carriers "
         f"across {', '.join(DEFERRED_DIRS)}"
     )
+
+    if stale_scope:
+        print(
+            f"\nDEFERRAL SCOPE IS STALE: {', '.join(stale_scope)} carry unmodelled "
+            "degrees but are not in DEFERRED_DIRS. Either a writer is missing its "
+            "extract_degree_effects call, or DEFERRED_DIRS no longer matches "
+            "_DEGREE_MODELLING_DEFERRED."
+        )
+        return 1
 
     if problems:
         print(f"\nDEAD EXEMPTIONS: {len(problems)}")

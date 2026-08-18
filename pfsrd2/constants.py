@@ -464,8 +464,11 @@ CREATURE_SPANS_ALLOWED = [
 # subject takes on this save. Deciding that needs the sentence's meaning, and
 # the markers involved ("if", "until", "its Strikes") are far too common in
 # ordinary degree prose to key a rule on -- an unanchored "or" already
-# suppressed real damage in three files before it was anchored -- 4
-# degree-carriers, 5 formulas, measured 2026-08-18.
+# suppressed real damage in three files before it was anchored:
+# rusted_cage_trap, lifes_flowing_river and memory_of_nothing, each of which is
+# a regression test in tests/test_universal.py. Named rather than counted --
+# three separate tallies in this PR went stale between the measurement and the
+# review, and a name can be checked by grep while a count cannot.
 #
 # Each entry PINS the phrase it was written against. If AoN rewords the degree
 # the phrase stops matching and the parser asserts, so an exemption cannot

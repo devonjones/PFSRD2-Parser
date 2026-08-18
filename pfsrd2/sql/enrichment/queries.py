@@ -251,6 +251,45 @@ def mark_needs_review(curs, ability_id, reason):
     curs.execute(sql, (reason, _now(), ability_id))
 
 
+def add_review_reason(curs, ability_id, reason):
+    """Flag for review, ACCUMULATING reasons rather than replacing them.
+
+    mark_needs_review overwrites review_reason, which is right when a record is
+    flagged once for one thing. It is wrong for the ungrounded-number guard,
+    which runs per extractor type inside one pass: a record rejected for damage
+    and then for dc kept only the dc reason, and bin/pf2_enrich_abilities
+    selects records by substring-matching that reason against --llm-type. So
+    the second rejection silently de-queued the first.
+
+    Idempotent -- re-running a rejection does not grow the string.
+    """
+    curs.execute(
+        "SELECT review_reason FROM ability_records WHERE ability_id = ?",
+        (ability_id,),
+    )
+    row = curs.fetchone()
+    # The enrichment connection sets a dict row_factory, but a bare
+    # sqlite3.Cursor yields tuples. Both reach this helper.
+    if row is None:
+        existing = ""
+    elif isinstance(row, dict):
+        existing = row.get("review_reason") or ""
+    else:
+        existing = row[0] or ""
+    if reason in existing:
+        merged = existing
+    elif existing:
+        merged = f"{existing}; {reason}"
+    else:
+        merged = reason
+    curs.execute(
+        "UPDATE ability_records"
+        " SET needs_review = 1, review_reason = ?, updated_at = ?"
+        " WHERE ability_id = ?",
+        (merged, _now(), ability_id),
+    )
+
+
 def clear_needs_review(curs, ability_id):
     sql = "\n".join(
         [

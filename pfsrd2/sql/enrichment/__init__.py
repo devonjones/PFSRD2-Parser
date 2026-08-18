@@ -10,6 +10,7 @@ import sys
 
 # Re-export queries for convenient access
 from pfsrd2.sql.enrichment.queries import (  # noqa: F401
+    add_review_reason,
     clear_change_needs_review,
     clear_needs_review,
     count_ability_records,

@@ -589,10 +589,13 @@ RESULT_LABELS = {
     "Critical Failure": "critical_failure",
 }
 
-# Derived, not retyped. Nine sites across six modules carry, strip or link-scan
-# the degree fields by name, and every retyped copy is a place a NEW degree
-# field is silently dropped — which is exactly how skill.py and
-# monster_ability.py both lost degree_effects.
+# Derived, not retyped. Every site that carries, strips or link-scans the degree
+# fields by name is a place a NEW degree field would be silently dropped —
+# which is exactly how skill.py and monster_ability.py both lost
+# degree_effects. No count here on purpose: it moved twice while this PR was
+# open. `grep -rn 'critical_failure' --include='*.py' pfsrd2/ universal/`
+# should return only RESULT_LABELS, the exemption keys, and the label_map
+# below.
 #
 # One retyped copy survives on purpose: equipment.py's label_map, which maps
 # the DISPLAY labels ("Critical Failure") rather than the field names, and is
@@ -639,10 +642,8 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
     degree is a string, so what it says is modelled beside it.
 
     This function is ONE of the five degree-writers listed in
-    extract_degree_effects, and it is the one three parsers reach it through:
-    feats, spells, and everything that goes via parse_ability_from_html. The
-    "five" there counts writing functions; the "three" here counts callers, so
-    the numbers are not comparable and neither is wrong.
+    extract_degree_effects, reached by feats, spells, and everything that goes
+    via parse_ability_from_html.
 
     Args:
         section: dict to store result keys into (e.g. critical_success,
@@ -677,10 +678,12 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
         # it: curse_of_death runs "<b>Critical Failure</b> ...at stage 2.
         # <b>Curse of Death</b>" with no separator at all. A middle degree
         # keeps the narrower predicate, because a bold between two degrees can
-        # legitimately be part of the first one. Re-measured 2026-08-18:
-        # THREE last degrees corpus-wide carry a bold, and all three should be
-        # cut here. This said four, which was the one number in the change with
-        # nothing checking it -- which is why it was the one that was wrong.
+        # legitimately be part of the first one. The last degrees that carry a
+        # bold are a handful corpus-wide and every one of them should be cut
+        # here; curse_of_death is the worked example above. A count sat here
+        # through two rounds and was wrong both times, so it is gone rather
+        # than re-measured a third time -- nothing checks a number in a
+        # comment.
         # A handful of last degrees continue past their paragraph break instead
         # of returning to the parent object. The markup is identical, so they
         # are named in constants.py; see _continues_past_a_break.
@@ -732,11 +735,9 @@ def extract_degree_effects(ability, owner_name=None):
     said, so saving_throw and skill_check wait for PFSRD2-Parser-2cby.
 
     The date is load-bearing. This census counts degree TEXT, and the degree
-    boundaries in this same module decide how much text there is: tightening
-    them moved the total from 163 to 160 and nobody re-measured, so the figure
-    shipped wrong into ten published schema descriptions twice. Those
-    descriptions no longer carry a tally; re-derive from the corpus before
-    quoting one.
+    boundaries in this same module decide how much text there is, so it goes
+    stale whenever they move. Re-derive from the corpus before quoting it; the
+    published schema descriptions deliberately carry no tally at all.
 
     What comes back is damage the degree's text MENTIONS, which is not always
     damage the degree's subject takes: a small minority describe damage dealt
@@ -956,10 +957,8 @@ def assert_every_degree_was_modelled(struct, schema_name):
     corpus this agrees everywhere the deferral does not cover.
 
     How much the deferral covers is a measurement, not a constant, so it is
-    not written here -- bin/pf2_verify_degree_exemptions prints it. It was 212
-    degree carriers on 2026-08-18, which is worth knowing because an earlier
-    draft of this docstring said 37: that was the count of objects that would
-    GAIN damage, not the count the guard is switched off for.
+    not written here -- bin/pf2_verify_degree_exemptions prints it, and also
+    fails if DEFERRED_DIRS stops matching _DEGREE_MODELLING_DEFERRED.
 
     Recomputing from published text is safe because the extractor is fed
     get_text() at write time, and no published degree string carries markup.
@@ -969,14 +968,32 @@ def assert_every_degree_was_modelled(struct, schema_name):
     first = next(_unmodelled_degree_carriers(struct), None)
     if first is not None:
         obj, expected, owner_name = first
+        actual = obj.get("degree_effects") or []
+        # Say which of the three disagreements this is. The comparison went
+        # from degree names to full structure, so "missing" is no longer the
+        # only way to fail -- and the message used to print "no degree_effects
+        # for []" when the object had EXTRA entries, which describes the
+        # opposite of what happened.
+        missing = [
+            e["degree"] for e in expected if e["degree"] not in {a["degree"] for a in actual}
+        ]
+        extra = [a["degree"] for a in actual if a["degree"] not in {e["degree"] for e in expected}]
+        if missing:
+            what = f"no degree_effects for {missing}"
+        elif extra:
+            what = f"degree_effects for {extra}, which its text does not carry"
+        else:
+            what = (
+                "degree_effects on the right degrees but with different damage: "
+                f"expected {expected}, published {actual}"
+            )
         assert False, (
-            f"{obj.get('name') or owner_name!r} ({obj.get('subtype')}) "
-            f"publishes a degree "
-            f"whose text carries damage, but no degree_effects for "
-            f"{[e['degree'] for e in expected]}. Whatever wrote this object's "
-            "degrees never called extract_degree_effects — see that function "
-            "for the list of writers. Add the call where the degrees become "
-            "final; do not add the field by hand."
+            f"{obj.get('name') or owner_name!r} ({obj.get('subtype')}) publishes "
+            f"a degree whose text disagrees with its structure — {what}. "
+            "Either whatever wrote this object's degrees never called "
+            "extract_degree_effects, or it called it before the degrees were "
+            "final — see that function for the list of writers. Fix it where "
+            "the degrees become final; do not add or edit the field by hand."
         )
 
 
