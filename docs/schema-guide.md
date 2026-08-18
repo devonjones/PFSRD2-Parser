@@ -436,8 +436,10 @@ Each schema includes a `schema_version` field in the JSON output:
 
 **When to increment schema version:**
 
-- **1.0 → 1.1** (minor): Adding optional fields, new enums
-- **1.0 → 2.0** (major): Removing fields, renaming fields, changing types
+- **1.0 → 1.1** (minor): only once additions have accumulated enough to be worth
+  signalling — a single optional field does not need a rev
+- **1.0 → 2.0** (major): removing fields, renaming fields, changing types or
+  meanings
 
 **Where to update:**
 
@@ -466,15 +468,7 @@ upstream. `degree_effects` is the worked example: it was added to ten schemas
 and republished at their existing versions, because no consumer reading those
 versions is harmed by a key it does not look at.
 
-**For a breaking change the order is: bump first, then publish.**
-
-```bash
-# 1. make the change in pfsrd2/schema/<type>.schema.json
-# 2. bump its schema_version enum   (1.0 -> 1.1)
-# 3. bump the version the parser sets in its parse function
-# 4. THEN publish — this writes a NEW file and leaves the old contract intact
-bin/copy_schema.sh <type>
-```
+**For a breaking change, do the three steps above BEFORE publishing.**
 
 The trap: `bin/copy_schema.sh` overwrites the published file for whatever
 version the schema currently declares. For an addition that is what you want.
