@@ -224,7 +224,7 @@ def main():
         )
 
     if problems:
-        print(f"\nDEAD EXEMPTIONS: {len(problems)}")
+        print(f"\nEXEMPTIONS NEEDING ATTENTION: {len(problems)}")
         for label, key, why, how in problems:
             print(f"  - {label}{key}: {how}.")
             print(f"      granted because {why}")
@@ -238,5 +238,8 @@ def main():
         # Reported above; returned here so BOTH problems always print. An early
         # return on the scope check hid any dead exemption behind it.
         return 1
-    print("\nevery degree exemption still names a real, published degree")
+    print(
+        "\nevery degree exemption still names a real, published degree, still "
+        "matches the sentence it was granted for, and is unambiguous"
+    )
     return 0

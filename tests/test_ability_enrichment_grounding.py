@@ -333,3 +333,55 @@ class TestReasonsSurviveOtherPasses:
         assert "--llm-type damage" in reason, "the l59s reason must survive"
         assert "unextracted: dc(1)" in reason
         conn.close()
+
+
+class TestAddReviewReasonIsClauseWise:
+    """The reason is the queue key, so how it merges is load-bearing."""
+
+    def _db(self):
+        from pfsrd2.sql.enrichment import get_enrichment_db_connection
+        from pfsrd2.sql.enrichment.queries import insert_ability_record
+
+        conn = get_enrichment_db_connection(":memory:")
+        curs = conn.cursor()
+        return conn, curs, insert_ability_record(curs, "A", "h", "{}")
+
+    def _reason(self, curs, aid):
+        curs.execute(
+            "SELECT review_reason FROM ability_records WHERE ability_id = ?", (aid,)
+        )
+        return curs.fetchone()["review_reason"]
+
+    def test_a_narrowed_reason_is_not_swallowed_as_already_present(self):
+        # `reason in existing` is a substring test, and a narrowed reason is a
+        # substring of the wider one it replaces. A pass that resolved damage
+        # and re-flagged the remainder would have been dropped silently,
+        # leaving the stale wider reason in the queue.
+        from pfsrd2.sql.enrichment.queries import add_review_reason
+
+        conn, curs, aid = self._db()
+        add_review_reason(curs, aid, "unextracted: dc(1), damage(2)")
+        add_review_reason(curs, aid, "unextracted: dc(1)")
+        assert self._reason(curs, aid).count("unextracted:") == 2
+        conn.close()
+
+    def test_an_identical_clause_is_still_deduped(self):
+        from pfsrd2.sql.enrichment.queries import add_review_reason
+
+        conn, curs, aid = self._db()
+        add_review_reason(curs, aid, "unextracted: dc(1)")
+        add_review_reason(curs, aid, "unextracted: dc(1)")
+        assert self._reason(curs, aid) == "unextracted: dc(1)"
+        conn.close()
+
+    def test_a_missing_record_raises_rather_than_silently_doing_nothing(self):
+        # A wrong ability_id used to be a no-op UPDATE: the caller believed it
+        # had flagged a record and nothing was flagged.
+        import pytest
+
+        from pfsrd2.sql.enrichment.queries import add_review_reason
+
+        conn, curs, _ = self._db()
+        with pytest.raises(ValueError, match="no ability_record"):
+            add_review_reason(curs, 999999, "unextracted: dc(1)")
+        conn.close()

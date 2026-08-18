@@ -172,7 +172,7 @@ class TestMain:
         monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
         assert degree_exemptions.main() == 1
         out = capsys.readouterr().out
-        assert "DEAD EXEMPTIONS" in out
+        assert "EXEMPTIONS NEEDING ATTENTION" in out
         assert "Endsong" in out
 
 

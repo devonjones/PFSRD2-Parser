@@ -268,16 +268,28 @@ def add_review_reason(curs, ability_id, reason):
         (ability_id,),
     )
     # Every caller comes through get_enrichment_db_connection, which sets a
-    # dict row_factory. A tuple branch here would be unreachable, so it is not
-    # written -- a KeyError is the right answer if that ever stops being true.
+    # dict row_factory, so no tuple branch is written -- a KeyError is the
+    # right answer if that ever stops being true.
+    #
+    # A missing row is NOT tolerated. `if row else None` made a wrong
+    # ability_id a silent no-op UPDATE, which is the worst outcome for a
+    # function whose whole job is to make a record findable again: the caller
+    # believes it flagged something and nothing is flagged.
     row = curs.fetchone()
-    existing = (row["review_reason"] if row else None) or ""
-    if reason in existing:
-        merged = existing
-    elif existing:
-        merged = f"{existing}; {reason}"
-    else:
-        merged = reason
+    if row is None:
+        raise ValueError(
+            f"no ability_record with ability_id={ability_id!r} to flag for review"
+        )
+    existing = row["review_reason"] or ""
+
+    # Clause-wise, not a substring test. `reason in existing` treated a
+    # NARROWED reason as already present -- "unextracted: dc(1)" is a substring
+    # of "unextracted: dc(1), damage(2)" -- so a pass that resolved damage and
+    # re-flagged the narrower finding silently kept the stale wider one.
+    clauses = [c for c in existing.split("; ") if c]
+    if reason not in clauses:
+        clauses.append(reason)
+    merged = "; ".join(clauses)
     curs.execute(
         "UPDATE ability_records"
         " SET needs_review = 1, review_reason = ?, updated_at = ?"

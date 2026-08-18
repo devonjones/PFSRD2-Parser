@@ -192,8 +192,11 @@ def a_number_the_source_never_published(llm_result, source):
     """
     if not llm_result:
         return None
-    # ensure_ascii=False, or an en-dash escapes to "\u2013" and its digits are
-    # read as a number: "a -2 circumstance penalty" produced the phantom "20132".
+    # ensure_ascii=False, or a non-ASCII character escapes and its digits are
+    # read as a number. An EN-DASH (U+2013, the character AoN uses in ranges
+    # like "1\u20132") escapes to "\u2013" and yields the phantom "20132" --
+    # an ASCII hyphen would not, which is why the failing example has to carry
+    # the real character.
     # "4d6 + 2" in the source grounds "4d6+2" in the answer; a model normalising
     # spacing is not fabricating.
     source = re.sub(r"\s*([+-])\s*", r"\1", source)
