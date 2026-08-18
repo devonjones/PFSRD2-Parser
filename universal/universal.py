@@ -606,7 +606,7 @@ def _stops_at_a_result_label(node):
     return get_text(node).strip() in RESULT_LABELS
 
 
-def _continues_past_a_break(section, degree, bs, bold):
+def _continues_past_a_break(section, degree, bold):
     """True when this last degree owns the paragraph that follows it.
 
     Asserts rather than silently skipping if the pinned phrase is gone: the
@@ -678,7 +678,7 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
         # A handful of last degrees continue past their paragraph break instead
         # of returning to the parent object. The markup is identical, so they
         # are named in constants.py; see _continues_past_a_break.
-        bounded = is_last and not _continues_past_a_break(section, key, bs, bold)
+        bounded = is_last and not _continues_past_a_break(section, key, bold)
         value_nodes = nodes_after(
             bold,
             stop=None if is_last else stops_the_run,
@@ -878,8 +878,9 @@ def _damage_the_degree_itself_deals(damage, plain):
 
 
 # The equipment parser writes degrees through its own _extract_save_outcomes and
-# models none of them: 37 objects across equipment/, vehicles/ and weapons/, all
-# on equipment.schema.json. That is PFSRD2-Parser-qj3v, deferred deliberately.
+# models none of them: 36 objects, 35 under equipment/ and 1 under weapons/, all
+# on equipment.schema.json (all six equipment types share that schema, so the
+# deferral cannot be dodged by running a different one). That is PFSRD2-Parser-qj3v, deferred deliberately.
 # This constant IS the scope of that deferral, written down where the guard can
 # see it, and it goes away when qj3v lands. Do not add to it to quiet a failure
 # — a new entry here means a degree-writer shipped unmodelled, which is the

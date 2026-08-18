@@ -29,6 +29,7 @@ from universal.creatures import (
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass
 from universal.universal import (
+    DEGREE_FIELDS,
     aon_pass,
     build_object,
     build_objects,
@@ -7044,7 +7045,7 @@ def _build_offense_bucket(stat_block):
         if "save_results" in stat_block:
             sr = stat_block["save_results"]
             attack_roll = {"type": "stat_block_section", "subtype": "attack_roll"}
-            for field in ("critical_success", "success", "failure", "critical_failure"):
+            for field in DEGREE_FIELDS:
                 if field in sr:
                     attack_roll[field] = sr.pop(field)
             if len(attack_roll) > 2:

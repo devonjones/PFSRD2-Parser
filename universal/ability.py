@@ -18,6 +18,7 @@ from pfsrd2.trait import extract_starting_traits
 from universal.attack import parse_attack_damage
 from universal.creatures import parse_save_dc, universal_handle_range, universal_handle_save_dc
 from universal.universal import (
+    DEGREE_FIELDS,
     RESULT_LABELS,
     build_object,
     extract_bold_fields,
@@ -609,10 +610,7 @@ _HTML_VALUE_FIELDS = {
     "requirement",
     "prerequisite",
     "cost",
-    "critical_success",
-    "success",
-    "failure",
-    "critical_failure",
+    *DEGREE_FIELDS,
     "range",
     "damage",
     "saving_throw",

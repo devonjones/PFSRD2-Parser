@@ -472,29 +472,6 @@ CREATURE_SPANS_ALLOWED = [
 # name list: the exception expires on its own.
 #
 # Keyed (ability name, degree) -> (phrase that must still be present, why).
-# Last degrees whose trailing paragraph CONTINUES them rather than returning to
-# the parent object. extract_result_blocks stops the last degree at a paragraph
-# break, which is right for an affliction's stat block or a separate Depart
-# ability -- but the markup is identical either way, so only the meaning tells
-# them apart.
-#
-# rewrite_memory's Failure ends "...to a maximum of 5 continuous minutes of
-# memory." and the paragraph after it opens "Any memories you've altered remain
-# changed... If the target moves out of range before the 5 minutes is up". That
-# "the 5 minutes" has no antecedent anywhere else in the spell, so relocating it
-# to the description orphans the reference.
-#
-# Keyed (object name, degree) -> (phrase that must still open the paragraph, why).
-# Same pinned-phrase contract as DEGREE_EFFECT_NOT_THE_SUBJECTS: if AoN rewords
-# it, the parser asserts rather than inheriting a stale exemption.
-DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK = {
-    ("Rewrite Memory", "failure"): (
-        "Any memories you've altered",
-        "the trailing paragraph continues Failure's own effect and refers to "
-        "'the 5 minutes' that only Failure introduces",
-    ),
-}
-
 DEGREE_EFFECT_NOT_THE_SUBJECTS = {
     ("Endsong", "critical_failure"): (
         "its Strikes resonate",
@@ -521,6 +498,32 @@ DEGREE_EFFECT_NOT_THE_SUBJECTS = {
         "still grabbed by a tentacle at the end of its turn",
         "3d6 is recurring damage from the grabbed condition; the failure's own "
         "damage is the ability's base, stated outside the degree",
+    ),
+}
+
+# Last degrees whose trailing paragraph CONTINUES them rather than returning to
+# the parent object. extract_result_blocks stops the last degree at a paragraph
+# break, which is right for an affliction's stat block or a separate Depart
+# ability -- but the markup is identical either way, so only the meaning tells
+# them apart.
+#
+# rewrite_memory's Failure ends "...to a maximum of 5 continuous minutes of
+# memory." and the paragraph after it opens "Any memories you've altered remain
+# changed... If the target moves out of range before the 5 minutes is up". That
+# "the 5 minutes" has no antecedent anywhere else in the spell, so relocating it
+# to the description orphans the reference.
+#
+# Only a LAST degree can be listed here; a middle degree is bounded by the next
+# degree's bold and never reaches the paragraph rule.
+#
+# Keyed (object name, degree) -> (phrase that must still open the paragraph, why).
+# Same pinned-phrase contract as DEGREE_EFFECT_NOT_THE_SUBJECTS: if AoN rewords
+# it, the parser asserts rather than inheriting a stale exemption.
+DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK = {
+    ("Rewrite Memory", "failure"): (
+        "Any memories you've altered",
+        "the trailing paragraph continues Failure's own effect and refers to "
+        "'the 5 minutes' that only Failure introduces",
     ),
 }
 

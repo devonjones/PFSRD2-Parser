@@ -22,6 +22,7 @@ from pfsrd2.sql.enrichment import (
     update_enriched_json,
 )
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
+from universal.universal import DEGREE_FIELDS
 
 # Fields that enrichment can add to an ability object.
 # These are the structured mechanics extracted from text.
@@ -557,10 +558,7 @@ def _walk_all_abilities(struct):
                 "abilities",
                 "stages",
                 "universal_monster_ability",
-                "critical_success",
-                "success",
-                "failure",
-                "critical_failure",
+                *DEGREE_FIELDS,
             ):
                 continue
             yield from _walk_all_abilities(value)
