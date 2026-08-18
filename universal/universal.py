@@ -677,8 +677,10 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
         # it: curse_of_death runs "<b>Critical Failure</b> ...at stage 2.
         # <b>Curse of Death</b>" with no separator at all. A middle degree
         # keeps the narrower predicate, because a bold between two degrees can
-        # legitimately be part of the first one. Corpus-wide there are exactly
-        # four last degrees carrying a bold and all four should be cut here.
+        # legitimately be part of the first one. Re-measured 2026-08-18:
+        # THREE last degrees corpus-wide carry a bold, and all three should be
+        # cut here. This said four, which was the one number in the change with
+        # nothing checking it -- which is why it was the one that was wrong.
         # A handful of last degrees continue past their paragraph break instead
         # of returning to the parent object. The markup is identical, so they
         # are named in constants.py; see _continues_past_a_break.
@@ -835,12 +837,6 @@ def degree_effects_for(obj, owner_name=None):
 # says the creature takes damage it does not take (wind_surge, the_putrid_rise)
 # or takes a fraction of what it does (test_of_endurance). PFSRD2-Parser-bsw3:
 # these stay prose.
-# The parenthetical must actually NAME a save. The corpus writes escape DCs as
-# "Escapes (DC 24)" and "escape (DC 37)" -- bare parenthesised DCs that gate a
-# way OUT of a condition, not the damage. Matching those dropped the degree's
-# own damage and kept the recurring damage instead, in second_kiss_engine and
-# ephialtes. A fixture written "(Escape DC 25)" hid it: real pages put the verb
-# outside the parens.
 # An ALTERNATIVE to the damage already stated, not damage on top of it:
 # "2d6 ... or 6d6 if you have legendary proficiency", "3d4 mental damage
 # instead if", "either is deafened (if sonic) or takes 1d6 persistent fire".
@@ -864,6 +860,12 @@ _AN_ALTERNATIVE_AFTER = re.compile(r"^[^.]{0,40}\binstead\b(?!\s+of\b)", re.I)
 # is the opposite of what an attack_damage object means.
 _HEALING_BEFORE = re.compile(r"\b(?:regains?|heals?|restores?|recovers?)\b[^.]{0,40}$", re.I)
 
+# The parenthetical must actually NAME a save. The corpus writes escape DCs as
+# "Escapes (DC 24)" and "escape (DC 37)" -- bare parenthesised DCs that gate a
+# way OUT of a condition, not the damage. Matching those dropped the degree's
+# own damage and kept the recurring damage instead, in second_kiss_engine and
+# ephialtes. A fixture written "(Escape DC 25)" hid it: real pages put the verb
+# outside the parens.
 _ITS_OWN_SAVE = re.compile(r"\(\s*DC\s*\d+[^)]*\bsaves?\b", re.I)
 
 # ...unless the sentence names the degree's OWN subject taking it. A basic save

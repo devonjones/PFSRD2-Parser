@@ -713,8 +713,20 @@ class TestAlternativesAreNotCumulative:
             " requires three or more actions, they take 12d8 mental damage."
         ) == ["12d8"]
 
-    def test_or_in_a_list_is_not_an_alternative(self):
-        # aegis_for_the_innocent
+    def test_an_or_beyond_the_window_is_not_an_alternative(self):
+        # aegis_for_the_innocent. Renamed to say what it actually pins.
+        #
+        # This case is protected TWICE over -- there is no dice expression
+        # before the "or" (so the anchor rejects it) and the "or" is ~50
+        # characters from the dice (so the {0,30} tail rejects it too). Neither
+        # unanchoring the rule nor widening _QUALIFIER_WINDOW makes it fail,
+        # which means it does not cover the anchor even though it sits in a
+        # class about the anchor.
+        #
+        # It is kept rather than deleted because the window bound is real and
+        # otherwise unpinned. The anchor's coverage comes from the three tests
+        # above: measured over the corpus, exactly three files are protected by
+        # the anchor alone, and those three ARE those tests.
         assert self._f(
             "If a creature would be pushed into a solid barrier or another"
             " creature, it stops at that point and takes 2d6 bludgeoning damage."

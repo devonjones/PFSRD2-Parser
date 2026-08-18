@@ -464,7 +464,8 @@ CREATURE_SPANS_ALLOWED = [
 # subject takes on this save. Deciding that needs the sentence's meaning, and
 # the markers involved ("if", "until", "its Strikes") are far too common in
 # ordinary degree prose to key a rule on -- an unanchored "or" already
-# suppressed four files of real damage before it was anchored.
+# suppressed real damage in three files before it was anchored -- 4
+# degree-carriers, 5 formulas, measured 2026-08-18.
 #
 # Each entry PINS the phrase it was written against. If AoN rewords the degree
 # the phrase stops matching and the parser asserts, so an exemption cannot
