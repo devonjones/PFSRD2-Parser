@@ -250,7 +250,9 @@ def run_regex(conn, args):
                 # Accumulate. This used to replace, which wiped the l59s
                 # rejection reason off any record the regex pass touched
                 # afterwards -- and that reason is what re-queues the record.
-                add_review_reason(curs, record["ability_id"], reason)
+                add_review_reason(
+                    curs, record["ability_id"], reason, supersedes="unextracted:"
+                )
             flagged_count += 1
         elif result is None:
             clean_count += 1
@@ -294,9 +296,17 @@ def _update_review_flag(curs, record, resolved_type, was_enriched):
     else:
         clauses = list(others)
         if types_in_reason:
-            remaining = [
-                m.group(0) for m in type_pattern.finditer(reason) if m.group(1) != resolved_type
-            ]
+            # De-duplicated: reasons accumulate, so the same "damage(2)" token
+            # can appear in more than one clause and finditer would emit it
+            # twice ("unextracted: damage(2), damage(2)").
+            seen = set()
+            remaining = []
+            for match in type_pattern.finditer(reason):
+                token = match.group(0)
+                if match.group(1) == resolved_type or token in seen:
+                    continue
+                seen.add(token)
+                remaining.append(token)
             clauses.insert(0, "unextracted: " + ", ".join(remaining))
         mark_needs_review(curs, record["ability_id"], "; ".join(clauses))
 

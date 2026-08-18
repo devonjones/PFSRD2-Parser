@@ -7,13 +7,17 @@ DEGREE_EFFECT_NOT_THE_SUBJECTS (six degrees whose published dice are real but
 not the subject's) and DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK (one degree
 that owns the paragraph after it).
 
-Each entry pins the phrase it was written against, and
-universal.assert_exemptions_still_apply asserts at DOCUMENT scope if that
-phrase is rewritten. But that only fires when the KEY matches. If AoN renames
-the ability, or the parser stops producing that name, the key silently stops
-matching -- and a suppressed number quietly republishes with nothing to say so.
-That is the same defect the rune verifier exists for: a clause that matches
-nothing is worse than no clause.
+Each entry pins the phrase it was written against, and universal._is_exempt
+asserts at parse time if that phrase is rewritten. But that only fires when the
+KEY matches. If AoN renames the ability, or the parser stops producing that
+name, the key silently stops matching -- and a suppressed number quietly
+republishes with nothing to say so. That is the same defect the rune verifier
+exists for: a clause that matches nothing is worse than no clause.
+
+This module also carries the check that makes the parse-time assert safe. That
+assert is exact and unsilenceable, at the price of firing on a same-named
+neighbour; ambiguous_entries() fails the run if any exemption key could ever
+have one.
 
     bin/pf2_verify_degree_exemptions     # exit 1 on dead entries
 
@@ -77,9 +81,6 @@ def published_degree_texts(docs):
     for doc in docs:
         for carrier, owner in degree_carriers(doc):
             for degree in DEGREE_FIELDS:
-                # No emptiness re-check: degree_carriers already decided that,
-                # and repeating the predicate here is how the three walkers
-                # drifted apart in the first place.
                 # No emptiness re-check: degree_carriers already decided that.
                 value = carrier.get(degree)
                 if isinstance(value, str):
@@ -87,22 +88,46 @@ def published_degree_texts(docs):
     return texts
 
 
-def ambiguous_entries(table, texts):
-    """Entries whose key matches more than one carrier in some document.
+def keys_ambiguous_within_a_document(docs):
+    """(name, degree) keys that match more than one carrier in the SAME doc.
+
+    These are the keys an exemption cannot safely be written for, because
+    _is_exempt would fire on whichever carrier never held the phrase. Counted
+    per document on purpose -- the same key appearing once in each of fifty
+    files is unambiguous everywhere it is used.
+    """
+    ambiguous = {}
+    for doc in docs:
+        counts = {}
+        for carrier, owner in degree_carriers(doc):
+            for degree in DEGREE_FIELDS:
+                value = carrier.get(degree)
+                if isinstance(value, str):
+                    counts[(owner, degree)] = counts.get((owner, degree), 0) + 1
+        for key, count in counts.items():
+            if count > 1:
+                ambiguous[key] = max(ambiguous.get(key, 0), count)
+    return ambiguous
+
+
+def ambiguous_entries(table, ambiguous_keys):
+    """Entries whose key matches more than one carrier WITHIN one document.
 
     _is_exempt asserts per degree, which is exact and cannot be silenced by a
-    flag -- but it means an entry written for an ambiguous name would fire on
-    the neighbour that never had the phrase. Ambiguity is a property of the
+    flag -- but an entry written for an ambiguous name would fire on the
+    neighbour that never held the phrase. Ambiguity is a property of the
     corpus, not of any one parse, so it is checked here.
 
-    8 (name, degree) keys corpus-wide match more than one carrier in a single
-    file. None of them is an exemption today; this is what fails if one ever
-    becomes one.
+    Per DOCUMENT, not corpus-wide. A key matching one carrier each in fifty
+    files is not ambiguous -- every parse sees exactly one -- and counting
+    those made this flag 1790 of 6105 keys instead of the 8 that can actually
+    collide. A verifier that false-alarms on a quarter of the corpus is a
+    verifier that gets deleted.
     """
     return [
-        (key, table[key][1], len(texts[key]))
+        (key, table[key][1], ambiguous_keys[key])
         for key in sorted(table, key=str)
-        if len(texts.get(key, ())) > 1
+        if key in ambiguous_keys
     ]
 
 
@@ -180,6 +205,7 @@ def main():
         return 1
 
     texts = published_degree_texts(docs)
+    ambiguous = keys_ambiguous_within_a_document(docs)
     problems = []
     for label, table in (
         ("DEGREE_EFFECT_NOT_THE_SUBJECTS", DEGREE_EFFECT_NOT_THE_SUBJECTS),
@@ -190,7 +216,7 @@ def main():
     ):
         for key, why, how in dead_entries(table, texts):
             problems.append((label, key, why, how))
-        for key, why, count in ambiguous_entries(table, texts):
+        for key, why, count in ambiguous_entries(table, ambiguous):
             problems.append(
                 (
                     label,

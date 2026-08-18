@@ -251,7 +251,7 @@ def mark_needs_review(curs, ability_id, reason):
     curs.execute(sql, (reason, _now(), ability_id))
 
 
-def add_review_reason(curs, ability_id, reason):
+def add_review_reason(curs, ability_id, reason, supersedes=None):
     """Flag for review, ACCUMULATING reasons rather than replacing them.
 
     mark_needs_review overwrites review_reason, which is right when a record is
@@ -282,13 +282,31 @@ def add_review_reason(curs, ability_id, reason):
         )
     existing = row["review_reason"] or ""
 
-    # Clause-wise, not a substring test. `reason in existing` treated a
-    # NARROWED reason as already present -- "unextracted: dc(1)" is a substring
-    # of "unextracted: dc(1), damage(2)" -- so a pass that resolved damage and
-    # re-flagged the narrower finding silently kept the stale wider one.
-    clauses = [c for c in existing.split("; ") if c]
-    if reason not in clauses:
-        clauses.append(reason)
+    # Clause-wise, and a clause REPLACES the one of its own kind rather than
+    # sitting beside it.
+    #
+    # Two failures met here. A substring test treated a NARROWED reason as
+    # already present -- "unextracted: dc(1)" is inside "unextracted: dc(1),
+    # damage(2)" -- so a pass that resolved damage and re-flagged the remainder
+    # was dropped and the stale wider reason stayed the queue key. Appending
+    # instead fixed that and created the opposite: the obsolete clause was
+    # never retired, so the record stayed queued for a type it no longer misses
+    # and the string only ever grew. Both are the same mistake about what a
+    # reason IS -- not a log of findings, but the current state of each kind of
+    # finding.
+    #
+    # `supersedes` is a substring the caller declares: existing clauses
+    # containing it are replaced by this one. The caller knows what its finding
+    # obsoletes; nothing here can work it out from the string.
+    #
+    # Inferring the kind was tried and is too coarse either way. "Text before
+    # the first colon" merges two rejections for DIFFERENT fields, silently
+    # de-queueing one. Not merging at all leaves an obsolete clause queued
+    # forever for a type the record no longer misses, and the string only
+    # grows. Defaults to exact dedup, which merges nothing.
+    marker = supersedes or reason
+    clauses = [c for c in existing.split("; ") if c and marker not in c]
+    clauses.append(reason)
     merged = "; ".join(clauses)
     curs.execute(
         "UPDATE ability_records"

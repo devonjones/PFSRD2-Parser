@@ -129,6 +129,17 @@ LLM_TYPE_FIELDS = {
 _LLM_TYPE_OF_FIELD = {field: llm_type for llm_type, field in LLM_TYPE_FIELDS.items()}
 
 
+def rejection_supersedes(field_name):
+    """What an ungrounded-number rejection replaces: the previous one for the
+    SAME field.
+
+    Per field, not per finding. A later rejection for `damage` supersedes the
+    earlier `damage` one; a rejection for `dc` is a separate finding and must
+    not retire it, or resolving one field silently de-queues the other.
+    """
+    return f"for {field_name} (--llm-type"
+
+
 def rejection_reason(field_name, ungrounded):
     """Why a record was flagged, worded so run_llm can find it again."""
     llm_type = _LLM_TYPE_OF_FIELD.get(field_name, field_name)
@@ -167,7 +178,12 @@ def reject_if_ungrounded(llm_result, source, field, record, mark=True):
         f"not occur in the ability text. {llm_result!r}\n"
     )
     if mark:
-        add_review_reason(curs, ability_id, rejection_reason(field, ungrounded))
+        add_review_reason(
+            curs,
+            ability_id,
+            rejection_reason(field, ungrounded),
+            supersedes=rejection_supersedes(field),
+        )
     return True
 
 

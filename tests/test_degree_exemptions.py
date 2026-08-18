@@ -49,8 +49,8 @@ class TestPublishedDegreeTexts:
 
     def test_two_carriers_under_one_name_both_land_under_the_key(self):
         # A name is not a unique handle -- 28 keys in the corpus match two
-        # carriers in one file (8 such keys across 7 files). The phrase check
-        # needs to see both, which
+        # carriers in one file -- 8 such keys, spread over 7 files. The phrase
+        # check needs to see both, which
         # is why this returns a list and not a set of keys.
         doc = {
             "name": "Activate",
@@ -314,3 +314,95 @@ class TestTheEquipmentCarryStaysPlain:
             "property, so carrying the structure there ships invalid output; "
             "the schema has to gain the property first (PFSRD2-Parser-qj3v)"
         )
+
+
+class TestAmbiguousEntries:
+    """The net the parse-time assert's whole argument rests on.
+
+    `_is_exempt` asserts per degree, which is exact and cannot be silenced by a
+    flag. The cost is that an entry written for a name matching two carriers in
+    one document fires on whichever never held the phrase. Three docstrings
+    cite this check as the reason that cost is acceptable, and it had no test:
+    `return []`, `> 1` -> `> 99`, and deleting the `main()` loop all passed the
+    whole suite.
+    """
+
+    _TABLE = {("Endsong", "critical_failure"): ("its Strikes", "not its damage")}
+
+    def test_a_key_matching_two_carriers_in_one_document_is_reported(self):
+        from pfsrd2.qa.degree_exemptions import ambiguous_entries
+
+        reported = ambiguous_entries(self._TABLE, {("Endsong", "critical_failure"): 2})
+        assert len(reported) == 1
+        assert reported[0][0] == ("Endsong", "critical_failure")
+        assert reported[0][2] == 2
+
+    def test_an_unambiguous_key_is_not_reported(self):
+        from pfsrd2.qa.degree_exemptions import ambiguous_entries
+
+        assert ambiguous_entries(self._TABLE, {}) == []
+
+    def test_a_key_that_is_not_an_exemption_is_not_reported(self):
+        from pfsrd2.qa.degree_exemptions import ambiguous_entries
+
+        assert ambiguous_entries(self._TABLE, {("Something Else", "failure"): 3}) == []
+
+
+class TestAmbiguityIsPerDocument:
+    """One carrier each in fifty files is NOT ambiguous -- every parse sees
+    exactly one.
+
+    Counting corpus-wide instead flagged 1790 of 6105 keys rather than the 8
+    that can actually collide. A verifier that false-alarms on a quarter of the
+    corpus, with an instruction the operator cannot act on, is a verifier that
+    gets deleted.
+    """
+
+    def test_the_same_key_in_two_documents_is_not_ambiguous(self):
+        from pfsrd2.qa.degree_exemptions import keys_ambiguous_within_a_document
+
+        docs = [
+            {"name": "Frightful Presence", "failure": "text a"},
+            {"name": "Frightful Presence", "failure": "text b"},
+        ]
+        assert keys_ambiguous_within_a_document(docs) == {}
+
+    def test_two_carriers_under_one_name_in_ONE_document_is_ambiguous(self):
+        from pfsrd2.qa.degree_exemptions import keys_ambiguous_within_a_document
+
+        doc = {
+            "name": "Frightful Presence",
+            "a": {"failure": "text a"},
+            "b": {"failure": "text b"},
+        }
+        assert keys_ambiguous_within_a_document([doc]) == {
+            ("Frightful Presence", "failure"): 2
+        }
+
+    def test_main_fails_on_an_ambiguous_exemption(self, tmp_path, monkeypatch, capsys):
+        import json
+
+        from pfsrd2.qa import degree_exemptions
+
+        (tmp_path / "monsters").mkdir()
+        (tmp_path / "monsters" / "d.json").write_text(
+            json.dumps(
+                {
+                    "name": "Twinned",
+                    "a": {"failure": "the pinned phrase is here"},
+                    "b": {"failure": "and this sibling never had it"},
+                }
+            )
+        )
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(
+            "pfsrd2.qa.degree_exemptions.DEGREE_EFFECT_NOT_THE_SUBJECTS",
+            {("Twinned", "failure"): ("the pinned phrase", "ambiguous on purpose")},
+        )
+        monkeypatch.setattr(
+            "pfsrd2.qa.degree_exemptions.DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK", {}
+        )
+        assert degree_exemptions.main() == 1
+        out = capsys.readouterr().out
+        assert "Twinned" in out
+        assert "matches 2 carriers" in out

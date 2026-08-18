@@ -474,6 +474,12 @@ CREATURE_SPANS_ALLOWED = [
 # flag. An exemption cannot outlive its justification, which is the difference
 # between this and a bare name list.
 #
+# Two limits worth knowing. It is reached through extract_degree_effects, so it
+# cannot fire for equipment, which does not call it yet (PFSRD2-Parser-qj3v) --
+# equipment cannot carry an exemption either, so nothing is lost, but nothing is
+# checked. And `python -O` strips asserts; this codebase relies on them
+# throughout, so -O is not a supported way to run the parsers.
+#
 # Keyed (ability name, degree) -> (phrase that must still be present, why).
 DEGREE_EFFECT_NOT_THE_SUBJECTS = {
     ("Endsong", "critical_failure"): (

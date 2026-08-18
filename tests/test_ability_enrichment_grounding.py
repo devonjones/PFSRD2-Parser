@@ -92,7 +92,9 @@ class TestTheRejectPathActuallyRejects:
             lambda j: (json.loads(j) if isinstance(j, str) else dict(j), ["dc"]),
         )
         monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
-        monkeypatch.setattr(ae, "add_review_reason", lambda c, i, r: marked.append((i, r)))
+        monkeypatch.setattr(
+            ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r))
+        )
         import pfsrd2.enrichment.llm_extractor as le
 
         monkeypatch.setattr(le, "extract_dc_llm", lambda name, text: llm_result)
@@ -121,7 +123,9 @@ class TestTheRejectPathActuallyRejects:
             lambda j: (json.loads(j) if isinstance(j, str) else dict(j), ["dc"]),
         )
         monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
-        monkeypatch.setattr(ae, "add_review_reason", lambda c, i, r: marked.append((i, r)))
+        monkeypatch.setattr(
+            ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r))
+        )
         import pfsrd2.enrichment.llm_extractor as le
 
         monkeypatch.setattr(
@@ -352,17 +356,41 @@ class TestAddReviewReasonIsClauseWise:
         )
         return curs.fetchone()["review_reason"]
 
-    def test_a_narrowed_reason_is_not_swallowed_as_already_present(self):
-        # `reason in existing` is a substring test, and a narrowed reason is a
-        # substring of the wider one it replaces. A pass that resolved damage
-        # and re-flagged the remainder would have been dropped silently,
-        # leaving the stale wider reason in the queue.
+    def test_a_narrowed_reason_replaces_the_wider_one(self):
+        # A reason is the CURRENT STATE of each kind of finding, not a log.
+        #
+        # A substring test dropped the narrowed reason and kept the stale wider
+        # one. Appending instead kept both -- so the record stayed queued for a
+        # type it no longer missed, forever, and the string only grew. An
+        # earlier version of this test asserted the two-clause state was
+        # correct, which enshrined the second bug rather than catching it.
         from pfsrd2.sql.enrichment.queries import add_review_reason
 
         conn, curs, aid = self._db()
-        add_review_reason(curs, aid, "unextracted: dc(1), damage(2)")
-        add_review_reason(curs, aid, "unextracted: dc(1)")
-        assert self._reason(curs, aid).count("unextracted:") == 2
+        add_review_reason(curs, aid, "unextracted: dc(1), damage(2)", supersedes="unextracted:")
+        add_review_reason(curs, aid, "unextracted: dc(1)", supersedes="unextracted:")
+        assert self._reason(curs, aid) == "unextracted: dc(1)"
+        conn.close()
+
+    def test_a_clause_of_a_DIFFERENT_kind_is_kept_alongside(self):
+        from pfsrd2.ability_enrichment import rejection_reason
+        from pfsrd2.sql.enrichment.queries import add_review_reason
+
+        conn, curs, aid = self._db()
+        from pfsrd2.ability_enrichment import rejection_supersedes
+
+        add_review_reason(curs, aid, "unextracted: dc(1)", supersedes="unextracted:")
+        add_review_reason(
+            curs,
+            aid,
+            rejection_reason("damage", "9d9"),
+            supersedes=rejection_supersedes("damage"),
+        )
+        add_review_reason(curs, aid, "unextracted: area(1)", supersedes="unextracted:")
+        reason = self._reason(curs, aid)
+        assert "--llm-type damage" in reason, "the l59s clause must survive"
+        assert "area(1)" in reason
+        assert "dc(1)" not in reason, "the superseded unextracted clause must go"
         conn.close()
 
     def test_an_identical_clause_is_still_deduped(self):
