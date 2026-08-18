@@ -153,16 +153,31 @@ class TestTheRejectionCanBeRequeued:
         assert "saving_throw" in reason
 
     def test_every_extractor_field_produces_a_requeueable_reason(self):
-        # The map has to stay in step with run_llm's extractors dict. Pinning
-        # all four means adding a fifth extractor without a mapping fails here
-        # rather than parking its rejections silently.
+        # Three of the four rows used to be unfalsifiable: the field name is
+        # already in the reason, so for damage/area/frequency the assertion
+        # held no matter what the map said. Checking the "--llm-type <x>"
+        # marker instead makes every row depend on the mapping.
         for field, llm_type in (
             ("damage", "damage"),
             ("saving_throw", "dc"),
             ("area", "area"),
             ("frequency", "frequency"),
         ):
-            assert llm_type in rejection_reason(field, "9d9")
+            assert f"--llm-type {llm_type}" in rejection_reason(field, "9d9")
+
+    def test_the_map_covers_exactly_run_llms_extractors(self):
+        # The real invariant: a fifth extractor added to run_llm without a
+        # mapping here parks its rejections forever. Read the CLI's dict rather
+        # than restating it, so the two cannot drift.
+        import re
+
+        from pfsrd2.ability_enrichment import _LLM_TYPE_OF_FIELD
+
+        cli = open("bin/pf2_enrich_abilities").read()
+        block = cli[cli.index("    extractors = {") : cli.index("    if args.llm_type not in")]
+        pairs = dict(re.findall(r'"(\w+)": \(\w+, "(\w+)"\)', block))
+        assert pairs, "could not read run_llm's extractors dict"
+        assert {field: llm for llm, field in pairs.items()} == _LLM_TYPE_OF_FIELD
 
     def test_the_offending_value_is_recorded(self):
         assert "'4d6+2'" in rejection_reason("damage", "4d6+2")
@@ -195,6 +210,17 @@ class TestTheNumberIsMatchedWhole:
 
     def test_a_grounded_formula_passes(self):
         assert ungrounded({"damage": "2d10+9"}, "takes 2d10+9 piercing") is None
+
+    def test_the_d_in_the_lookbehind_is_load_bearing(self):
+        # The lookbehind excludes a preceding "d" as well as a digit. Without
+        # it, the bare number 6 would be grounded by the "6" inside "1d6" --
+        # which is how a fabricated DC 6 could read as published.
+        assert ungrounded({"dc": 6}, "takes 1d6 fire damage") == "6"
+
+    def test_a_negative_modifier_is_normalised_too(self):
+        # The sign normalisation strips spaces around BOTH signs. Only "+" was
+        # pinned, so dropping "-" from the character class cost nothing.
+        assert ungrounded({"damage": "4d6-1"}, "takes 4d6 - 1 slashing") is None
 
 
 class TestRejectIfUngrounded:

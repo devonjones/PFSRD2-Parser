@@ -925,6 +925,61 @@ class TestADegreeThatContinuesPastItsBreak:
         with pytest.raises(AssertionError, match="no longer in the text"):
             self._blocks("Rewrite Memory", html)
 
+    def test_the_right_degrees_with_the_wrong_damage_is_caught(self):
+        # The guard used to compare degree NAMES only, so an object listing the
+        # correct degrees with fabricated dice on them passed. That is the
+        # shape of every bug this feature has actually shipped -- structure
+        # that exists but disagrees with the text beside it -- and it is the
+        # one the name-only comparison could not see.
+        from universal.universal import assert_every_degree_was_modelled
+
+        obj = {
+            "name": "Wrong Damage",
+            "failure": "The target takes 4d6 sonic damage.",
+            "degree_effects": [
+                {
+                    "type": "stat_block_section",
+                    "subtype": "degree_effect",
+                    "degree": "failure",
+                    "damage": [
+                        {
+                            "type": "stat_block_section",
+                            "subtype": "attack_damage",
+                            "formula": "9d9",
+                            "damage_type": "sonic",
+                        }
+                    ],
+                }
+            ],
+        }
+        with pytest.raises(AssertionError, match="different damage"):
+            assert_every_degree_was_modelled(obj, "creature.schema.json")
+
+    def test_degree_effects_the_text_does_not_carry_is_caught(self):
+        from universal.universal import assert_every_degree_was_modelled
+
+        obj = {
+            "name": "Extra Degree",
+            "failure": "The target is knocked prone.",
+            "degree_effects": [
+                {
+                    "type": "stat_block_section",
+                    "subtype": "degree_effect",
+                    "degree": "failure",
+                    "damage": [
+                        {
+                            "type": "stat_block_section",
+                            "subtype": "attack_damage",
+                            "formula": "2d6",
+                            "damage_type": "sonic",
+                        }
+                    ],
+                }
+            ],
+        }
+        with pytest.raises(AssertionError, match="does not carry"):
+            assert_every_degree_was_modelled(obj, "creature.schema.json")
+
 
 class TestTheGuardIsActuallyWired:
     """`validate_against_schema` must CALL the degree guard, not merely have one.
