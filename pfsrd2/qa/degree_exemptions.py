@@ -36,7 +36,11 @@ from pfsrd2.constants import (
     DEGREE_EFFECT_NOT_THE_SUBJECTS,
 )
 from pfsrd2.qa import data_dir, load_json_dir
-from universal.universal import DEGREE_FIELDS, degree_carriers
+from universal.universal import (
+    DEGREE_FIELDS,
+    _unmodelled_degree_carriers,
+    degree_carriers,
+)
 
 # The data directories equipment.schema.json covers -- the scope of the
 # modelling deferral. One parser writes this schema under six type configs
@@ -175,8 +179,6 @@ def unmodelled_outside_the_deferral():
     under `python -O` there would be nothing to catch, so this check would
     silently pass for every directory.
     """
-    from universal.universal import _unmodelled_degree_carriers
-
     stale = []
     for name in content_dirs():
         if name in DEFERRED_DIRS:

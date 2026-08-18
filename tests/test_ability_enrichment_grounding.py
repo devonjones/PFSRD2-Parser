@@ -15,9 +15,13 @@ already in its input.
 import json
 
 from pfsrd2.ability_enrichment import (
+    FlagTarget,
+    reject_if_ungrounded,
+    rejection_reason,
+)
+from pfsrd2.ability_enrichment import (
     a_number_the_source_never_published as ungrounded,
 )
-from pfsrd2.ability_enrichment import reject_if_ungrounded, rejection_reason
 
 REPELLING_BLAST = (
     "The dragon expels scales from their body in a 50-foot emanation. Creatures "
@@ -256,7 +260,7 @@ class TestRejectIfUngrounded:
     def test_an_invented_number_is_rejected_and_flagged(self, capsys):
         conn, curs, aid = self._db()
         assert reject_if_ungrounded(
-            {"dc": 30}, "a basic Reflex save", "saving_throw", (curs, aid, "X")
+            {"dc": 30}, "a basic Reflex save", "saving_throw", FlagTarget(curs, aid, "X")
         )
         assert "dc" in self._reason(curs, aid)
         assert "REJECTED" in capsys.readouterr().err
@@ -265,7 +269,7 @@ class TestRejectIfUngrounded:
     def test_a_grounded_number_is_not_rejected_and_nothing_is_flagged(self, capsys):
         conn, curs, aid = self._db()
         assert not reject_if_ungrounded(
-            {"damage": "2d6"}, "takes 2d6 fire", "damage", (curs, aid, "X")
+            {"damage": "2d6"}, "takes 2d6 fire", "damage", FlagTarget(curs, aid, "X")
         )
         assert self._reason(curs, aid) is None
         assert capsys.readouterr().err == ""
@@ -276,7 +280,7 @@ class TestRejectIfUngrounded:
         # would be the opposite of what the flag promises.
         conn, curs, aid = self._db()
         assert reject_if_ungrounded(
-            {"dc": 30}, "a basic Reflex save", "saving_throw", (curs, aid, "X"), mark=False
+            {"dc": 30}, "a basic Reflex save", "saving_throw", FlagTarget(curs, aid, "X"), mark=False
         )
         assert self._reason(curs, aid) is None
         assert "REJECTED" in capsys.readouterr().err
@@ -290,8 +294,8 @@ class TestRejectIfUngrounded:
         # queue -- with its damage value already cleared, nothing would ever
         # re-derive it.
         conn, curs, aid = self._db()
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", (curs, aid, "X"))
-        reject_if_ungrounded({"dc": 30}, "no dice here", "saving_throw", (curs, aid, "X"))
+        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X"))
+        reject_if_ungrounded({"dc": 30}, "no dice here", "saving_throw", FlagTarget(curs, aid, "X"))
         reason = self._reason(curs, aid)
         assert "damage" in reason
         assert "dc" in reason
@@ -299,9 +303,9 @@ class TestRejectIfUngrounded:
 
     def test_the_same_rejection_twice_does_not_grow_the_reason(self):
         conn, curs, aid = self._db()
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", (curs, aid, "X"))
+        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X"))
         once = self._reason(curs, aid)
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", (curs, aid, "X"))
+        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X"))
         assert self._reason(curs, aid) == once
         conn.close()
 

@@ -9,6 +9,7 @@ real here, against an in-memory DB with a stubbed extractor.
 The CLI guards `if __name__ == "__main__"`, so importing it runs nothing.
 """
 
+import importlib.machinery
 import importlib.util
 import json
 import os

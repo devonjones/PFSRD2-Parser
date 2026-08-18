@@ -7,6 +7,7 @@ When enriched data exists, merges it into the ability objects.
 import json
 import re
 import sys
+from typing import NamedTuple
 
 from pfsrd2.ability_identity import ability_to_raw_json, compute_identity_hash
 from pfsrd2.ability_placement import deterministic_ability_category
@@ -90,7 +91,7 @@ def _try_inline_enrich(curs, ability_id, raw_json):
                 if not result.get(field_name):
                     llm_result = extractor_fn(name, combined)
                     rejected = reject_if_ungrounded(
-                        llm_result, combined, field_name, (curs, ability_id, name)
+                        llm_result, combined, field_name, FlagTarget(curs, ability_id, name)
                     )
                     if not rejected and llm_result:
                         result[field_name] = llm_result
@@ -129,6 +130,20 @@ LLM_TYPE_FIELDS = {
 _LLM_TYPE_OF_FIELD = {field: llm_type for llm_type, field in LLM_TYPE_FIELDS.items()}
 
 
+class FlagTarget(NamedTuple):
+    """The record a rejection is recorded against.
+
+    A NamedTuple rather than three loose arguments, because the docstring
+    already argued they were one concept and the code did not agree -- and
+    because the order is not self-evident: a mis-ordered plain tuple would have
+    produced a silent no-op UPDATE before add_review_reason started raising.
+    """
+
+    cursor: object
+    ability_id: int
+    name: str
+
+
 def rejection_supersedes(field_name):
     """What an ungrounded-number rejection replaces: the previous one for the
     SAME field.
@@ -152,9 +167,9 @@ def rejection_reason(field_name, ungrounded):
 def reject_if_ungrounded(llm_result, source, field, record, mark=True):
     """True when the extractor invented a number, and the record is flagged.
 
-    `record` is (cursor, ability_id, ability name) -- one concept, the thing
-    being flagged, rather than three loose arguments. `mark` is False for a dry
-    run, where nothing should be written.
+    `record` is a FlagTarget -- the thing being flagged, as one value rather
+    than three loose arguments in an order nobody can check. `mark` is False
+    for a dry run, where nothing should be written.
 
     Shared by both LLM paths on purpose. This existed only on the inline path
     at first, which covered 6 of the 63 poisoned records in
