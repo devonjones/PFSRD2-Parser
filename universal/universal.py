@@ -769,36 +769,42 @@ def extract_degree_effects(ability, owner_name=None):
 def _is_exempt(obj, degree, plain, owner_name=None):
     """A degree the extractor cannot judge, listed by name in constants.py.
 
-    An entry matches when BOTH its (name, degree) key and its pinned phrase are
-    present. The phrase is part of the match, not an assertion made after it.
+    Asserts, at parse time and unconditionally, when the key matches but the
+    pinned phrase is gone: the exemption was granted for a specific sentence,
+    so an AoN rewrite has to be re-judged by a person rather than inherited.
 
-    That ordering is load-bearing. `owner_name` is the nearest enclosing NAMED
-    object, because 836 of the corpus's 2582 degree carriers have no name of
-    their own -- every spell_defense, every equipment save_results, every hazard
-    routine_results -- so keying on obj["name"] alone left a third of the corpus
-    unreachable by any exemption, silently. But a name is not a unique handle on
-    a degree: measured 2026-08-18, 8 (name, degree) keys across 7 files match
-    more than one carrier within a single file -- lich's Frightful Presence is
-    four of them. Asserting on the phrase after matching the key would make an
-    exemption written for one sentence halt the parse on its same-named
-    neighbour, which is a worse failure than the one the pin exists to prevent.
-    Counts here are (name, degree) KEYS, not (file, key) pairs.
+    This is the only place the alarm can live and keep that "unconditionally".
+    A document-scope version reads better -- it can ask whether ANY carrier
+    under the key still holds the phrase -- but its only caller is
+    validate_against_schema, which every parser gates on --skip-schema while
+    still writing the file. An alarm a flag silences is not the contract
+    constants.py advertises.
 
-    Requiring the phrase makes the match exact, and makes the writer and the
-    guard agree by construction: both ask the same question of the same degree
-    text, whatever route they took to the object.
+    `owner_name` is the nearest enclosing NAMED object, because 836 of the
+    corpus's 2582 degree carriers have no name of their own -- every
+    spell_defense, every equipment save_results, every hazard routine_results.
+    Keying on obj["name"] alone left a third of the corpus unreachable by any
+    exemption, silently.
 
-    The expiry the pin was for is still loud, and still per-parse -- see
-    assert_exemptions_still_apply, which runs at DOCUMENT scope. That is the
-    scope the check needed all along: a per-DEGREE assert fires on the
-    same-named neighbour, and a corpus-only check would let a reworded degree
-    ship until someone remembered to run a verifier.
+    A name is not guaranteed unique: 8 (name, degree) keys match more than one
+    carrier within a single file, so an entry written for one of those would
+    assert on its neighbour. None of the current entries is one, and
+    bin/pf2_verify_degree_exemptions fails if that ever changes -- which is
+    where the check belongs, since ambiguity is a property of the corpus and a
+    parse only ever sees one degree.
     """
     key = (obj.get("name") or owner_name, degree)
     if key not in DEGREE_EFFECT_NOT_THE_SUBJECTS:
         return False
-    phrase, _why = DEGREE_EFFECT_NOT_THE_SUBJECTS[key]
-    return phrase in plain
+    phrase, why = DEGREE_EFFECT_NOT_THE_SUBJECTS[key]
+    assert phrase in plain, (
+        f"{key[0]!r} {key[1]} is exempt from degree_effects because {why}, but "
+        f"the phrase {phrase!r} that justified it is no longer in the degree. "
+        "AoN has reworded it. Re-read the degree and either update or remove "
+        "the entry in constants.DEGREE_EFFECT_NOT_THE_SUBJECTS -- do not leave "
+        "an exemption standing on a sentence that is gone."
+    )
+    return True
 
 
 def degree_effects_for(obj, owner_name=None):
@@ -939,50 +945,6 @@ def _damage_the_degree_itself_deals(damage, plain):
 _DEGREE_MODELLING_DEFERRED = frozenset({"equipment.schema.json"})
 
 
-def assert_exemptions_still_apply(struct):
-    """A named exemption whose sentence is gone fails HERE, loudly.
-
-    _is_exempt requires the pinned phrase as part of its match, so a reworded
-    degree simply stops being exempt. That is right for SELECTION -- it is what
-    makes the writer and the guard agree -- but on its own it would let an
-    exemption expire in silence, and the whole argument for hardcoding AoN
-    object names is that the exception cannot outlive its justification.
-
-    So the alarm lives here instead, at document scope. The earlier version
-    asserted per DEGREE, which fires on an innocent same-named neighbour: a
-    name is not a unique handle, and 8 (name, degree) keys match more than one
-    carrier within a single file. Asking the question of the whole document
-    instead -- does ANY carrier under this key still contain the phrase? --
-    is neighbour-proof. Measured 2026-08-18 over 30055 published files: zero
-    false positives, so this is a real check rather than one that has to be
-    weakened to pass.
-    """
-    for table in (DEGREE_EFFECT_NOT_THE_SUBJECTS, DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK):
-        for key, texts in _degree_texts_by_key(struct).items():
-            if key not in table:
-                continue
-            phrase, why = table[key]
-            assert any(phrase in text for text in texts), (
-                f"{key[0]!r} {key[1]} is exempt because {why}, but the phrase "
-                f"{phrase!r} that justified it is in none of the "
-                f"{len(texts)} degree(s) this object publishes under that key. "
-                "AoN has reworded it. Re-read the degree and either update or "
-                "remove the entry in constants.py -- do not leave an exemption "
-                "standing on a sentence that is gone."
-            )
-
-
-def _degree_texts_by_key(struct):
-    """(owning name, degree) -> every text published under it in this document."""
-    texts = {}
-    for carrier, owner in degree_carriers(struct):
-        for degree in DEGREE_FIELDS:
-            value = carrier.get(degree)
-            if isinstance(value, str) and value.strip():
-                texts.setdefault((owner, degree), []).append(value)
-    return texts
-
-
 def assert_every_degree_was_modelled(struct, schema_name):
     """A writer that never calls extract_degree_effects fails HERE.
 
@@ -1005,10 +967,6 @@ def assert_every_degree_was_modelled(struct, schema_name):
     Recomputing from published text is safe because the extractor is fed
     get_text() at write time, and no published degree string carries markup.
     """
-    # Before the deferral: an exemption expiring is not a modelling question,
-    # and equipment's schema must not buy silence on it too.
-    assert_exemptions_still_apply(struct)
-
     if schema_name in _DEGREE_MODELLING_DEFERRED:
         return
     first = next(_unmodelled_degree_carriers(struct), None)

@@ -470,10 +470,9 @@ CREATURE_SPANS_ALLOWED = [
 # the claim can be checked by grep.
 #
 # Each entry PINS the phrase it was written against. If AoN rewords the degree
-# the phrase stops matching, the exemption stops applying, and
-# universal.assert_exemptions_still_apply raises -- at DOCUMENT scope, so a
-# same-named neighbour cannot trip it. An exemption cannot outlive its
-# justification, which is the difference between this and a bare name list.
+# the phrase stops matching and _is_exempt raises, at parse time and behind no
+# flag. An exemption cannot outlive its justification, which is the difference
+# between this and a bare name list.
 #
 # Keyed (ability name, degree) -> (phrase that must still be present, why).
 DEGREE_EFFECT_NOT_THE_SUBJECTS = {
@@ -521,11 +520,10 @@ DEGREE_EFFECT_NOT_THE_SUBJECTS = {
 # degree's bold and never reaches the paragraph rule.
 #
 # Keyed (object name, degree) -> (phrase that must still open the paragraph, why).
-# Same pinned-phrase contract as DEGREE_EFFECT_NOT_THE_SUBJECTS, with one
-# difference worth knowing: this table's phrase is checked by
-# _continues_past_a_break at the moment it is used, because a last degree has
-# exactly one carrier and no neighbour to trip over. The other table's is
-# checked at document scope. Both raise; neither expires quietly.
+# Same pinned-phrase contract as DEGREE_EFFECT_NOT_THE_SUBJECTS: both are
+# checked at the moment the entry is used, by _continues_past_a_break and
+# _is_exempt respectively, so neither can expire quietly. Neither is behind a
+# flag.
 DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK = {
     ("Rewrite Memory", "failure"): (
         "Any memories you've altered",

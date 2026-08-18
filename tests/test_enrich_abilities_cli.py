@@ -35,6 +35,7 @@ class Args:
         self.limit = kw.get("limit")
         self.model = kw.get("model", "test-model")
         self.verbose = kw.get("verbose", False)
+        self.force_version = kw.get("force_version", False)
 
 
 @pytest.fixture
@@ -149,3 +150,87 @@ class TestTheStrandedRequeue:
 
         cli.run_audit_enriched(db, Args(dry_run=True))
         assert _row(db, ability_id)["enrichment_version"] == 2
+
+
+class TestReasonsSurviveTheRegexPass:
+    """`run_regex` and `_update_review_flag` both rewrite review_reason, and the
+    reason IS the queue: `run_llm` selects records by substring-matching it
+    against --llm-type. Either one dropping a clause de-queues the record, and
+    a record whose value was already cleared then has nothing to re-derive it.
+
+    Both were previously covered only by a test that re-implemented the string
+    split rather than calling either function.
+    """
+
+    def _flagged(self, conn, reason, text="no numbers here"):
+        from pfsrd2.sql.enrichment.queries import insert_ability_record, mark_needs_review
+
+        curs = conn.cursor()
+        raw = json.dumps({"name": "Test Ability", "text": text})
+        ability_id = insert_ability_record(curs, "Test Ability", "h", raw)
+        mark_needs_review(curs, ability_id, reason)
+        conn.commit()
+        return curs, ability_id
+
+    def _reason(self, conn, ability_id):
+        curs = conn.cursor()
+        curs.execute(
+            "SELECT review_reason FROM ability_records WHERE ability_id = ?", (ability_id,)
+        )
+        return curs.fetchone()["review_reason"]
+
+    def test_run_regex_does_not_replace_an_existing_l59s_reason(self, db):
+        # run_regex used to call mark_needs_review, which replaces. Any record
+        # it touched lost the l59s rejection that was re-queueing it.
+        from pfsrd2.ability_enrichment import rejection_reason
+
+        cli = load_cli()
+        l59s = rejection_reason("damage", "9d9")
+        curs, ability_id = self._flagged(
+            db, l59s, text="The target is knocked prone and takes fire damage."
+        )
+        db.commit()
+        cli.run_regex(db, Args())
+        assert "--llm-type damage" in self._reason(db, ability_id)
+
+    def test_resolving_one_type_keeps_the_clauses_it_did_not_resolve(self, db):
+        # _update_review_flag rebuilds the "unextracted:" clause from scratch.
+        # It must carry the other clauses across, or resolving a dc drops the
+        # damage rejection.
+        from pfsrd2.ability_enrichment import rejection_reason
+
+        cli = load_cli()
+        l59s = rejection_reason("damage", "9d9")
+        curs, ability_id = self._flagged(db, f"unextracted: dc(1), damage(2); {l59s}")
+        curs.execute("SELECT * FROM ability_records WHERE ability_id = ?", (ability_id,))
+        record = curs.fetchone()
+
+        cli._update_review_flag(curs, record, "dc", was_enriched=True)
+        db.commit()
+
+        reason = self._reason(db, ability_id)
+        assert "--llm-type damage" in reason, "the l59s clause must survive"
+        assert "dc(1)" not in reason, "the resolved type must be dropped"
+        assert "damage(2)" in reason, "the unresolved type must remain"
+
+    def test_resolving_the_last_type_still_keeps_a_foreign_clause(self, db):
+        # With no unextracted types left, the record must NOT be cleared while
+        # another finding is still outstanding against it.
+        from pfsrd2.ability_enrichment import rejection_reason
+
+        cli = load_cli()
+        l59s = rejection_reason("damage", "9d9")
+        curs, ability_id = self._flagged(db, f"unextracted: dc(1); {l59s}")
+        curs.execute("SELECT * FROM ability_records WHERE ability_id = ?", (ability_id,))
+        record = curs.fetchone()
+
+        cli._update_review_flag(curs, record, "dc", was_enriched=True)
+        db.commit()
+
+        curs.execute(
+            "SELECT needs_review, review_reason FROM ability_records WHERE ability_id = ?",
+            (ability_id,),
+        )
+        row = curs.fetchone()
+        assert row["needs_review"] == 1
+        assert "--llm-type damage" in row["review_reason"]

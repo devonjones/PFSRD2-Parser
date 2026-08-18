@@ -839,69 +839,46 @@ class TestNamedExemptions:
         }
         assert [x["formula"] for e in degree_effects_for(obj) for x in e["damage"]] == ["1d6"]
 
-    def test_a_reworded_degree_stops_being_exempt(self):
-        # An exemption must not outlive the sentence it was granted for. If AoN
-        # rewrites the page, the phrase stops matching and the damage publishes
-        # again -- the exemption simply stops applying rather than suppressing
-        # a sentence nobody has read.
+    def test_a_reworded_degree_fails_loudly_and_unconditionally(self):
+        # An exemption must not outlive the sentence it was granted for, and
+        # the alarm must not be silenceable. A document-scope version of this
+        # could only be called from validate_against_schema, which every parser
+        # gates on --skip-schema while still writing the file.
         obj = {
             "name": "Endsong",
             "critical_failure": "As failure, but the target takes 1d6 sonic damage directly.",
         }
-        assert [x["formula"] for e in degree_effects_for(obj) for x in e["damage"]] == ["1d6"]
+        with pytest.raises(AssertionError, match="AoN has reworded it"):
+            degree_effects_for(obj)
 
-    def test_a_reworded_degree_fails_loudly_at_document_scope(self):
-        # The exemption stops APPLYING silently -- that is what makes the
-        # writer and the guard agree -- but it must not expire silently. The
-        # alarm is at document scope because a per-degree assert fires on an
-        # innocent same-named neighbour.
-        from universal.universal import assert_exemptions_still_apply
-
-        doc = {
-            "name": "Endsong",
-            "critical_failure": "As failure, but the target takes 1d6 sonic damage directly.",
+    def test_it_fires_for_an_unnamed_carrier_through_its_owner(self):
+        # The 836 carriers with no name of their own reach the table through
+        # owner_name, so the alarm has to reach them too.
+        carrier = {
+            "subtype": "spell_defense",
+            "critical_failure": "As failure, but the target takes 1d6 sonic damage.",
         }
         with pytest.raises(AssertionError, match="AoN has reworded it"):
-            assert_exemptions_still_apply(doc)
+            degree_effects_for(carrier, owner_name="Endsong")
 
-    def test_a_neighbour_that_lacks_the_phrase_does_not_trip_it(self):
-        # The reason this is document-scoped. 8 (name, degree) keys match more
-        # than one carrier inside a single file; lich's Frightful Presence is
-        # four of them. A per-degree assert halts the parse on the neighbour.
-        doc = {
-            "name": "Endsong",
-            "sections": [
-                {"critical_failure": "its Strikes resonate with the song"},
-                {"critical_failure": "The target takes 4d6 sonic damage."},
-            ],
-        }
-        from universal.universal import assert_exemptions_still_apply
-
-        assert_exemptions_still_apply(doc)
-
-    def test_the_alarm_runs_even_for_a_deferred_schema(self):
-        # An exemption expiring is not a modelling question, so equipment's
-        # place in _DEGREE_MODELLING_DEFERRED must not buy silence on it.
-        from universal.universal import assert_every_degree_was_modelled
-
-        doc = {
-            "name": "Endsong",
-            "critical_failure": "As failure, but the target takes 1d6 sonic damage directly.",
-        }
-        with pytest.raises(AssertionError, match="AoN has reworded it"):
-            assert_every_degree_was_modelled(doc, "equipment.schema.json")
-
-    def test_a_same_named_neighbour_does_not_inherit_the_exemption(self):
-        # The reason the phrase is part of the MATCH and not an assert after it.
-        # A name is not a unique handle on a degree: 8 (name, degree) keys
-        # match more than one carrier within a single file. Asserting on the
-        # phrase after a key match would halt the parse on the neighbour, which
-        # is a worse failure than the one the pin exists to prevent.
+    def test_a_same_named_neighbour_would_trip_it_which_is_the_known_trade(self):
+        # The cost of asserting per degree: a name is not guaranteed unique, so
+        # an entry written for an ambiguous name fires on the neighbour that
+        # never held the phrase. 8 (name, degree) keys corpus-wide match more
+        # than one carrier in a single file; none is an exemption today, and
+        # bin/pf2_verify_degree_exemptions fails if one ever becomes one.
+        #
+        # Pinned rather than worked around, because the alternative -- a
+        # document-scope alarm -- can only be called from
+        # validate_against_schema, which every parser gates on --skip-schema
+        # while still writing the file. Exactness a flag can silence is worth
+        # less than exactness with a corpus check behind it.
         neighbour = {
             "name": "Endsong",
             "critical_failure": "The target takes 4d6 sonic damage.",
         }
-        assert [x["formula"] for e in degree_effects_for(neighbour) for x in e["damage"]] == ["4d6"]
+        with pytest.raises(AssertionError, match="AoN has reworded it"):
+            degree_effects_for(neighbour)
 
     def test_the_writer_and_the_guard_agree_however_they_reached_the_object(self):
         # The divergence this replaced: the guard inherits the nearest enclosing

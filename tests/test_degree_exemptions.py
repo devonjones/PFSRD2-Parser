@@ -21,10 +21,10 @@ class TestPublishedDegreeTexts:
         }
 
     def test_an_unnamed_carrier_keys_on_the_nearest_enclosing_name(self):
-        # This is the case that matters: spell_defense, save_results and
-        # routine_results have no name, and 836 of the corpus's 2582 degree
-        # carriers are one of those three. Keying them on None would make
-        # every exemption for them read as dead.
+        # This is the case that matters: 836 of the corpus's 2582 degree
+        # carriers have no name of their own -- 672 spell_defense, 120
+        # save_results, 43 routine_results and 1 attack_roll. Keying them on
+        # None would make every exemption for them read as dead.
         doc = {
             "name": "Rewrite Memory",
             "defense": {"subtype": "spell_defense", "failure": "the 5 minutes"},
@@ -49,7 +49,8 @@ class TestPublishedDegreeTexts:
 
     def test_two_carriers_under_one_name_both_land_under_the_key(self):
         # A name is not a unique handle -- 28 keys in the corpus match two
-        # carriers in the same file. The phrase check needs to see both, which
+        # carriers in one file (8 such keys across 7 files). The phrase check
+        # needs to see both, which
         # is why this returns a list and not a set of keys.
         doc = {
             "name": "Activate",
@@ -294,11 +295,22 @@ class TestTheEquipmentCarryStaysPlain:
             "become DEGREE_FIELDS_WITH_EFFECTS -- that is qj3v's job"
         )
 
-    def test_equipment_carries_the_plain_field_list(self):
-        import pfsrd2.equipment as equipment
-        from universal.universal import DEGREE_FIELDS
+    def test_equipment_does_not_carry_degree_effects_into_attack_roll(self):
+        # Pins the CONSTRAINT, not the import style. An earlier version checked
+        # `not hasattr(equipment, "DEGREE_FIELDS_WITH_EFFECTS")`, which passes
+        # for any module importing the name differently and fails for a correct
+        # rewrite that imports it -- so it could not fail on the change it was
+        # written to catch. Read from disk rather than via inspect.getsource,
+        # which needs the module to import.
+        import os
 
-        assert equipment.DEGREE_FIELDS == DEGREE_FIELDS
-        assert not hasattr(
-            equipment, "DEGREE_FIELDS_WITH_EFFECTS"
-        ), "carrying degree_effects into attack_roll would violate the schema"
+        here = os.path.dirname(os.path.abspath(__file__))
+        source = open(os.path.join(here, "..", "pfsrd2", "equipment.py")).read()
+        assert (
+            "for field in DEGREE_FIELDS:" in source
+        ), "the attack_roll carry must use the plain field list"
+        assert "for field in DEGREE_FIELDS_WITH_EFFECTS:" not in source, (
+            "attack_roll is additionalProperties: false with no degree_effects "
+            "property, so carrying the structure there ships invalid output; "
+            "the schema has to gain the property first (PFSRD2-Parser-qj3v)"
+        )

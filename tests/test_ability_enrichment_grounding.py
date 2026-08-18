@@ -208,7 +208,7 @@ class TestTheNumberIsMatchedWhole:
         # a value no source could ever contain. Every record with a dash in its
         # extracted text would be rejected as fabricated. This was found by
         # measurement, not by reading the line.
-        assert ungrounded({"damage": "1\u20132 fire"}, "takes 1-2 fire damage") != "20132"
+        assert ungrounded({"damage": "1\u20132 fire"}, "takes 1-2 fire damage") is None
 
     def test_a_grounded_formula_passes(self):
         assert ungrounded({"damage": "2d10+9"}, "takes 2d10+9 piercing") is None
@@ -333,11 +333,3 @@ class TestReasonsSurviveOtherPasses:
         assert "--llm-type damage" in reason, "the l59s reason must survive"
         assert "unextracted: dc(1)" in reason
         conn.close()
-
-    def test_resolving_a_type_keeps_clauses_it_did_not_resolve(self):
-        # The resolve path rebuilds the unextracted clause from scratch. It
-        # must carry the other clauses across, or resolving a dc drops the
-        # damage rejection that was the only thing re-queueing the record.
-        reason = "unextracted: dc(1), damage(2); " + rejection_reason("damage", "9d9")
-        others = [c for c in reason.split("; ") if not c.startswith("unextracted:")]
-        assert others == [rejection_reason("damage", "9d9")]

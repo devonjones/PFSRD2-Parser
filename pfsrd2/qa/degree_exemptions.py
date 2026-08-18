@@ -80,10 +80,30 @@ def published_degree_texts(docs):
                 # No emptiness re-check: degree_carriers already decided that,
                 # and repeating the predicate here is how the three walkers
                 # drifted apart in the first place.
+                # No emptiness re-check: degree_carriers already decided that.
                 value = carrier.get(degree)
                 if isinstance(value, str):
                     texts.setdefault((owner, degree), []).append(value)
     return texts
+
+
+def ambiguous_entries(table, texts):
+    """Entries whose key matches more than one carrier in some document.
+
+    _is_exempt asserts per degree, which is exact and cannot be silenced by a
+    flag -- but it means an entry written for an ambiguous name would fire on
+    the neighbour that never had the phrase. Ambiguity is a property of the
+    corpus, not of any one parse, so it is checked here.
+
+    8 (name, degree) keys corpus-wide match more than one carrier in a single
+    file. None of them is an exemption today; this is what fails if one ever
+    becomes one.
+    """
+    return [
+        (key, table[key][1], len(texts[key]))
+        for key in sorted(table, key=str)
+        if len(texts.get(key, ())) > 1
+    ]
 
 
 def dead_entries(table, texts):
@@ -170,6 +190,17 @@ def main():
     ):
         for key, why, how in dead_entries(table, texts):
             problems.append((label, key, why, how))
+        for key, why, count in ambiguous_entries(table, texts):
+            problems.append(
+                (
+                    label,
+                    key,
+                    why,
+                    f"its key matches {count} carriers in one document, so the "
+                    "per-degree assert in _is_exempt would fire on whichever of "
+                    "them never held the phrase. Make the entry unambiguous",
+                )
+            )
 
     deferred = count_deferred_carriers(load_json_dir(*DEFERRED_DIRS))
     stale_scope = unmodelled_outside_the_deferral()
