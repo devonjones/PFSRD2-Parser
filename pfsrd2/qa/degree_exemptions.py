@@ -7,12 +7,13 @@ DEGREE_EFFECT_NOT_THE_SUBJECTS (six degrees whose published dice are real but
 not the subject's) and DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK (one degree
 that owns the paragraph after it).
 
-Each entry pins the phrase it was written against, and the parser asserts if
-that phrase is rewritten. But the pin only fires when the KEY matches. If AoN
-renames the ability, or the parser stops producing that name, the key silently
-stops matching -- and a suppressed number quietly republishes with nothing to
-say so. That is the same defect the rune verifier exists for: a clause that
-matches nothing is worse than no clause.
+Each entry pins the phrase it was written against, and
+universal.assert_exemptions_still_apply asserts at DOCUMENT scope if that
+phrase is rewritten. But that only fires when the KEY matches. If AoN renames
+the ability, or the parser stops producing that name, the key silently stops
+matching -- and a suppressed number quietly republishes with nothing to say so.
+That is the same defect the rune verifier exists for: a clause that matches
+nothing is worse than no clause.
 
     bin/pf2_verify_degree_exemptions     # exit 1 on dead entries
 
@@ -36,10 +37,10 @@ from universal.universal import DEGREE_FIELDS, degree_carriers
 # The data directories equipment.schema.json covers -- the scope of the
 # modelling deferral. One parser writes this schema under six type configs
 # (equipment, weapon, armor, shield, siege_weapon, vehicle), which is why the
-# deferral reaches much further than the word "equipment" suggests. Hand-typed, and therefore cross-checked
-# against behaviour by unmodelled_outside_the_deferral() below rather than
-# trusted: this list and _DEGREE_MODELLING_DEFERRED are two spellings of one
-# fact and nothing else keeps them in step.
+# deferral reaches further than the word "equipment" suggests. Hand-typed, so
+# unmodelled_outside_the_deferral() cross-checks it against the walker rather
+# than trusting it: this list and _DEGREE_MODELLING_DEFERRED are two spellings
+# of one fact and nothing else keeps them in step.
 DEFERRED_DIRS = (
     "equipment",
     "weapons",
@@ -68,10 +69,9 @@ def published_degree_texts(docs):
     Walks with universal.degree_carriers, the same walker the parser's own
     guard uses, so this cannot disagree with it about what counts as a carrier.
 
-    A key maps to a LIST because a name is not a unique handle: 28 keys in the
-    corpus match two carriers in the same file. Checking the pinned phrase
-    needs all of them, which is the reason this check lives here and not in
-    _is_exempt -- a parse only ever sees one degree at a time.
+    A key maps to a LIST because a name is not a unique handle: 8 keys match
+    more than one carrier within a single file. Checking the pinned phrase
+    needs all of them.
     """
     texts = {}
     for doc in docs:
@@ -117,21 +117,24 @@ def unmodelled_outside_the_deferral():
     """Content directories that carry unmodelled degrees but are not deferred.
 
     DEFERRED_DIRS is a hand-typed spelling of _DEGREE_MODELLING_DEFERRED. If it
-    goes stale -- a seventh parser starts writing equipment.schema.json, or a
+    goes stale -- another parser starts writing equipment.schema.json, or a
     deferred directory is renamed -- the deferral silently covers data this
     list does not mention, and the printed scope understates it. Rather than
-    asserting the list is right, this asks the guard.
+    asserting the list is right, this asks the walker.
+
+    Uses _unmodelled_degree_carriers rather than catching the AssertionError
+    from assert_every_degree_was_modelled: an assert is not control flow, and
+    under `python -O` there would be nothing to catch, so this check would
+    silently pass for every directory.
     """
-    from universal.universal import assert_every_degree_was_modelled
+    from universal.universal import _unmodelled_degree_carriers
 
     stale = []
     for name in content_dirs():
         if name in DEFERRED_DIRS:
             continue
         for doc in load_json_dir(name):
-            try:
-                assert_every_degree_was_modelled(doc, "not-deferred.schema.json")
-            except AssertionError:
+            if next(_unmodelled_degree_carriers(doc), None) is not None:
                 stale.append(name)
                 break
     return stale
@@ -185,7 +188,6 @@ def main():
             "extract_degree_effects call, or DEFERRED_DIRS no longer matches "
             "_DEGREE_MODELLING_DEFERRED."
         )
-        return 1
 
     if problems:
         print(f"\nDEAD EXEMPTIONS: {len(problems)}")
@@ -197,6 +199,10 @@ def main():
             "stops applying, and whatever it was suppressing republishes "
             "silently. Re-read the object and update or delete the entry."
         )
+        return 1
+    if stale_scope:
+        # Reported above; returned here so BOTH problems always print. An early
+        # return on the scope check hid any dead exemption behind it.
         return 1
     print("\nevery degree exemption still names a real, published degree")
     return 0

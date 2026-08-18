@@ -267,15 +267,11 @@ def add_review_reason(curs, ability_id, reason):
         "SELECT review_reason FROM ability_records WHERE ability_id = ?",
         (ability_id,),
     )
+    # Every caller comes through get_enrichment_db_connection, which sets a
+    # dict row_factory. A tuple branch here would be unreachable, so it is not
+    # written -- a KeyError is the right answer if that ever stops being true.
     row = curs.fetchone()
-    # The enrichment connection sets a dict row_factory, but a bare
-    # sqlite3.Cursor yields tuples. Both reach this helper.
-    if row is None:
-        existing = ""
-    elif isinstance(row, dict):
-        existing = row.get("review_reason") or ""
-    else:
-        existing = row[0] or ""
+    existing = (row["review_reason"] if row else None) or ""
     if reason in existing:
         merged = existing
     elif existing:

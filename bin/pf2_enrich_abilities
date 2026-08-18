@@ -19,6 +19,7 @@ from pfsrd2.enrichment.llm_extractor import (
 from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION, extract_all
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import (
+    add_review_reason,
     clear_needs_review,
     count_ability_records,
     fetch_majority_category_for_name,
@@ -160,11 +161,21 @@ def run_audit_enriched(conn, args):
     # nothing would ever have re-derived them. Clearing the version puts them
     # back in front of the regex pass.
     curs.execute(
-        "UPDATE ability_records SET enrichment_version = NULL"
+        "SELECT COUNT(*) AS c FROM ability_records"
         " WHERE enriched_json IS NULL AND enrichment_version IS NOT NULL"
     )
-    if curs.rowcount:
-        print(f"Requeued (cleared value still claimed a version): {curs.rowcount}")
+    stranded = curs.fetchone()["c"]
+    if stranded and getattr(args, "dry_run", False):
+        print(
+            f"[DRY RUN] would requeue {stranded} record(s) whose cleared value"
+            " still claims a version"
+        )
+    elif stranded:
+        curs.execute(
+            "UPDATE ability_records SET enrichment_version = NULL"
+            " WHERE enriched_json IS NULL AND enrichment_version IS NOT NULL"
+        )
+        print(f"Requeued (cleared value still claimed a version): {stranded}")
 
     curs.execute(
         "SELECT * FROM ability_records"
@@ -236,7 +247,10 @@ def run_regex(conn, args):
             if args.dry_run:
                 print(f"  [FLAG] {record['name']}: {reason}")
             else:
-                mark_needs_review(curs, record["ability_id"], reason)
+                # Accumulate. This used to replace, which wiped the l59s
+                # rejection reason off any record the regex pass touched
+                # afterwards -- and that reason is what re-queues the record.
+                add_review_reason(curs, record["ability_id"], reason)
             flagged_count += 1
         elif result is None:
             clean_count += 1
@@ -268,16 +282,23 @@ def _update_review_flag(curs, record, resolved_type, was_enriched):
     # Remove the resolved type
     types_in_reason.discard(resolved_type)
 
-    if not types_in_reason:
+    # Reasons accumulate as "clause; clause". Only the "unextracted:" clause
+    # describes types this function resolves; anything else -- an l59s
+    # ungrounded-number rejection, say -- is a separate finding that resolving
+    # a type does not answer, and rebuilding the whole string used to discard
+    # it. Discarding it de-queues the record, because the reason IS the queue.
+    others = [c for c in reason.split("; ") if not c.startswith("unextracted:")]
+
+    if not types_in_reason and not others:
         clear_needs_review(curs, record["ability_id"])
     else:
-        # Rebuild reason with remaining types
-        remaining = []
-        for m in type_pattern.finditer(reason):
-            if m.group(1) != resolved_type:
-                remaining.append(m.group(0))
-        new_reason = "unextracted: " + ", ".join(remaining)
-        mark_needs_review(curs, record["ability_id"], new_reason)
+        clauses = list(others)
+        if types_in_reason:
+            remaining = [
+                m.group(0) for m in type_pattern.finditer(reason) if m.group(1) != resolved_type
+            ]
+            clauses.insert(0, "unextracted: " + ", ".join(remaining))
+        mark_needs_review(curs, record["ability_id"], "; ".join(clauses))
 
 
 def run_llm(conn, args):

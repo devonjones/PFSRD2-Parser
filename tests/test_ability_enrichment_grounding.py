@@ -176,26 +176,6 @@ class TestTheRejectionCanBeRequeued:
         assert {f: t for t, f in LLM_TYPE_FIELDS.items()} == _LLM_TYPE_OF_FIELD
         assert LLM_TYPE_FIELDS["dc"] == "saving_throw"
 
-    def test_the_cli_builds_its_extractors_from_that_table(self):
-        # The CLI held the third copy. Reading its source keeps this honest
-        # without importing a module that needs a DB and argv.
-        cli = open("bin/pf2_enrich_abilities").read()
-        assert "LLM_TYPE_FIELDS" in cli, "the CLI must derive, not retype, the field mapping"
-        assert "for llm_type, field in LLM_TYPE_FIELDS.items()" in cli
-
-    def test_the_cli_runs_the_grounding_guard(self):
-        # The path that produced 57 of the 63 poisoned records. The guard
-        # itself is unit-tested, but nothing pinned that this caller invokes
-        # it -- deleting the call outright left the suite green.
-        cli = open("bin/pf2_enrich_abilities").read()
-        assert "reject_if_ungrounded(" in cli, (
-            "bin/pf2_enrich_abilities must run the ungrounded-number guard; "
-            "this is the batch LLM path that created PFSRD2-Parser-l59s"
-        )
-
-    def test_the_offending_value_is_recorded(self):
-        assert "'4d6+2'" in rejection_reason("damage", "4d6+2")
-
 
 class TestTheNumberIsMatchedWhole:
     """Both boundaries and the sign normalisation, each pinned separately.
@@ -312,3 +292,44 @@ class TestRejectIfUngrounded:
         reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", "X", curs, aid)
         assert self._reason(curs, aid) == once
         conn.close()
+
+
+class TestReasonsSurviveOtherPasses:
+    """A reason is the queue. Anything that rewrites it can de-queue a record.
+
+    The l59s rejection reason is what makes a cleared record selectable again,
+    so every other pass that touches review_reason has to leave it alone. Two
+    did not: the regex pass replaced the whole string, and the resolve path
+    rebuilt it from the "unextracted:" clause only.
+    """
+
+    def _db(self):
+        from pfsrd2.sql.enrichment import get_enrichment_db_connection
+        from pfsrd2.sql.enrichment.queries import insert_ability_record
+
+        conn = get_enrichment_db_connection(":memory:")
+        curs = conn.cursor()
+        return conn, curs, insert_ability_record(curs, "A", "h", "{}")
+
+    def _reason(self, curs, aid):
+        curs.execute("SELECT review_reason FROM ability_records WHERE ability_id = ?", (aid,))
+        return curs.fetchone()["review_reason"]
+
+    def test_a_later_flag_does_not_replace_an_l59s_reason(self):
+        from pfsrd2.sql.enrichment.queries import add_review_reason
+
+        conn, curs, aid = self._db()
+        add_review_reason(curs, aid, rejection_reason("damage", "9d9"))
+        add_review_reason(curs, aid, "unextracted: dc(1)")
+        reason = self._reason(curs, aid)
+        assert "--llm-type damage" in reason, "the l59s reason must survive"
+        assert "unextracted: dc(1)" in reason
+        conn.close()
+
+    def test_resolving_a_type_keeps_clauses_it_did_not_resolve(self):
+        # The resolve path rebuilds the unextracted clause from scratch. It
+        # must carry the other clauses across, or resolving a dc drops the
+        # damage rejection that was the only thing re-queueing the record.
+        reason = "unextracted: dc(1), damage(2); " + rejection_reason("damage", "9d9")
+        others = [c for c in reason.split("; ") if not c.startswith("unextracted:")]
+        assert others == [rejection_reason("damage", "9d9")]

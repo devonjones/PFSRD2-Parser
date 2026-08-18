@@ -1,0 +1,151 @@
+"""End-to-end tests for bin/pf2_enrich_abilities' LLM path.
+
+This is the path that produced 57 of the 63 poisoned records in
+PFSRD2-Parser-l59s: an extractor loop identical to the inline one, with no
+grounding guard at all. It was covered only by grep-for-a-substring tests,
+which a reviewer showed the original defect would pass -- so it is driven for
+real here, against an in-memory DB with a stubbed extractor.
+
+The CLI guards `if __name__ == "__main__"`, so importing it runs nothing.
+"""
+
+import importlib.util
+import json
+import os
+
+import pytest
+
+CLI = os.path.join(os.path.dirname(__file__), "..", "bin", "pf2_enrich_abilities")
+
+
+def load_cli():
+    spec = importlib.util.spec_from_loader(
+        "pf2_enrich_abilities",
+        importlib.machinery.SourceFileLoader("pf2_enrich_abilities", CLI),
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class Args:
+    def __init__(self, **kw):
+        self.llm_type = kw.get("llm_type", "damage")
+        self.dry_run = kw.get("dry_run", False)
+        self.limit = kw.get("limit")
+        self.model = kw.get("model", "test-model")
+        self.verbose = kw.get("verbose", False)
+
+
+@pytest.fixture
+def db():
+    from pfsrd2.sql.enrichment import get_enrichment_db_connection
+
+    conn = get_enrichment_db_connection(":memory:")
+    yield conn
+    conn.close()
+
+
+def _flagged_record(conn, text, reason):
+    from pfsrd2.sql.enrichment.queries import insert_ability_record, mark_needs_review
+
+    curs = conn.cursor()
+    raw = json.dumps({"name": "Test Ability", "text": text})
+    ability_id = insert_ability_record(curs, "Test Ability", "hash-1", raw)
+    mark_needs_review(curs, ability_id, reason)
+    conn.commit()
+    return ability_id
+
+
+def _row(conn, ability_id):
+    curs = conn.cursor()
+    curs.execute("SELECT * FROM ability_records WHERE ability_id = ?", (ability_id,))
+    return curs.fetchone()
+
+
+class TestTheBatchPathIsGuarded:
+    def test_an_invented_number_is_never_written_to_the_cache(self, db, monkeypatch):
+        # The l59s defect exactly: the model returns a DC the source never
+        # published. Before the guard reached this path, this value was cached
+        # and shipped, indistinguishable from real game data.
+        cli = load_cli()
+        ability_id = _flagged_record(
+            db, "a basic Reflex save of the same DC", "unextracted: dc(1) --llm-type dc"
+        )
+        monkeypatch.setattr(
+            cli, "extract_dc_llm", lambda name, text, **kw: {"dc": 30, "text": "DC 30 basic Reflex"}
+        )
+        cli.run_llm(db, Args(llm_type="dc"))
+
+        row = _row(db, ability_id)
+        assert row["enriched_json"] is None, "an ungrounded value must not be cached"
+        assert row["needs_review"] == 1
+        assert "--llm-type dc" in row["review_reason"], "the record must stay re-queueable"
+
+    def test_a_grounded_number_is_written(self, db, monkeypatch):
+        # The guard must not reject real extractions -- an over-eager version
+        # would quietly stop the whole pipeline enriching anything.
+        cli = load_cli()
+        ability_id = _flagged_record(
+            db, "takes 4d6 fire damage", "unextracted: damage(1) --llm-type damage"
+        )
+        monkeypatch.setattr(
+            cli,
+            "extract_damage_llm",
+            lambda name, text, **kw: [{"formula": "4d6", "damage_type": "fire"}],
+        )
+        cli.run_llm(db, Args(llm_type="damage"))
+
+        row = _row(db, ability_id)
+        assert row["enriched_json"] is not None
+        assert "4d6" in row["enriched_json"]
+
+    def test_the_guard_reads_the_field_the_type_maps_to(self, db, monkeypatch):
+        # dc fills saving_throw. If the mapping were retyped wrongly the guard
+        # would check the wrong field, and a mismapped CLI would still pass a
+        # test that only greps for the call.
+        cli = load_cli()
+        assert cli.LLM_TYPE_FIELDS["dc"] == "saving_throw"
+        ability_id = _flagged_record(
+            db, "no numbers at all here", "unextracted: dc(1) --llm-type dc"
+        )
+        monkeypatch.setattr(cli, "extract_dc_llm", lambda name, text, **kw: {"dc": 99})
+        cli.run_llm(db, Args(llm_type="dc"))
+        assert "99" in _row(db, ability_id)["review_reason"]
+
+
+class TestTheStrandedRequeue:
+    def test_a_cleared_value_that_still_claims_a_version_is_requeued(self, db):
+        # fetch_unenriched selects on enrichment_version IS NULL and
+        # fetch_stale on stale = 1, so a row with a cleared enriched_json and a
+        # version still set is in neither queue. 61 rows were left that way.
+        cli = load_cli()
+        from pfsrd2.sql.enrichment.queries import insert_ability_record
+
+        curs = db.cursor()
+        ability_id = insert_ability_record(curs, "A", "h", json.dumps({"name": "A"}))
+        curs.execute(
+            "UPDATE ability_records SET enriched_json = NULL, enrichment_version = 2,"
+            " stale = 0 WHERE ability_id = ?",
+            (ability_id,),
+        )
+        db.commit()
+
+        cli.run_audit_enriched(db, Args())
+        assert _row(db, ability_id)["enrichment_version"] is None
+
+    def test_a_dry_run_does_not_requeue(self, db):
+        cli = load_cli()
+        from pfsrd2.sql.enrichment.queries import insert_ability_record
+
+        curs = db.cursor()
+        ability_id = insert_ability_record(curs, "A", "h", json.dumps({"name": "A"}))
+        curs.execute(
+            "UPDATE ability_records SET enriched_json = NULL, enrichment_version = 2,"
+            " stale = 0 WHERE ability_id = ?",
+            (ability_id,),
+        )
+        db.commit()
+
+        cli.run_audit_enriched(db, Args(dry_run=True))
+        assert _row(db, ability_id)["enrichment_version"] == 2

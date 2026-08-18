@@ -179,3 +179,95 @@ def degree_exemptions_main():
     from pfsrd2.qa import degree_exemptions
 
     return degree_exemptions.main()
+
+
+class TestUnmodelledOutsideTheDeferral:
+    """The cross-check on DEFERRED_DIRS, which could be replaced by `return []`
+    with a green suite.
+
+    It also must not be written with try/except AssertionError: under
+    `python -O` there is no assert to catch, so the check would pass for every
+    directory and say nothing.
+    """
+
+    def _corpus(self, tmp_path, directory, doc):
+        import json
+
+        (tmp_path / directory).mkdir(parents=True, exist_ok=True)
+        (tmp_path / directory / "d.json").write_text(json.dumps(doc))
+
+    _UNMODELLED = {"name": "X", "failure": "The target takes 2d6 fire damage."}
+
+    def test_an_unmodelled_directory_outside_the_deferral_is_reported(self, tmp_path, monkeypatch):
+        from pfsrd2.qa import degree_exemptions
+
+        self._corpus(tmp_path, "spells", self._UNMODELLED)
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        assert degree_exemptions.unmodelled_outside_the_deferral() == ["spells"]
+
+    def test_the_same_data_inside_the_deferral_is_not_reported(self, tmp_path, monkeypatch):
+        from pfsrd2.qa import degree_exemptions
+
+        self._corpus(tmp_path, "weapons", self._UNMODELLED)
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        assert degree_exemptions.unmodelled_outside_the_deferral() == []
+
+    def test_a_properly_modelled_directory_is_not_reported(self, tmp_path, monkeypatch):
+        from pfsrd2.qa import degree_exemptions
+        from universal.universal import degree_effects_for
+
+        doc = dict(self._UNMODELLED)
+        doc["degree_effects"] = degree_effects_for(doc)
+        self._corpus(tmp_path, "spells", doc)
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        assert degree_exemptions.unmodelled_outside_the_deferral() == []
+
+    def test_main_fails_when_the_scope_is_stale(self, tmp_path, monkeypatch, capsys):
+        # Both exemption tables are emptied so nothing ELSE can fail main().
+        # Without that, the fixture corpus lacks all seven real exemptions, so
+        # main() returned 1 via the dead-exemption branch and this test passed
+        # with the scope check's return deleted.
+        from pfsrd2.qa import degree_exemptions
+
+        self._corpus(tmp_path, "spells", self._UNMODELLED)
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr("pfsrd2.qa.degree_exemptions.DEGREE_EFFECT_NOT_THE_SUBJECTS", {})
+        monkeypatch.setattr(
+            "pfsrd2.qa.degree_exemptions.DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK", {}
+        )
+        assert degree_exemptions.main() == 1
+        assert "DEFERRAL SCOPE IS STALE" in capsys.readouterr().out
+
+
+class TestMainDoesNotGradeItsOwnHomework:
+    """TestMain's live-corpus fixture is built FROM the exemption tables, so it
+    passes whatever those tables contain -- including a fabricated entry.
+
+    That circularity is fine for what that test checks (main() reports success
+    on a corpus where every phrase is present). It is NOT fine as evidence that
+    the real tables are live, so the real check is stated separately here: the
+    corpus that matters is the published one, and bin/pf2_verify_degree_exemptions
+    is what asks it.
+    """
+
+    def test_a_fabricated_entry_is_reported_dead_against_a_corpus_that_lacks_it(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        import json
+
+        from pfsrd2.qa import degree_exemptions
+
+        (tmp_path / "monsters").mkdir()
+        (tmp_path / "monsters" / "d.json").write_text(
+            json.dumps({"name": "Real Thing", "failure": "some text"})
+        )
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(
+            "pfsrd2.qa.degree_exemptions.DEGREE_EFFECT_NOT_THE_SUBJECTS",
+            {("Never Published", "failure"): ("phrase", "fabricated")},
+        )
+        monkeypatch.setattr(
+            "pfsrd2.qa.degree_exemptions.DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK", {}
+        )
+        assert degree_exemptions.main() == 1
+        assert "Never Published" in capsys.readouterr().out
