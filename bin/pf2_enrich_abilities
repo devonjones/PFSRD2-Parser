@@ -6,6 +6,7 @@ import json
 import re
 import sys
 
+from pfsrd2.ability_enrichment import a_number_the_source_never_published
 from pfsrd2.ability_placement import deterministic_ability_category
 from pfsrd2.enrichment.llm_extractor import (
     DEFAULT_MODEL,
@@ -308,6 +309,26 @@ def run_llm(conn, args):
             continue
 
         result = extractor_fn(name, combined, model=args.model)
+
+        # Same guard as the inline path in ability_enrichment. It lived only
+        # there at first, which covered 6 of the 63 poisoned records found by
+        # PFSRD2-Parser-l59s -- the other 57 came through HERE, with an
+        # identical extractor loop and no check at all.
+        ungrounded = a_number_the_source_never_published(result, combined)
+        if ungrounded:
+            sys.stderr.write(
+                f"REJECTED ungrounded {field_name} for {name!r}: {ungrounded!r} "
+                f"does not occur in the ability text. {result!r}\n"
+            )
+            if not args.dry_run:
+                mark_needs_review(
+                    curs,
+                    record["ability_id"],
+                    f"PFSRD2-Parser-l59s: LLM returned {ungrounded!r} for "
+                    f"{field_name}, absent from the ability text",
+                )
+            failed_count += 1
+            continue
 
         if result:
             # Merge into enriched_json

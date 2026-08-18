@@ -279,10 +279,13 @@ class TestDegreeEffects:
         assert "degree_effects" not in ability
 
     def test_a_dc_in_degree_text_does_NOT_become_a_saving_throw(self):
-        # Deliberate scope limit. 163 DCs appear in degree text corpus-wide and
-        # only 46 are saves: 64 are Escape DCs, 45 are flat checks and 7 are
-        # skill checks. Typing those as save_dc would claim something the source
-        # does not say, so saving_throw waits for PFSRD2-Parser-2cby.
+        # Deliberate scope limit: well under half the DCs in degree text are
+        # saving throws -- most are Escape DCs or flat checks -- so typing one
+        # as save_dc would claim something the source does not say.
+        # PFSRD2-Parser-2cby carries the census. It is not repeated here because
+        # it counts degree TEXT, and the degree boundaries in universal.py
+        # decide how much text there is -- the figure has already gone stale
+        # twice by being copied into places that never re-measure.
         #
         # The degree carries damage AND an Escape DC on purpose. A degree with
         # only a DC produces no effect at all, so a test written on one asserts

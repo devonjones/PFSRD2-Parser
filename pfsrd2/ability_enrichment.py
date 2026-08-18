@@ -17,6 +17,7 @@ from pfsrd2.sql.enrichment import (
     get_enrichment_db_connection,
     insert_ability_record,
     insert_creature_link,
+    mark_needs_review,
     mark_stale,
     refresh_raw_json,
     update_enriched_json,
@@ -82,15 +83,26 @@ def _try_inline_enrich(curs, ability_id, raw_json):
                 extractor_fn, field_name = _LLM_EXTRACTORS[keyword]
                 if not result.get(field_name):
                     llm_result = extractor_fn(name, combined)
-                    ungrounded = _a_number_the_source_never_published(llm_result, combined)
+                    ungrounded = a_number_the_source_never_published(llm_result, combined)
                     if ungrounded:
                         # PFSRD2-Parser-l59s. Rejected rather than asserted: an
                         # assert here halts a 4500-file creature run on a model
                         # hiccup, and the correct output is simply "no value".
+                        #
+                        # stderr alone is not enough: the record is written to
+                        # the cache twelve lines below, so the warning prints
+                        # exactly once ever and every later run is silent.
+                        # needs_review is durable and queryable.
                         sys.stderr.write(
                             f"REJECTED ungrounded {field_name} for {name!r}: "
                             f"{ungrounded!r} does not occur in the ability text. "
                             f"{llm_result!r}\n"
+                        )
+                        mark_needs_review(
+                            curs,
+                            ability_id,
+                            f"PFSRD2-Parser-l59s: LLM returned {ungrounded!r} "
+                            f"for {field_name}, absent from the ability text",
                         )
                     elif llm_result:
                         result[field_name] = llm_result
@@ -109,7 +121,7 @@ def _try_inline_enrich(curs, ability_id, raw_json):
 _A_NUMBER = re.compile(r"\d+d\d+(?:[+-]\d+)?|\d+")
 
 
-def _a_number_the_source_never_published(llm_result, source):
+def a_number_the_source_never_published(llm_result, source):
     """The first number in an LLM answer that is absent from its own input.
 
     PFSRD2-Parser-l59s: extract_dc_llm returned "DC 30 basic Reflex" -- character
@@ -132,10 +144,19 @@ def _a_number_the_source_never_published(llm_result, source):
         return None
     # ensure_ascii=False, or an en-dash escapes to "\u2013" and its digits are
     # read as a number: "a -2 circumstance penalty" produced the phantom "20132".
+    # "4d6 + 2" in the source grounds "4d6+2" in the answer; a model normalising
+    # spacing is not fabricating.
+    source = re.sub(r"\s*([+-])\s*", r"\1", source)
     for number in _A_NUMBER.findall(json.dumps(llm_result, ensure_ascii=False)):
-        # A bare number must not be a fragment of a longer one -- "5" is not
-        # grounded by "50 feet". A dice formula is matched whole.
-        pattern = re.escape(number) if "d" in number else rf"(?<!\d){re.escape(number)}(?!\d)"
+        # BOTH branches need the boundary. The dice branch used to be a bare
+        # substring, so "1d6" was satisfied by a source containing only "11d6"
+        # and bare "20" by "1d20" -- the guard accepted a fabricated number
+        # because a longer one happened to contain it. The comment claimed dice
+        # were "matched whole"; they were not.
+        #
+        # The class is [\dd], not \d: a bare "20" is otherwise grounded by
+        # "1d20", where the preceding character is a letter.
+        pattern = rf"(?<![\dd]){re.escape(number)}(?!\d)"
         if not re.search(pattern, source):
             return number
     return None

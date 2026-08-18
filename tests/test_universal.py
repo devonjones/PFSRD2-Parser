@@ -451,11 +451,30 @@ class TestDiceTheDegreeDoesNotDeal:
     def test_a_nested_save_inside_the_degree_drops_only_its_own_dice(self):
         # the_putrid_rise: 16d6 is the Vomit save's outcome; the 4d6 from the
         # tumble is gated behind a second DC 32.
+        # the_putrid_rise, verbatim. The subject of the second sentence is "A
+        # creature that falls down the steps", NOT the degree's own subject --
+        # that is what separates it from gorlak's "The creature takes 2d10+9
+        # ... (DC 25 basic Fortitude save)", which IS the degree's own damage.
+        # A paraphrased fixture saying "The creature takes an additional 4d6"
+        # made this test pass for the wrong reason and hid that distinction.
         assert self._f(
-            "The creature takes 16d6 acid damage, is sickened 3, is knocked prone, "
-            "and then tumbles down the stairs. The creature takes an additional 4d6 "
-            "bludgeoning damage (DC 32 basic Reflex save) from the tumble."
+            "The creature takes 16d6 acid damage, is sickened 3, is knocked "
+            "prone, and then tumbles down the stairs. A creature that falls "
+            "down the steps takes an additional 4d6 bludgeoning damage "
+            "(DC 32 basic Reflex save) from the tumble."
         ) == [("16d6", "acid")]
+
+    def test_the_degrees_own_basic_save_damage_is_kept(self):
+        # gorlak's Fling Foe. A basic save printed right after the dice is the
+        # standard way of writing the degree's OWN damage. Dropping it published
+        # degree_effects: null on all three degrees, while ran-to's Whirlwind
+        # Toss -- same ability shape -- kept its damage only because the source
+        # put the parenthetical further away than the window. That was the rule
+        # reading layout instead of attribution.
+        assert self._f(
+            "The creature takes 2d10+9 piercing damage (DC 25 basic Fortitude "
+            "save) as the hook rips free and is hurled 15 feet away."
+        ) == [("2d10+9", "piercing")]
 
     def test_an_escape_dc_after_the_damage_does_not_suppress_it(self):
         # The guard must not fire on a DC that gates something OTHER than the
@@ -588,13 +607,20 @@ class TestADegreeStopsAtAParagraphBreak:
     def test_a_single_break_still_separates_degrees(self):
         # The guard must not fire on the ordinary separator, or every degree
         # after the first would be lost.
+        # The LAST degree carries a single <br/> mid-content on purpose. Only a
+        # DOUBLE break ends a degree, so that sentence must stay. Without it
+        # nothing here reaches _starts_a_blank_line at all, and this test
+        # passed with that function hardwired to True.
         section, _ = self._blocks(
             "<b>Success</b> Half damage.<br /><b>Failure</b> The creature takes"
-            " 6d6 fire damage.<br /><b>Critical Failure</b> Double damage."
+            " 6d6 fire damage.<br /><b>Critical Failure</b> Double damage.<br />"
+            "The creature is also knocked prone."
         )
         assert section["success"] == "Half damage."
         assert section["failure"] == "The creature takes 6d6 fire damage."
-        assert section["critical_failure"] == "Double damage."
+        assert section["critical_failure"] == (
+            "Double damage.<br/>The creature is also knocked prone."
+        )
         assert [e["degree"] for e in section["degree_effects"]] == ["failure"]
 
     def test_whitespace_between_the_two_breaks_still_counts(self):
@@ -651,7 +677,20 @@ class TestAlternativesAreNotCumulative:
         ) == ["6d6"]
 
     def test_regained_hit_points_are_not_damage(self):
-        assert self._f("The target regains 8d6 Hit Points and a +1 bonus.") == []
+        # morlock_engineer's Uncanny Tinker, verbatim. The previous fixture was
+        # "The target regains 8d6 Hit Points and a +1 bonus." -- with no
+        # "damage" after the dice, extract_all returned nothing at all, so the
+        # assertion held even with the healing guard deleted entirely. This
+        # sentence has BOTH a heal and a damage clause, which is the only shape
+        # in which the guard can be shown to do anything.
+        assert (
+            self._f(
+                "The target regains 8d6 Hit Points and a +1 circumstance bonus to"
+                " attack rolls for 1 minute. Alternately, the morlock can deal 8d6"
+                " damage (bludgeoning, piercing, or slashing)."
+            )
+            == []
+        )
 
     def test_or_in_a_size_clause_is_not_an_alternative(self):
         # rusted_cage_trap. No dice precede the "or", so it is ordinary English.
@@ -771,3 +810,47 @@ class TestADegreeThatContinuesPastItsBreak:
         )
         with pytest.raises(AssertionError, match="no longer in the text"):
             self._blocks("Rewrite Memory", html)
+
+
+class TestTheGuardIsActuallyWired:
+    """`validate_against_schema` must CALL the degree guard, not merely have one.
+
+    Round 3 mutation M34 unwired the call and the whole suite stayed green: the
+    guard against silent misses could itself go missing silently. Every parser
+    reaches degrees through this one function, so this is the single point where
+    the wiring is worth pinning.
+    """
+
+    def test_validate_against_schema_runs_the_degree_guard(self):
+        import pytest as _pytest
+
+        from pfsrd2.schema import validate_against_schema
+
+        # An ability whose degree states damage no degree_effects models. The
+        # guard must fire BEFORE jsonschema, since this document is otherwise
+        # schema-valid.
+        struct = {
+            "name": "Rockfall",
+            "sections": [
+                {
+                    "name": "Rockfall",
+                    "subtype": "ability",
+                    "failure": "The creature takes 2d6 bludgeoning damage.",
+                }
+            ],
+        }
+        with _pytest.raises(AssertionError, match="never called extract_degree_effects"):
+            validate_against_schema(struct, "creature.schema.json")
+
+    def test_the_equipment_deferral_still_reaches_this_call_site(self):
+        # The exemption has to be honoured through validate_against_schema too,
+        # or every equipment run breaks. PFSRD2-Parser-qj3v.
+        from pfsrd2.schema import validate_against_schema
+
+        struct = {"failure": "The creature takes 2d6 bludgeoning damage."}
+        try:
+            validate_against_schema(struct, "equipment.schema.json")
+        except AssertionError as exc:  # pragma: no cover - would be the bug
+            raise AssertionError(f"equipment deferral not honoured: {exc}") from exc
+        except Exception:
+            pass  # jsonschema rejecting the stub document is fine; the guard did not fire

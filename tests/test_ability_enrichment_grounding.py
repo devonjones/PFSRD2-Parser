@@ -12,7 +12,9 @@ it. The guard is deterministic instead: a model cannot invent a number that is
 already in its input.
 """
 
-from pfsrd2.ability_enrichment import _a_number_the_source_never_published as ungrounded
+import json
+
+from pfsrd2.ability_enrichment import a_number_the_source_never_published as ungrounded
 
 REPELLING_BLAST = (
     "The dragon expels scales from their body in a 50-foot emanation. Creatures "
@@ -62,3 +64,73 @@ class TestUngroundedNumbers:
     def test_nothing_extracted_is_not_a_violation(self):
         assert ungrounded(None, A_REAL_SAVE) is None
         assert ungrounded([], A_REAL_SAVE) is None
+
+
+class TestTheRejectPathActuallyRejects:
+    """The guard's *effect*, not just its predicate.
+
+    PFSRD2-Parser-l59s. Round 3 found this branch had zero coverage: mutations
+    that never rejected, that logged and then assigned anyway, and that silenced
+    the warning ALL left the suite green. The predicate was tested; what the
+    caller does with it was not.
+    """
+
+    UNGROUNDED = [{"dc": 30, "save_type": "Ref", "text": "DC 30 basic Reflex"}]
+    SOURCE = "Creatures take slashing damage (with a basic Reflex save of the same DC)."
+
+    def _run(self, monkeypatch, llm_result):
+        """Drive _try_inline_enrich with a stubbed extractor and a fake cursor."""
+        import pfsrd2.ability_enrichment as ae
+
+        marked = []
+        monkeypatch.setattr(
+            ae,
+            "extract_all",
+            lambda j: (json.loads(j) if isinstance(j, str) else dict(j), ["dc"]),
+        )
+        monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
+        monkeypatch.setattr(ae, "mark_needs_review", lambda c, i, r: marked.append((i, r)))
+        import pfsrd2.enrichment.llm_extractor as le
+
+        monkeypatch.setattr(le, "extract_dc_llm", lambda name, text: llm_result)
+        raw = json.dumps({"name": "Repelling Blast", "text": self.SOURCE, "type": "ability"})
+        out = ae._try_inline_enrich(object(), 17662, raw)
+        return json.loads(out) if out else None, marked
+
+    def test_an_ungrounded_value_is_not_assigned(self, monkeypatch, capsys):
+        result, marked = self._run(monkeypatch, self.UNGROUNDED)
+        assert not (result or {}).get(
+            "saving_throw"
+        ), "a number absent from the ability text must not reach the record"
+        assert "REJECTED" in capsys.readouterr().err
+        assert marked, "the rejection must be durable, not only on stderr"
+        assert "l59s" in marked[0][1]
+
+    def test_a_grounded_value_is_assigned(self, monkeypatch):
+        # Same path, a number the text does state -- proves the reject branch is
+        # selective rather than always-on.
+        import pfsrd2.ability_enrichment as ae
+
+        marked = []
+        monkeypatch.setattr(
+            ae,
+            "extract_all",
+            lambda j: (json.loads(j) if isinstance(j, str) else dict(j), ["dc"]),
+        )
+        monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
+        monkeypatch.setattr(ae, "mark_needs_review", lambda c, i, r: marked.append((i, r)))
+        import pfsrd2.enrichment.llm_extractor as le
+
+        monkeypatch.setattr(
+            le, "extract_dc_llm", lambda n, t: [{"dc": 25, "text": "DC 25 basic Reflex"}]
+        )
+        raw = json.dumps(
+            {
+                "name": "Fling Foe",
+                "text": "The creature takes damage (DC 25 basic Fortitude save).",
+                "type": "ability",
+            }
+        )
+        out = ae._try_inline_enrich(object(), 1, raw)
+        assert json.loads(out)["saving_throw"][0]["dc"] == 25
+        assert marked == []

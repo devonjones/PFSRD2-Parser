@@ -257,8 +257,10 @@ class TestExtractResultBlocks:
     def test_a_feat_degree_is_modelled_like_any_other_degree(self):
         # feat.py calls extract_result_blocks directly rather than going
         # through parse_ability_from_html, so a degree-modelling call attached
-        # to the ability path skips feats entirely. 35 published feat degrees
-        # carry extractable damage (PFSRD2-Parser-e01u).
+        # to the ability path skips feats entirely -- feats reached none of it
+        # until the call moved into extract_result_blocks (PFSRD2-Parser-e01u).
+        # No count here: it depends on the degree boundaries and the
+        # suppression rules in universal.py, both of which have moved since.
         section = {}
         bs = BeautifulSoup(
             "<b>Critical Success</b> The target falls and takes 2d6 bludgeoning damage."

@@ -715,11 +715,18 @@ def extract_degree_effects(ability):
     rather than inventing new ones. regex_extractor imports only json and re,
     so this pulls in no DB and no LLM.
 
-    `damage` only, deliberately. 163 DCs appear in degree text corpus-wide and
-    only 46 are saving throws: 64 are Escape DCs, 45 are flat checks, 7 are
-    skill checks, and 1 names no check at all. Typing those as save_dc would
-    claim something the source never said, so saving_throw and skill_check
-    wait for PFSRD2-Parser-2cby to give skill checks their own type.
+    `damage` only, deliberately. Measured 2026-08-18 against the corpus AS
+    BOUNDED BY THIS MODULE -- 160 DC occurrences in degree text, of which 64 are
+    Escape DCs, 44 saving throws, 44 flat checks, 7 skill checks and 1 naming no
+    check at all. Typing those as save_dc would claim something the source never
+    said, so saving_throw and skill_check wait for PFSRD2-Parser-2cby.
+
+    The date is load-bearing. This census counts degree TEXT, and the degree
+    boundaries in this same module decide how much text there is: tightening
+    them moved the total from 163 to 160 and nobody re-measured, so the figure
+    shipped wrong into ten published schema descriptions twice. Those
+    descriptions no longer carry a tally; re-derive from the corpus before
+    quoting one.
 
     What comes back is damage the degree's text MENTIONS, which is not always
     damage the degree's subject takes: a small minority describe damage dealt
@@ -838,6 +845,18 @@ _AN_ALTERNATIVE_AFTER = re.compile(r"^[^.]{0,40}\binstead\b(?!\s+of\b)", re.I)
 _HEALING_BEFORE = re.compile(r"\b(?:regains?|heals?|restores?|recovers?)\b[^.]{0,40}$", re.I)
 
 _ITS_OWN_SAVE = re.compile(r"\(\s*DC\s*\d+[^)]*\bsaves?\b", re.I)
+
+# ...unless the sentence names the degree's OWN subject taking it. A basic save
+# printed right after the dice is the standard way of writing the degree's own
+# damage, so the parenthetical alone cannot tell a second check from the first.
+# Without this, gorlak's Fling Foe lost all three degrees -- "The creature takes
+# 2d10+9 piercing damage (DC 25 basic Fortitude save)" -- while ran-to's
+# Whirlwind Toss, the same ability shape, kept its damage only because the
+# source happened to put the parenthetical past the window. That is the rule
+# reading layout rather than attribution.
+_THE_DEGREES_OWN_SUBJECT = re.compile(
+    r"\b(?:the (?:creature|target)|you)\s+takes?\b[^.]{0,40}$", re.I
+)
 _A_RATE_NOT_AN_AMOUNT = re.compile(r"\bfor (?:each|every)\b", re.I)
 
 # How far past the dice to look. Long enough to clear "6d6 bludgeoning damage to
@@ -864,11 +883,13 @@ def _damage_the_degree_itself_deals(damage, plain):
             kept.append(entry)
             continue
         window = plain[at : at + _QUALIFIER_WINDOW]
-        if _ITS_OWN_SAVE.search(window) or _A_RATE_NOT_AN_AMOUNT.search(window):
+        before = plain[max(0, at - _QUALIFIER_WINDOW) : at]
+        if _ITS_OWN_SAVE.search(window) and not _THE_DEGREES_OWN_SUBJECT.search(before):
+            continue
+        if _A_RATE_NOT_AN_AMOUNT.search(window):
             continue
         # Look BEHIND as well: "or"/"regains" introduce the dice, they do not
         # follow them.
-        before = plain[max(0, at - _QUALIFIER_WINDOW) : at]
         if _AN_ALTERNATIVE_BEFORE.search(before) or _HEALING_BEFORE.search(before):
             continue
         if _AN_ALTERNATIVE_AFTER.search(plain[at + len(formula) :]):
