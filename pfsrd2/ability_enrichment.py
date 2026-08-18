@@ -101,8 +101,7 @@ def _try_inline_enrich(curs, ability_id, raw_json):
                         mark_needs_review(
                             curs,
                             ability_id,
-                            f"PFSRD2-Parser-l59s: LLM returned {ungrounded!r} "
-                            f"for {field_name}, absent from the ability text",
+                            rejection_reason(field_name, ungrounded),
                         )
                     elif llm_result:
                         result[field_name] = llm_result
@@ -119,6 +118,28 @@ def _try_inline_enrich(curs, ability_id, raw_json):
 # so there is no word boundary to match on, and every dice formula reads as
 # ungrounded.
 _A_NUMBER = re.compile(r"\d+d\d+(?:[+-]\d+)?|\d+")
+
+
+# bin/pf2_enrich_abilities re-queues a flagged record by substring-matching its
+# review_reason against the --llm-type. Two of the four types are not spelled
+# the way their FIELD is, so a reason naming only the field is a reason nothing
+# can re-queue: nine saving_throw rejections were parked permanently because
+# "dc" does not occur in "saving_throw".
+_LLM_TYPE_OF_FIELD = {
+    "damage": "damage",
+    "saving_throw": "dc",
+    "area": "area",
+    "frequency": "frequency",
+}
+
+
+def rejection_reason(field_name, ungrounded):
+    """Why a record was flagged, worded so run_llm can find it again."""
+    llm_type = _LLM_TYPE_OF_FIELD.get(field_name, field_name)
+    return (
+        f"PFSRD2-Parser-l59s: LLM returned {ungrounded!r} for {field_name} "
+        f"(--llm-type {llm_type}), absent from the ability text"
+    )
 
 
 def a_number_the_source_never_published(llm_result, source):

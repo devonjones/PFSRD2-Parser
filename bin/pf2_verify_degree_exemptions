@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""Verify every named degree exemption still matches a published degree.
+Exit 1 on dead entries. See pfsrd2/qa/degree_exemptions.py."""
+import os
+import sys
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(script_dir, ".."))
+
+from pfsrd2.qa import degree_exemptions  # noqa: E402
+
+sys.exit(degree_exemptions.main())

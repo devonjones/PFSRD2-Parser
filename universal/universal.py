@@ -589,10 +589,15 @@ RESULT_LABELS = {
     "Critical Failure": "critical_failure",
 }
 
-# Derived, not retyped. Six modules carry, strip or link-scan the degree fields
-# by name, and every retyped copy is a place a NEW degree field is silently
-# dropped — which is exactly how skill.py and monster_ability.py both lost
-# degree_effects. Adding a field here reaches all of them.
+# Derived, not retyped. Nine sites across six modules carry, strip or link-scan
+# the degree fields by name, and every retyped copy is a place a NEW degree
+# field is silently dropped — which is exactly how skill.py and
+# monster_ability.py both lost degree_effects.
+#
+# One retyped copy survives on purpose: equipment.py's label_map, which maps
+# the DISPLAY labels ("Critical Failure") rather than the field names, and is
+# the equipment half of the same table RESULT_LABELS is. Merging the two is
+# PFSRD2-Parser-qj3v's job, not this constant's.
 DEGREE_FIELDS = tuple(RESULT_LABELS.values())
 
 # For lists that carry or strip a degree WITH its structure. Link passes want
@@ -631,8 +636,13 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
     """Extract Critical Success/Success/Failure/Critical Failure from description.
 
     Also writes degree_effects onto `section` — see extract_degree_effects. A
-    degree is a string, so what it says is modelled beside it, and this is
-    where three of the five degree-writers put their degrees.
+    degree is a string, so what it says is modelled beside it.
+
+    This function is ONE of the five degree-writers listed in
+    extract_degree_effects, and it is the one three parsers reach it through:
+    feats, spells, and everything that goes via parse_ability_from_html. The
+    "five" there counts writing functions; the "three" here counts callers, so
+    the numbers are not comparable and neither is wrong.
 
     Args:
         section: dict to store result keys into (e.g. critical_success,
@@ -642,12 +652,6 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
             If False (default), only stop at <b> tags that are result labels
             (skill/spell behavior - allows non-result bolds within result text).
     """
-    # Loop-invariant, so resolved once: a degree's text may legitimately contain
-    # a bold that is not another degree, and stopping at it would truncate the
-    # degree. When the caller wants any bold to end the run, that IS
-    # nodes_after's default — pass None rather than writing it out longhand.
-    stops_the_run = None if break_on_any_bold else _stops_at_a_result_label
-
     # Only the LAST degree needs a paragraph/block terminator. A middle degree
     # already has one -- the next degree's bold -- and everything between the
     # two is unambiguously its own content. Applying the boundary to a middle
@@ -679,11 +683,15 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
         # of returning to the parent object. The markup is identical, so they
         # are named in constants.py; see _continues_past_a_break.
         bounded = is_last and not _continues_past_a_break(section, key, bold)
+        # A degree's text may legitimately contain a bold that is not another
+        # degree, so a middle degree only stops at another degree's label. The
+        # last degree, and any caller that asked for it, stops at every bold --
+        # which is nodes_after's default, so it is None rather than a predicate
+        # spelled out longhand.
         value_nodes = nodes_after(
             bold,
-            stop=None if is_last else stops_the_run,
-            stop_at_blank_line=bounded,
-            stop_at_block=bounded,
+            stop=None if (is_last or break_on_any_bold) else _stops_at_a_result_label,
+            stop_at_paragraph=bounded,
         )
         value = "".join(str(n) for n in value_nodes).strip()
         value = re.sub(r"<br/?>[\s]*$", "", value)
@@ -699,7 +707,7 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
     extract_degree_effects(section)
 
 
-def extract_degree_effects(ability):
+def extract_degree_effects(ability, owner_name=None):
     """Model what a degree's text says, since the degree itself is a string.
 
     Before the degrees were folded into their parent, each one was (wrongly)
@@ -746,20 +754,32 @@ def extract_degree_effects(ability):
     field simply does not appear, which reads identically to "this degree had
     no damage". That is how the creature path shipped empty, and why the count
     here is a fact to re-check rather than a guarantee.
+
+    `owner_name` names the enclosing object when `ability` has no name of its
+    own -- a hazard's routine_results, a spell's defense. Only the exemption
+    table in constants.py reads it, and without it that table cannot reach a
+    third of the corpus. See _is_exempt.
     """
-    effects = degree_effects_for(ability)
+    effects = degree_effects_for(ability, owner_name)
     if effects:
         ability["degree_effects"] = effects
 
 
-def _is_exempt(obj, degree, plain):
+def _is_exempt(obj, degree, plain, owner_name=None):
     """A degree the extractor cannot judge, listed by name in constants.py.
 
     Asserts rather than silently skipping when the pinned phrase is gone: the
     exemption was granted for a specific sentence, so if AoN rewrites it the
     justification has to be re-made by a person.
+
+    `owner_name` is the name of the nearest enclosing NAMED object. 836 of the
+    corpus's 2582 degree carriers have no name of their own -- every
+    spell_defense, every equipment save_results, every hazard routine_results
+    -- so keying only on obj["name"] made a third of the corpus unreachable by
+    any exemption. That is not a latent problem for a table that suppresses
+    published dice: the entry would simply never fire, and silently.
     """
-    key = (obj.get("name"), degree)
+    key = (obj.get("name") or owner_name, degree)
     if key not in DEGREE_EFFECT_NOT_THE_SUBJECTS:
         return False
     phrase, why = DEGREE_EFFECT_NOT_THE_SUBJECTS[key]
@@ -772,7 +792,7 @@ def _is_exempt(obj, degree, plain):
     return True
 
 
-def degree_effects_for(obj):
+def degree_effects_for(obj, owner_name=None):
     """The degree_effects an object's degrees imply. Pure; obj is not touched.
 
     Split out from the mutator so assert_every_degree_was_modelled can ask the
@@ -792,7 +812,7 @@ def degree_effects_for(obj):
         # enrichment pass, not a per-degree one — PFSRD2-Parser-165k measures
         # it.
         plain = get_text(BeautifulSoup(text, "html.parser"))
-        if _is_exempt(obj, degree, plain):
+        if _is_exempt(obj, degree, plain, owner_name):
             continue
         enriched, _missed = extract_all({"text": plain})
         damage = _damage_the_degree_itself_deals((enriched or {}).get("damage"), plain)
@@ -921,18 +941,26 @@ def assert_every_degree_was_modelled(struct, schema_name):
     of them tripped anything.
 
     So the invariant is checked against finished output instead of trusted:
-    recompute what each object's degrees imply and compare. Measured over the
-    published corpus, 2582 degree-carrying objects, this agrees everywhere
-    except the 37 that _DEGREE_MODELLING_DEFERRED covers.
+    recompute what each object's degrees imply and compare. Over the published
+    corpus this agrees everywhere the deferral does not cover.
+
+    How much the deferral covers is a measurement, not a constant, so it is
+    not written here -- bin/pf2_verify_degree_exemptions prints it. It was 212
+    degree carriers on 2026-08-18, which is worth knowing because an earlier
+    draft of this docstring said 37: that was the count of objects that would
+    GAIN damage, not the count the guard is switched off for.
 
     Recomputing from published text is safe because the extractor is fed
     get_text() at write time, and no published degree string carries markup.
     """
     if schema_name in _DEGREE_MODELLING_DEFERRED:
         return
-    for obj, expected in _unmodelled_degree_carriers(struct):
+    first = next(_unmodelled_degree_carriers(struct), None)
+    if first is not None:
+        obj, expected, owner_name = first
         assert False, (
-            f"{obj.get('name')!r} ({obj.get('subtype')}) publishes a degree "
+            f"{obj.get('name') or owner_name!r} ({obj.get('subtype')}) "
+            f"publishes a degree "
             f"whose text carries damage, but no degree_effects for "
             f"{[e['degree'] for e in expected]}. Whatever wrote this object's "
             "degrees never called extract_degree_effects — see that function "
@@ -941,18 +969,32 @@ def assert_every_degree_was_modelled(struct, schema_name):
         )
 
 
-def _unmodelled_degree_carriers(struct):
+def _unmodelled_degree_carriers(struct, owner_name=None):
+    """Walks output, carrying down the nearest enclosing name.
+
+    The name matters because degree_effects_for consults the exemption table
+    with it. Recomputing WITHOUT it would make this guard disagree with the
+    writer on every exempt degree that hangs off an unnamed carrier, and the
+    guard would report the writer as broken.
+    """
     if isinstance(struct, dict):
+        owner_name = struct.get("name") or owner_name
         if any(isinstance(struct.get(d), str) for d in DEGREE_FIELDS):
-            expected = degree_effects_for(struct)
+            expected = degree_effects_for(struct, owner_name)
             actual = struct.get("degree_effects") or []
-            if [e["degree"] for e in expected] != [a["degree"] for a in actual]:
-                yield struct, expected
+            # Full structural equality, not just the degree NAMES. Comparing
+            # names only would pass an object whose degree_effects listed the
+            # right degrees with the wrong dice on them -- which is the shape
+            # of every bug this feature has actually shipped. Re-measured over
+            # the corpus: exact equality costs nothing, it finds the same zero
+            # disagreements.
+            if expected != actual:
+                yield struct, expected, owner_name
         for value in struct.values():
-            yield from _unmodelled_degree_carriers(value)
+            yield from _unmodelled_degree_carriers(value, owner_name)
     elif isinstance(struct, list):
         for value in struct:
-            yield from _unmodelled_degree_carriers(value)
+            yield from _unmodelled_degree_carriers(value, owner_name)
 
 
 _KEY_OVERRIDES = {

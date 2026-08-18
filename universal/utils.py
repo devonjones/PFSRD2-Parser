@@ -634,7 +634,7 @@ def _starts_a_blank_line(br):
     return getattr(node, "name", None) == "br"
 
 
-def nodes_after(bold, stop=None, stop_at_br=False, stop_at_blank_line=False, stop_at_block=False):
+def nodes_after(bold, stop=None, stop_at_br=False, stop_at_paragraph=False):
     """Sibling nodes up to the next bold label — a label's value run.
 
     `stop` overrides which bold ends the run. It receives each <b> node and
@@ -660,10 +660,16 @@ def nodes_after(bold, stop=None, stop_at_br=False, stop_at_blank_line=False, sto
     last degree (see pfsrd2/hazard.py::_extract_routine_results), so breaking
     there would truncate them.
 
-    `stop_at_blank_line` ends the run at a PARAGRAPH break -- a <br/> whose
-    next non-whitespace sibling is another <br/>. A single <br/> separates the
-    fields inside a block and must not end anything; two in a row is the source
-    saying this block is over.
+    `stop_at_paragraph` ends the run at whichever comes first of a PARAGRAPH
+    break -- a <br/> whose next non-whitespace sibling is another <br/> -- and
+    a block-level element. A single <br/> separates the fields inside a block
+    and must not end anything; two in a row is the source saying this block is
+    over. A block element IS the separator on its own.
+
+    These are one argument because they are one question -- "has this run left
+    the paragraph it started in?" -- and no caller has ever wanted to answer it
+    two different ways. They were two flags, and the only call site passed both
+    the same value.
 
     Degrees want it. A degree of success is one sentence about one save
     outcome, and it never spans a paragraph. Without this the LAST degree has
@@ -673,12 +679,10 @@ def nodes_after(bold, stop=None, stop_at_br=False, stop_at_blank_line=False, sto
     summon_stampede's. Both were shipped that way and degree_effects then read
     the buried dice as the degree's own damage.
 
-    `stop_at_block` ends the run at a block-level element. A degree is one
-    sentence about one save outcome; it cannot contain a heading, a table or a
-    list. unfathomable_song says "Roll 1d4+1 on the table below." and then
+    The block half is what catches a degree with no paragraph break at all.
+    unfathomable_song says "Roll 1d4+1 on the table below." and then
     prints an <h2> and the table itself, all of which landed inside
-    critical_failure. A paragraph break would not have caught it, because there
-    is none -- the block element IS the separator.
+    critical_failure, and there is no <br/><br/> anywhere near it.
 
     The loop tests `is not None`, not `while node:` — an empty NavigableString
     is falsy, so the inlined copies this replaces ended the run early on one
@@ -694,9 +698,9 @@ def nodes_after(bold, stop=None, stop_at_br=False, stop_at_blank_line=False, sto
             if stop is None or stop(node):
                 break
         elif name == "br":
-            if stop_at_br or (stop_at_blank_line and _starts_a_blank_line(node)):
+            if stop_at_br or (stop_at_paragraph and _starts_a_blank_line(node)):
                 break
-        elif stop_at_block and name in _BLOCK_TAGS:
+        elif stop_at_paragraph and name in _BLOCK_TAGS:
             break
         nodes.append(node)
         node = node.next_sibling

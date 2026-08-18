@@ -29,7 +29,7 @@ from universal.creatures import (
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass
 from universal.universal import (
-    DEGREE_FIELDS,
+    DEGREE_FIELDS_WITH_EFFECTS,
     aon_pass,
     build_object,
     build_objects,
@@ -7045,7 +7045,11 @@ def _build_offense_bucket(stat_block):
         if "save_results" in stat_block:
             sr = stat_block["save_results"]
             attack_roll = {"type": "stat_block_section", "subtype": "attack_roll"}
-            for field in DEGREE_FIELDS:
+            # WITH_EFFECTS so that when qj3v starts modelling equipment's
+            # degrees, the structure moves with the degree it describes rather
+            # than being left behind on save_results. That is the exact shape
+            # of the bug skill.py and monster_ability.py both shipped.
+            for field in DEGREE_FIELDS_WITH_EFFECTS:
                 if field in sr:
                     attack_roll[field] = sr.pop(field)
             if len(attack_roll) > 2:

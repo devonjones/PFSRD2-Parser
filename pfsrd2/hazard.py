@@ -506,7 +506,7 @@ def _extract_routine_results(hazard, bs):
             # universal.extract_degree_effects for the other four writers.
             # Without the call the 57 routine degrees that carry damage stay
             # unmodelled while the identical sentence on an ability does not.
-            extract_degree_effects(hazard["routine_results"])
+            extract_degree_effects(hazard["routine_results"], owner_name=hazard.get("name"))
 
 
 def _assert_no_duplicate_labels(hazard, bs):

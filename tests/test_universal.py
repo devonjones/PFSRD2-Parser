@@ -721,6 +721,41 @@ class TestAlternativesAreNotCumulative:
         ) == ["2d6"]
 
 
+class TestAFormulaTheTextDoesNotSpell:
+    """The `at == -1` branch: extract_all returned a formula that is not a
+    literal substring of the degree.
+
+    Every suppression rule reads a WINDOW around the formula's position, so
+    with no position there is nothing to read. The branch keeps the entry,
+    which is the conservative direction -- an unjudgeable formula publishes
+    rather than vanishing. Dropping it instead would make a normalisation
+    change upstream silently delete damage.
+    """
+
+    def _f(self, damage, plain):
+        from universal.universal import _damage_the_degree_itself_deals
+
+        return [d["formula"] for d in _damage_the_degree_itself_deals(damage, plain)]
+
+    def test_a_formula_not_found_in_the_text_is_kept(self):
+        assert self._f([{"formula": "2d6+3"}], "the target takes 2d6 + 3 damage") == ["2d6+3"]
+
+    def test_it_is_kept_even_inside_a_sentence_that_would_suppress_it(self):
+        # "(DC 30 basic Reflex save)" would drop this formula if the window
+        # could be located. It cannot, so the entry survives -- proving the
+        # branch returns early rather than falling through to the rules.
+        assert self._f(
+            [{"formula": "4d10"}],
+            "a creature that falls takes 4 d10 damage (DC 30 basic Reflex save)",
+        ) == ["4d10"]
+
+    def test_a_missing_formula_key_is_kept(self):
+        from universal.universal import _damage_the_degree_itself_deals
+
+        entry = {"damage_type": "acid"}
+        assert _damage_the_degree_itself_deals([entry], "some acid damage") == [entry]
+
+
 class TestNamedExemptions:
     """Degrees the extractor cannot judge, listed by name in constants.py.
 
@@ -738,6 +773,42 @@ class TestNamedExemptions:
             " dealing an additional 1d6 sonic damage.",
         }
         assert degree_effects_for(obj) == []
+
+    def test_the_exemption_fires_through_a_real_degree_writer(self):
+        # The unit tests above call degree_effects_for directly, so they would
+        # all still pass if the key the WRITER builds disagreed with the key the
+        # table is written in. It did: a third of degree carriers (spell_defense,
+        # save_results, routine_results) have no name of their own, so an
+        # exemption for one of them could never fire. This drives the real
+        # writer, on a carrier whose name comes from its parent.
+        from universal.universal import extract_result_blocks
+
+        section = {"subtype": "spell_defense"}
+        html = (
+            "<b>Critical Failure</b> As failure, but the target is confused for"
+            " 1 hour. While confused, its Strikes resonate with Volnagur's song,"
+            " dealing an additional 1d6 sonic damage."
+        )
+        extract_result_blocks(section, BeautifulSoup(html, "html.parser"))
+        # No name anywhere: the exemption cannot resolve, so the dice publish.
+        assert section.get("degree_effects")
+
+        section = {"name": "Endsong", "subtype": "spell_defense"}
+        extract_result_blocks(section, BeautifulSoup(html, "html.parser"))
+        assert section.get("degree_effects") is None
+
+    def test_an_unnamed_carrier_inherits_its_owners_exemption(self):
+        # extract_degree_effects takes owner_name for exactly this: hazard
+        # routine_results carries degrees but never a name.
+        from universal.universal import extract_degree_effects
+
+        carrier = {
+            "subtype": "routine_results",
+            "critical_failure": "While confused, its Strikes resonate with"
+            " Volnagur's song, dealing an additional 1d6 sonic damage.",
+        }
+        extract_degree_effects(carrier, owner_name="Endsong")
+        assert carrier.get("degree_effects") is None
 
     def test_an_unlisted_degree_of_the_same_ability_is_untouched(self):
         obj = {
