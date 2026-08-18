@@ -71,11 +71,17 @@ def _try_inline_enrich(curs, ability_id, raw_json):
         if result is None:
             result = dict(ability)
 
+        _EXTRACTOR_FNS = {
+            "frequency": extract_frequency_llm,
+            "dc": extract_dc_llm,
+            "area": extract_area_llm,
+            "damage": extract_damage_llm,
+        }
+        # Fields come from LLM_TYPE_FIELDS, so this dict cannot drift from the
+        # one the CLI and rejection_reason use.
         _LLM_EXTRACTORS = {
-            "frequency": (extract_frequency_llm, "frequency"),
-            "dc": (extract_dc_llm, "saving_throw"),
-            "area": (extract_area_llm, "area"),
-            "damage": (extract_damage_llm, "damage"),
+            llm_type: (_EXTRACTOR_FNS[llm_type], field)
+            for llm_type, field in LLM_TYPE_FIELDS.items()
         }
 
         for keyword in missed:
@@ -103,17 +109,24 @@ def _try_inline_enrich(curs, ability_id, raw_json):
 _A_NUMBER = re.compile(r"\d+d\d+(?:[+-]\d+)?|\d+")
 
 
-# bin/pf2_enrich_abilities re-queues a flagged record by substring-matching its
-# review_reason against the --llm-type. One of the four types is not spelled
-# the way its FIELD is -- dc/saving_throw -- so a reason naming only the field
-# is a reason nothing can re-queue: nine saving_throw rejections were parked
-# permanently because "dc" does not occur in "saving_throw".
-_LLM_TYPE_OF_FIELD = {
-    "damage": "damage",
-    "saving_throw": "dc",
-    "area": "area",
+# The one table: run_llm's --llm-type -> the enriched_json field it fills.
+# There were three hand-written copies of this mapping (here, the extractor
+# dict below, and bin/pf2_enrich_abilities), which matters because they are
+# only equal by coincidence -- dc fills saving_throw, and the other three are
+# spelled the same on both sides. Names only, so this costs no LLM imports.
+LLM_TYPE_FIELDS = {
     "frequency": "frequency",
+    "dc": "saving_throw",
+    "area": "area",
+    "damage": "damage",
 }
+
+# bin/pf2_enrich_abilities re-queues a flagged record by substring-matching its
+# review_reason against the --llm-type. Because dc is not spelled the way its
+# field is, a reason naming only the field is a reason nothing can re-queue:
+# nine saving_throw rejections were parked permanently because "dc" does not
+# occur in "saving_throw".
+_LLM_TYPE_OF_FIELD = {field: llm_type for llm_type, field in LLM_TYPE_FIELDS.items()}
 
 
 def rejection_reason(field_name, ungrounded):

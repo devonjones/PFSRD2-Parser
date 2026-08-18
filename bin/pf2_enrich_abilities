@@ -6,7 +6,7 @@ import json
 import re
 import sys
 
-from pfsrd2.ability_enrichment import reject_if_ungrounded
+from pfsrd2.ability_enrichment import LLM_TYPE_FIELDS, reject_if_ungrounded
 from pfsrd2.ability_placement import deterministic_ability_category
 from pfsrd2.enrichment.llm_extractor import (
     DEFAULT_MODEL,
@@ -283,11 +283,17 @@ def _update_review_flag(curs, record, resolved_type, was_enriched):
 def run_llm(conn, args):
     """Run LLM extraction on flagged records for a specific type."""
     # Maps LLM type to (extractor_function, enriched_json_field_name)
+    # Fields come from ability_enrichment.LLM_TYPE_FIELDS. This was a third
+    # hand-written copy of that mapping, and the copies are only equal by
+    # coincidence: dc fills saving_throw while the rest are spelled alike.
+    extractor_fns = {
+        "frequency": extract_frequency_llm,
+        "area": extract_area_llm,
+        "dc": extract_dc_llm,
+        "damage": extract_damage_llm,
+    }
     extractors = {
-        "frequency": (extract_frequency_llm, "frequency"),
-        "area": (extract_area_llm, "area"),
-        "dc": (extract_dc_llm, "saving_throw"),
-        "damage": (extract_damage_llm, "damage"),
+        llm_type: (extractor_fns[llm_type], field) for llm_type, field in LLM_TYPE_FIELDS.items()
     }
 
     if args.llm_type not in extractors:

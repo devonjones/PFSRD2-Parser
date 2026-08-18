@@ -165,19 +165,33 @@ class TestTheRejectionCanBeRequeued:
         ):
             assert f"--llm-type {llm_type}" in rejection_reason(field, "9d9")
 
-    def test_the_map_covers_exactly_run_llms_extractors(self):
-        # The real invariant: a fifth extractor added to run_llm without a
-        # mapping here parks its rejections forever. Read the CLI's dict rather
-        # than restating it, so the two cannot drift.
-        import re
+    def test_the_map_is_derived_from_one_table_not_retyped(self):
+        # A fifth extractor added without a mapping would park its rejections
+        # forever, so the two directions must come from one source. They used
+        # to be three hand-written copies that agreed by coincidence: dc fills
+        # saving_throw, and the other three are spelled the same on both sides,
+        # so a wrong entry would only ever show up as a stuck record.
+        from pfsrd2.ability_enrichment import _LLM_TYPE_OF_FIELD, LLM_TYPE_FIELDS
 
-        from pfsrd2.ability_enrichment import _LLM_TYPE_OF_FIELD
+        assert {f: t for t, f in LLM_TYPE_FIELDS.items()} == _LLM_TYPE_OF_FIELD
+        assert LLM_TYPE_FIELDS["dc"] == "saving_throw"
 
+    def test_the_cli_builds_its_extractors_from_that_table(self):
+        # The CLI held the third copy. Reading its source keeps this honest
+        # without importing a module that needs a DB and argv.
         cli = open("bin/pf2_enrich_abilities").read()
-        block = cli[cli.index("    extractors = {") : cli.index("    if args.llm_type not in")]
-        pairs = dict(re.findall(r'"(\w+)": \(\w+, "(\w+)"\)', block))
-        assert pairs, "could not read run_llm's extractors dict"
-        assert {field: llm for llm, field in pairs.items()} == _LLM_TYPE_OF_FIELD
+        assert "LLM_TYPE_FIELDS" in cli, "the CLI must derive, not retype, the field mapping"
+        assert "for llm_type, field in LLM_TYPE_FIELDS.items()" in cli
+
+    def test_the_cli_runs_the_grounding_guard(self):
+        # The path that produced 57 of the 63 poisoned records. The guard
+        # itself is unit-tested, but nothing pinned that this caller invokes
+        # it -- deleting the call outright left the suite green.
+        cli = open("bin/pf2_enrich_abilities").read()
+        assert "reject_if_ungrounded(" in cli, (
+            "bin/pf2_enrich_abilities must run the ungrounded-number guard; "
+            "this is the batch LLM path that created PFSRD2-Parser-l59s"
+        )
 
     def test_the_offending_value_is_recorded(self):
         assert "'4d6+2'" in rejection_reason("damage", "4d6+2")

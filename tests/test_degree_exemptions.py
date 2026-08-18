@@ -112,3 +112,70 @@ class TestCountDeferredCarriers:
     def test_counts_through_lists(self):
         doc = {"items": [{"success": "x"}, {"failure": "y"}, {"name": "no degrees"}]}
         assert count_deferred_carriers([doc]) == 2
+
+
+class TestMain:
+    """The function bin/pf2_verify_degree_exemptions actually runs.
+
+    Driven through the PF2_DATA_DIR override, the same way the other qa
+    verifiers are tested. Without this the module's pure walkers were covered
+    and the thing calling them was not -- which is the shape of the bug that
+    put 57 of the 63 l59s records past a guard that existed.
+    """
+
+    def _corpus(self, tmp_path, docs):
+        import json
+
+        for name, doc in docs.items():
+            directory = tmp_path / "monsters"
+            directory.mkdir(exist_ok=True)
+            (directory / f"{name}.json").write_text(json.dumps(doc))
+
+    def test_a_live_exemption_passes(self, tmp_path, monkeypatch, capsys):
+        from pfsrd2.constants import DEGREE_EFFECT_NOT_THE_SUBJECTS
+        from pfsrd2.qa import degree_exemptions
+
+        # Publish every exemption's own key AND its pinned phrase, so nothing
+        # is dead. Built from the table rather than hand-listed: adding a
+        # seventh exemption must not make this test wrong.
+        docs = {}
+        for i, ((name, degree), (phrase, _why)) in enumerate(
+            list(DEGREE_EFFECT_NOT_THE_SUBJECTS.items())
+        ):
+            docs.setdefault(f"doc{i}", {"name": name})[degree] = f"... {phrase} ..."
+        from pfsrd2.constants import DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK
+
+        for i, ((name, degree), (phrase, _why)) in enumerate(
+            list(DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK.items())
+        ):
+            docs[f"cont{i}"] = {"name": name, degree: f"... {phrase} ..."}
+        self._corpus(tmp_path, docs)
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        assert degree_exemptions.main() == 0
+        assert "still names a real, published degree" in capsys.readouterr().out
+
+    def test_an_empty_corpus_fails_rather_than_reporting_success(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The trap every corpus verifier has: with no data loaded, every
+        # exemption reads as dead OR every check passes vacuously. Either way
+        # the answer is meaningless, so it must not exit 0 quietly.
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        assert degree_exemptions_main() == 1
+        assert "no data found" in capsys.readouterr().out
+
+    def test_a_dead_exemption_fails_and_names_it(self, tmp_path, monkeypatch, capsys):
+        from pfsrd2.qa import degree_exemptions
+
+        self._corpus(tmp_path, {"unrelated": {"name": "Nothing", "failure": "x"}})
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        assert degree_exemptions.main() == 1
+        out = capsys.readouterr().out
+        assert "DEAD EXEMPTIONS" in out
+        assert "Endsong" in out
+
+
+def degree_exemptions_main():
+    from pfsrd2.qa import degree_exemptions
+
+    return degree_exemptions.main()
