@@ -770,28 +770,37 @@ def extract_degree_effects(ability, owner_name=None):
 def _is_exempt(obj, degree, plain, owner_name=None):
     """A degree the extractor cannot judge, listed by name in constants.py.
 
-    Asserts rather than silently skipping when the pinned phrase is gone: the
-    exemption was granted for a specific sentence, so if AoN rewrites it the
-    justification has to be re-made by a person.
+    An entry matches when BOTH its (name, degree) key and its pinned phrase are
+    present. The phrase is part of the match, not an assertion made after it.
 
-    `owner_name` is the name of the nearest enclosing NAMED object. 836 of the
-    corpus's 2582 degree carriers have no name of their own -- every
-    spell_defense, every equipment save_results, every hazard routine_results
-    -- so keying only on obj["name"] made a third of the corpus unreachable by
-    any exemption. That is not a latent problem for a table that suppresses
-    published dice: the entry would simply never fire, and silently.
+    That ordering is load-bearing. `owner_name` is the nearest enclosing NAMED
+    object, because 836 of the corpus's 2582 degree carriers have no name of
+    their own -- every spell_defense, every equipment save_results, every hazard
+    routine_results -- so keying on obj["name"] alone left a third of the corpus
+    unreachable by any exemption, silently. But a name is not a unique handle on
+    a degree: measured 2026-08-18, 28 (name, degree) keys already match TWO
+    carriers in the same file. Asserting on the phrase after matching the key
+    would make an exemption written for one sentence halt the parse on its
+    same-named neighbour, which is a worse failure than the one the pin exists
+    to prevent.
+
+    Requiring the phrase makes the match exact, and makes the writer and the
+    guard agree by construction: both ask the same question of the same degree
+    text, whatever route they took to the object.
+
+    The expiry the pin was for has not gone away, it has moved somewhere that
+    can actually see it. If AoN rewords a degree, the phrase stops matching, the
+    exemption stops applying, and the suppressed dice republish -- so the check
+    has to be corpus-wide rather than per-degree. bin/pf2_verify_degree_exemptions
+    reports any entry whose phrase is present nowhere. A per-parse assert could
+    not do that job: it only ever sees one degree at a time, and it fires on the
+    wrong one.
     """
     key = (obj.get("name") or owner_name, degree)
     if key not in DEGREE_EFFECT_NOT_THE_SUBJECTS:
         return False
-    phrase, why = DEGREE_EFFECT_NOT_THE_SUBJECTS[key]
-    assert phrase in plain, (
-        f"{key[0]!r} {key[1]} is exempt from degree_effects because {why}, but "
-        f"the phrase {phrase!r} that justified it is no longer in the degree. "
-        "Re-read the degree and either update or remove the entry in "
-        "constants.DEGREE_EFFECT_NOT_THE_SUBJECTS."
-    )
-    return True
+    phrase, _why = DEGREE_EFFECT_NOT_THE_SUBJECTS[key]
+    return phrase in plain
 
 
 def degree_effects_for(obj, owner_name=None):

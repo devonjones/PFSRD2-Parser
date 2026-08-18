@@ -44,21 +44,26 @@ DEFERRED_DIRS = (
 )
 
 
-def published_degree_keys(docs):
-    """Every (owning name, degree) a document publishes.
+def published_degree_texts(docs):
+    """Every (owning name, degree) a document publishes -> the texts under it.
 
     The name is the nearest enclosing named object, matching how _is_exempt
     resolves a key -- a third of degree carriers (spell_defense,
     save_results, routine_results) have no name of their own.
+
+    A key maps to a LIST because a name is not a unique handle: 28 keys in the
+    corpus match two carriers in the same file. Checking the pinned phrase
+    needs all of them, which is the reason this check lives here and not in
+    _is_exempt -- a parse only ever sees one degree at a time.
     """
-    keys = set()
+    texts = {}
 
     def walk(node, owner):
         if isinstance(node, dict):
             owner = node.get("name") or owner
             for degree in DEGREE_FIELDS:
                 if isinstance(node.get(degree), str) and node[degree].strip():
-                    keys.add((owner, degree))
+                    texts.setdefault((owner, degree), []).append(node[degree])
             for value in node.values():
                 walk(value, owner)
         elif isinstance(node, list):
@@ -67,12 +72,37 @@ def published_degree_keys(docs):
 
     for doc in docs:
         walk(doc, None)
-    return keys
+    return texts
 
 
-def dead_entries(table, keys):
-    """Entries whose key no object publishes, with the reason they were added."""
-    return [(key, table[key][1]) for key in sorted(table, key=str) if key not in keys]
+def dead_entries(table, texts):
+    """Entries that can no longer apply to anything, and why they were added.
+
+    Two ways to die, and the second is the one a parse cannot see:
+
+    * the KEY matches nothing -- the object was renamed or is gone;
+    * the key matches but the PINNED PHRASE appears in none of the degrees it
+      matches -- AoN reworded the sentence the exemption was granted for.
+
+    Either way the exemption silently stops applying and whatever it was
+    suppressing republishes, which is exactly what the pin exists to prevent.
+    """
+    dead = []
+    for key in sorted(table, key=str):
+        phrase, why = table[key]
+        found = texts.get(key)
+        if not found:
+            dead.append((key, why, "nothing publishes this degree any more"))
+        elif not any(phrase in text for text in found):
+            dead.append(
+                (
+                    key,
+                    why,
+                    f"the pinned phrase {phrase!r} is in none of the "
+                    f"{len(found)} degree(s) this key matches",
+                )
+            )
+    return dead
 
 
 def count_deferred_carriers(docs):
@@ -113,7 +143,7 @@ def main():
         print(f"no data found under {data_dir()} — run the parsers first")
         return 1
 
-    keys = published_degree_keys(docs)
+    texts = published_degree_texts(docs)
     problems = []
     for label, table in (
         ("DEGREE_EFFECT_NOT_THE_SUBJECTS", DEGREE_EFFECT_NOT_THE_SUBJECTS),
@@ -122,12 +152,12 @@ def main():
             DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK,
         ),
     ):
-        for key, why in dead_entries(table, keys):
-            problems.append((label, key, why))
+        for key, why, how in dead_entries(table, texts):
+            problems.append((label, key, why, how))
 
     deferred = count_deferred_carriers(load_json_dir(*DEFERRED_DIRS))
 
-    print(f"degree-carrying objects loaded: {len(keys)} distinct (name, degree) keys")
+    print(f"degree-carrying objects loaded: {len(texts)} distinct (name, degree) keys")
     print(
         f"exemption entries: {len(DEGREE_EFFECT_NOT_THE_SUBJECTS)} suppressing, "
         f"{len(DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK)} extending"
@@ -139,11 +169,11 @@ def main():
 
     if problems:
         print(f"\nDEAD EXEMPTIONS: {len(problems)}")
-        for label, key, why in problems:
-            print(f"  - {label}{key}: nothing publishes this degree any more.")
+        for label, key, why, how in problems:
+            print(f"  - {label}{key}: {how}.")
             print(f"      granted because {why}")
         print(
-            "\nAn exemption whose key stops matching does not assert -- it just "
+            "\nAn exemption that stops matching does not assert -- it just "
             "stops applying, and whatever it was suppressing republishes "
             "silently. Re-read the object and update or delete the entry."
         )

@@ -839,16 +839,47 @@ class TestNamedExemptions:
         }
         assert [x["formula"] for e in degree_effects_for(obj) for x in e["damage"]] == ["1d6"]
 
-    def test_a_reworded_degree_fails_loudly_instead_of_staying_exempt(self):
-        # The whole point: an exemption must not outlive the sentence it was
-        # granted for. AoN rewrites pages, and a stale exemption would silently
-        # drop damage that had become real.
+    def test_a_reworded_degree_stops_being_exempt(self):
+        # An exemption must not outlive the sentence it was granted for. If AoN
+        # rewrites the page, the phrase stops matching and the damage publishes
+        # again -- the exemption simply stops applying rather than suppressing
+        # a sentence nobody has read.
         obj = {
             "name": "Endsong",
-            "critical_failure": "As failure, but the target takes 1d6 sonic" " damage directly.",
+            "critical_failure": "As failure, but the target takes 1d6 sonic damage directly.",
         }
-        with pytest.raises(AssertionError, match="no longer in the degree"):
-            degree_effects_for(obj)
+        assert [x["formula"] for e in degree_effects_for(obj) for x in e["damage"]] == ["1d6"]
+
+    def test_a_same_named_neighbour_does_not_inherit_the_exemption(self):
+        # The reason the phrase is part of the MATCH and not an assert after it.
+        # A name is not a unique handle on a degree: 28 (name, degree) keys in
+        # the corpus already match two carriers in the same file. Asserting on
+        # the phrase after a key match would halt the parse on the neighbour,
+        # which is a worse failure than the one the pin exists to prevent.
+        neighbour = {
+            "name": "Endsong",
+            "critical_failure": "The target takes 4d6 sonic damage.",
+        }
+        assert [x["formula"] for e in degree_effects_for(neighbour) for x in e["damage"]] == ["4d6"]
+
+    def test_the_writer_and_the_guard_agree_however_they_reached_the_object(self):
+        # The divergence this replaced: the guard inherits the nearest enclosing
+        # name while a writer only gets one if its caller passes it, so the two
+        # could resolve different keys for the same degree and the guard would
+        # then blame the writer for its own answer. With the phrase in the
+        # match, both ask the same question of the same text.
+        from universal.universal import assert_every_degree_was_modelled
+
+        carrier = {
+            "subtype": "spell_defense",
+            "critical_failure": "While confused, its Strikes resonate with"
+            " Volnagur's song, dealing an additional 1d6 sonic damage.",
+        }
+        extract_degree_effects(carrier, owner_name="Endsong")
+        # Whatever the writer decided, the guard must agree with it.
+        assert_every_degree_was_modelled(
+            {"name": "Endsong", "sections": [carrier]}, "spell.schema.json"
+        )
 
 
 class TestADegreeThatContinuesPastItsBreak:
