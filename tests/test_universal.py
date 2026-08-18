@@ -1,5 +1,7 @@
 """Unit tests for universal/universal.py shared functions."""
 
+import os
+
 import pytest
 from bs4 import BeautifulSoup
 
@@ -795,15 +797,22 @@ class TestNamedExemptions:
         # writer, on a carrier whose name comes from its parent.
         from universal.universal import extract_result_blocks
 
-        section = {"subtype": "spell_defense"}
         html = (
             "<b>Critical Failure</b> As failure, but the target is confused for"
             " 1 hour. While confused, its Strikes resonate with Volnagur's song,"
             " dealing an additional 1d6 sonic damage."
         )
-        extract_result_blocks(section, BeautifulSoup(html, "html.parser"))
-        # No name anywhere: the exemption cannot resolve, so the dice publish.
-        assert section.get("degree_effects")
+
+        # An unnamed carrier with an owner passed: the exemption resolves and
+        # suppresses. This is the case that used to be impossible, because
+        # extract_result_blocks had no way to take an owner at all -- so the
+        # guard, which inherits one, resolved a key the writer could not and
+        # then reported the writer as broken.
+        section = {"subtype": "spell_defense"}
+        extract_result_blocks(
+            section, BeautifulSoup(html, "html.parser"), owner_name="Endsong"
+        )
+        assert section.get("degree_effects") is None
 
         section = {"name": "Endsong", "subtype": "spell_defense"}
         extract_result_blocks(section, BeautifulSoup(html, "html.parser"))
@@ -879,6 +888,26 @@ class TestNamedExemptions:
         }
         with pytest.raises(AssertionError, match="AoN has reworded it"):
             degree_effects_for(neighbour)
+
+    def test_the_writer_and_the_guard_agree_on_the_last_writer_too(self):
+        # extract_result_blocks was the one degree-writer with no way to supply
+        # an owner, so this pairing was untestable and the divergence survived
+        # a round behind a docstring saying it could not happen.
+        from universal.universal import assert_every_degree_was_modelled
+
+        html = (
+            "<b>Critical Failure</b> While confused, its Strikes resonate with"
+            " Volnagur's song, dealing an additional 1d6 sonic damage."
+        )
+        section = {"subtype": "spell_defense"}
+        extract_result_blocks(
+            section, BeautifulSoup(html, "html.parser"), owner_name="Endsong"
+        )
+        # Whatever the writer decided, the guard must agree -- and the guard
+        # reaches the same key by inheritance rather than by argument.
+        assert_every_degree_was_modelled(
+            {"name": "Endsong", "sections": [section]}, "spell.schema.json"
+        )
 
     def test_the_writer_and_the_guard_agree_however_they_reached_the_object(self):
         # The divergence this replaced: the guard inherits the nearest enclosing
@@ -1041,3 +1070,80 @@ class TestTheGuardIsActuallyWired:
             raise AssertionError(f"equipment deferral not honoured: {exc}") from exc
         except Exception:
             pass  # jsonschema rejecting the stub document is fine; the guard did not fire
+
+
+class TestTheAlarmsSurviveDashO:
+    """`python -O` strips asserts. Both alarms in this module raise instead.
+
+    This matters unevenly and both cases are covered. In
+    assert_every_degree_was_modelled the walk, the recompute and the message
+    are ordinary code, so `assert False` would pay 100% of the cost and perform
+    0% of the check. In _is_exempt the cost is nil either way, but an alarm
+    whose whole argument is "this cannot be silenced" must not be silenceable
+    by an interpreter flag.
+    """
+
+    def test_neither_alarm_uses_a_bare_assert_statement(self):
+        import os
+
+        here = os.path.dirname(os.path.abspath(__file__))
+        source = open(os.path.join(here, "..", "universal", "universal.py")).read()
+        statements = [
+            line.strip() for line in source.splitlines() if not line.strip().startswith("#")
+        ]
+        assert not any(line.startswith("assert False") for line in statements), (
+            "`assert False` is deleted by python -O while everything that "
+            "computed the failure still runs; raise AssertionError instead"
+        )
+        assert "raise AssertionError(" in source
+
+    def test_the_modelling_alarm_fires_under_O(self):
+        # Driven in a subprocess, because -O is an interpreter-level flag.
+        import subprocess
+        import sys
+        import textwrap
+
+        script = textwrap.dedent(
+            """
+            import sys
+            sys.path.insert(0, %r)
+            from universal.universal import assert_every_degree_was_modelled
+            try:
+                assert_every_degree_was_modelled(
+                    {"name": "X", "failure": "The target takes 4d6 sonic damage."},
+                    "creature.schema.json",
+                )
+                print("SILENT")
+            except AssertionError:
+                print("FIRED")
+            """
+        ) % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        out = subprocess.run(
+            [sys.executable, "-O", "-c", script], capture_output=True, text=True
+        )
+        assert out.stdout.strip() == "FIRED", out.stdout + out.stderr
+
+    def test_the_exemption_alarm_fires_under_O(self):
+        import subprocess
+        import sys
+        import textwrap
+
+        script = textwrap.dedent(
+            """
+            import sys
+            sys.path.insert(0, %r)
+            from universal.universal import degree_effects_for
+            try:
+                degree_effects_for({
+                    "name": "Endsong",
+                    "critical_failure": "As failure, but the target takes 1d6 sonic damage.",
+                })
+                print("SILENT")
+            except AssertionError:
+                print("FIRED")
+            """
+        ) % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        out = subprocess.run(
+            [sys.executable, "-O", "-c", script], capture_output=True, text=True
+        )
+        assert out.stdout.strip() == "FIRED", out.stdout + out.stderr

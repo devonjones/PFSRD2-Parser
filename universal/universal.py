@@ -636,7 +636,7 @@ def _continues_past_a_break(section, degree, bold):
     return True
 
 
-def extract_result_blocks(section, bs, break_on_any_bold=False):
+def extract_result_blocks(section, bs, break_on_any_bold=False, owner_name=None):
     """Extract Critical Success/Success/Failure/Critical Failure from description.
 
     Also writes degree_effects onto `section` — see extract_degree_effects. A
@@ -653,6 +653,11 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
         break_on_any_bold: If True, stop collecting at ANY <b> tag (feat behavior).
             If False (default), only stop at <b> tags that are result labels
             (skill/spell behavior - allows non-result bolds within result text).
+        owner_name: name of the nearest enclosing NAMED object, when `section`
+            has none of its own. Only the exemption table reads it. Every
+            production caller passes a named object today, so it is unused --
+            it exists because this was the ONE degree-writer with no way to
+            supply an owner, and a caller that needed to could not.
     """
     # Only the LAST degree needs a paragraph/block terminator. A middle degree
     # already has one -- the next degree's bold -- and everything between the
@@ -707,7 +712,7 @@ def extract_result_blocks(section, bs, break_on_any_bold=False):
     # every ability that goes through parse_ability_from_html write them, so
     # modelling them here is what keeps degree_effects from being a field that
     # exists for some parsers and silently not for others.
-    extract_degree_effects(section)
+    extract_degree_effects(section, owner_name)
 
 
 def extract_degree_effects(ability, owner_name=None):
@@ -797,13 +802,17 @@ def _is_exempt(obj, degree, plain, owner_name=None):
     if key not in DEGREE_EFFECT_NOT_THE_SUBJECTS:
         return False
     phrase, why = DEGREE_EFFECT_NOT_THE_SUBJECTS[key]
-    assert phrase in plain, (
-        f"{key[0]!r} {key[1]} is exempt from degree_effects because {why}, but "
-        f"the phrase {phrase!r} that justified it is no longer in the degree. "
-        "AoN has reworded it. Re-read the degree and either update or remove "
-        "the entry in constants.DEGREE_EFFECT_NOT_THE_SUBJECTS -- do not leave "
-        "an exemption standing on a sentence that is gone."
-    )
+    if phrase not in plain:
+        # raise, not assert: `python -O` strips asserts, and an alarm whose
+        # whole argument is "this cannot be silenced" must not be silenceable
+        # by an interpreter flag either.
+        raise AssertionError(
+            f"{key[0]!r} {key[1]} is exempt from degree_effects because {why}, "
+            f"but the phrase {phrase!r} that justified it is no longer in the "
+            "degree. AoN has reworded it. Re-read the degree and either update "
+            "or remove the entry in constants.DEGREE_EFFECT_NOT_THE_SUBJECTS "
+            "-- do not leave an exemption standing on a sentence that is gone."
+        )
     return True
 
 
@@ -991,7 +1000,11 @@ def assert_every_degree_was_modelled(struct, schema_name):
                 "degree_effects on the right degrees but with different damage: "
                 f"expected {expected}, published {actual}"
             )
-        assert False, (
+        # raise, not `assert False`: the walk, the recompute and the message
+        # above are ordinary code that runs either way, so under `python -O`
+        # this form pays 100% of the cost and performs 0% of the check. The
+        # same -O reasoning is already applied in pfsrd2/qa/degree_exemptions.
+        raise AssertionError(
             f"{obj.get('name') or owner_name!r} ({obj.get('subtype')}) publishes "
             f"a degree whose text disagrees with its structure — {what}. "
             "Either whatever wrote this object's degrees never called "
@@ -1032,8 +1045,18 @@ def degree_carriers(struct, owner_name=None):
 def _unmodelled_degree_carriers(struct, owner_name=None):
     """Carriers whose published degree_effects disagree with their own text.
 
-    Recomputes with the same owner the writer would have resolved, so the two
-    cannot answer differently -- see degree_carriers.
+    The guard inherits `owner_name` transitively; a writer only has what its
+    caller gave it. Those are the same answer exactly when every writer is
+    invoked on the nearest NAMED ancestor of the degrees it writes, or is
+    handed that name -- which is true of all five today and is the invariant
+    to preserve when adding a sixth.
+
+    It is stated as a condition rather than a guarantee on purpose. An earlier
+    version of this docstring claimed the two rules "cannot answer
+    differently", which was not true and was the sentence a maintainer would
+    have trusted instead of checking: hand a writer an unnamed carrier with no
+    owner and the guard resolves a key the writer could not, then reports the
+    writer as broken.
     """
     for carrier, owner in degree_carriers(struct, owner_name):
         expected = degree_effects_for(carrier, owner)

@@ -234,3 +234,105 @@ class TestReasonsSurviveTheRegexPass:
         row = curs.fetchone()
         assert row["needs_review"] == 1
         assert "--llm-type damage" in row["review_reason"]
+
+    def test_a_dry_run_does_not_restale_either(self, db):
+        # --dry-run guarded only the newest write in this function, so it
+        # printed "would requeue N" and then re-staled records for real and
+        # committed. A flag that promises not to write and then writes is
+        # worse than no flag.
+        cli = load_cli()
+        from pfsrd2.sql.enrichment.queries import insert_ability_record
+
+        curs = db.cursor()
+        ability_id = insert_ability_record(
+            curs, "A", "h", json.dumps({"name": "A", "text": "original text"})
+        )
+        # enriched_json embeds a raw that no longer matches raw_json, which is
+        # exactly what the heal criterion re-stales on.
+        curs.execute(
+            "UPDATE ability_records SET enriched_json = ?, enrichment_version = 2,"
+            " stale = 0, human_verified = 0 WHERE ability_id = ?",
+            (json.dumps({"name": "A", "text": "DRIFTED"}), ability_id),
+        )
+        db.commit()
+
+        cli.run_audit_enriched(db, Args(dry_run=True))
+        assert _row(db, ability_id)["stale"] == 0, "a dry run must not re-stale"
+
+        cli.run_audit_enriched(db, Args(dry_run=False))
+        assert _row(db, ability_id)["stale"] == 1, "a real run must re-stale"
+
+
+class TestTheRecordReachesATerminalState:
+    """A flagged record must eventually stop being flagged.
+
+    Every repair to this machinery asked "what did we wrongly drop?"; none
+    asked "what do we now never drop?". The answer was the l59s rejection
+    clause: it survived every pass, so a record rejected once stayed
+    needs_review forever and was re-sent to the LLM on every run.
+    """
+
+    def _flagged(self, conn, reason):
+        from pfsrd2.sql.enrichment.queries import insert_ability_record, mark_needs_review
+
+        curs = conn.cursor()
+        raw = json.dumps({"name": "A", "text": "takes 4d6 fire damage"})
+        ability_id = insert_ability_record(curs, "A", "h", raw)
+        mark_needs_review(curs, ability_id, reason)
+        conn.commit()
+        curs.execute("SELECT * FROM ability_records WHERE ability_id = ?", (ability_id,))
+        return curs, ability_id, curs.fetchone()
+
+    def test_a_grounded_value_retires_the_rejection_for_that_field(self, db):
+        from pfsrd2.ability_enrichment import rejection_reason
+
+        cli = load_cli()
+        curs, ability_id, record = self._flagged(
+            db, f"unextracted: damage(1); {rejection_reason('damage', '9d9')}"
+        )
+        cli._update_review_flag(curs, record, "damage", was_enriched=True)
+        db.commit()
+        curs.execute(
+            "SELECT needs_review, review_reason FROM ability_records WHERE ability_id = ?",
+            (ability_id,),
+        )
+        row = curs.fetchone()
+        assert row["needs_review"] == 0, "nothing is outstanding, so the flag must clear"
+
+    def test_a_rejection_for_a_DIFFERENT_field_is_not_retired(self, db):
+        # Resolving damage says nothing about the dc rejection.
+        from pfsrd2.ability_enrichment import rejection_reason
+
+        cli = load_cli()
+        curs, ability_id, record = self._flagged(
+            db,
+            f"unextracted: damage(1); {rejection_reason('saving_throw', 'DC 30')}",
+        )
+        cli._update_review_flag(curs, record, "damage", was_enriched=True)
+        db.commit()
+        curs.execute(
+            "SELECT needs_review, review_reason FROM ability_records WHERE ability_id = ?",
+            (ability_id,),
+        )
+        row = curs.fetchone()
+        assert row["needs_review"] == 1
+        assert "--llm-type dc" in row["review_reason"]
+
+    def test_an_unenriched_pass_does_not_amnesty_the_rejection(self, db):
+        # The LLM returning nothing is not the same as returning something
+        # grounded. A rejected value that never gets replaced stays flagged.
+        from pfsrd2.ability_enrichment import rejection_reason
+
+        cli = load_cli()
+        curs, ability_id, record = self._flagged(
+            db, f"unextracted: damage(1); {rejection_reason('damage', '9d9')}"
+        )
+        cli._update_review_flag(curs, record, "damage", was_enriched=False)
+        db.commit()
+        curs.execute(
+            "SELECT needs_review, review_reason FROM ability_records WHERE ability_id = ?",
+            (ability_id,),
+        )
+        row = curs.fetchone()
+        assert row["needs_review"] == 1
+        assert "--llm-type damage" in row["review_reason"]
