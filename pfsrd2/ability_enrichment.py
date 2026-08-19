@@ -228,6 +228,15 @@ def a_number_the_source_never_published(llm_result, source):
     Deliberately checks digits only. Damage TYPES and save names are words the
     model may legitimately normalise ("negative" -> "void"); numbers are not.
     Returns the offending number, or None when everything is grounded.
+
+    A small scalar is also grounded by its WORD form, because AoN writes small
+    counts out: harrow_reader's Read the Harrow says "up to five readings per
+    day" and the model answered "5 times per day", which the digits-only
+    version rejected as fabricated and cost the published frequency. Measured
+    over all 63 recorded rejections this is the ONLY false positive -- 53 are
+    dice, 9 are scalars genuinely absent -- so the widening is narrow by
+    construction: a fabricated 5 still fails unless the source says "five",
+    which would mean 5 is published.
     """
     if not llm_result:
         return None
@@ -249,9 +258,46 @@ def a_number_the_source_never_published(llm_result, source):
         # The class is [\dd], not \d: a bare "20" is otherwise grounded by
         # "1d20", where the preceding character is a letter.
         pattern = rf"(?<![\dd]){re.escape(number)}(?!\d)"
-        if not re.search(pattern, source):
-            return number
+        if re.search(pattern, source):
+            continue
+        if _spelled_out(number, source):
+            continue
+        return number
     return None
+
+
+# AoN writes small counts as words. Only values it actually spells out are
+# listed: a table reaching to "ninety-nine" would be inventing coverage for
+# text that does not exist, and every entry widens the guard.
+_NUMBER_WORDS = {
+    "1": ("one", "once", "a single"),
+    "2": ("two", "twice"),
+    "3": ("three", "thrice"),
+    "4": ("four",),
+    "5": ("five",),
+    "6": ("six",),
+    "7": ("seven",),
+    "8": ("eight",),
+    "9": ("nine",),
+    "10": ("ten",),
+    "11": ("eleven",),
+    "12": ("twelve",),
+}
+
+
+def _spelled_out(number, source):
+    """True when the source writes this scalar as a word.
+
+    Dice are never spelled out, so they are excluded rather than looked up --
+    "1d6" would otherwise ask whether the source says "one" somewhere, which it
+    very often does for unrelated reasons.
+    """
+    if "d" in number:
+        return False
+    return any(
+        re.search(rf"\b{re.escape(word)}\b", source, re.I)
+        for word in _NUMBER_WORDS.get(number, ())
+    )
 
 
 def _get_creature_metadata(struct):

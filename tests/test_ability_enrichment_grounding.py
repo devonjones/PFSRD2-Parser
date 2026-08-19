@@ -447,3 +447,43 @@ class TestFlagTargetFieldOrder:
                 "saving_throw",
                 FlagTarget(curs, "A", aid),  # name and ability_id transposed
             )
+
+
+class TestASpelledOutNumberIsGrounded:
+    """AoN writes small counts as words, and the guard reads digits.
+
+    harrow_reader's Read the Harrow says "up to five readings per day"; the
+    model answered "5 times per day" and the digits-only guard called it
+    fabricated, which cost the published frequency. Found by reading the data
+    diff, not by reasoning about the regex.
+
+    Measured over all 63 recorded rejections this was the ONLY false positive
+    -- 53 dice, 9 scalars genuinely absent -- so the widening has to stay
+    narrow enough that the other 62 still reject.
+    """
+
+    def test_the_word_form_grounds_the_digit(self):
+        assert ungrounded(
+            {"frequency": "5 times per day"},
+            "The harrow reader can conduct up to five readings per day.",
+        ) is None
+
+    def test_once_and_twice_count_as_word_forms(self):
+        assert ungrounded({"frequency": "1 per day"}, "can do this once per day") is None
+        assert ungrounded({"frequency": "2 per day"}, "can do this twice per day") is None
+
+    def test_a_word_does_not_ground_a_DIFFERENT_number(self):
+        assert ungrounded(
+            {"frequency": "7 times per day"},
+            "The harrow reader can conduct up to five readings per day.",
+        ) == "7"
+
+    def test_dice_are_never_word_grounded(self):
+        # "one creature" must not ground the 1 inside 1d6 -- the source says
+        # "one" constantly for unrelated reasons.
+        assert ungrounded({"damage": "1d6"}, "one creature takes damage") == "1d6"
+
+    def test_an_unlisted_number_is_not_word_grounded(self):
+        # The table only covers what AoN actually spells out. Inventing
+        # coverage for text that does not exist widens the guard for nothing.
+        assert ungrounded({"dc": 50}, "fifty feet away") == "50"
