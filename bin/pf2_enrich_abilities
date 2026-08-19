@@ -140,9 +140,14 @@ def run_heal_stale(conn, args):
                 (record["ability_id"],),
             )
             healed_empty += 1
-    conn.commit()
-    print(f"Healed (enrichment still valid or re-extracted): {healed_valid}")
-    print(f"Cleared (no mechanics, raw current): {healed_empty}")
+    if args.dry_run:
+        conn.rollback()
+    else:
+        conn.commit()
+    prefix = "[DRY RUN] would heal" if args.dry_run else "Healed"
+    cleared = "[DRY RUN] would clear" if args.dry_run else "Cleared"
+    print(f"{prefix} (enrichment still valid or re-extracted): {healed_valid}")
+    print(f"{cleared} (no mechanics, raw current): {healed_empty}")
     print(f"Still stale (identity genuinely drifted): {still_stale}")
 
 

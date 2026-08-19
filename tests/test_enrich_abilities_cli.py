@@ -357,3 +357,39 @@ class TestTheRecordReachesATerminalState:
         assert curs.fetchone()["needs_review"] == 0, (
             "a grounded dc must retire the saving_throw rejection"
         )
+
+
+class TestHealStaleRespectsDryRun:
+    """The sibling of the audit-enriched dry-run defect.
+
+    --heal-stale --dry-run cleared 376 stale flags on a copy of the real DB,
+    because the guard was added to the function next door and not to this one.
+    Both use one rollback at the end now: a per-write guard has to be
+    remembered every time a write is added, which is how this happened twice.
+    """
+
+    def _stale(self, conn):
+        from pfsrd2.sql.enrichment.queries import insert_ability_record
+
+        curs = conn.cursor()
+        raw = json.dumps({"name": "A", "text": "no mechanics here"})
+        ability_id = insert_ability_record(curs, "A", "h", raw)
+        curs.execute(
+            "UPDATE ability_records SET stale = 1, enriched_json = NULL"
+            " WHERE ability_id = ?",
+            (ability_id,),
+        )
+        conn.commit()
+        return ability_id
+
+    def test_a_dry_run_does_not_clear_the_stale_flag(self, db):
+        cli = load_cli()
+        ability_id = self._stale(db)
+        cli.run_heal_stale(db, Args(dry_run=True))
+        assert _row(db, ability_id)["stale"] == 1, "a dry run must not heal"
+
+    def test_a_real_run_clears_it(self, db):
+        cli = load_cli()
+        ability_id = self._stale(db)
+        cli.run_heal_stale(db, Args(dry_run=False))
+        assert _row(db, ability_id)["stale"] == 0

@@ -193,6 +193,8 @@ def unmodelled_outside_the_deferral():
     list does not mention, and the printed scope understates it. Rather than
     asserting the list is right, this asks the walker.
 
+    Returns (stale directories, expired-pin messages).
+
     Uses _unmodelled_degree_carriers rather than catching the AssertionError
     from assert_every_degree_was_modelled: an exception is not control flow,
     and asking the walker directly says what this check means rather than
@@ -200,15 +202,27 @@ def unmodelled_outside_the_deferral():
     obsolete -- that guard raises now, so its error would survive -O and be
     catchable. The reason to walk directly is clarity, not survival.)
     """
-    stale = []
+    stale, expired_pins = [], []
     for name in content_dirs():
         if name in DEFERRED_DIRS:
             continue
         for doc in iter_json_dir(name):
-            if next(_unmodelled_degree_carriers(doc), None) is not None:
+            # _unmodelled_degree_carriers recomputes through degree_effects_for,
+            # which routes through _is_exempt -- and _is_exempt RAISES on a
+            # reworded pinned phrase. That raise is correct in a parse; here it
+            # would abort the verifier with a traceback before a single line is
+            # printed, hiding every dead and ambiguous entry behind whichever
+            # reworded phrase happened to be reached first. Reported as a
+            # problem instead, so the run still says everything it found.
+            try:
+                unmodelled = next(_unmodelled_degree_carriers(doc), None)
+            except AssertionError as expired:
+                expired_pins.append(str(expired))
+                break
+            if unmodelled is not None:
                 stale.append(name)
                 break
-    return stale
+    return stale, expired_pins
 
 
 def count_deferred_carriers(docs):
@@ -260,7 +274,7 @@ def main():
     deferred = sum(
         1 for doc in iter_json_dir(*DEFERRED_DIRS) for _ in degree_carriers(doc)
     )
-    stale_scope = unmodelled_outside_the_deferral()
+    stale_scope, expired_pins = unmodelled_outside_the_deferral()
 
     print(f"distinct (name, degree) keys published: {len(texts)}")
     print(
@@ -280,6 +294,11 @@ def main():
             "_DEGREE_MODELLING_DEFERRED."
         )
 
+    if expired_pins:
+        print(f"\nEXPIRED PINS: {len(expired_pins)}")
+        for message in expired_pins:
+            print(f"  - {message}")
+
     if problems:
         print(f"\nEXEMPTIONS NEEDING ATTENTION: {len(problems)}")
         for label, key, why, how in problems:
@@ -292,8 +311,15 @@ def main():
         )
         return 1
     if stale_scope:
-        # Reported above; returned here so BOTH problems always print. An early
+        # Reported above; returned here so EVERY problem prints. An early
         # return on the scope check hid any dead exemption behind it.
+        #
+        # expired_pins deliberately does NOT appear in this condition. A
+        # reworded pin is already reported by dead_entries, which asks the same
+        # question of the same published texts -- so failing on it here would
+        # be a second vote for a condition already counted. Catching the raise
+        # is what matters: uncaught, it aborted the run before a single line
+        # printed and hid every other finding behind it.
         return 1
     print(
         "\nevery degree exemption still names a real, published degree, still "

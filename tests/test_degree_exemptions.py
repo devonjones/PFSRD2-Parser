@@ -206,14 +206,14 @@ class TestUnmodelledOutsideTheDeferral:
 
         self._corpus(tmp_path, "spells", self._UNMODELLED)
         monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
-        assert degree_exemptions.unmodelled_outside_the_deferral() == ["spells"]
+        assert degree_exemptions.unmodelled_outside_the_deferral() == (["spells"], [])
 
     def test_the_same_data_inside_the_deferral_is_not_reported(self, tmp_path, monkeypatch):
         from pfsrd2.qa import degree_exemptions
 
         self._corpus(tmp_path, "weapons", self._UNMODELLED)
         monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
-        assert degree_exemptions.unmodelled_outside_the_deferral() == []
+        assert degree_exemptions.unmodelled_outside_the_deferral() == ([], [])
 
     def test_a_properly_modelled_directory_is_not_reported(self, tmp_path, monkeypatch):
         from pfsrd2.qa import degree_exemptions
@@ -223,7 +223,7 @@ class TestUnmodelledOutsideTheDeferral:
         doc["degree_effects"] = degree_effects_for(doc)
         self._corpus(tmp_path, "spells", doc)
         monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
-        assert degree_exemptions.unmodelled_outside_the_deferral() == []
+        assert degree_exemptions.unmodelled_outside_the_deferral() == ([], [])
 
     def test_main_fails_when_the_scope_is_stale(self, tmp_path, monkeypatch, capsys):
         # Both exemption tables are emptied so nothing ELSE can fail main().
@@ -405,3 +405,54 @@ class TestAmbiguityIsPerDocument:
         out = capsys.readouterr().out
         assert "Twinned" in out
         assert "matches 2 carriers" in out
+
+
+class TestAnExpiredPinIsReportedNotThrown:
+    """_is_exempt raises on a reworded pinned phrase, which is right in a parse.
+
+    Inside the verifier it would abort before a single line printed, hiding
+    every dead and ambiguous entry behind whichever reworded phrase was reached
+    first -- defeating the property main() was built for, that every problem
+    prints.
+    """
+
+    def test_a_reworded_pin_is_reported_and_the_run_continues(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        import json
+
+        from pfsrd2.qa import degree_exemptions
+
+        (tmp_path / "spells").mkdir()
+        # Keyed on a live exemption, but with the pinned phrase gone.
+        (tmp_path / "spells" / "d.json").write_text(
+            json.dumps(
+                {
+                    "name": "Endsong",
+                    "critical_failure": "As failure, but the target takes 1d6 sonic damage.",
+                }
+            )
+        )
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        # Only the Endsong entry, so nothing ELSE can fail the run: without
+        # this the other six exemptions read as dead and main() returns 1
+        # through that branch instead, which let the expired-pin return be
+        # deleted with a green suite.
+        monkeypatch.setattr(
+            "pfsrd2.qa.degree_exemptions.DEGREE_EFFECT_NOT_THE_SUBJECTS",
+            {
+                ("Endsong", "critical_failure"): (
+                    "its Strikes resonate",
+                    "1d6 sonic is damage the confused target DEALS",
+                )
+            },
+        )
+        monkeypatch.setattr(
+            "pfsrd2.qa.degree_exemptions.DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK", {}
+        )
+        assert degree_exemptions.main() == 1
+        out = capsys.readouterr().out
+        assert "EXPIRED PINS" in out
+        assert "Endsong" in out
+        # The run reached its normal reporting rather than dying on a traceback.
+        assert "distinct (name, degree) keys published" in out
