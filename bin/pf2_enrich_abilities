@@ -314,10 +314,11 @@ def _update_review_flag(curs, record, resolved_type, was_enriched):
 
     # A grounded value for this field supersedes the rejection that flagged it.
     if was_enriched:
-        field = LLM_TYPE_FIELDS.get(resolved_type)
-        if field:
-            marker = rejection_supersedes(field)
-            others = [c for c in others if marker not in c]
+        # Direct subscript, not .get() with a falsy guard: run_llm validates
+        # llm_type against this same table before any of this runs, so a miss
+        # here is a bug that should surface rather than a case to skip.
+        marker = rejection_supersedes(LLM_TYPE_FIELDS[resolved_type])
+        others = [c for c in others if marker not in c]
 
     if not types_in_reason and not others:
         clear_needs_review(curs, record["ability_id"])

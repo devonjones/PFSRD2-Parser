@@ -14,6 +14,8 @@ already in its input.
 
 import json
 
+import pytest
+
 from pfsrd2.ability_enrichment import (
     FlagTarget,
     reject_if_ungrounded,
@@ -71,6 +73,34 @@ class TestUngroundedNumbers:
     def test_nothing_extracted_is_not_a_violation(self):
         assert ungrounded(None, A_REAL_SAVE) is None
         assert ungrounded([], A_REAL_SAVE) is None
+
+
+_OPEN_DBS = []
+
+
+def _memory_db(name):
+    """An in-memory enrichment DB, closed by _close_dbs however the test ends.
+
+    Three hand-rolled copies of this returned a connection that the test closed
+    on its last line, so an assertion failure leaked it. In-memory connections
+    are cheap, but a helper whose cleanup only runs on the happy path is the
+    wrong shape to copy.
+    """
+    from pfsrd2.sql.enrichment import get_enrichment_db_connection
+    from pfsrd2.sql.enrichment.queries import insert_ability_record
+
+    conn = get_enrichment_db_connection(":memory:")
+    _OPEN_DBS.append(conn)
+    curs = conn.cursor()
+    return conn, curs, insert_ability_record(curs, name, "hash-1", "{}")
+
+
+@pytest.fixture(autouse=True)
+def _close_dbs():
+    """Close every _memory_db connection, pass or fail."""
+    yield
+    while _OPEN_DBS:
+        _OPEN_DBS.pop().close()
 
 
 class TestTheRejectPathActuallyRejects:
@@ -242,12 +272,7 @@ class TestRejectIfUngrounded:
     """
 
     def _db(self):
-        from pfsrd2.sql.enrichment import get_enrichment_db_connection
-        from pfsrd2.sql.enrichment.queries import insert_ability_record
-
-        conn = get_enrichment_db_connection(":memory:")
-        curs = conn.cursor()
-        return conn, curs, insert_ability_record(curs, "Test Ability", "hash-1", "{}")
+        return _memory_db("Test Ability")
 
     def _reason(self, curs, ability_id):
         curs.execute(
@@ -264,7 +289,6 @@ class TestRejectIfUngrounded:
         )
         assert "dc" in self._reason(curs, aid)
         assert "REJECTED" in capsys.readouterr().err
-        conn.close()
 
     def test_a_grounded_number_is_not_rejected_and_nothing_is_flagged(self, capsys):
         conn, curs, aid = self._db()
@@ -273,7 +297,6 @@ class TestRejectIfUngrounded:
         )
         assert self._reason(curs, aid) is None
         assert capsys.readouterr().err == ""
-        conn.close()
 
     def test_a_dry_run_warns_without_writing(self, capsys):
         # The CLI passes mark=not args.dry_run. A dry run that wrote to the DB
@@ -284,7 +307,6 @@ class TestRejectIfUngrounded:
         )
         assert self._reason(curs, aid) is None
         assert "REJECTED" in capsys.readouterr().err
-        conn.close()
 
     def test_a_second_rejection_does_not_de_queue_the_first(self):
         # The bug this replaced. mark_needs_review REPLACES review_reason, and
@@ -299,7 +321,6 @@ class TestRejectIfUngrounded:
         reason = self._reason(curs, aid)
         assert "damage" in reason
         assert "dc" in reason
-        conn.close()
 
     def test_the_same_rejection_twice_does_not_grow_the_reason(self):
         conn, curs, aid = self._db()
@@ -307,7 +328,6 @@ class TestRejectIfUngrounded:
         once = self._reason(curs, aid)
         reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X"))
         assert self._reason(curs, aid) == once
-        conn.close()
 
 
 class TestReasonsSurviveOtherPasses:
@@ -320,12 +340,7 @@ class TestReasonsSurviveOtherPasses:
     """
 
     def _db(self):
-        from pfsrd2.sql.enrichment import get_enrichment_db_connection
-        from pfsrd2.sql.enrichment.queries import insert_ability_record
-
-        conn = get_enrichment_db_connection(":memory:")
-        curs = conn.cursor()
-        return conn, curs, insert_ability_record(curs, "A", "h", "{}")
+        return _memory_db("A")
 
     def _reason(self, curs, aid):
         curs.execute("SELECT review_reason FROM ability_records WHERE ability_id = ?", (aid,))
@@ -340,19 +355,13 @@ class TestReasonsSurviveOtherPasses:
         reason = self._reason(curs, aid)
         assert "--llm-type damage" in reason, "the l59s reason must survive"
         assert "unextracted: dc(1)" in reason
-        conn.close()
 
 
 class TestAddReviewReasonIsClauseWise:
     """The reason is the queue key, so how it merges is load-bearing."""
 
     def _db(self):
-        from pfsrd2.sql.enrichment import get_enrichment_db_connection
-        from pfsrd2.sql.enrichment.queries import insert_ability_record
-
-        conn = get_enrichment_db_connection(":memory:")
-        curs = conn.cursor()
-        return conn, curs, insert_ability_record(curs, "A", "h", "{}")
+        return _memory_db("A")
 
     def _reason(self, curs, aid):
         curs.execute(
@@ -374,7 +383,6 @@ class TestAddReviewReasonIsClauseWise:
         add_review_reason(curs, aid, "unextracted: dc(1), damage(2)", supersedes="unextracted:")
         add_review_reason(curs, aid, "unextracted: dc(1)", supersedes="unextracted:")
         assert self._reason(curs, aid) == "unextracted: dc(1)"
-        conn.close()
 
     def test_a_clause_of_a_DIFFERENT_kind_is_kept_alongside(self):
         from pfsrd2.ability_enrichment import rejection_reason
@@ -395,7 +403,6 @@ class TestAddReviewReasonIsClauseWise:
         assert "--llm-type damage" in reason, "the l59s clause must survive"
         assert "area(1)" in reason
         assert "dc(1)" not in reason, "the superseded unextracted clause must go"
-        conn.close()
 
     def test_an_identical_clause_is_still_deduped(self):
         from pfsrd2.sql.enrichment.queries import add_review_reason
@@ -404,7 +411,6 @@ class TestAddReviewReasonIsClauseWise:
         add_review_reason(curs, aid, "unextracted: dc(1)")
         add_review_reason(curs, aid, "unextracted: dc(1)")
         assert self._reason(curs, aid) == "unextracted: dc(1)"
-        conn.close()
 
     def test_a_missing_record_raises_rather_than_silently_doing_nothing(self):
         # A wrong ability_id used to be a no-op UPDATE: the caller believed it
@@ -416,4 +422,28 @@ class TestAddReviewReasonIsClauseWise:
         conn, curs, _ = self._db()
         with pytest.raises(ValueError, match="no ability_record"):
             add_review_reason(curs, 999999, "unextracted: dc(1)")
-        conn.close()
+
+
+class TestFlagTargetFieldOrder:
+    """The order is not self-evident and every call site builds it positionally.
+
+    Before add_review_reason started raising, a mis-ordered tuple was a silent
+    no-op UPDATE -- the caller believed it had flagged a record and nothing was
+    flagged. A swap is now loud, but only if something checks the slots.
+    """
+
+    def test_the_fields_land_in_the_documented_slots(self):
+        target = FlagTarget("CURSOR", 42, "Ability Name")
+        assert target.cursor == "CURSOR"
+        assert target.ability_id == 42
+        assert target.name == "Ability Name"
+
+    def test_a_swapped_target_fails_loudly_rather_than_silently(self):
+        conn, curs, aid = _memory_db("A")
+        with pytest.raises((ValueError, TypeError)):
+            reject_if_ungrounded(
+                {"dc": 30},
+                "a basic Reflex save",
+                "saving_throw",
+                FlagTarget(curs, "A", aid),  # name and ability_id transposed
+            )

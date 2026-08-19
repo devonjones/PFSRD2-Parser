@@ -6,6 +6,8 @@ the check would pass forever. They take already-loaded docs, so they test
 without touching the data repo.
 """
 
+from pathlib import Path
+
 from pfsrd2.qa.degree_exemptions import (
     count_deferred_carriers,
     dead_entries,
@@ -48,10 +50,10 @@ class TestPublishedDegreeTexts:
         assert published_degree_texts([{"name": "X", "failure": None}]) == {}
 
     def test_two_carriers_under_one_name_both_land_under_the_key(self):
-        # A name is not a unique handle -- 28 keys in the corpus match two
-        # carriers in one file -- 8 such keys, spread over 7 files. The phrase
-        # check needs to see both, which
-        # is why this returns a list and not a set of keys.
+        # A name is not a unique handle: 8 (name, degree) keys, spread over 7
+        # files, match more than one carrier within a single file. The phrase
+        # check needs to see all of them, which is why this returns a list of
+        # texts and not a set of keys.
         doc = {
             "name": "Activate",
             "a": {"failure": "first text"},
@@ -302,10 +304,7 @@ class TestTheEquipmentCarryStaysPlain:
         # rewrite that imports it -- so it could not fail on the change it was
         # written to catch. Read from disk rather than via inspect.getsource,
         # which needs the module to import.
-        import os
-
-        here = os.path.dirname(os.path.abspath(__file__))
-        source = open(os.path.join(here, "..", "pfsrd2", "equipment.py")).read()
+        source = (Path(__file__).parent.parent / "pfsrd2" / "equipment.py").read_text()
         assert (
             "for field in DEGREE_FIELDS:" in source
         ), "the attack_roll carry must use the plain field list"

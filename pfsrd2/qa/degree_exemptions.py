@@ -35,7 +35,7 @@ from pfsrd2.constants import (
     DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK,
     DEGREE_EFFECT_NOT_THE_SUBJECTS,
 )
-from pfsrd2.qa import data_dir, load_json_dir
+from pfsrd2.qa import data_dir, iter_json_dir
 from universal.universal import (
     DEGREE_FIELDS,
     _unmodelled_degree_carriers,
@@ -83,13 +83,23 @@ def published_degree_texts(docs):
     """
     texts = {}
     for doc in docs:
-        for carrier, owner in degree_carriers(doc):
-            for degree in DEGREE_FIELDS:
-                # No emptiness re-check: degree_carriers already decided that.
-                value = carrier.get(degree)
-                if isinstance(value, str):
-                    texts.setdefault((owner, degree), []).append(value)
+        _fold_degree_texts(doc, texts)
     return texts
+
+
+def _fold_degree_texts(doc, texts):
+    """Accumulate one document's degree texts into `texts`.
+
+    Split out so the streaming pass in main() and the list-taking function
+    above share one implementation -- two copies of a fold is how the three
+    degree walkers drifted apart before they were merged.
+    """
+    for carrier, owner in degree_carriers(doc):
+        for degree in DEGREE_FIELDS:
+            # No emptiness re-check: degree_carriers already decided that.
+            value = carrier.get(degree)
+            if isinstance(value, str):
+                texts.setdefault((owner, degree), []).append(value)
 
 
 def keys_ambiguous_within_a_document(docs):
@@ -102,16 +112,25 @@ def keys_ambiguous_within_a_document(docs):
     """
     ambiguous = {}
     for doc in docs:
-        counts = {}
-        for carrier, owner in degree_carriers(doc):
-            for degree in DEGREE_FIELDS:
-                value = carrier.get(degree)
-                if isinstance(value, str):
-                    counts[(owner, degree)] = counts.get((owner, degree), 0) + 1
-        for key, count in counts.items():
-            if count > 1:
-                ambiguous[key] = max(ambiguous.get(key, 0), count)
+        _fold_ambiguous_keys(doc, ambiguous)
     return ambiguous
+
+
+def _fold_ambiguous_keys(doc, ambiguous):
+    """Accumulate one document's ambiguous keys into `ambiguous`.
+
+    Per document by construction: the counts dict is local to this call, so a
+    key appearing once in each of fifty files can never accumulate to two.
+    """
+    counts = {}
+    for carrier, owner in degree_carriers(doc):
+        for degree in DEGREE_FIELDS:
+            value = carrier.get(degree)
+            if isinstance(value, str):
+                counts[(owner, degree)] = counts.get((owner, degree), 0) + 1
+    for key, count in counts.items():
+        if count > 1:
+            ambiguous[key] = max(ambiguous.get(key, 0), count)
 
 
 def ambiguous_entries(table, ambiguous_keys):
@@ -175,15 +194,17 @@ def unmodelled_outside_the_deferral():
     asserting the list is right, this asks the walker.
 
     Uses _unmodelled_degree_carriers rather than catching the AssertionError
-    from assert_every_degree_was_modelled: an assert is not control flow, and
-    under `python -O` there would be nothing to catch, so this check would
-    silently pass for every directory.
+    from assert_every_degree_was_modelled: an exception is not control flow,
+    and asking the walker directly says what this check means rather than
+    inferring it from a failure. (The -O argument that first justified this is
+    obsolete -- that guard raises now, so its error would survive -O and be
+    catchable. The reason to walk directly is clarity, not survival.)
     """
     stale = []
     for name in content_dirs():
         if name in DEFERRED_DIRS:
             continue
-        for doc in load_json_dir(name):
+        for doc in iter_json_dir(name):
             if next(_unmodelled_degree_carriers(doc), None) is not None:
                 stale.append(name)
                 break
@@ -201,13 +222,19 @@ def main():
     # verifier would report a live entry as needing deletion, which is the one
     # wrong answer it must never give. Walking what is actually there means a
     # new content type is covered the day it lands.
-    docs = load_json_dir(*content_dirs())
-    if not docs:
+    # ONE streaming pass, three folds. Holding the corpus resident to run the
+    # folds separately peaked at 1453 MB and 16.1s; this is 34 MB and 3.5s for
+    # identical answers. The verifier is meant to be cheap enough that nobody
+    # thinks twice about running it.
+    texts, ambiguous, seen_any = {}, {}, False
+    for doc in iter_json_dir(*content_dirs()):
+        seen_any = True
+        _fold_degree_texts(doc, texts)
+        _fold_ambiguous_keys(doc, ambiguous)
+    if not seen_any:
         print(f"no data found under {data_dir()} — run the parsers first")
         return 1
 
-    texts = published_degree_texts(docs)
-    ambiguous = keys_ambiguous_within_a_document(docs)
     problems = []
     for label, table in (
         ("DEGREE_EFFECT_NOT_THE_SUBJECTS", DEGREE_EFFECT_NOT_THE_SUBJECTS),
@@ -230,7 +257,9 @@ def main():
                 )
             )
 
-    deferred = count_deferred_carriers(load_json_dir(*DEFERRED_DIRS))
+    deferred = sum(
+        1 for doc in iter_json_dir(*DEFERRED_DIRS) for _ in degree_carriers(doc)
+    )
     stale_scope = unmodelled_outside_the_deferral()
 
     print(f"distinct (name, degree) keys published: {len(texts)}")

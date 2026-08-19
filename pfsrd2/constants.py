@@ -531,8 +531,9 @@ DEGREE_EFFECT_NOT_THE_SUBJECTS = {
 # Keyed (object name, degree) -> (phrase that must still open the paragraph, why).
 # Same pinned-phrase contract as DEGREE_EFFECT_NOT_THE_SUBJECTS: both are
 # checked at the moment the entry is used, by _continues_past_a_break and
-# _is_exempt respectively, so neither can expire quietly. Neither is behind a
-# flag.
+# _is_exempt respectively, and both RAISE rather than assert, so neither can
+# expire quietly and neither is behind a flag -- not --skip-schema, and not
+# python -O.
 DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK = {
     ("Rewrite Memory", "failure"): (
         "Any memories you've altered",

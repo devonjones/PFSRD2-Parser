@@ -31,11 +31,12 @@ def load_cli():
 
 class Args:
     def __init__(self, **kw):
+        # Only the flags the CLI actually defines. `limit` and `verbose` were
+        # carried here for flags that do not exist, which makes the stub read
+        # like documentation of an interface it is not.
         self.llm_type = kw.get("llm_type", "damage")
         self.dry_run = kw.get("dry_run", False)
-        self.limit = kw.get("limit")
         self.model = kw.get("model", "test-model")
-        self.verbose = kw.get("verbose", False)
         self.force_version = kw.get("force_version", False)
 
 
@@ -337,3 +338,22 @@ class TestTheRecordReachesATerminalState:
         row = curs.fetchone()
         assert row["needs_review"] == 1
         assert "--llm-type damage" in row["review_reason"]
+
+    def test_retirement_keys_on_the_FIELD_not_the_llm_type(self, db):
+        # dc is the one type not spelled like its field (saving_throw). Using
+        # the llm_type here would build the wrong marker and retire nothing --
+        # invisible for the other three types, which are spelled alike.
+        from pfsrd2.ability_enrichment import rejection_reason
+
+        cli = load_cli()
+        curs, ability_id, record = self._flagged(
+            db, f"unextracted: dc(1); {rejection_reason('saving_throw', 'DC 30')}"
+        )
+        cli._update_review_flag(curs, record, "dc", was_enriched=True)
+        db.commit()
+        curs.execute(
+            "SELECT needs_review FROM ability_records WHERE ability_id = ?", (ability_id,)
+        )
+        assert curs.fetchone()["needs_review"] == 0, (
+            "a grounded dc must retire the saving_throw rejection"
+        )

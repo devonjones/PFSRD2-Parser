@@ -618,21 +618,28 @@ def _stops_at_a_result_label(node):
 def _continues_past_a_break(section, degree, bold):
     """True when this last degree owns the paragraph that follows it.
 
-    Asserts rather than silently skipping if the pinned phrase is gone: the
+    Raises rather than silently skipping if the pinned phrase is gone: the
     exemption was granted for a specific sentence, so an AoN rewrite has to be
     re-judged by a person instead of inheriting the exception.
+
+    A raise and not a bare assert, for the same reason as _is_exempt. `python
+    -O` strips asserts, and this one guards the RETURN VALUE -- stripped, the
+    function returns True with the justifying sentence gone, so the degree
+    keeps swallowing a paragraph nobody has re-read. That is silent wrong
+    output rather than a missing warning.
     """
     key = (section.get("name"), degree)
     if key not in DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK:
         return False
     phrase, why = DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK[key]
     following = "".join(str(n) for n in nodes_after(bold, stop=None))
-    assert phrase in following, (
-        f"{key[0]!r} {key[1]} is exempt from the paragraph boundary because "
-        f"{why}, but the phrase {phrase!r} that justified it is no longer in "
-        "the text after the degree. Re-read it and update or remove the entry "
-        "in constants.DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK."
-    )
+    if phrase not in following:
+        raise AssertionError(
+            f"{key[0]!r} {key[1]} is exempt from the paragraph boundary because "
+            f"{why}, but the phrase {phrase!r} that justified it is no longer in "
+            "the text after the degree. Re-read it and update or remove the entry "
+            "in constants.DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK."
+        )
     return True
 
 
@@ -746,8 +753,8 @@ def extract_degree_effects(ability, owner_name=None):
     damage the degree's subject takes: a small minority describe damage dealt
     to someone else ("the morlock injures themself, taking 2d6 damage"). A
     consumer that needs the subject must read the text. No count here on
-    purpose — it moved from 7-of-439 to 7-of-697 while this PR was open, and a
-    number that drifts every time coverage widens is worse than none.
+    purpose: it moved twice while this PR was open, and a number that drifts
+    every time coverage widens is worse than none.
 
     FIVE functions write a degree. Four call this once their degrees are
     final: extract_result_blocks (feats, spells, parse_ability_from_html),
@@ -778,12 +785,18 @@ def _is_exempt(obj, degree, plain, owner_name=None):
     pinned phrase is gone: the exemption was granted for a specific sentence,
     so an AoN rewrite has to be re-judged by a person rather than inherited.
 
-    This is the only place the alarm can live and keep that "unconditionally".
-    A document-scope version reads better -- it can ask whether ANY carrier
-    under the key still holds the phrase -- but its only caller is
+    Parse time is the only placement that keeps that "unconditionally". A
+    document-scope version reads better -- it can ask whether ANY carrier under
+    the key still holds the phrase -- but its only caller would be
     validate_against_schema, which every parser gates on --skip-schema while
-    still writing the file. An alarm a flag silences is not the contract
-    constants.py advertises.
+    still writing the file.
+
+    The modelling guard DOES live there, which is not a contradiction: it
+    answers "did a writer forget to model these degrees", a question about the
+    code that only a developer running the parsers can act on, so gating it
+    with schema validation is acceptable. This one answers "has AoN reworded
+    the sentence an exemption stands on", which is a question about the DATA
+    and must not be skippable while the file is still written.
 
     `owner_name` is the nearest enclosing NAMED object, because 836 of the
     corpus's 2582 degree carriers have no name of their own -- every
@@ -833,8 +846,7 @@ def degree_effects_for(obj, owner_name=None):
         # nothing. Hence a dict carrying only the degree's text, which is why
         # this is not the parent ability. _missed reports keywords it saw but
         # could not structure; that is a corpus-coverage signal for the
-        # enrichment pass, not a per-degree one — PFSRD2-Parser-165k measures
-        # it.
+        # enrichment pass, not a per-degree one. No ticket measures it today.
         plain = get_text(BeautifulSoup(text, "html.parser"))
         if _is_exempt(obj, degree, plain, owner_name):
             continue
@@ -974,7 +986,10 @@ def assert_every_degree_was_modelled(struct, schema_name):
     fails if DEFERRED_DIRS stops matching _DEGREE_MODELLING_DEFERRED.
 
     Recomputing from published text is safe because the extractor is fed
-    get_text() at write time, and no published degree string carries markup.
+    get_text() at write time. Measured rather than guaranteed: no published
+    degree carries HTML tags or markdown links, though 121 carry *emphasis*
+    the write-time text did not, so this holds empirically and is worth
+    re-checking if the markdown pass ever moves.
     """
     if schema_name in _DEGREE_MODELLING_DEFERRED:
         return

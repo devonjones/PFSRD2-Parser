@@ -6,6 +6,7 @@ When enriched data exists, merges it into the ability objects.
 
 import json
 import re
+import sqlite3
 import sys
 from typing import NamedTuple
 
@@ -137,9 +138,14 @@ class FlagTarget(NamedTuple):
     already argued they were one concept and the code did not agree -- and
     because the order is not self-evident: a mis-ordered plain tuple would have
     produced a silent no-op UPDATE before add_review_reason started raising.
+
+    `cursor` is a sqlite3.Cursor. Annotated as such rather than `object`, which
+    a type checker rejects the moment anything calls .execute() on it -- these
+    are the only annotations in the codebase, so an unusable one is worse than
+    none.
     """
 
-    cursor: object
+    cursor: sqlite3.Cursor
     ability_id: int
     name: str
 
@@ -164,7 +170,9 @@ def rejection_reason(field_name, ungrounded):
     )
 
 
-def reject_if_ungrounded(llm_result, source, field, record, mark=True):
+def reject_if_ungrounded(
+    llm_result, source, field, record: FlagTarget, mark: bool = True
+) -> bool:
     """True when the extractor invented a number, and the record is flagged.
 
     `record` is a FlagTarget -- the thing being flagged, as one value rather

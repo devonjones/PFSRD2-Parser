@@ -1,6 +1,7 @@
 """Unit tests for universal/universal.py shared functions."""
 
 import os
+from pathlib import Path
 
 import pytest
 from bs4 import BeautifulSoup
@@ -1084,10 +1085,8 @@ class TestTheAlarmsSurviveDashO:
     """
 
     def test_neither_alarm_uses_a_bare_assert_statement(self):
-        import os
 
-        here = os.path.dirname(os.path.abspath(__file__))
-        source = open(os.path.join(here, "..", "universal", "universal.py")).read()
+        source = (Path(__file__).parent.parent / "universal" / "universal.py").read_text()
         statements = [
             line.strip() for line in source.splitlines() if not line.strip().startswith("#")
         ]
