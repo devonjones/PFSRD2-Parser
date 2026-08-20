@@ -14,6 +14,8 @@ from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.markdown import md
 from universal.universal import (
+    DEGREE_FIELDS,
+    DEGREE_FIELDS_WITH_EFFECTS,
     aon_pass,
     build_object,
     entity_pass,
@@ -252,10 +254,7 @@ _ACTION_ONLY_FIELDS = [
     "cost",
     "effect",
     "duration",
-    "critical_success",
-    "success",
-    "failure",
-    "critical_failure",
+    *DEGREE_FIELDS_WITH_EFFECTS,
     "sample_tasks",
 ]
 
@@ -369,7 +368,7 @@ def _extract_action_text(section):
         action_type=section.get("action_type"),
         addon_labels=_SKILL_BOLD_LABELS,
     )
-    for key in ("text", "critical_success", "success", "failure", "critical_failure"):
+    for key in ("text", *DEGREE_FIELDS_WITH_EFFECTS):
         if key in post_ability:
             section[key] = post_ability[key]
     # Merge links from post-hr (text links) with pre-hr links (field links)
@@ -433,10 +432,7 @@ _LINK_FIELDS = [
     "frequency",
     "cost",
     "effect",
-    "critical_success",
-    "success",
-    "failure",
-    "critical_failure",
+    *DEGREE_FIELDS,
 ]
 
 

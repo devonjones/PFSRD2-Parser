@@ -6,6 +6,12 @@ import json
 import re
 import sys
 
+from pfsrd2.ability_enrichment import (
+    LLM_TYPE_FIELDS,
+    FlagTarget,
+    reject_if_ungrounded,
+    rejection_supersedes,
+)
 from pfsrd2.ability_placement import deterministic_ability_category
 from pfsrd2.enrichment.llm_extractor import (
     DEFAULT_MODEL,
@@ -18,6 +24,7 @@ from pfsrd2.enrichment.llm_extractor import (
 from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION, extract_all
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import (
+    add_review_reason,
     clear_needs_review,
     count_ability_records,
     fetch_majority_category_for_name,
@@ -133,9 +140,14 @@ def run_heal_stale(conn, args):
                 (record["ability_id"],),
             )
             healed_empty += 1
-    conn.commit()
-    print(f"Healed (enrichment still valid or re-extracted): {healed_valid}")
-    print(f"Cleared (no mechanics, raw current): {healed_empty}")
+    if args.dry_run:
+        conn.rollback()
+    else:
+        conn.commit()
+    prefix = "[DRY RUN] would heal" if args.dry_run else "Healed"
+    cleared = "[DRY RUN] would clear" if args.dry_run else "Cleared"
+    print(f"{prefix} (enrichment still valid or re-extracted): {healed_valid}")
+    print(f"{cleared} (no mechanics, raw current): {healed_empty}")
     print(f"Still stale (identity genuinely drifted): {still_stale}")
 
 
@@ -146,10 +158,42 @@ def run_audit_enriched(conn, args):
     whose embedded raw is no longer merge-equivalent to the current raw is
     re-marked stale so the enrichment pipeline re-extracts it. Human-verified
     records are left alone.
+
+    --dry-run reports and commits nothing, enforced by ONE rollback at the end
+    rather than a guard on each write: it used to guard only the newest of the
+    two writes, so it printed "would requeue N" and then re-staled records for
+    real and committed.
+
+    That is NOT the same as being safe against writes added later. main() wraps
+    the connection in `with conn:`, and sqlite3.Connection.__exit__ commits on
+    a clean exit -- so a write added after this rollback still persists. The
+    rollback covers this function's body and nothing beyond it.
     """
     from pfsrd2.ability_enrichment import ENRICHMENT_FIELDS, _raws_equivalent
 
     curs = conn.cursor()
+
+    # A record with no enriched_json but a version set is invisible to every
+    # queue: fetch_unenriched selects on "enrichment_version IS NULL" and
+    # fetch_stale on "stale = 1", so it is neither. That state means "enriched,
+    # and the answer was nothing", which is false for a row whose value was
+    # cleared -- 61 rows were left that way by the PFSRD2-Parser-l59s sweep and
+    # nothing would ever have re-derived them. Clearing the version puts them
+    # back in front of the regex pass.
+    curs.execute(
+        "SELECT COUNT(*) AS c FROM ability_records"
+        " WHERE enriched_json IS NULL AND enrichment_version IS NOT NULL"
+    )
+    stranded = curs.fetchone()["c"]
+    dry_run = args.dry_run
+    if stranded:
+        curs.execute(
+            "UPDATE ability_records SET enrichment_version = NULL"
+            " WHERE enriched_json IS NULL AND enrichment_version IS NOT NULL"
+        )
+        verb = "[DRY RUN] would requeue" if dry_run else "Requeued"
+        print(f"{verb} (cleared value still claimed a version): {stranded}")
+
     curs.execute(
         "SELECT * FROM ability_records"
         " WHERE stale = 0 AND enriched_json IS NOT NULL AND human_verified = 0"
@@ -171,9 +215,13 @@ def run_audit_enriched(conn, args):
         else:
             mark_stale(curs, record["ability_id"], record["raw_json"])
             restaled += 1
-    conn.commit()
+    if dry_run:
+        conn.rollback()
+    else:
+        conn.commit()
+    prefix = "[DRY RUN] would re-mark" if dry_run else "Re-marked"
     print(f"Enrichment still merge-valid: {ok}")
-    print(f"Re-marked stale (embedded raw drifted): {restaled}")
+    print(f"{prefix} stale (embedded raw drifted): {restaled}")
     if unparseable:
         print(f"Unparseable JSON (left untouched): {unparseable}")
 
@@ -220,7 +268,12 @@ def run_regex(conn, args):
             if args.dry_run:
                 print(f"  [FLAG] {record['name']}: {reason}")
             else:
-                mark_needs_review(curs, record["ability_id"], reason)
+                # Accumulate. This used to replace, which wiped the l59s
+                # rejection reason off any record the regex pass touched
+                # afterwards -- and that reason is what re-queues the record.
+                add_review_reason(
+                    curs, record["ability_id"], reason, supersedes="unextracted:"
+                )
             flagged_count += 1
         elif result is None:
             clean_count += 1
@@ -237,9 +290,17 @@ def run_regex(conn, args):
 def _update_review_flag(curs, record, resolved_type, was_enriched):
     """Update review flag after LLM processes a type.
 
-    If the type was enriched or confirmed as not-extractable (LLM returned
-    none), remove that type from the review reason. If no types remain,
-    clear the flag entirely.
+    Removes the resolved type from the "unextracted:" clause, and -- when a
+    value actually landed -- retires any ungrounded-number rejection for the
+    same FIELD. Clears the flag entirely when nothing is left.
+
+    That second part is the record's only terminal state. Every repair to this
+    machinery so far asked "what did we wrongly drop?"; none asked "what do we
+    now never drop?". The answer was the l59s clause: it survived every pass,
+    so a record rejected once stayed needs_review forever and was re-sent to
+    the LLM on every run, paying for work already done. Retiring it only on
+    `was_enriched` is what keeps that from being a silent amnesty -- a rejected
+    value that never gets replaced stays flagged.
     """
     reason = record.get("review_reason", "")
     if not reason:
@@ -252,26 +313,55 @@ def _update_review_flag(curs, record, resolved_type, was_enriched):
     # Remove the resolved type
     types_in_reason.discard(resolved_type)
 
-    if not types_in_reason:
+    # Reasons accumulate as "clause; clause". Only the "unextracted:" clause
+    # describes types this function resolves; anything else -- an l59s
+    # ungrounded-number rejection, say -- is a separate finding that resolving
+    # a type does not answer, and rebuilding the whole string used to discard
+    # it. Discarding it de-queues the record, because the reason IS the queue.
+    others = [c for c in reason.split("; ") if not c.startswith("unextracted:")]
+
+    # A grounded value for this field supersedes the rejection that flagged it.
+    if was_enriched:
+        # Direct subscript, not .get() with a falsy guard: run_llm validates
+        # llm_type against this same table before any of this runs, so a miss
+        # here is a bug that should surface rather than a case to skip.
+        marker = rejection_supersedes(LLM_TYPE_FIELDS[resolved_type])
+        others = [c for c in others if marker not in c]
+
+    if not types_in_reason and not others:
         clear_needs_review(curs, record["ability_id"])
     else:
-        # Rebuild reason with remaining types
-        remaining = []
-        for m in type_pattern.finditer(reason):
-            if m.group(1) != resolved_type:
-                remaining.append(m.group(0))
-        new_reason = "unextracted: " + ", ".join(remaining)
-        mark_needs_review(curs, record["ability_id"], new_reason)
+        clauses = list(others)
+        if types_in_reason:
+            # De-duplicated: reasons accumulate, so the same "damage(2)" token
+            # can appear in more than one clause and finditer would emit it
+            # twice ("unextracted: damage(2), damage(2)").
+            seen = set()
+            remaining = []
+            for match in type_pattern.finditer(reason):
+                token = match.group(0)
+                if match.group(1) == resolved_type or token in seen:
+                    continue
+                seen.add(token)
+                remaining.append(token)
+            clauses.insert(0, "unextracted: " + ", ".join(remaining))
+        mark_needs_review(curs, record["ability_id"], "; ".join(clauses))
 
 
 def run_llm(conn, args):
     """Run LLM extraction on flagged records for a specific type."""
     # Maps LLM type to (extractor_function, enriched_json_field_name)
+    # Fields come from ability_enrichment.LLM_TYPE_FIELDS. This was a third
+    # hand-written copy of that mapping, and the copies are only equal by
+    # coincidence: dc fills saving_throw while the rest are spelled alike.
+    extractor_fns = {
+        "frequency": extract_frequency_llm,
+        "area": extract_area_llm,
+        "dc": extract_dc_llm,
+        "damage": extract_damage_llm,
+    }
     extractors = {
-        "frequency": (extract_frequency_llm, "frequency"),
-        "area": (extract_area_llm, "area"),
-        "dc": (extract_dc_llm, "saving_throw"),
-        "damage": (extract_damage_llm, "damage"),
+        llm_type: (extractor_fns[llm_type], field) for llm_type, field in LLM_TYPE_FIELDS.items()
     }
 
     if args.llm_type not in extractors:
@@ -308,6 +398,21 @@ def run_llm(conn, args):
             continue
 
         result = extractor_fn(name, combined, model=args.model)
+
+        # ONE copy of this guard, shared with the inline path in
+        # ability_enrichment. It lived only there at first, which covered 6 of
+        # the 63 poisoned records found by PFSRD2-Parser-l59s -- the other 57
+        # came through HERE, with an identical extractor loop and no check at
+        # all. A second hand-written copy is exactly how that happened.
+        if reject_if_ungrounded(
+            result,
+            combined,
+            field_name,
+            FlagTarget(curs, record["ability_id"], name),
+            mark=not args.dry_run,
+        ):
+            failed_count += 1
+            continue
 
         if result:
             # Merge into enriched_json

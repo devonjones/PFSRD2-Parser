@@ -14,6 +14,7 @@ from universal.creatures import write_creature
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass
 from universal.universal import (
+    DEGREE_FIELDS_WITH_EFFECTS,
     aon_pass,
     entity_pass,
     extract_link,
@@ -182,10 +183,7 @@ def section_pass(struct):
         "range",
         "text",
         "links",
-        "critical_success",
-        "success",
-        "failure",
-        "critical_failure",
+        *DEGREE_FIELDS_WITH_EFFECTS,
     )
     for key in _MERGE_FIELDS:
         if key in ability:

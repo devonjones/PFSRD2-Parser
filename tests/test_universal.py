@@ -1,9 +1,16 @@
 """Unit tests for universal/universal.py shared functions."""
 
+import os
+from pathlib import Path
+
+import pytest
 from bs4 import BeautifulSoup
 
 from universal.universal import (
+    assert_every_degree_was_modelled,
+    degree_effects_for,
     extract_bold_fields,
+    extract_degree_effects,
     extract_result_blocks,
     extract_source_from_bs,
 )
@@ -124,6 +131,24 @@ class TestExtractResultBlocks:
         assert "Special" not in section["success"]
         assert section["success"] == "You get"
         assert section["failure"] == "You fail."
+
+    def test_the_extractor_sees_text_not_markup(self):
+        # extract_result_blocks runs BEFORE the passes that unwrap <a> out of
+        # field values, so a degree still carries its links here. The damage
+        # type is routinely linked ("2d6 <a>fire</a> damage"), which no damage
+        # pattern matches; feeding the extractor get_text() is what makes the
+        # call position irrelevant. The stored value keeps its markup.
+        html = (
+            "<b>Failure</b> The creature takes 2d6 "
+            '<a game-obj="Traits" aonid="1">fire</a> damage.'
+        )
+        bs = BeautifulSoup(html, "html.parser")
+        section = {}
+        extract_result_blocks(section, bs)
+        assert "<a" in section["failure"], "the published value keeps its links"
+        damage = section["degree_effects"][0]["damage"][0]
+        assert damage["formula"] == "2d6"
+        assert damage["damage_type"] == "fire"
 
     def test_nodes_removed_from_soup(self):
         html = "<b>Success</b> You succeed."
@@ -335,3 +360,836 @@ class TestExtractResultBlocksWalksOnce:
         extract_result_blocks(section, bs, break_on_any_bold=True)
         assert section["success"] == "you gain"
         assert "<b>fire</b>" in str(bs)
+
+
+class TestEveryDegreeWasModelled:
+    """The one failure mode in this feature that is otherwise silent.
+
+    A new place that writes a degree, or a fixed key-list that copies degrees
+    without their structure, produces output that is VALID and simply missing
+    a field. Two review rounds found six such holes and none of them tripped
+    anything. The guard recomputes from finished output and compares.
+    """
+
+    def _struct(self, **extra):
+        return {
+            "name": "Rockfall",
+            "sections": [
+                {
+                    "name": "Rockfall",
+                    "subtype": "ability",
+                    "failure": "The creature takes 2d6 bludgeoning damage.",
+                    **extra,
+                }
+            ],
+        }
+
+    def test_a_degree_whose_damage_was_never_modelled_fails(self):
+        with pytest.raises(AssertionError, match="never called extract_degree_effects"):
+            assert_every_degree_was_modelled(self._struct(), "creature.schema.json")
+
+    def test_a_degree_that_was_modelled_passes(self):
+        struct = self._struct()
+        extract_degree_effects(struct["sections"][0])
+        assert_every_degree_was_modelled(struct, "creature.schema.json")
+
+    def test_a_degree_with_no_damage_needs_nothing(self):
+        struct = {"failure": "The creature is unaffected.", "subtype": "ability"}
+        assert_every_degree_was_modelled(struct, "creature.schema.json")
+
+    def test_the_equipment_deferral_is_scoped_to_equipment(self):
+        # PFSRD2-Parser-qj3v: the equipment parser has a degree-writer that
+        # does not model yet. The exemption must not leak to anything else --
+        # if it did, the guard would go quiet exactly where it is needed.
+        struct = self._struct()
+        assert_every_degree_was_modelled(struct, "equipment.schema.json")
+        for other in ("creature.schema.json", "hazard.schema.json", "feat.schema.json"):
+            with pytest.raises(AssertionError):
+                assert_every_degree_was_modelled(struct, other)
+
+    def test_degree_effects_for_does_not_touch_the_object(self):
+        section = self._struct()["sections"][0]
+        before = dict(section)
+        effects = degree_effects_for(section)
+        assert effects and section == before
+
+
+class TestDiceTheDegreeDoesNotDeal:
+    """A degree IS a save outcome, so dice carrying their OWN save are not its.
+
+    PFSRD2-Parser-bsw3: these stay prose. Three shipped hazards were wrong --
+    two claimed damage from a second, differently-gated effect, and one turned
+    a per-revolution rate into a flat amount.
+    """
+
+    def _f(self, text):
+        return [
+            (x.get("formula"), x.get("damage_type"))
+            for e in degree_effects_for({"failure": text})
+            for x in e["damage"]
+        ]
+
+    def test_a_rate_is_not_an_amount(self):
+        # test_of_endurance: 1d6 is per revolution, up to seven of them. The
+        # bare 1d6 is the damage at exactly one revolution and nowhere else.
+        assert (
+            self._f(
+                "The creature takes 1d6 cold damage for each revolution the wheel "
+                "has been rotated (max 7d6)."
+            )
+            == []
+        )
+
+    def test_dice_with_their_own_save_are_dropped_and_the_degrees_own_are_kept(self):
+        # wind_surge: the 20d6 is this degree's outcome; the 6d6 hits creatures
+        # in the water and rolls its own DC 29.
+        assert self._f(
+            "The creature takes 20d6 bludgeoning damage, is pushed 45 feet along "
+            "the line, is knocked prone, and is stunned 1 for 1 round.If the line "
+            "overlaps a body of water, the winds cause massive waves that deal 6d6 "
+            "bludgeoning damage to creatures in the water or within 15 feet of the "
+            "waterline (DC 29 basic Reflex save)."
+        ) == [("20d6", "bludgeoning")]
+
+    def test_a_nested_save_inside_the_degree_drops_only_its_own_dice(self):
+        # the_putrid_rise: 16d6 is the Vomit save's outcome; the 4d6 from the
+        # tumble is gated behind a second DC 32.
+        # the_putrid_rise, verbatim. The subject of the second sentence is "A
+        # creature that falls down the steps", NOT the degree's own subject --
+        # that is what separates it from gorlak's "The creature takes 2d10+9
+        # ... (DC 25 basic Fortitude save)", which IS the degree's own damage.
+        # A paraphrased fixture saying "The creature takes an additional 4d6"
+        # made this test pass for the wrong reason and hid that distinction.
+        assert self._f(
+            "The creature takes 16d6 acid damage, is sickened 3, is knocked "
+            "prone, and then tumbles down the stairs. A creature that falls "
+            "down the steps takes an additional 4d6 bludgeoning damage "
+            "(DC 32 basic Reflex save) from the tumble."
+        ) == [("16d6", "acid")]
+
+    def test_the_degrees_own_basic_save_damage_is_kept(self):
+        # gorlak's Fling Foe. A basic save printed right after the dice is the
+        # standard way of writing the degree's OWN damage. Dropping it published
+        # degree_effects: null on all three degrees, while ran-to's Whirlwind
+        # Toss -- same ability shape -- kept its damage only because the source
+        # put the parenthetical further away than the window. That was the rule
+        # reading layout instead of attribution.
+        assert self._f(
+            "The creature takes 2d10+9 piercing damage (DC 25 basic Fortitude "
+            "save) as the hook rips free and is hurled 15 feet away."
+        ) == [("2d10+9", "piercing")]
+
+    def test_an_escape_dc_after_the_damage_does_not_suppress_it(self):
+        # The guard must not fire on a DC that gates something OTHER than the
+        # damage. An Escape DC is a way out of a condition, not a damage save.
+        assert self._f(
+            "The creature takes 2d6 bludgeoning damage and is immobilized by "
+            "rubble (Escape DC 25)."
+        ) == [("2d6", "bludgeoning")]
+
+    def test_an_escape_dc_with_the_verb_OUTSIDE_the_parens_also_does_not(self):
+        # The spelling above is the one I invented; these two are the ones the
+        # corpus actually uses, and the first version of this guard fired on
+        # both -- dropping each degree's OWN damage and keeping the recurring
+        # damage instead. A parenthetical only counts if it names a save.
+        assert self._f(
+            "The creature's clothing is pulled into the clockworks. The creature "
+            "takes 4d8+18 bludgeoning damage and is restrained. Until the creature "
+            "Escapes (DC 24), it takes 2d8+9 bludgeoning damage each round."
+        ) == [("4d8+18", "bludgeoning"), ("2d8+9", "bludgeoning")]
+        assert self._f(
+            "As failure, but 30d6 piercing damage, 2d6 persistent bleed damage, "
+            "and is restrained until they escape (DC 37)."
+        ) == [("30d6", "piercing"), ("2d6", "bleed")]
+
+    def test_two_ordinary_instances_both_survive(self):
+        assert self._f("The creature takes 6d6 fire damage and 1d6 persistent fire damage.") == [
+            ("6d6", "fire"),
+            ("1d6", "fire"),
+        ]
+
+
+class TestADegreeStopsAtAParagraphBreak:
+    """The LAST degree has no bold after it, so without this it swallows the page.
+
+    Both shapes below were SHIPPED that way before this guard: the text itself
+    was wrong in committed data, and degree_effects then read the buried dice as
+    the degree's own damage. 21 spells carry a folded affliction block
+    (PFSRD2-Parser-t132); 6 more carry a trailing paragraph (-xqzp).
+    """
+
+    def _blocks(self, html):
+        bs = BeautifulSoup(html, "html.parser")
+        section = {}
+        extract_result_blocks(section, bs)
+        return section, str(bs)
+
+    def test_an_affliction_stat_block_is_not_part_of_the_degree(self):
+        # purple_worm_sting. The critical failure inflicts the venom AT stage 2;
+        # the stage table is the venom's, not the degree's.
+        section, soup = self._blocks(
+            "<b>Critical Failure</b> The target is afflicted with purple worm venom"
+            " at stage 2.<br /><br /><b>Purple Worm Venom</b> (poison); <b>Level</b>"
+            " 11; <b>Stage 1</b> 3d6 poison damage; <b>Stage 2</b> 4d6 poison damage."
+        )
+        assert section["critical_failure"] == (
+            "The target is afflicted with purple worm venom at stage 2."
+        )
+        assert "degree_effects" not in section, "13d6 at once is not what it deals"
+        assert "Purple Worm Venom" in soup, "the stage table stays on the page"
+
+    def test_a_trailing_paragraph_is_not_part_of_the_degree(self):
+        # door_to_beyond. The 4d6 hits anyone ending their turn in the space,
+        # with no save at all -- it is not the critical failure's damage.
+        section, soup = self._blocks(
+            "<b>Critical Failure</b> The creature is pulled 20 feet toward the door."
+            "<br /><br />The cracks are too thin, but decompressive effects deal 4d6"
+            " slashing damage to any creature that ends its turn in the space."
+        )
+        assert section["critical_failure"] == ("The creature is pulled 20 feet toward the door.")
+        assert "degree_effects" not in section
+        assert "decompressive" in soup
+
+    def test_a_result_table_is_not_part_of_the_degree(self):
+        # unfathomable_song. There is no paragraph break here at all -- the
+        # <h2> and <table> ARE the separator, so the blank-line rule alone
+        # would still swallow the whole result table into critical_failure.
+        section, soup = self._blocks(
+            "<b>Critical Failure</b> Roll 1d4+1 on the table below."
+            '<h2>Unfathomable Song</h2><table class="inner">'
+            "<tr><td>1</td><td>The target is frightened 2.</td></tr>"
+            "<tr><td>2</td><td>The target takes 4d6 sonic damage.</td></tr></table>"
+        )
+        assert section["critical_failure"] == "Roll 1d4+1 on the table below."
+        assert "degree_effects" not in section, "the table's dice are not the degree's"
+        assert "Unfathomable Song" in soup and "frightened 2" in soup
+
+    def test_an_affliction_with_no_separator_still_leaves_the_last_degree(self):
+        # curse_of_death. There is no <br/> at all before the affliction's
+        # bold, so the paragraph and block rules cannot see a boundary. After
+        # the LAST degree a new bold introduces a new thing, so it ends there.
+        section, soup = self._blocks(
+            "<b>Critical Failure</b> The target is afflicted with the curse of"
+            " death at stage 2. <b>Curse of Death</b> (curse, death, void)"
+            " <b>Stage 1</b> 4d6 void damage; <b>Stage 2</b> 8d6 void damage."
+        )
+        assert section["critical_failure"] == (
+            "The target is afflicted with the curse of death at stage 2."
+        )
+        assert "degree_effects" not in section, "24d6 at once is not what it deals"
+        assert "Curse of Death" in soup
+
+    def test_a_middle_degree_keeps_a_bold_of_its_own(self):
+        # The narrower predicate stays on middle degrees: a bold between two
+        # degrees can belong to the first. Only the LAST degree stops at any
+        # bold, because only it lacks a terminator.
+        section, _ = self._blocks(
+            "<b>Failure</b> The target is pushed back <b>10 feet</b> and falls"
+            " prone.<br /><b>Critical Failure</b> As failure, but 2d6 damage."
+        )
+        assert "10 feet" in section["failure"]
+        assert "falls prone" in section["failure"]
+
+    def test_a_middle_degree_keeps_its_own_paragraphs(self):
+        # tanglecurse. Failure says "roll 1d4 and consult the results below"
+        # and the results sit between it and Critical Failure -- so they are
+        # Failure's own content. The boundary must not fire here: a middle
+        # degree already has a terminator, the next degree's bold. Applying it
+        # anyway left the degree pointing at nothing.
+        section, _ = self._blocks(
+            "<b>Failure</b> The target is affected by the spores--roll 1d4 and"
+            " consult the results below.<br /><br /><b>1:</b> The target is"
+            " clumsy 1.<br /><b>2:</b> The target takes 2d6 poison damage."
+            "<br /><b>Critical Failure</b> As failure, but the bloom is 20 feet."
+        )
+        assert "consult the results below" in section["failure"]
+        assert "clumsy 1" in section["failure"], "the results are Failure's own"
+        assert "2d6 poison damage" in section["failure"]
+        assert section["critical_failure"] == "As failure, but the bloom is 20 feet."
+
+    def test_a_single_break_still_separates_degrees(self):
+        # The guard must not fire on the ordinary separator, or every degree
+        # after the first would be lost.
+        # The LAST degree carries a single <br/> mid-content on purpose. Only a
+        # DOUBLE break ends a degree, so that sentence must stay. Without it
+        # nothing here reaches _starts_a_blank_line at all, and this test
+        # passed with that function hardwired to True.
+        section, _ = self._blocks(
+            "<b>Success</b> Half damage.<br /><b>Failure</b> The creature takes"
+            " 6d6 fire damage.<br /><b>Critical Failure</b> Double damage.<br />"
+            "The creature is also knocked prone."
+        )
+        assert section["success"] == "Half damage."
+        assert section["failure"] == "The creature takes 6d6 fire damage."
+        assert section["critical_failure"] == (
+            "Double damage.<br/>The creature is also knocked prone."
+        )
+        assert [e["degree"] for e in section["degree_effects"]] == ["failure"]
+
+    def test_whitespace_between_the_two_breaks_still_counts(self):
+        # The source pretty-prints, so the pair is rarely adjacent.
+        section, _ = self._blocks(
+            "<b>Failure</b> The creature is pushed back.<br />\n  <br />\n"
+            "Something else entirely deals 9d6 fire damage."
+        )
+        assert section["failure"] == "The creature is pushed back."
+        assert "degree_effects" not in section
+
+
+class TestAlternativesAreNotCumulative:
+    """ "2d6 ... or 6d6" offers a choice; emitting both reads as 8d6.
+
+    Keeping the base case is the same call PFSRD2-Parser-bsw3 makes for scaling.
+    The false-positive tests matter more than the true positives here: an
+    unanchored "or" suppressed three files' worth of real damage, because
+    ordinary English "or" is everywhere.
+    """
+
+    def _f(self, text):
+        return [
+            x.get("formula") for e in degree_effects_for({"failure": text}) for x in e["damage"]
+        ]
+
+    def test_or_between_two_dice_drops_the_alternative(self):
+        assert self._f(
+            "You deal 2d6 damage of the chosen alignment type, or 6d6 damage if"
+            " you have legendary proficiency in Religion."
+        ) == ["2d6"]
+
+    def test_either_or_branch_is_not_added_to_the_base(self):
+        # kareq: the 6d6 always lands; the 1d6 only in the fire branch.
+        assert self._f(
+            "The creature takes 6d6 damage of the appropriate type and either is"
+            " deafened for 1 minute (if sonic damage) or takes 1d6 persistent"
+            " fire damage (if fire damage)."
+        ) == ["6d6"]
+
+    def test_instead_marks_the_alternative_not_the_value(self):
+        assert self._f(
+            "They take 3d8 mental damage. This ability is less effective if you"
+            " choose a basic action; the target takes 3d4 mental damage instead"
+            " if you choose a basic action."
+        ) == ["3d8"]
+
+    def test_instead_OF_is_the_value_itself(self):
+        # explosive_death_drop: "6d6 instead of 12d6" -- 6d6 IS the success
+        # damage, replacing another degree's. Suppressing it loses the outcome.
+        assert self._f(
+            "As critical success, but the target takes 6d6 fire damage instead"
+            " of 12d6, and creatures don't take persistent fire damage."
+        ) == ["6d6"]
+
+    def test_regained_hit_points_are_not_damage(self):
+        # morlock_engineer's Uncanny Tinker, verbatim. The previous fixture was
+        # "The target regains 8d6 Hit Points and a +1 bonus." -- with no
+        # "damage" after the dice, extract_all returned nothing at all, so the
+        # assertion held even with the healing guard deleted entirely. This
+        # sentence has BOTH a heal and a damage clause, which is the only shape
+        # in which the guard can be shown to do anything.
+        assert (
+            self._f(
+                "The target regains 8d6 Hit Points and a +1 circumstance bonus to"
+                " attack rolls for 1 minute. Alternately, the morlock can deal 8d6"
+                " damage (bludgeoning, piercing, or slashing)."
+            )
+            == []
+        )
+
+    def test_or_in_a_size_clause_is_not_an_alternative(self):
+        # rusted_cage_trap. No dice precede the "or", so it is ordinary English.
+        assert self._f(
+            "A Medium or smaller creature becomes trapped inside the cage"
+            " (Escape DC 20). A Large or larger creature takes 2d6+5"
+            " bludgeoning damage and is knocked prone."
+        ) == ["2d6+5"]
+
+    def test_or_in_a_subject_clause_is_not_an_alternative(self):
+        # lifes_flowing_river
+        assert self._f(
+            "If the creature is undead or a nindoru fiend, it takes 2d6 mental" " damage."
+        ) == ["2d6"]
+
+    def test_or_in_a_quantity_is_not_an_alternative(self):
+        # memory_of_nothing
+        assert self._f(
+            "For the next 3 rounds, if the target performs an activity that"
+            " requires three or more actions, they take 12d8 mental damage."
+        ) == ["12d8"]
+
+    def test_an_or_beyond_the_window_is_not_an_alternative(self):
+        # aegis_for_the_innocent. Renamed to say what it actually pins.
+        #
+        # This case is protected TWICE over -- there is no dice expression
+        # before the "or" (so the anchor rejects it) and the "or" is ~50
+        # characters from the dice (so the {0,30} tail rejects it too). Neither
+        # unanchoring the rule nor widening _QUALIFIER_WINDOW makes it fail,
+        # which means it does not cover the anchor even though it sits in a
+        # class about the anchor.
+        #
+        # It is kept rather than deleted because the window bound is real and
+        # otherwise unpinned. The anchor's coverage comes from the three tests
+        # above: measured over the corpus, exactly three files are protected by
+        # the anchor alone, and those three ARE those tests.
+        assert self._f(
+            "If a creature would be pushed into a solid barrier or another"
+            " creature, it stops at that point and takes 2d6 bludgeoning damage."
+        ) == ["2d6"]
+
+
+class TestAFormulaTheTextDoesNotSpell:
+    """The `at == -1` branch: extract_all returned a formula that is not a
+    literal substring of the degree.
+
+    Every suppression rule reads a WINDOW around the formula's position, so
+    with no position there is nothing to read. The branch keeps the entry,
+    which is the conservative direction -- an unjudgeable formula publishes
+    rather than vanishing. Dropping it instead would make a normalisation
+    change upstream silently delete damage.
+    """
+
+    def _f(self, damage, plain):
+        from universal.universal import _damage_the_degree_itself_deals
+
+        return [d["formula"] for d in _damage_the_degree_itself_deals(damage, plain)]
+
+    def test_a_formula_not_found_in_the_text_is_kept(self):
+        assert self._f([{"formula": "2d6+3"}], "the target takes 2d6 + 3 damage") == ["2d6+3"]
+
+    def test_it_is_kept_even_inside_a_sentence_that_would_suppress_it(self):
+        # "(DC 30 basic Reflex save)" would drop this formula if the window
+        # could be located. It cannot, so the entry survives -- proving the
+        # branch returns early rather than falling through to the rules.
+        assert self._f(
+            [{"formula": "4d10"}],
+            "a creature that falls takes 4 d10 damage (DC 30 basic Reflex save)",
+        ) == ["4d10"]
+
+    def test_a_missing_formula_key_is_kept(self):
+        from universal.universal import _damage_the_degree_itself_deals
+
+        entry = {"damage_type": "acid"}
+        assert _damage_the_degree_itself_deals([entry], "some acid damage") == [entry]
+
+
+class TestNamedExemptions:
+    """Degrees the extractor cannot judge, listed by name in constants.py.
+
+    The list exists because the markers involved ("if", "until", "its Strikes")
+    are ordinary degree prose -- keying a rule on them suppressed three files of
+    real damage. What makes it more than a silent allowlist is the pinned
+    phrase: the exemption asserts if the sentence it was granted for changes.
+    """
+
+    def test_a_listed_degree_emits_nothing(self):
+        obj = {
+            "name": "Endsong",
+            "critical_failure": "As failure, but the target is confused for 1"
+            " hour. While confused, its Strikes resonate with Volnagur's song,"
+            " dealing an additional 1d6 sonic damage.",
+        }
+        assert degree_effects_for(obj) == []
+
+    def test_the_exemption_fires_through_a_real_degree_writer(self):
+        # The unit tests above call degree_effects_for directly, so they would
+        # all still pass if the key the WRITER builds disagreed with the key the
+        # table is written in. It did: a third of degree carriers (spell_defense,
+        # save_results, routine_results) have no name of their own, so an
+        # exemption for one of them could never fire. This drives the real
+        # writer, on a carrier whose name comes from its parent.
+        from universal.universal import extract_result_blocks
+
+        html = (
+            "<b>Critical Failure</b> As failure, but the target is confused for"
+            " 1 hour. While confused, its Strikes resonate with Volnagur's song,"
+            " dealing an additional 1d6 sonic damage."
+        )
+
+        # An unnamed carrier with an owner passed: the exemption resolves and
+        # suppresses. This is the case that used to be impossible, because
+        # extract_result_blocks had no way to take an owner at all -- so the
+        # guard, which inherits one, resolved a key the writer could not and
+        # then reported the writer as broken.
+        section = {"subtype": "spell_defense"}
+        extract_result_blocks(
+            section, BeautifulSoup(html, "html.parser"), owner_name="Endsong"
+        )
+        assert section.get("degree_effects") is None
+
+        section = {"name": "Endsong", "subtype": "spell_defense"}
+        extract_result_blocks(section, BeautifulSoup(html, "html.parser"))
+        assert section.get("degree_effects") is None
+
+    def test_an_unnamed_carrier_inherits_its_owners_exemption(self):
+        # extract_degree_effects takes owner_name for exactly this: hazard
+        # routine_results carries degrees but never a name.
+        from universal.universal import extract_degree_effects
+
+        carrier = {
+            "subtype": "routine_results",
+            "critical_failure": "While confused, its Strikes resonate with"
+            " Volnagur's song, dealing an additional 1d6 sonic damage.",
+        }
+        extract_degree_effects(carrier, owner_name="Endsong")
+        assert carrier.get("degree_effects") is None
+
+    def test_an_unlisted_degree_of_the_same_ability_is_untouched(self):
+        obj = {
+            "name": "Endsong",
+            "failure": "The target takes 4d6 sonic damage.",
+        }
+        assert [x["formula"] for e in degree_effects_for(obj) for x in e["damage"]] == ["4d6"]
+
+    def test_the_same_text_on_an_unlisted_ability_is_not_exempt(self):
+        # The key is (name, degree). A different ability with similar wording
+        # does not inherit the exemption.
+        obj = {
+            "name": "Some Other Ability",
+            "critical_failure": "While confused, its Strikes resonate, dealing"
+            " an additional 1d6 sonic damage.",
+        }
+        assert [x["formula"] for e in degree_effects_for(obj) for x in e["damage"]] == ["1d6"]
+
+    def test_a_reworded_degree_fails_loudly_and_unconditionally(self):
+        # An exemption must not outlive the sentence it was granted for, and
+        # the alarm must not be silenceable. A document-scope version of this
+        # could only be called from validate_against_schema, which every parser
+        # gates on --skip-schema while still writing the file.
+        obj = {
+            "name": "Endsong",
+            "critical_failure": "As failure, but the target takes 1d6 sonic damage directly.",
+        }
+        with pytest.raises(AssertionError, match="AoN has reworded it"):
+            degree_effects_for(obj)
+
+    def test_it_fires_for_an_unnamed_carrier_through_its_owner(self):
+        # The 836 carriers with no name of their own reach the table through
+        # owner_name, so the alarm has to reach them too.
+        carrier = {
+            "subtype": "spell_defense",
+            "critical_failure": "As failure, but the target takes 1d6 sonic damage.",
+        }
+        with pytest.raises(AssertionError, match="AoN has reworded it"):
+            degree_effects_for(carrier, owner_name="Endsong")
+
+    def test_a_same_named_neighbour_would_trip_it_which_is_the_known_trade(self):
+        # The cost of asserting per degree: a name is not guaranteed unique, so
+        # an entry written for an ambiguous name fires on the neighbour that
+        # never held the phrase. 8 (name, degree) keys corpus-wide match more
+        # than one carrier in a single file; none is an exemption today, and
+        # bin/pf2_verify_degree_exemptions fails if one ever becomes one.
+        #
+        # Pinned rather than worked around, because the alternative -- a
+        # document-scope alarm -- can only be called from
+        # validate_against_schema, which every parser gates on --skip-schema
+        # while still writing the file. Exactness a flag can silence is worth
+        # less than exactness with a corpus check behind it.
+        neighbour = {
+            "name": "Endsong",
+            "critical_failure": "The target takes 4d6 sonic damage.",
+        }
+        with pytest.raises(AssertionError, match="AoN has reworded it"):
+            degree_effects_for(neighbour)
+
+    def test_the_writer_and_the_guard_agree_on_the_last_writer_too(self):
+        # extract_result_blocks was the one degree-writer with no way to supply
+        # an owner, so this pairing was untestable and the divergence survived
+        # a round behind a docstring saying it could not happen.
+        from universal.universal import assert_every_degree_was_modelled
+
+        html = (
+            "<b>Critical Failure</b> While confused, its Strikes resonate with"
+            " Volnagur's song, dealing an additional 1d6 sonic damage."
+        )
+        section = {"subtype": "spell_defense"}
+        extract_result_blocks(
+            section, BeautifulSoup(html, "html.parser"), owner_name="Endsong"
+        )
+        # Whatever the writer decided, the guard must agree -- and the guard
+        # reaches the same key by inheritance rather than by argument.
+        assert_every_degree_was_modelled(
+            {"name": "Endsong", "sections": [section]}, "spell.schema.json"
+        )
+
+    def test_the_writer_and_the_guard_agree_however_they_reached_the_object(self):
+        # The divergence this replaced: the guard inherits the nearest enclosing
+        # name while a writer only gets one if its caller passes it, so the two
+        # could resolve different keys for the same degree and the guard would
+        # then blame the writer for its own answer. With the phrase in the
+        # match, both ask the same question of the same text.
+        from universal.universal import assert_every_degree_was_modelled
+
+        carrier = {
+            "subtype": "spell_defense",
+            "critical_failure": "While confused, its Strikes resonate with"
+            " Volnagur's song, dealing an additional 1d6 sonic damage.",
+        }
+        extract_degree_effects(carrier, owner_name="Endsong")
+        # Whatever the writer decided, the guard must agree with it.
+        assert_every_degree_was_modelled(
+            {"name": "Endsong", "sections": [carrier]}, "spell.schema.json"
+        )
+
+
+class TestADegreeThatContinuesPastItsBreak:
+    """A named few last degrees own the paragraph after their break.
+
+    The markup is identical to the affliction fold -- "<b>Critical Failure</b>
+    ...<br /><br />..." either way -- so only the meaning separates them, and
+    that is why this is a list rather than a rule (PFSRD2-Parser-ts9n).
+    """
+
+    TEXT = (
+        "<b>Failure</b> During the first 5 minutes of the spell's duration, you"
+        " can Sustain the spell to modify a memory once each round.<br /><br />"
+        "Any memories you've altered remain changed as long as the spell is"
+        " active. If the target moves out of range before the 5 minutes is up,"
+        " you can't alter any further memories."
+    )
+
+    def _blocks(self, name, html):
+        bs = BeautifulSoup(html, "html.parser")
+        section = {"name": name}
+        extract_result_blocks(section, bs)
+        return section
+
+    def test_a_listed_degree_keeps_its_trailing_paragraph(self):
+        section = self._blocks("Rewrite Memory", self.TEXT)
+        assert "Any memories you've altered" in section["failure"]
+        assert (
+            "the 5 minutes is up" in section["failure"]
+        ), "the antecedent for 'the 5 minutes' is in the degree itself"
+
+    def test_an_unlisted_spell_with_the_same_shape_is_still_bounded(self):
+        # The exemption is keyed (name, degree); nothing else inherits it.
+        section = self._blocks("Some Other Spell", self.TEXT)
+        assert "Any memories you've altered" not in section["failure"]
+        assert section["failure"].endswith("once each round.")
+
+    def test_a_reworded_paragraph_fails_loudly(self):
+        html = (
+            "<b>Failure</b> You can modify a memory once each round.<br /><br />"
+            "The spell ends if you are interrupted."
+        )
+        with pytest.raises(AssertionError, match="no longer in the text"):
+            self._blocks("Rewrite Memory", html)
+
+    def test_the_right_degrees_with_the_wrong_damage_is_caught(self):
+        # The guard used to compare degree NAMES only, so an object listing the
+        # correct degrees with fabricated dice on them passed. That is the
+        # shape of every bug this feature has actually shipped -- structure
+        # that exists but disagrees with the text beside it -- and it is the
+        # one the name-only comparison could not see.
+        from universal.universal import assert_every_degree_was_modelled
+
+        obj = {
+            "name": "Wrong Damage",
+            "failure": "The target takes 4d6 sonic damage.",
+            "degree_effects": [
+                {
+                    "type": "stat_block_section",
+                    "subtype": "degree_effect",
+                    "degree": "failure",
+                    "damage": [
+                        {
+                            "type": "stat_block_section",
+                            "subtype": "attack_damage",
+                            "formula": "9d9",
+                            "damage_type": "sonic",
+                        }
+                    ],
+                }
+            ],
+        }
+        with pytest.raises(AssertionError, match="different damage"):
+            assert_every_degree_was_modelled(obj, "creature.schema.json")
+
+    def test_degree_effects_the_text_does_not_carry_is_caught(self):
+        from universal.universal import assert_every_degree_was_modelled
+
+        obj = {
+            "name": "Extra Degree",
+            "failure": "The target is knocked prone.",
+            "degree_effects": [
+                {
+                    "type": "stat_block_section",
+                    "subtype": "degree_effect",
+                    "degree": "failure",
+                    "damage": [
+                        {
+                            "type": "stat_block_section",
+                            "subtype": "attack_damage",
+                            "formula": "2d6",
+                            "damage_type": "sonic",
+                        }
+                    ],
+                }
+            ],
+        }
+        with pytest.raises(AssertionError, match="does not carry"):
+            assert_every_degree_was_modelled(obj, "creature.schema.json")
+
+
+class TestTheGuardIsActuallyWired:
+    """`validate_against_schema` must CALL the degree guard, not merely have one.
+
+    Round 3 mutation M34 unwired the call and the whole suite stayed green: the
+    guard against silent misses could itself go missing silently. Every parser
+    reaches degrees through this one function, so this is the single point where
+    the wiring is worth pinning.
+    """
+
+    def test_validate_against_schema_runs_the_degree_guard(self):
+        import pytest as _pytest
+
+        from pfsrd2.schema import validate_against_schema
+
+        # An ability whose degree states damage no degree_effects models. The
+        # guard must fire BEFORE jsonschema, since this document is otherwise
+        # schema-valid.
+        struct = {
+            "name": "Rockfall",
+            "sections": [
+                {
+                    "name": "Rockfall",
+                    "subtype": "ability",
+                    "failure": "The creature takes 2d6 bludgeoning damage.",
+                }
+            ],
+        }
+        with _pytest.raises(AssertionError, match="never called extract_degree_effects"):
+            validate_against_schema(struct, "creature.schema.json")
+
+    def test_the_equipment_deferral_still_reaches_this_call_site(self):
+        # The exemption has to be honoured through validate_against_schema too,
+        # or every equipment run breaks. PFSRD2-Parser-qj3v.
+        from pfsrd2.schema import validate_against_schema
+
+        struct = {"failure": "The creature takes 2d6 bludgeoning damage."}
+        try:
+            validate_against_schema(struct, "equipment.schema.json")
+        except AssertionError as exc:  # pragma: no cover - would be the bug
+            raise AssertionError(f"equipment deferral not honoured: {exc}") from exc
+        except Exception:
+            pass  # jsonschema rejecting the stub document is fine; the guard did not fire
+
+
+class TestTheAlarmsSurviveDashO:
+    """`python -O` strips asserts. Both alarms in this module raise instead.
+
+    This matters unevenly and all three cases are covered. In
+    assert_every_degree_was_modelled the walk, the recompute and the message
+    are ordinary code, so `assert False` would pay 100% of the cost and perform
+    0% of the check. In _is_exempt the cost is nil either way, but an alarm
+    whose whole argument is "this cannot be silenced" must not be silenceable
+    by an interpreter flag.
+    """
+
+    def test_no_alarm_uses_a_bare_assert_statement(self):
+        # Scoped to the three alarms this feature added, by name. The module is
+        # full of pre-existing parse-time asserts -- the repo's fail-fast idiom
+        # for malformed HTML -- and those are out of scope: they stop a parse
+        # rather than decide what gets published.
+        #
+        # Checking for the string "assert False" instead of `assert <expr>` is
+        # what let _continues_past_a_break ship its fix untested; its bare
+        # assert guarded a RETURN VALUE, so under -O it returned True with the
+        # justifying phrase gone.
+        import ast
+
+        source = (Path(__file__).parent.parent / "universal" / "universal.py").read_text()
+        tree = ast.parse(source)
+        alarms = {"_is_exempt", "_continues_past_a_break", "assert_every_degree_was_modelled"}
+        found = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name in alarms:
+                bare = [n.lineno for n in ast.walk(node) if isinstance(n, ast.Assert)]
+                if bare:
+                    found[node.name] = bare
+        assert not found, (
+            "python -O deletes assert statements. These alarms decide what gets "
+            "published, so they must raise AssertionError instead -- especially "
+            f"any guarding a return value. Found bare asserts: {found}"
+        )
+        assert found == {}, found
+
+    def test_the_paragraph_boundary_alarm_fires_under_O(self):
+        # The third alarm, and the one b1079be actually fixed. It was the only
+        # one with no -O test, so reverting it to a bare assert left the suite
+        # green. It is also the worst place for a stripped assert: it guards
+        # the RETURN VALUE, so under -O the degree keeps swallowing a paragraph
+        # nobody re-read.
+        import subprocess
+        import sys
+        import textwrap
+
+        script = textwrap.dedent(
+            """
+            import sys
+            sys.path.insert(0, %r)
+            from bs4 import BeautifulSoup
+            from universal.universal import _continues_past_a_break
+            html = ("<b>Failure</b> ...to a maximum of 5 continuous minutes of"
+                    " memory.<br/><br/>Something else entirely.")
+            bold = BeautifulSoup(html, "html.parser").find("b")
+            try:
+                got = _continues_past_a_break({"name": "Rewrite Memory"}, "failure", bold)
+                print("SILENT-RETURNED-%%s" %% got)
+            except AssertionError:
+                print("FIRED")
+            """
+        ) % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        out = subprocess.run(
+            [sys.executable, "-O", "-c", script], capture_output=True, text=True
+        )
+        assert out.stdout.strip() == "FIRED", out.stdout + out.stderr
+
+    def test_the_modelling_alarm_fires_under_O(self):
+        # Driven in a subprocess, because -O is an interpreter-level flag.
+        import subprocess
+        import sys
+        import textwrap
+
+        script = textwrap.dedent(
+            """
+            import sys
+            sys.path.insert(0, %r)
+            from universal.universal import assert_every_degree_was_modelled
+            try:
+                assert_every_degree_was_modelled(
+                    {"name": "X", "failure": "The target takes 4d6 sonic damage."},
+                    "creature.schema.json",
+                )
+                print("SILENT")
+            except AssertionError:
+                print("FIRED")
+            """
+        ) % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        out = subprocess.run(
+            [sys.executable, "-O", "-c", script], capture_output=True, text=True
+        )
+        assert out.stdout.strip() == "FIRED", out.stdout + out.stderr
+
+    def test_the_exemption_alarm_fires_under_O(self):
+        import subprocess
+        import sys
+        import textwrap
+
+        script = textwrap.dedent(
+            """
+            import sys
+            sys.path.insert(0, %r)
+            from universal.universal import degree_effects_for
+            try:
+                degree_effects_for({
+                    "name": "Endsong",
+                    "critical_failure": "As failure, but the target takes 1d6 sonic damage.",
+                })
+                print("SILENT")
+            except AssertionError:
+                print("FIRED")
+            """
+        ) % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        out = subprocess.run(
+            [sys.executable, "-O", "-c", script], capture_output=True, text=True
+        )
+        assert out.stdout.strip() == "FIRED", out.stdout + out.stderr

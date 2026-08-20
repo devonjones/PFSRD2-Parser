@@ -45,6 +45,7 @@ from universal.universal import (
     edition_pass,
     entity_pass,
     extract_bold_fields,
+    extract_degree_effects,
     extract_source_from_bs,
     extract_span_traits,
     game_id_pass,
@@ -501,6 +502,11 @@ def _extract_routine_results(hazard, bs):
                 "subtype": "routine_results",
                 **results,
             }
+            # A routine's degrees are written here and nowhere else; see
+            # universal.extract_degree_effects for the other four writers.
+            # Without the call the 57 routine degrees that carry damage stay
+            # unmodelled while the identical sentence on an ability does not.
+            extract_degree_effects(hazard["routine_results"], owner_name=hazard.get("name"))
 
 
 def _assert_no_duplicate_labels(hazard, bs):

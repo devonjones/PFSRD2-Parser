@@ -46,6 +46,7 @@ from universal.universal import (
     edition_from_alternate_link,
     edition_pass,
     entity_pass,
+    extract_degree_effects,
     extract_link,
     extract_links,
     extract_source,
@@ -1350,6 +1351,12 @@ def _apply_addons(ability, addons):
         ability[field_name] = value
         if links:
             ability.setdefault("links", []).extend(links)
+    # One of the five functions that write a degree; universal.py's
+    # extract_degree_effects carries the list. _consume_addon_sections claims
+    # the four degree labels off the section list and writes them here, AFTER
+    # parse_ability_from_html has returned — so without this call every
+    # creature degree stays an unmodelled string.
+    extract_degree_effects(ability)
 
 
 def process_interaction_ability(sb, section, sections):

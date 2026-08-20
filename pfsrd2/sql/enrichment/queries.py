@@ -251,6 +251,71 @@ def mark_needs_review(curs, ability_id, reason):
     curs.execute(sql, (reason, _now(), ability_id))
 
 
+def add_review_reason(curs, ability_id, reason, supersedes=None):
+    """Flag for review, ACCUMULATING reasons rather than replacing them.
+
+    mark_needs_review overwrites review_reason, which is right when a record is
+    flagged once for one thing. It is wrong for the ungrounded-number guard,
+    which runs per extractor type inside one pass: a record rejected for damage
+    and then for dc kept only the dc reason, and bin/pf2_enrich_abilities
+    selects records by substring-matching that reason against --llm-type. So
+    the second rejection silently de-queued the first.
+
+    Idempotent -- re-running a rejection does not grow the string.
+    """
+    curs.execute(
+        "SELECT review_reason FROM ability_records WHERE ability_id = ?",
+        (ability_id,),
+    )
+    # Every caller comes through get_enrichment_db_connection, which sets a
+    # dict row_factory, so no tuple branch is written -- a KeyError is the
+    # right answer if that ever stops being true.
+    #
+    # A missing row is NOT tolerated. `if row else None` made a wrong
+    # ability_id a silent no-op UPDATE, which is the worst outcome for a
+    # function whose whole job is to make a record findable again: the caller
+    # believes it flagged something and nothing is flagged.
+    row = curs.fetchone()
+    if row is None:
+        raise ValueError(
+            f"no ability_record with ability_id={ability_id!r} to flag for review"
+        )
+    existing = row["review_reason"] or ""
+
+    # Clause-wise, and a clause REPLACES the one of its own kind rather than
+    # sitting beside it.
+    #
+    # Two failures met here. A substring test treated a NARROWED reason as
+    # already present -- "unextracted: dc(1)" is inside "unextracted: dc(1),
+    # damage(2)" -- so a pass that resolved damage and re-flagged the remainder
+    # was dropped and the stale wider reason stayed the queue key. Appending
+    # instead fixed that and created the opposite: the obsolete clause was
+    # never retired, so the record stayed queued for a type it no longer misses
+    # and the string only ever grew. Both are the same mistake about what a
+    # reason IS -- not a log of findings, but the current state of each kind of
+    # finding.
+    #
+    # `supersedes` is a substring the caller declares: existing clauses
+    # containing it are replaced by this one. The caller knows what its finding
+    # obsoletes; nothing here can work it out from the string.
+    #
+    # Inferring the kind was tried and is too coarse either way. "Text before
+    # the first colon" merges two rejections for DIFFERENT fields, silently
+    # de-queueing one. Not merging at all leaves an obsolete clause queued
+    # forever for a type the record no longer misses, and the string only
+    # grows. Defaults to exact dedup, which merges nothing.
+    marker = supersedes or reason
+    clauses = [c for c in existing.split("; ") if c and marker not in c]
+    clauses.append(reason)
+    merged = "; ".join(clauses)
+    curs.execute(
+        "UPDATE ability_records"
+        " SET needs_review = 1, review_reason = ?, updated_at = ?"
+        " WHERE ability_id = ?",
+        (merged, _now(), ability_id),
+    )
+
+
 def clear_needs_review(curs, ability_id):
     sql = "\n".join(
         [

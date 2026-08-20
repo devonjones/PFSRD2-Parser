@@ -459,6 +459,89 @@ CREATURE_SPANS_ALLOWED = [
     "Zombie Snake",
 ]
 
+# Degrees whose dice the extractor reads correctly but attributes wrongly. The
+# numbers are real and published; they are just not damage this degree's
+# subject takes on this save. Deciding that needs the sentence's meaning, and
+# the markers involved ("if", "until", "its Strikes") are far too common in
+# ordinary degree prose to key a rule on -- an unanchored "or" already
+# suppressed real damage in three files before it was anchored:
+# rusted_cage_trap, lifes_flowing_river and memory_of_nothing, each of which is
+# a regression test in tests/test_universal.py. Named rather than counted, so
+# the claim can be checked by grep.
+#
+# Each entry PINS the phrase it was written against. If AoN rewords the degree
+# the phrase stops matching and _is_exempt raises, at parse time and behind no
+# flag. An exemption cannot outlive its justification, which is the difference
+# between this and a bare name list.
+#
+# One limit worth knowing: it is reached through extract_degree_effects, so it
+# cannot fire for equipment, which does not call it yet (PFSRD2-Parser-qj3v).
+# Equipment cannot carry an exemption either, so nothing is lost -- but nothing
+# is checked there.
+#
+# It raises rather than asserting, so `python -O` cannot silence it. An alarm
+# whose whole argument is "this cannot be turned off" must not be turned off by
+# an interpreter flag.
+#
+# Keyed (ability name, degree) -> (phrase that must still be present, why).
+DEGREE_EFFECT_NOT_THE_SUBJECTS = {
+    ("Endsong", "critical_failure"): (
+        "its Strikes resonate",
+        "1d6 sonic is damage the confused target DEALS to others, not takes",
+    ),
+    ("Bowl Over and Stomp", "success"): (
+        "If it is prone",
+        "the 1d6 persistent bleed only lands if the creature is already prone",
+    ),
+    ("Quick Stitch", "failure"): (
+        "tear out the stitching",
+        "the 1d6 happens only if the victim later spends an action to remove it",
+    ),
+    ("Quick Stitch", "critical_failure"): (
+        "tear out the stitching",
+        "as failure, with 2 actions and 2d6",
+    ),
+    ("Uncanny Tinker", "critical_failure"): (
+        "injures themself",
+        "the 3d6 is damage the MORLOCK takes on its own failed check, not "
+        "damage the degree's subject takes",
+    ),
+    ("Kraken's Call", "failure"): (
+        "still grabbed by a tentacle at the end of its turn",
+        "3d6 is recurring damage from the grabbed condition; the failure's own "
+        "damage is the ability's base, stated outside the degree",
+    ),
+}
+
+# Last degrees whose trailing paragraph CONTINUES them rather than returning to
+# the parent object. extract_result_blocks stops the last degree at a paragraph
+# break, which is right for an affliction's stat block or a separate Depart
+# ability -- but the markup is identical either way, so only the meaning tells
+# them apart.
+#
+# rewrite_memory's Failure ends "...to a maximum of 5 continuous minutes of
+# memory." and the paragraph after it opens "Any memories you've altered remain
+# changed... If the target moves out of range before the 5 minutes is up". That
+# "the 5 minutes" has no antecedent anywhere else in the spell, so relocating it
+# to the description orphans the reference.
+#
+# Only a LAST degree can be listed here; a middle degree is bounded by the next
+# degree's bold and never reaches the paragraph rule.
+#
+# Keyed (object name, degree) -> (phrase that must still open the paragraph, why).
+# Same pinned-phrase contract as DEGREE_EFFECT_NOT_THE_SUBJECTS: both are
+# checked at the moment the entry is used, by _continues_past_a_break and
+# _is_exempt respectively, and both RAISE rather than assert, so neither can
+# expire quietly and neither is behind a flag -- not --skip-schema, and not
+# python -O.
+DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK = {
+    ("Rewrite Memory", "failure"): (
+        "Any memories you've altered",
+        "the trailing paragraph continues Failure's own effect and refers to "
+        "'the 5 minutes' that only Failure introduces",
+    ),
+}
+
 CREATURE_UL_ALLOWED = [
     "Archer Regiment",
     "First-Class Infantry",

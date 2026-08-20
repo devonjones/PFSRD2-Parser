@@ -6,12 +6,16 @@ When enriched data exists, merges it into the ability objects.
 
 import json
 import re
+import sqlite3
+import sys
+from typing import NamedTuple
 
 from pfsrd2.ability_identity import ability_to_raw_json, compute_identity_hash
 from pfsrd2.ability_placement import deterministic_ability_category
 from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION, extract_all
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import (
+    add_review_reason,
     fetch_ability_by_hash,
     get_enrichment_db_connection,
     insert_ability_record,
@@ -21,6 +25,7 @@ from pfsrd2.sql.enrichment import (
     update_enriched_json,
 )
 from pfsrd2.sql.monster_abilities import fetch_monster_abilities_by_name
+from universal.universal import DEGREE_FIELDS
 
 # Fields that enrichment can add to an ability object.
 # These are the structured mechanics extracted from text.
@@ -68,11 +73,17 @@ def _try_inline_enrich(curs, ability_id, raw_json):
         if result is None:
             result = dict(ability)
 
+        _EXTRACTOR_FNS = {
+            "frequency": extract_frequency_llm,
+            "dc": extract_dc_llm,
+            "area": extract_area_llm,
+            "damage": extract_damage_llm,
+        }
+        # Fields come from LLM_TYPE_FIELDS, so this dict cannot drift from the
+        # one the CLI and rejection_reason use.
         _LLM_EXTRACTORS = {
-            "frequency": (extract_frequency_llm, "frequency"),
-            "dc": (extract_dc_llm, "saving_throw"),
-            "area": (extract_area_llm, "area"),
-            "damage": (extract_damage_llm, "damage"),
+            llm_type: (_EXTRACTOR_FNS[llm_type], field)
+            for llm_type, field in LLM_TYPE_FIELDS.items()
         }
 
         for keyword in missed:
@@ -80,7 +91,10 @@ def _try_inline_enrich(curs, ability_id, raw_json):
                 extractor_fn, field_name = _LLM_EXTRACTORS[keyword]
                 if not result.get(field_name):
                     llm_result = extractor_fn(name, combined)
-                    if llm_result:
+                    rejected = reject_if_ungrounded(
+                        llm_result, combined, field_name, FlagTarget(curs, ability_id, name)
+                    )
+                    if not rejected and llm_result:
                         result[field_name] = llm_result
 
     if result is None:
@@ -88,6 +102,216 @@ def _try_inline_enrich(curs, ability_id, raw_json):
     enriched_json = json.dumps(result, sort_keys=True, ensure_ascii=False)
     update_enriched_json(curs, ability_id, enriched_json, ENRICHMENT_VERSION, "inline")
     return enriched_json
+
+
+# Dice first, so "4d6+2" is one token. Splitting it into 4, 6 and 2 and then
+# looking for a bare 4 fails: in "4d6" the digit is followed by a word character,
+# so there is no word boundary to match on, and every dice formula reads as
+# ungrounded.
+_A_NUMBER = re.compile(r"\d+d\d+(?:[+-]\d+)?|\d+")
+
+
+# The one table: run_llm's --llm-type -> the enriched_json field it fills.
+# There were three hand-written copies of this mapping (here, the extractor
+# dict below, and bin/pf2_enrich_abilities), which matters because they are
+# only equal by coincidence -- dc fills saving_throw, and the other three are
+# spelled the same on both sides. Names only, so this costs no LLM imports.
+LLM_TYPE_FIELDS = {
+    "frequency": "frequency",
+    "dc": "saving_throw",
+    "area": "area",
+    "damage": "damage",
+}
+
+# bin/pf2_enrich_abilities re-queues a flagged record by substring-matching its
+# review_reason against the --llm-type. Because dc is not spelled the way its
+# field is, a reason naming only the field is a reason nothing can re-queue:
+# nine saving_throw rejections were parked permanently because "dc" does not
+# occur in "saving_throw".
+_LLM_TYPE_OF_FIELD = {field: llm_type for llm_type, field in LLM_TYPE_FIELDS.items()}
+
+
+class FlagTarget(NamedTuple):
+    """The record a rejection is recorded against.
+
+    A NamedTuple rather than three loose arguments, because the docstring
+    already argued they were one concept and the code did not agree -- and
+    because the order is not self-evident: a mis-ordered plain tuple would have
+    produced a silent no-op UPDATE before add_review_reason started raising.
+
+    `cursor` is a sqlite3.Cursor. Annotated as such rather than `object`, which
+    a type checker rejects the moment anything calls .execute() on it -- these
+    are the only annotations in the codebase, so an unusable one is worse than
+    none.
+    """
+
+    cursor: sqlite3.Cursor
+    ability_id: int
+    name: str
+
+
+def rejection_supersedes(field_name):
+    """What an ungrounded-number rejection replaces: the previous one for the
+    SAME field.
+
+    Per field, not per finding. A later rejection for `damage` supersedes the
+    earlier `damage` one; a rejection for `dc` is a separate finding and must
+    not retire it, or resolving one field silently de-queues the other.
+    """
+    return f"for {field_name} (--llm-type"
+
+
+def rejection_reason(field_name, ungrounded):
+    """Why a record was flagged, worded so run_llm can find it again."""
+    llm_type = _LLM_TYPE_OF_FIELD.get(field_name, field_name)
+    return (
+        f"PFSRD2-Parser-l59s: LLM returned {ungrounded!r} for {field_name} "
+        f"(--llm-type {llm_type}), absent from the ability text"
+    )
+
+
+def reject_if_ungrounded(
+    llm_result, source, field, record: FlagTarget, mark: bool = True
+) -> bool:
+    """True when the extractor invented a number, and the record is flagged.
+
+    `record` is a FlagTarget -- the thing being flagged, as one value rather
+    than three loose arguments in an order nobody can check. `mark` is False
+    for a dry run, where nothing should be written.
+
+    Shared by both LLM paths on purpose. This existed only on the inline path
+    at first, which covered 6 of the 63 poisoned records in
+    PFSRD2-Parser-l59s; the other 57 came through bin/pf2_enrich_abilities
+    run_llm, an identical extractor loop with no check. A second hand-written
+    copy is how that happened, so there is one copy.
+
+    Rejected rather than asserted: an assert halts a 4500-file creature run on
+    a model hiccup, and the correct output is simply "no value". stderr alone
+    is not enough, because the result is cached -- the warning would print once
+    ever and every later run would be silent. needs_review is durable and
+    queryable, and add_review_reason accumulates so a second rejection does not
+    de-queue the first.
+    """
+    curs, ability_id, name = record
+    ungrounded = a_number_the_source_never_published(llm_result, source)
+    if not ungrounded:
+        return False
+    sys.stderr.write(
+        f"REJECTED ungrounded {field} for {name!r}: {ungrounded!r} does "
+        f"not occur in the ability text. {llm_result!r}\n"
+    )
+    if mark:
+        add_review_reason(
+            curs,
+            ability_id,
+            rejection_reason(field, ungrounded),
+            supersedes=rejection_supersedes(field),
+        )
+    return True
+
+
+def a_number_the_source_never_published(llm_result, source):
+    """The first number in an LLM answer that is absent from its own input.
+
+    PFSRD2-Parser-l59s: extract_dc_llm returned "DC 30 basic Reflex" -- character
+    for character its own few-shot example in DC_PROMPT -- for Repelling Blast,
+    whose text says only "a basic Reflex save of the same DC". "DC 30" occurs
+    nowhere on that source page. The value looked like ordinary game data and
+    took a corpus sweep to find.
+
+    The prompt already instructs the model not to extract a DC that references
+    another creature's, so this is not a prompting problem and better wording
+    will not close it. A model cannot invent a number that is already in the
+    text it was handed, so requiring every number to appear there is a cheap,
+    deterministic floor that needs no judgement.
+
+    Deliberately checks digits only. Damage TYPES and save names are words the
+    model may legitimately normalise ("negative" -> "void"); numbers are not.
+    Returns the offending number, or None when everything is grounded.
+
+    A small scalar is also grounded by its WORD form, because AoN writes small
+    counts out: harrow_reader's Read the Harrow says "up to five readings per
+    day" and the model answered "5 times per day", which the digits-only
+    version rejected as fabricated and cost the published frequency. Measured
+    over all 63 recorded rejections this is the ONLY false positive -- 53 are
+    dice, 9 are scalars genuinely absent -- so the widening is narrow by
+    construction: a fabricated 5 still fails unless the source says "five",
+    which would mean 5 is published.
+    """
+    if not llm_result:
+        return None
+    # ensure_ascii=False, or a non-ASCII character escapes and its digits are
+    # read as a number. An EN-DASH (U+2013, the character AoN uses in ranges
+    # like "1\u20132") escapes to "\u2013" and yields the phantom "20132" --
+    # an ASCII hyphen would not, which is why the failing example has to carry
+    # the real character.
+    # "4d6 + 2" in the source grounds "4d6+2" in the answer; a model normalising
+    # spacing is not fabricating.
+    source = re.sub(r"\s*([+-])\s*", r"\1", source)
+    for number in _A_NUMBER.findall(json.dumps(llm_result, ensure_ascii=False)):
+        # BOTH branches need the boundary. The dice branch used to be a bare
+        # substring, so "1d6" was satisfied by a source containing only "11d6"
+        # and bare "20" by "1d20" -- the guard accepted a fabricated number
+        # because a longer one happened to contain it. The comment claimed dice
+        # were "matched whole"; they were not.
+        #
+        # The class is [\dd], not \d: a bare "20" is otherwise grounded by
+        # "1d20", where the preceding character is a letter.
+        pattern = rf"(?<![\dd]){re.escape(number)}(?!\d)"
+        if re.search(pattern, source):
+            continue
+        if _spelled_out(number, source):
+            continue
+        return number
+    return None
+
+
+# AoN writes small counts as words. Only values it actually spells out are
+# listed: a table reaching to "ninety-nine" would be inventing coverage for
+# text that does not exist, and every entry widens the guard.
+#
+# Measured 2026-08-19 over 16,977 ability texts: this table lets 14.2% of them
+# ground at least one scalar they previously could not. "1" alone accounts for
+# 9.1% via one/once/a single, and "2" for 4.8% -- so a fabricated 1 IS accepted
+# by a source saying "one creature". That is tolerable only because of where
+# the real fabrications live: damage is dice-excluded, and every genuine
+# ungrounded DC recorded under l59s was 20 or 30, which this table does not
+# list. Adding twenty/thirty would flip 0 of those 9 today, but it removes the
+# thing keeping them out -- do not add them without re-measuring.
+_NUMBER_WORDS = {
+    "1": ("one", "once", "a single"),
+    "2": ("two", "twice"),
+    "3": ("three", "thrice"),
+    "4": ("four",),
+    "5": ("five",),
+    "6": ("six",),
+    "7": ("seven",),
+    "8": ("eight",),
+    "9": ("nine",),
+    "10": ("ten",),
+    "11": ("eleven",),
+    "12": ("twelve",),
+}
+
+
+def _spelled_out(number, source):
+    """True when the source writes this scalar as a word.
+
+    Dice are excluded by the TABLE, not by a test here: _NUMBER_WORDS is keyed
+    on bare scalars only, so "1d6" looks up nothing. An explicit `if "d" in
+    number` guard used to sit here and was measurably dead -- deleting it left
+    the whole suite green -- and worse, it gave false comfort: if the tokenizer
+    ever regressed to splitting "1d6" into "1" and "6" again, the guard would
+    not fire on the pieces, and "one creature" would ground the "1".
+
+    What actually protects dice is that _A_NUMBER emits a "d" only via its dice
+    branch, so a scalar reaching this function never contains one. Keep it that
+    way; a scalar key with a "d" in it would be a real hole.
+    """
+    return any(
+        re.search(rf"\b{re.escape(word)}\b", source, re.I)
+        for word in _NUMBER_WORDS.get(number, ())
+    )
 
 
 def _get_creature_metadata(struct):
@@ -507,10 +731,7 @@ def _walk_all_abilities(struct):
                 "abilities",
                 "stages",
                 "universal_monster_ability",
-                "critical_success",
-                "success",
-                "failure",
-                "critical_failure",
+                *DEGREE_FIELDS,
             ):
                 continue
             yield from _walk_all_abilities(value)

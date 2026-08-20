@@ -1071,8 +1071,6 @@ class TestRoutineResults:
         # The previous version of this test used a fixture whose next node was
         # a bold ability header, which is the case the test below covers; it
         # could not fail on this bug.
-        from bs4 import BeautifulSoup
-
         from pfsrd2.hazard import _extract_routine_results
 
         bs = BeautifulSoup(
@@ -1088,11 +1086,34 @@ class TestRoutineResults:
         assert "movement by 30 feet" not in json.dumps(hazard["routine_results"])
         assert "movement by 30 feet" in str(bs)
 
+    def test_a_routine_degree_is_modelled_like_any_other_degree(self):
+        # A routine's degrees are written here and nowhere else, so a call that
+        # lives only on the ability paths leaves them prose while the identical
+        # sentence on an ability becomes structure. 24 shipped hazards read
+        # that way (PFSRD2-Parser-e01u).
+        from pfsrd2.hazard import _extract_routine_results
+
+        bs = BeautifulSoup(
+            "<b>Routine</b> (1 action) save."
+            "<br/><b>Success</b> The creature takes 1d10 mental damage."
+            "<br/><b>Failure</b> The creature takes 2d10+12 mental damage."
+            "<br/><b>Critical Failure</b> The creature is stunned 1.",
+            "html.parser",
+        )
+        hazard = {"name": "T"}
+        _extract_routine_results(hazard, bs)
+        effects = hazard["routine_results"]["degree_effects"]
+        assert [e["degree"] for e in effects] == ["success", "failure"]
+        assert effects[0]["damage"][0]["formula"] == "1d10"
+        assert effects[0]["damage"][0]["damage_type"] == "mental"
+        assert effects[1]["damage"][0]["formula"] == "2d10+12"
+        # critical_failure describes a condition, not damage, so it gets no
+        # effect rather than an empty one.
+        assert hazard["routine_results"]["critical_failure"] == "The creature is stunned 1."
+
     def test_a_degree_is_still_bounded_when_a_bold_follows_it(self):
         # The separator bound must not break the ordinary case: degree, <br/>,
         # next degree.
-        from bs4 import BeautifulSoup
-
         from pfsrd2.hazard import _extract_routine_results
 
         bs = BeautifulSoup(
@@ -1159,8 +1180,6 @@ class TestRoutineResults:
         # Asserted at the extractor rather than through the whole pipeline:
         # the ability splitter has its own gap with a linked header after a
         # routine (PFSRD2-Parser-qqzm), which is not what this fix is about.
-        from bs4 import BeautifulSoup
-
         from pfsrd2.hazard import _extract_routine_results
 
         bs = BeautifulSoup(
@@ -1193,8 +1212,6 @@ class TestUnboldedDegreeGuard:
     """
 
     def _extract(self, html):
-        from bs4 import BeautifulSoup
-
         from pfsrd2.hazard import _extract_routine_results
 
         hazard = {"name": "T"}
@@ -1259,8 +1276,6 @@ class TestDegreeRunTerminators:
     """
 
     def _extract(self, html):
-        from bs4 import BeautifulSoup
-
         from pfsrd2.hazard import _extract_routine_results
 
         hazard = {"name": "T"}

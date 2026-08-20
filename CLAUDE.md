@@ -792,6 +792,21 @@ remove_empty_sections_pass(struct)
 
 **IMPORTANT:** If you're consuming the JSON output data, you should understand the versioning strategy.
 
+### Published schemas: the copy_schema.sh trap
+
+`bin/copy_schema.sh <type>` overwrites the published file for whatever version
+the schema currently declares. For an addition that is what you want — a
+consumer reading the old version is unharmed by a key it does not look at, so a
+single optional field can be published in place with no rev.
+
+For a breaking change it is exactly what you must NOT do. Bump `schema_version`
+in the schema AND in the parser FIRST, so publishing writes a new file and
+leaves the old contract intact. Nothing warns you if you get this backwards;
+the old file is simply gone.
+
+See "What is a Breaking Change?" below for which is which, and
+`docs/schema-guide.md` for the worked example.
+
 ### Schema Version Branches
 
 The **pfsrd2-data** repository (JSON output) uses git branches for schema versioning:

@@ -15,6 +15,7 @@ from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.markdown import md
 from universal.universal import (
+    DEGREE_FIELDS,
     aon_pass,
     build_object,
     edition_from_alternate_link,
@@ -712,10 +713,7 @@ _LINK_FIELDS = [
     "effect",
     "access",
     "special",
-    "critical_success",
-    "success",
-    "failure",
-    "critical_failure",
+    *DEGREE_FIELDS,
 ]
 
 

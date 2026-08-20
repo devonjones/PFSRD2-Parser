@@ -25,10 +25,29 @@ def load_json_dir(*kinds):
     docs = []
     for kind in kinds:
         pattern = os.path.join(data_dir(), kind, "**", "*.json")
-        for path in glob.glob(pattern, recursive=True):
+        for path in sorted(glob.glob(pattern, recursive=True)):
             with open(path) as handle:
                 docs.append(json.load(handle))
     return docs
+
+
+def iter_json_dir(*kinds):
+    """Yield every JSON doc under the given data subdirectories, one at a time.
+
+    The streaming counterpart of load_json_dir. A verifier that folds over the
+    whole corpus does not need it resident: measured on the published data,
+    degree_exemptions.main() peaked at 1453 MB holding 30k docs and 34 MB
+    streaming the same folds to the same answers.
+    """
+    for kind in kinds:
+        pattern = os.path.join(data_dir(), kind, "**", "*.json")
+        # sorted: glob order is arbitrary, so verifier output could differ
+        # between machines. Not load-bearing any more -- the callers no longer
+        # stop early -- and not observable from a single process, so no test
+        # pins it. Kept for reproducible output, which is worth a sort().
+        for path in sorted(glob.glob(pattern, recursive=True)):
+            with open(path) as handle:
+                yield json.load(handle)
 
 
 def load_equipment(predicate=None):

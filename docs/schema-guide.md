@@ -436,14 +436,47 @@ Each schema includes a `schema_version` field in the JSON output:
 
 **When to increment schema version:**
 
-- **1.0 → 1.1** (minor): Adding optional fields, new enums
-- **1.0 → 2.0** (major): Removing fields, renaming fields, changing types
+- **1.0 → 1.1** (minor): only once additions have accumulated enough to be worth
+  signalling — a single optional field does not need a rev
+- **1.0 → 2.0** (major): removing fields, renaming fields, changing types or
+  meanings
 
 **Where to update:**
 
 1. Schema file: Update the enum in top-level properties
 2. Parser: Update the version in parse function
 3. Git: Create schema-vX.Y branch in data repo before breaking changes
+
+### Published schemas: add freely, rev on change
+
+Versioned schemas exist so consuming software can **migrate up** on its own
+schedule. pfsrd2-display is handed a file, reads its `schema_version`, and knows
+how to render that format — including old ones. A published version is a
+contract with that software.
+
+**The distinction that matters is addition vs change.**
+
+| change | breaks a consumer? | rev? |
+|---|---|---|
+| add an optional field | no — old code ignores what it doesn't know | not required |
+| remove / rename a field | yes | **required** |
+| change a field's type or meaning | yes | **required** |
+| many additions accumulating | no, individually | yes — give consumers one clear signal |
+
+A single addition can be published against the existing version and passed
+upstream. `degree_effects` is the worked example: it was added to ten schemas
+and republished at their existing versions, because no consumer reading those
+versions is harmed by a key it does not look at.
+
+**For a breaking change, do the three steps above BEFORE publishing.**
+
+The trap: `bin/copy_schema.sh` overwrites the published file for whatever
+version the schema currently declares. For an addition that is what you want.
+For a breaking change without a bump, it silently rewrites a contract that
+software is still using, and nothing warns you.
+
+`creature.schema.1.3.json` and `creature.schema.1.4.json` coexist because 1.4
+was a rev, not an edit — anything still reading 1.3 is unaffected.
 
 ## Reference Schemas
 

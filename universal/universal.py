@@ -6,6 +6,11 @@ from urllib.parse import parse_qs, urlparse
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
+from pfsrd2.constants import (
+    DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK,
+    DEGREE_EFFECT_NOT_THE_SUBJECTS,
+)
+from pfsrd2.enrichment.regex_extractor import extract_all
 from universal.utils import (
     clear_end_whitespace,
     clear_tags,
@@ -584,44 +589,500 @@ RESULT_LABELS = {
     "Critical Failure": "critical_failure",
 }
 
+# Derived, not retyped. Every site that carries, strips or link-scans the degree
+# fields by name is a place a NEW degree field would be silently dropped —
+# which is exactly how skill.py and monster_ability.py both lost
+# degree_effects. No count here on purpose -- it moves. To audit, grep the four
+# field names across pfsrd2/ and universal/ and
+# check every hit that is a retyped LIST or TUPLE of them; RESULT_LABELS, the
+# exemption keys in constants.py, equipment's label_map, and prose in comments
+# are the expected hits and are not copies.
+#
+# One retyped copy survives on purpose: equipment.py's label_map, which maps
+# the DISPLAY labels ("Critical Failure") rather than the field names, and is
+# the equipment half of the same table RESULT_LABELS is. Merging the two is
+# PFSRD2-Parser-qj3v's job, not this constant's.
+DEGREE_FIELDS = tuple(RESULT_LABELS.values())
+
+# For lists that carry or strip a degree WITH its structure. Link passes want
+# DEGREE_FIELDS instead: degree_effects is a modelled array, not HTML with <a>
+# tags in it.
+DEGREE_FIELDS_WITH_EFFECTS = DEGREE_FIELDS + ("degree_effects",)
+
 
 def _stops_at_a_result_label(node):
     """Only another degree ends a degree's run. Closes over nothing."""
     return get_text(node).strip() in RESULT_LABELS
 
 
-def extract_result_blocks(section, bs, break_on_any_bold=False):
+def _continues_past_a_break(section, degree, bold):
+    """True when this last degree owns the paragraph that follows it.
+
+    Raises rather than silently skipping if the pinned phrase is gone: the
+    exemption was granted for a specific sentence, so an AoN rewrite has to be
+    re-judged by a person instead of inheriting the exception.
+
+    A raise and not a bare assert, for the same reason as _is_exempt. `python
+    -O` strips asserts, and this one guards the RETURN VALUE -- stripped, the
+    function returns True with the justifying sentence gone, so the degree
+    keeps swallowing a paragraph nobody has re-read. That is silent wrong
+    output rather than a missing warning.
+    """
+    key = (section.get("name"), degree)
+    if key not in DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK:
+        return False
+    phrase, why = DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK[key]
+    following = "".join(str(n) for n in nodes_after(bold, stop=None))
+    if phrase not in following:
+        raise AssertionError(
+            f"{key[0]!r} {key[1]} is exempt from the paragraph boundary because "
+            f"{why}, but the phrase {phrase!r} that justified it is no longer in "
+            "the text after the degree. Re-read it and update or remove the entry "
+            "in constants.DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK."
+        )
+    return True
+
+
+def extract_result_blocks(section, bs, break_on_any_bold=False, owner_name=None):
     """Extract Critical Success/Success/Failure/Critical Failure from description.
 
+    Also writes degree_effects onto `section` — see extract_degree_effects. A
+    degree is a string, so what it says is modelled beside it.
+
+    This function is ONE of the five degree-writers listed in
+    extract_degree_effects, reached by feats, spells, and everything that goes
+    via parse_ability_from_html.
+
     Args:
-        section: dict to store result keys into (e.g. critical_success, failure)
+        section: dict to store result keys into (e.g. critical_success,
+            failure) plus degree_effects when a degree's text carries damage
         bs: BeautifulSoup object to extract from (modified in place)
         break_on_any_bold: If True, stop collecting at ANY <b> tag (feat behavior).
             If False (default), only stop at <b> tags that are result labels
             (skill/spell behavior - allows non-result bolds within result text).
+        owner_name: name of the nearest enclosing NAMED object, when `section`
+            has none of its own. Only the exemption table reads it. Every
+            production caller passes a named object today, so it is unused --
+            it exists because this was the ONE degree-writer with no way to
+            supply an owner, and a caller that needed to could not.
     """
-    # Loop-invariant, so resolved once: a degree's text may legitimately contain
-    # a bold that is not another degree, and stopping at it would truncate the
-    # degree. When the caller wants any bold to end the run, that IS
-    # nodes_after's default — pass None rather than writing it out longhand.
-    stops_the_run = None if break_on_any_bold else _stops_at_a_result_label
+    # Only the LAST degree needs a paragraph/block terminator. A middle degree
+    # already has one -- the next degree's bold -- and everything between the
+    # two is unambiguously its own content. Applying the boundary to a middle
+    # degree CUT that content: tanglecurse's Failure says "roll 1d4 and consult
+    # the results below" and the results sit between it and Critical Failure,
+    # so the degree was left pointing at nothing.
+    degree_bolds = [b for b in bs.find_all("b") if get_text(b).strip() in RESULT_LABELS]
+    last_degree = degree_bolds[-1] if degree_bolds else None
 
     for bold in list(bs.find_all("b")):
         label = get_text(bold).strip()
         if label not in RESULT_LABELS:
             continue
         key = RESULT_LABELS[label]
+        is_last = bold is last_degree
         # One walk, used for both the value and the extraction. These were two
         # separate loops and they had ALREADY drifted: the value loop tested
         # `while node:` while the extraction loop had no such test, so the
         # stored value could describe less than what was removed from the soup.
-        value_nodes = nodes_after(bold, stop=stops_the_run)
+        # The last degree also stops at ANY bold. After the last degree a new
+        # bold introduces a new thing -- an affliction's stat block, a
+        # **Special** note -- and there is not always a <br/><br/> in front of
+        # it: curse_of_death runs "<b>Critical Failure</b> ...at stage 2.
+        # <b>Curse of Death</b>" with no separator at all. A middle degree
+        # keeps the narrower predicate, because a bold between two degrees can
+        # legitimately be part of the first one. The last degrees that carry a
+        # bold are a handful corpus-wide and every one of them should be cut
+        # here; curse_of_death is the worked example above.
+        # A handful of last degrees continue past their paragraph break instead
+        # of returning to the parent object. The markup is identical, so they
+        # are named in constants.py; see _continues_past_a_break.
+        bounded = is_last and not _continues_past_a_break(section, key, bold)
+        # A degree's text may legitimately contain a bold that is not another
+        # degree, so a middle degree only stops at another degree's label. The
+        # last degree, and any caller that asked for it, stops at every bold --
+        # which is nodes_after's default, so it is None rather than a predicate
+        # spelled out longhand.
+        value_nodes = nodes_after(
+            bold,
+            stop=None if (is_last or break_on_any_bold) else _stops_at_a_result_label,
+            stop_at_paragraph=bounded,
+        )
         value = "".join(str(n) for n in value_nodes).strip()
         value = re.sub(r"<br/?>[\s]*$", "", value)
         section[key] = value
         for node in value_nodes:
             node.extract()
         bold.decompose()
+
+    # The degrees are final here. This is the one place feats, spells and
+    # every ability that goes through parse_ability_from_html write them, so
+    # modelling them here is what keeps degree_effects from being a field that
+    # exists for some parsers and silently not for others.
+    extract_degree_effects(section, owner_name)
+
+
+def extract_degree_effects(ability, owner_name=None):
+    """Model what a degree's text says, since the degree itself is a string.
+
+    Before the degrees were folded into their parent, each one was (wrongly)
+    parsed as its own ability — so the enrichment pipeline enriched it and its
+    damage came back as structure. Folding removed the record that carried
+    that, and nothing re-extracts from a plain string field. This puts it back
+    as degree_effects[] on the parent, keyed by degree.
+
+    The extractor is the enrichment regex pass, not _parse_damage: the latter
+    parses a Damage FIELD value ("2d6 slashing"), while a degree is prose
+    ("the target takes double damage and 2d6 persistent bleed damage"). Using
+    the same extractor that produced the original objects reproduces them
+    rather than inventing new ones. regex_extractor imports only json and re,
+    so this pulls in no DB and no LLM.
+
+    `damage` only, deliberately. Measured 2026-08-18 against the corpus AS
+    BOUNDED BY THIS MODULE -- 160 DC occurrences in degree text, of which 64 are
+    Escape DCs, 44 saving throws, 44 flat checks, 7 skill checks and 1 naming no
+    check at all. Typing those as save_dc would claim something the source never
+    said, so saving_throw and skill_check wait for PFSRD2-Parser-2cby.
+
+    The date is load-bearing: this census counts degree TEXT, and the degree
+    boundaries in this same module decide how much text there is, so it goes
+    stale whenever they move. Re-derive before quoting it. The published schema
+    descriptions deliberately carry no tally at all.
+
+    What comes back is damage the degree's text MENTIONS, which is not always
+    damage the degree's subject takes: a small minority describe damage dealt
+    to someone else ("the morlock injures themself, taking 2d6 damage"). A
+    consumer that needs the subject must read the text. No count here on
+    purpose: it moved twice while this PR was open, and a number that drifts
+    every time coverage widens is worse than none.
+
+    FIVE functions write a degree. Four call this once their degrees are
+    final: extract_result_blocks (feats, spells, parse_ability_from_html),
+    ability._build_ability_from_entry (whose degrees arrive through
+    _apply_addon), creatures._apply_addons, hazard._extract_routine_results.
+    The fifth, equipment._extract_save_outcomes, deliberately does not yet —
+    see PFSRD2-Parser-qj3v, which covers its 212 degree-carrying objects.
+
+    Do not read that list as closed. A writer without a call is SILENT: the
+    field simply does not appear, which reads identically to "this degree had
+    no damage". That is how the creature path shipped empty, and why the count
+    here is a fact to re-check rather than a guarantee.
+
+    `owner_name` names the enclosing object when `ability` has no name of its
+    own -- a hazard's routine_results, a spell's defense. Only the exemption
+    table in constants.py reads it, and without it that table cannot reach a
+    third of the corpus. See _is_exempt.
+    """
+    effects = degree_effects_for(ability, owner_name)
+    if effects:
+        ability["degree_effects"] = effects
+
+
+def _is_exempt(obj, degree, plain, owner_name=None):
+    """A degree the extractor cannot judge, listed by name in constants.py.
+
+    Raises, at parse time and unconditionally, when the key matches but the
+    pinned phrase is gone: the exemption was granted for a specific sentence,
+    so an AoN rewrite has to be re-judged by a person rather than inherited.
+
+    Parse time is the only placement that keeps that "unconditionally". A
+    document-scope version reads better -- it can ask whether ANY carrier under
+    the key still holds the phrase -- but its only caller would be
+    validate_against_schema, which every parser gates on --skip-schema while
+    still writing the file.
+
+    The modelling guard DOES live there, which is not a contradiction: it
+    answers "did a writer forget to model these degrees", a question about the
+    code that only a developer running the parsers can act on, so gating it
+    with schema validation is acceptable. This one answers "has AoN reworded
+    the sentence an exemption stands on", which is a question about the DATA
+    and must not be skippable while the file is still written.
+
+    `owner_name` is the nearest enclosing NAMED object, because 836 of the
+    corpus's 2582 degree carriers have no name of their own -- every
+    spell_defense, every equipment save_results, every hazard routine_results.
+    Keying on obj["name"] alone left a third of the corpus unreachable by any
+    exemption, silently.
+
+    A name is not guaranteed unique: 8 (name, degree) keys match more than one
+    carrier within a single file, so an entry written for one of those would
+    assert on its neighbour. None of the current entries is one, and
+    bin/pf2_verify_degree_exemptions fails if that ever changes -- which is
+    where the check belongs, since ambiguity is a property of the corpus and a
+    parse only ever sees one degree.
+    """
+    key = (obj.get("name") or owner_name, degree)
+    if key not in DEGREE_EFFECT_NOT_THE_SUBJECTS:
+        return False
+    phrase, why = DEGREE_EFFECT_NOT_THE_SUBJECTS[key]
+    if phrase not in plain:
+        # raise, not assert: `python -O` strips asserts, and an alarm whose
+        # whole argument is "this cannot be silenced" must not be silenceable
+        # by an interpreter flag either.
+        raise AssertionError(
+            f"{key[0]!r} {key[1]} is exempt from degree_effects because {why}, "
+            f"but the phrase {phrase!r} that justified it is no longer in the "
+            "degree. AoN has reworded it. Re-read the degree and either update "
+            "or remove the entry in constants.DEGREE_EFFECT_NOT_THE_SUBJECTS "
+            "-- do not leave an exemption standing on a sentence that is gone."
+        )
+    return True
+
+
+def degree_effects_for(obj, owner_name=None):
+    """The degree_effects an object's degrees imply. Pure; obj is not touched.
+
+    Split out from the mutator so assert_every_degree_was_modelled can ask the
+    same question of finished output without writing to it.
+    """
+    effects = []
+    for degree in DEGREE_FIELDS:
+        text = obj.get(degree)
+        if not isinstance(text, str) or not text.strip():
+            continue
+        # extract_all reads "text" and "effect" for content, and treats
+        # saving_throw/area/range/DAMAGE as already-done when the key is
+        # present — handing it a real ability dict would make it extract
+        # nothing. Hence a dict carrying only the degree's text, which is why
+        # this is not the parent ability. _missed reports keywords it saw but
+        # could not structure; that is a corpus-coverage signal for the
+        # enrichment pass, not a per-degree one. No ticket measures it today.
+        plain = get_text(BeautifulSoup(text, "html.parser"))
+        if _is_exempt(obj, degree, plain, owner_name):
+            continue
+        enriched, _missed = extract_all({"text": plain})
+        damage = _damage_the_degree_itself_deals((enriched or {}).get("damage"), plain)
+        if not damage:
+            continue
+        effects.append(
+            {
+                "type": "stat_block_section",
+                "subtype": "degree_effect",
+                "degree": degree,
+                "damage": damage,
+            }
+        )
+    return effects
+
+
+# A degree IS the outcome of a save. So a die roll inside it that carries its
+# OWN save, or that is a per-unit rate rather than an amount, is not what this
+# degree deals — it belongs to a second check the prose introduces. Modelling it
+# says the creature takes damage it does not take (wind_surge, the_putrid_rise)
+# or takes a fraction of what it does (test_of_endurance). PFSRD2-Parser-bsw3:
+# these stay prose.
+# An ALTERNATIVE to the damage already stated, not damage on top of it:
+# "2d6 ... or 6d6 if you have legendary proficiency", "3d4 mental damage
+# instead if", "either is deafened (if sonic) or takes 1d6 persistent fire".
+# Emitting both makes a consumer read 8d6 where the source offers a choice of
+# 2d6. Keeping the base case is the same call PFSRD2-Parser-bsw3 makes for
+# scaling.
+# The marker must join TWO damage expressions inside one sentence. Requiring a
+# preceding NdM is what separates "2d6 damage ... or 6d6 damage" from the
+# ordinary English "or" that is everywhere: "a Medium or smaller creature takes
+# 2d6+5", "if the creature is undead or a nindoru fiend, it takes 2d6", "an
+# activity that requires three or more actions". All three of those are real
+# damage and an unanchored marker suppressed them.
+_AN_ALTERNATIVE_BEFORE = re.compile(
+    r"\d+d\d+[^.]{0,90}\b(?:or|either|alternately)\b[^.]{0,30}$", re.I
+)
+# "3d4 mental damage instead if" is an alternative. "6d6 fire damage instead OF
+# 12d6" is the value itself, replacing another -- keep it.
+_AN_ALTERNATIVE_AFTER = re.compile(r"^[^.]{0,40}\binstead\b(?!\s+of\b)", re.I)
+
+# Hit Points restored, not damage dealt. "The target regains 8d6 Hit Points"
+# is the opposite of what an attack_damage object means.
+_HEALING_BEFORE = re.compile(r"\b(?:regains?|heals?|restores?|recovers?)\b[^.]{0,40}$", re.I)
+
+# The parenthetical must actually NAME a save. The corpus writes escape DCs as
+# "Escapes (DC 24)" and "escape (DC 37)" -- bare parenthesised DCs that gate a
+# way OUT of a condition, not the damage. Matching those dropped the degree's
+# own damage and kept the recurring damage instead, in second_kiss_engine and
+# ephialtes. A fixture written "(Escape DC 25)" hid it: real pages put the verb
+# outside the parens.
+_ITS_OWN_SAVE = re.compile(r"\(\s*DC\s*\d+[^)]*\bsaves?\b", re.I)
+
+# ...unless the sentence names the degree's OWN subject taking it. A basic save
+# printed right after the dice is the standard way of writing the degree's own
+# damage, so the parenthetical alone cannot tell a second check from the first.
+# Without this, gorlak's Fling Foe lost all three degrees -- "The creature takes
+# 2d10+9 piercing damage (DC 25 basic Fortitude save)" -- while ran-to's
+# Whirlwind Toss, the same ability shape, kept its damage only because the
+# source happened to put the parenthetical past the window. That is the rule
+# reading layout rather than attribution.
+_THE_DEGREES_OWN_SUBJECT = re.compile(
+    r"\b(?:the (?:creature|target)|you)\s+takes?\b[^.]{0,40}$", re.I
+)
+_A_RATE_NOT_AN_AMOUNT = re.compile(r"\bfor (?:each|every)\b", re.I)
+
+# How far past the dice to look. Long enough to clear "6d6 bludgeoning damage to
+# creatures in the water or within 15 feet of the waterline (DC 29 ...)", short
+# enough not to reach an unrelated later sentence.
+_QUALIFIER_WINDOW = 110
+
+
+def _damage_the_degree_itself_deals(damage, plain):
+    """Drop dice the degree mentions but does not itself deal.
+
+    Positional, because the qualifier follows the dice: find each formula in the
+    degree's own text and read the words after it. A formula that appears
+    nowhere in the text is kept — that means the extractor built it some other
+    way and this cannot judge it.
+    """
+    if not damage:
+        return damage
+    kept = []
+    for entry in damage:
+        formula = entry.get("formula")
+        at = plain.find(formula) if formula else -1
+        if at == -1:
+            kept.append(entry)
+            continue
+        window = plain[at : at + _QUALIFIER_WINDOW]
+        before = plain[max(0, at - _QUALIFIER_WINDOW) : at]
+        if _ITS_OWN_SAVE.search(window) and not _THE_DEGREES_OWN_SUBJECT.search(before):
+            continue
+        if _A_RATE_NOT_AN_AMOUNT.search(window):
+            continue
+        # Look BEHIND as well: "or"/"regains" introduce the dice, they do not
+        # follow them.
+        if _AN_ALTERNATIVE_BEFORE.search(before) or _HEALING_BEFORE.search(before):
+            continue
+        if _AN_ALTERNATIVE_AFTER.search(plain[at + len(formula) :]):
+            continue
+        kept.append(entry)
+    return kept
+
+
+# The equipment parser writes degrees through its own _extract_save_outcomes and
+# models none of them: 36 objects, 35 under equipment/ and 1 under weapons/, all
+# on equipment.schema.json (all six equipment types share that schema, so the
+# deferral cannot be dodged by running a different one). That is
+# PFSRD2-Parser-qj3v, deferred deliberately.
+# This constant IS the scope of that deferral, written down where the guard can
+# see it, and it goes away when qj3v lands. Do not add to it to quiet a failure
+# — a new entry here means a degree-writer shipped unmodelled, which is the
+# exact defect the guard exists to catch.
+_DEGREE_MODELLING_DEFERRED = frozenset({"equipment.schema.json"})
+
+
+def assert_every_degree_was_modelled(struct, schema_name):
+    """A writer that never calls extract_degree_effects fails HERE.
+
+    Every other failure mode in this feature is loud. This one is not: a new
+    place that writes a degree, or a fixed key-list that copies the degrees
+    without their structure, produces output that is *valid* and simply
+    missing a field — indistinguishable from "this degree had no damage". Two
+    review rounds found four such holes (creatures, feats, spells, hazard
+    routines) and two more in copy-lists (skill, monster_ability), and not one
+    of them tripped anything.
+
+    So the invariant is checked against finished output instead of trusted:
+    recompute what each object's degrees imply and compare. Over the published
+    corpus this agrees everywhere the deferral does not cover.
+
+    How much the deferral covers is a measurement, not a constant, so it is
+    not written here -- bin/pf2_verify_degree_exemptions prints it, and also
+    fails if DEFERRED_DIRS stops matching _DEGREE_MODELLING_DEFERRED.
+
+    Recomputing from published text is safe because the extractor is fed
+    get_text() at write time. Measured rather than guaranteed: no published
+    degree carries HTML tags or markdown links, though 121 carry *emphasis*
+    the write-time text did not, so this holds empirically and is worth
+    re-checking if the markdown pass ever moves.
+    """
+    if schema_name in _DEGREE_MODELLING_DEFERRED:
+        return
+    first = next(_unmodelled_degree_carriers(struct), None)
+    if first is not None:
+        obj, expected, owner_name = first
+        actual = obj.get("degree_effects") or []
+        # Say which of the three disagreements this is. The comparison went
+        # from degree names to full structure, so "missing" is no longer the
+        # only way to fail -- and the message used to print "no degree_effects
+        # for []" when the object had EXTRA entries, which describes the
+        # opposite of what happened.
+        missing = [
+            e["degree"] for e in expected if e["degree"] not in {a["degree"] for a in actual}
+        ]
+        extra = [a["degree"] for a in actual if a["degree"] not in {e["degree"] for e in expected}]
+        if missing:
+            what = f"no degree_effects for {missing}"
+        elif extra:
+            what = f"degree_effects for {extra}, which its text does not carry"
+        else:
+            what = (
+                "degree_effects on the right degrees but with different damage: "
+                f"expected {expected}, published {actual}"
+            )
+        # raise, not `assert False`: the walk, the recompute and the message
+        # above are ordinary code that runs either way, so under `python -O`
+        # this form pays 100% of the cost and performs 0% of the check. The
+        # same -O reasoning is already applied in pfsrd2/qa/degree_exemptions.
+        raise AssertionError(
+            f"{obj.get('name') or owner_name!r} ({obj.get('subtype')}) publishes "
+            f"a degree whose text disagrees with its structure — {what}. "
+            "Either whatever wrote this object's degrees never called "
+            "extract_degree_effects, or it called it before the degrees were "
+            "final — see that function for the list of writers. Fix it where "
+            "the degrees become final; do not add or edit the field by hand."
+        )
+
+
+def degree_carriers(struct, owner_name=None):
+    """Every object carrying a degree, with the name it inherits.
+
+    Yields (carrier, owner_name). The owner is the nearest enclosing NAMED
+    object, which is how _is_exempt resolves a key -- 836 of the corpus's 2582
+    carriers have no name of their own.
+
+    One walker, because there were three and they already disagreed on what
+    counts: one tested isinstance(str), another also required the string to be
+    non-empty after stripping. That difference decides whether an exemption on
+    a blank degree reads as live or dead, so it is not a detail. A degree that
+    is present but empty is a degree the parser wrote nothing into, and it
+    carries nothing -- so it does not count.
+    """
+    if isinstance(struct, dict):
+        owner_name = struct.get("name") or owner_name
+        if any(
+            isinstance(struct.get(degree), str) and struct[degree].strip()
+            for degree in DEGREE_FIELDS
+        ):
+            yield struct, owner_name
+        for value in struct.values():
+            yield from degree_carriers(value, owner_name)
+    elif isinstance(struct, list):
+        for value in struct:
+            yield from degree_carriers(value, owner_name)
+
+
+def _unmodelled_degree_carriers(struct, owner_name=None):
+    """Carriers whose published degree_effects disagree with their own text.
+
+    The guard inherits `owner_name` transitively; a writer only has what its
+    caller gave it. Those are the same answer exactly when every writer is
+    invoked on the nearest NAMED ancestor of the degrees it writes, or is
+    handed that name -- which is true of all five today and is the invariant
+    to preserve when adding a sixth.
+
+    It is stated as a condition rather than a guarantee on purpose. An earlier
+    version of this docstring claimed the two rules "cannot answer
+    differently", which was not true and was the sentence a maintainer would
+    have trusted instead of checking: hand a writer an unnamed carrier with no
+    owner and the guard resolves a key the writer could not, then reports the
+    writer as broken.
+    """
+    for carrier, owner in degree_carriers(struct, owner_name):
+        expected = degree_effects_for(carrier, owner)
+        actual = carrier.get("degree_effects") or []
+        # Full structural equality, not just the degree NAMES. Comparing names
+        # only would pass an object whose degree_effects listed the right
+        # degrees with the wrong dice on them -- which is the shape of every
+        # bug this feature has actually shipped. Re-measured over the corpus:
+        # exact equality costs nothing, it finds the same zero disagreements.
+        if expected != actual:
+            yield carrier, expected, owner
 
 
 _KEY_OVERRIDES = {

@@ -18,9 +18,11 @@ from pfsrd2.trait import extract_starting_traits
 from universal.attack import parse_attack_damage
 from universal.creatures import parse_save_dc, universal_handle_range, universal_handle_save_dc
 from universal.universal import (
+    DEGREE_FIELDS,
     RESULT_LABELS,
     build_object,
     extract_bold_fields,
+    extract_degree_effects,
     extract_link,
     extract_result_blocks,
     get_links,
@@ -275,6 +277,9 @@ def parse_ability_from_html(
     # Extract structured aura fields (range, damage, DC)
     _handle_aura(ability)
 
+    # No extract_degree_effects call here: extract_result_blocks wrote the
+    # degrees above and models them on the way out.
+
     # Strategic fragility: fail fast on unextracted frontmatter
     _assert_no_unextracted_frontmatter(ability)
 
@@ -506,6 +511,10 @@ def _build_ability_from_entry(entry, ability_type, labels):
     # Extract structured aura fields (range, damage, DC)
     _handle_aura(ability)
 
+    # Degrees on this path arrive through _apply_addon, not
+    # extract_result_blocks, so this is where they become final.
+    extract_degree_effects(ability)
+
     # Strategic fragility: fail fast on unextracted frontmatter
     _assert_no_unextracted_frontmatter(ability)
 
@@ -601,10 +610,7 @@ _HTML_VALUE_FIELDS = {
     "requirement",
     "prerequisite",
     "cost",
-    "critical_success",
-    "success",
-    "failure",
-    "critical_failure",
+    *DEGREE_FIELDS,
     "range",
     "damage",
     "saving_throw",

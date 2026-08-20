@@ -13,6 +13,7 @@ from pfsrd2.sql.traits import trait_db_pass
 from universal.files import char_replace, makedirs
 from universal.markdown import markdown_pass as universal_markdown_pass
 from universal.universal import (
+    DEGREE_FIELDS,
     aon_pass,
     build_object,
     edition_pass,
@@ -765,7 +766,7 @@ def _build_spell_defense(spell):
     elif "saving_throw" in spell:
         save_html = spell.pop("saving_throw")
 
-    result_keys = ["critical_success", "success", "failure", "critical_failure"]
+    result_keys = list(DEGREE_FIELDS)
     has_results = any(k in spell for k in result_keys)
 
     if not save_html and not has_results:
@@ -812,6 +813,11 @@ def _build_spell_defense(spell):
     for key in result_keys:
         if key in spell:
             defense[key] = spell.pop(key)
+    # extract_result_blocks models the degrees where it writes them, which is
+    # the spell; the degrees then move here, so their structure has to move
+    # with them or it is stranded on an object that no longer has the degrees.
+    if "degree_effects" in spell:
+        defense["degree_effects"] = spell.pop("degree_effects")
 
     spell["defense"] = defense
 
@@ -858,7 +864,7 @@ def spell_link_pass(struct):
         # Process defense result block fields
         defense = section.get("defense")
         if defense and isinstance(defense, dict):
-            for field in ("critical_success", "success", "failure", "critical_failure"):
+            for field in DEGREE_FIELDS:
                 _handle_text_field(defense, field)
         # Process heightened entries
         for h in section.get("heightened", []):
