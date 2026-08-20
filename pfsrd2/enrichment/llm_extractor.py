@@ -162,6 +162,125 @@ def _query_ollama_structured(prompt, schema, model=None):
     return parsed
 
 
+def _structured(field, name, text, model):
+    """Shared plumbing: render the prompt, query under the schema, return raw."""
+    schema = SCHEMAS.get(field)
+    template = STRUCTURED_PROMPTS.get(field)
+    if not schema or not template:
+        return None
+    return _query_ollama_structured(template.format(name=name, text=text), schema, model)
+
+
+def _dcs_in(text):
+    """Every DC the source text actually prints."""
+    found = set()
+    for pattern in (r"\bDC\s+(\d+)", r"\bDC\b.{0,50}?\b(\d+)\b"):
+        for m in re.finditer(pattern, text or "", re.I):
+            found.add(int(m.group(1)))
+    return found
+
+
+def extract_dc_structured(name, text, model=None):
+    """Save DCs via constrained decoding. Returns save_dc objects, or None.
+
+    The schema does two things the free-text path could not. save_type is an
+    enum, so the model picks from the four values that exist rather than
+    writing "Fortitude" or "basic Reflex" into a lookup that silently dropped
+    what it did not recognise. And dc is an integer, which removes the
+    "DC 30" / "30" / "DC of 30" parsing spread.
+
+    The grounding check stays: PFSRD2-Parser-l59s was a schema-valid DC that
+    the source never published, and a constrained decoder emits those just as
+    happily as a free-text one.
+    """
+    parsed = _structured("dc", name, text, model)
+    if not parsed:
+        return None
+
+    # Only DCs the source actually prints. This is the check _parse_dc_response
+    # does on the free-text path, and dropping it here reintroduced
+    # PFSRD2-Parser-l59s immediately: given "a basic Reflex save of the same
+    # DC", the free-text path correctly returns nothing while the constrained
+    # one invented DC 13. A schema that REQUIRES an integer pushes the model to
+    # produce one, so constrained decoding makes this failure more likely, not
+    # less.
+    published = _dcs_in(text)
+
+    seen, out = set(), []
+    for entry in parsed.get("saves", []):
+        dc = entry.get("dc")
+        save_type = entry.get("save_type")
+        if dc is None or not save_type:
+            continue
+        if dc not in published:
+            continue
+        key = (dc, save_type, bool(entry.get("basic")))
+        if key in seen:
+            continue
+        seen.add(key)
+        obj = {
+            "type": "stat_block_section",
+            "subtype": "save_dc",
+            "dc": dc,
+            "save_type": save_type,
+            "text": f"DC {dc}{' basic' if entry.get('basic') else ''} {save_type}",
+        }
+        if entry.get("basic"):
+            obj["basic"] = True
+        out.append(obj)
+    return out or None
+
+
+def extract_area_structured(name, text, model=None):
+    """Areas via constrained decoding. Returns area objects, or None.
+
+    shape is an enum matching _SHAPE_MAP's values. "radius" is excluded from it
+    deliberately: the source writes it, but it means burst, so the model has to
+    map it rather than emit a shape nothing downstream accepts.
+    """
+    parsed = _structured("area", name, text, model)
+    if not parsed:
+        return None
+    seen, out = set(), []
+    for entry in parsed.get("areas", []):
+        size, shape = entry.get("size"), entry.get("shape")
+        if not size or not shape:
+            continue
+        unit = entry.get("unit") or "feet"
+        key = (size, shape, unit)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "type": "stat_block_section",
+            "subtype": "area",
+            "shape": shape,
+            "size": size,
+            "unit": unit,
+            "text": f"{size}-{'mile' if unit == 'miles' else 'foot'} {shape}",
+        })
+    return out or None
+
+
+def extract_frequency_structured(name, text, model=None):
+    """Frequency via constrained decoding. Returns a joined string, or None.
+
+    The weakest of the four: frequency is stored as prose, so the schema only
+    guarantees a list of strings. It removes the semicolon-splitting, not any
+    ambiguity about what the model should say.
+    """
+    parsed = _structured("frequency", name, text, model)
+    if not parsed:
+        return None
+    seen, out = set(), []
+    for item in parsed.get("frequencies", []):
+        value = str(item).strip()
+        if value and value.lower() not in seen:
+            seen.add(value.lower())
+            out.append(value)
+    return "; ".join(out) or None
+
+
 def extract_damage_structured(name, text, model=None):
     """Damage via constrained decoding. Returns attack_damage objects, or None.
 
@@ -172,14 +291,7 @@ def extract_damage_structured(name, text, model=None):
     De-duplicates. The model emitted the same formula four times for one
     ability, which is harmless in itself and must not reach the data.
     """
-    schema = SCHEMAS.get("damage")
-    template = STRUCTURED_PROMPTS.get("damage")
-    if not schema or not template:
-        return None
-
-    parsed = _query_ollama_structured(
-        template.format(name=name, text=text), schema, model
-    )
+    parsed = _structured("damage", name, text, model)
     if not parsed:
         return None
 

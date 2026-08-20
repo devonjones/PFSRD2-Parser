@@ -258,6 +258,42 @@ type = "string"
 type = "boolean"
 
 [structured_prompts]
+
+dc = '''
+Extract every DC this ability states, with the save it belongs to.
+
+A DC is a specific NUMBER a creature must meet or beat. Report only DCs the
+text states as a number. If the text defers to another DC without giving one --
+"a basic Reflex save of the same DC", "using the original caster's DC", "at the
+same DC" -- report nothing for it. An absent DC is a correct answer.
+
+Do not treat distances, damage, ranges or counts as DCs.
+
+Ability: {name}
+Text: {text}'''
+
+area = '''
+Extract every area of effect this ability states.
+
+An area is a size and a shape: a 30-foot cone, a 20-foot burst, a 15-foot
+emanation. A "radius" is a burst. Report each distinct area once.
+
+Do NOT report distances that are reach, range, movement, tether length, or the
+size of an object or creature. Those are not areas.
+
+Ability: {name}
+Text: {text}'''
+
+frequency = '''
+Extract every frequency constraint this ability states -- any phrase limiting
+how often it can be used.
+
+Report the phrase as the text states it: "once per day", "3 times per day",
+"once per round", "can't use again for 1d4 rounds". Scan the whole text; there
+may be more than one, or none.
+
+Ability: {name}
+Text: {text}'''
 damage = '''
 Extract every damage dice expression this ability deals.
 
@@ -269,3 +305,73 @@ If there is no dice damage at all, return an empty list.
 
 Ability: {name}
 Text: {text}'''
+
+
+# --- dc ---------------------------------------------------------------
+# save_type is an ENUM. The free-text path let the model write "Fortitude" or
+# "Fort" or "basic Reflex", then mapped it with a lookup that silently dropped
+# anything unrecognised. A schema makes it choose from the four that exist.
+# dc is an INTEGER, which removes the "DC 30" / "30" / "DC of 30" spread too.
+
+[schemas.dc]
+type = "object"
+required = ["saves"]
+
+[schemas.dc.properties.saves]
+type = "array"
+
+[schemas.dc.properties.saves.items]
+type = "object"
+required = ["dc", "save_type"]
+
+[schemas.dc.properties.saves.items.properties.dc]
+type = "integer"
+
+[schemas.dc.properties.saves.items.properties.save_type]
+type = "string"
+enum = ["Fort", "Ref", "Will", "Flat Check"]
+
+[schemas.dc.properties.saves.items.properties.basic]
+type = "boolean"
+
+# --- area -------------------------------------------------------------
+# shape is the other enum, and it is exactly _SHAPE_MAP's value set.
+# "radius" is deliberately absent: the source writes it, but it means burst,
+# so the model should map it rather than emit a shape nothing accepts.
+
+[schemas.area]
+type = "object"
+required = ["areas"]
+
+[schemas.area.properties.areas]
+type = "array"
+
+[schemas.area.properties.areas.items]
+type = "object"
+required = ["size", "shape"]
+
+[schemas.area.properties.areas.items.properties.size]
+type = "integer"
+
+[schemas.area.properties.areas.items.properties.shape]
+type = "string"
+enum = ["burst", "cone", "cylinder", "emanation", "line", "wall"]
+
+[schemas.area.properties.areas.items.properties.unit]
+type = "string"
+enum = ["feet", "miles"]
+
+# --- frequency --------------------------------------------------------
+# No enum to lean on: frequency is stored as prose, so the schema only
+# guarantees a list of strings. The win is smaller -- it removes the
+# semicolon-splitting, not any ambiguity.
+
+[schemas.frequency]
+type = "object"
+required = ["frequencies"]
+
+[schemas.frequency.properties.frequencies]
+type = "array"
+
+[schemas.frequency.properties.frequencies.items]
+type = "string"

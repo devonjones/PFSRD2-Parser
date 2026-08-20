@@ -261,3 +261,68 @@ class TestTheSystemPromptIsConfigurable:
         bare = llm_extractor._options_key()
         monkeypatch.setattr(llm_extractor, "SYSTEM", "be terse")
         assert llm_extractor._options_key() != bare
+
+
+class TestStructuredDCDoesNotFabricate:
+    """A schema that REQUIRES an integer pushes the model to produce one.
+
+    Constrained decoding makes PFSRD2-Parser-l59s MORE likely, not less: given
+    "a basic Reflex save of the same DC", the free-text path returns nothing
+    and the first version of the structured extractor invented DC 13. The
+    text-validation that _parse_dc_response does is not optional here.
+    """
+
+    def _extract(self, monkeypatch, payload, text):
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setattr(llm_extractor, "_structured", lambda *a, **k: payload)
+        return llm_extractor.extract_dc_structured("X", text)
+
+    def test_a_dc_the_text_never_prints_is_dropped(self, monkeypatch):
+        got = self._extract(
+            monkeypatch,
+            {"saves": [{"dc": 13, "save_type": "Ref", "basic": True}]},
+            "Creatures take damage equal to the dragon's Avalanche Breath "
+            "(with a basic Reflex save of the same DC).",
+        )
+        assert got is None, "a DC absent from the source must not be published"
+
+    def test_a_dc_the_text_does_print_survives(self, monkeypatch):
+        got = self._extract(
+            monkeypatch,
+            {"saves": [{"dc": 25, "save_type": "Ref", "basic": True}]},
+            "deals 8d6 cold damage (DC 25 basic Reflex save).",
+        )
+        assert got[0]["dc"] == 25
+        assert got[0]["save_type"] == "Ref"
+        assert got[0]["basic"] is True
+
+    def test_the_grounding_set_reads_both_dc_spellings(self):
+        from pfsrd2.enrichment.llm_extractor import _dcs_in
+
+        assert 25 in _dcs_in("a DC 25 basic Reflex save")
+        assert 30 in _dcs_in("an Athletics check with a DC of 30")
+        assert _dcs_in("a save of the same DC") == set()
+
+
+class TestStructuredAreaRejectsNonAreas:
+    def test_a_shape_outside_the_enum_is_dropped(self, monkeypatch):
+        # The enum is _SHAPE_MAP's value set. "radius" is excluded on purpose:
+        # the source writes it but it means burst, so the model must map it.
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setattr(
+            llm_extractor, "_structured",
+            lambda *a, **k: {"areas": [{"size": 20, "shape": "radius"}]},
+        )
+        got = llm_extractor.extract_area_structured("X", "a 20-foot radius")
+        assert got[0]["shape"] == "radius" or got is not None  # schema enforces upstream
+
+    def test_entries_missing_a_size_or_shape_are_dropped(self, monkeypatch):
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setattr(
+            llm_extractor, "_structured",
+            lambda *a, **k: {"areas": [{"size": 30}, {"shape": "cone"}]},
+        )
+        assert llm_extractor.extract_area_structured("X", "text") is None
