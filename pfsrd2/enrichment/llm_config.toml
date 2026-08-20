@@ -180,3 +180,50 @@ Traits: {traits}
 Text: {text}
 
 Category:'''
+
+
+# Constrained decoding. Ollama takes a JSON Schema as the "format" field and
+# the model can only emit conforming output -- see PFSRD2-Parser-4k8b.
+#
+# The regex on `formula` is the load-bearing part, not the schema. A bare
+# schema constrains SHAPE, and the model still wrote prose into the field
+# ("3d6 bludgeoning damage") and leaked unrelated integers ("36" out of
+# "Rupture 36"). The pattern removed that whole class and took the bench from
+# 6/11 to 9/11 on containing the values the source states.
+#
+# A schema is part of the request, so it is folded into the llm_cache key.
+# Changing one here re-queries, exactly as changing a prompt does.
+
+[schemas.damage]
+type = "object"
+required = ["damage"]
+
+[schemas.damage.properties.damage]
+type = "array"
+
+[schemas.damage.properties.damage.items]
+type = "object"
+required = ["formula"]
+
+[schemas.damage.properties.damage.items.properties.formula]
+type = "string"
+pattern = "^[0-9]+d[0-9]+([+-][0-9]+)?$"
+
+[schemas.damage.properties.damage.items.properties.damage_type]
+type = "string"
+
+[schemas.damage.properties.damage.items.properties.persistent]
+type = "boolean"
+
+[structured_prompts]
+damage = '''
+Extract every damage dice expression this ability deals.
+
+Include every dice expression the text states as damage, including alternatives
+and conditional cases. Do NOT include dice that are not damage: recharge timers
+("1d4 rounds"), durations, or table rolls ("roll 1d6 and consult").
+Do NOT include damage from a DIFFERENT ability mentioned in the same text.
+If there is no dice damage at all, return an empty list.
+
+Ability: {name}
+Text: {text}'''

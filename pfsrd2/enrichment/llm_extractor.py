@@ -38,6 +38,8 @@ OLLAMA_URL = os.environ.get("PFSRD2_OLLAMA_URL", _CONFIG["url"])
 DEFAULT_MODEL = _CONFIG["model"]
 
 PROMPTS = _CONFIG["prompts"]
+SCHEMAS = _CONFIG.get("schemas", {})
+STRUCTURED_PROMPTS = _CONFIG.get("structured_prompts", {})
 FREQUENCY_PROMPT = PROMPTS["frequency"]
 DAMAGE_PROMPT = PROMPTS["damage"]
 AREA_PROMPT = PROMPTS["area"]
@@ -83,6 +85,106 @@ def _query_ollama(prompt, model=None):
     # Cache the result (even empty responses, to avoid re-querying)
     cache_put(prompt_hash, model, response_text)
     return response_text
+
+
+def _query_ollama_structured(prompt, schema, model=None):
+    """Query with constrained decoding: the model can only emit `schema`.
+
+    Ollama takes a JSON Schema as "format" and constrains generation to it, so
+    malformed output stops being a failure mode. That is worth more here than
+    any model swap -- see PFSRD2-Parser-4k8b for the bench.
+
+    Returns the parsed object, or None. A None means the request failed or the
+    response did not parse; it does NOT mean "no values found", which comes
+    back as an empty list inside a valid object.
+
+    The schema is folded into the cache key. It is part of the request, so a
+    changed schema has to re-query for the same reason a changed prompt does --
+    otherwise an old answer, shaped by the old schema, is served for a question
+    nobody asked.
+    """
+    model = model or DEFAULT_MODEL
+    schema_json = json.dumps(schema, sort_keys=True)
+    prompt_hash = compute_prompt_hash(prompt + "\x00" + schema_json)
+
+    cached = cache_get(prompt_hash, model)
+    if cached is not None:
+        try:
+            return json.loads(cached)
+        except json.JSONDecodeError:
+            return None
+
+    payload = json.dumps(
+        {"model": model, "prompt": prompt, "stream": False, "format": schema}
+    )
+    try:
+        result = subprocess.run(
+            ["curl", "-s", OLLAMA_URL, "-d", payload],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            return None
+        response_text = json.loads(result.stdout).get("response", "").strip()
+        parsed = json.loads(response_text)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
+        return None
+
+    cache_put(prompt_hash, model, response_text)
+    return parsed
+
+
+def extract_damage_structured(name, text, model=None):
+    """Damage via constrained decoding. Returns attack_damage objects, or None.
+
+    Deliberately parallel to extract_damage_llm rather than replacing it: the
+    other four extractors still use the free-text path, and the bench that
+    justifies this covers damage only. Measure before switching anything else.
+
+    De-duplicates. The model emitted the same formula four times for one
+    ability, which is harmless in itself and must not reach the data.
+    """
+    schema = SCHEMAS.get("damage")
+    template = STRUCTURED_PROMPTS.get("damage")
+    if not schema or not template:
+        return None
+
+    parsed = _query_ollama_structured(
+        template.format(name=name, text=text), schema, model
+    )
+    if not parsed:
+        return None
+
+    seen, out = set(), []
+    for entry in parsed.get("damage", []):
+        formula = (entry.get("formula") or "").strip()
+        if not formula:
+            continue
+        damage_type = (entry.get("damage_type") or "").strip().lower() or None
+        persistent = bool(entry.get("persistent"))
+        # The model reliably writes "persistent bleed" into damage_type rather
+        # than setting the boolean beside it. Both spellings mean the same
+        # thing and only one of them matches what the rest of the pipeline
+        # emits, so normalise rather than teach the prompt.
+        if damage_type and damage_type.startswith("persistent "):
+            damage_type = damage_type[len("persistent "):].strip() or None
+            persistent = True
+        key = (formula, damage_type, persistent)
+        if key in seen:
+            continue
+        seen.add(key)
+        obj = {
+            "type": "stat_block_section",
+            "subtype": "attack_damage",
+            "formula": formula,
+        }
+        if damage_type:
+            obj["damage_type"] = damage_type
+        if persistent:
+            obj["persistent"] = True
+        out.append(obj)
+    return out or None
 
 
 # --- Per-type prompt templates ---
