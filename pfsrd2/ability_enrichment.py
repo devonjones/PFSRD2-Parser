@@ -269,6 +269,15 @@ def a_number_the_source_never_published(llm_result, source):
 # AoN writes small counts as words. Only values it actually spells out are
 # listed: a table reaching to "ninety-nine" would be inventing coverage for
 # text that does not exist, and every entry widens the guard.
+#
+# Measured 2026-08-19 over 16,977 ability texts: this table lets 14.2% of them
+# ground at least one scalar they previously could not. "1" alone accounts for
+# 9.1% via one/once/a single, and "2" for 4.8% -- so a fabricated 1 IS accepted
+# by a source saying "one creature". That is tolerable only because of where
+# the real fabrications live: damage is dice-excluded, and every genuine
+# ungrounded DC recorded under l59s was 20 or 30, which this table does not
+# list. Adding twenty/thirty would flip 0 of those 9 today, but it removes the
+# thing keeping them out -- do not add them without re-measuring.
 _NUMBER_WORDS = {
     "1": ("one", "once", "a single"),
     "2": ("two", "twice"),
@@ -288,12 +297,17 @@ _NUMBER_WORDS = {
 def _spelled_out(number, source):
     """True when the source writes this scalar as a word.
 
-    Dice are never spelled out, so they are excluded rather than looked up --
-    "1d6" would otherwise ask whether the source says "one" somewhere, which it
-    very often does for unrelated reasons.
+    Dice are excluded by the TABLE, not by a test here: _NUMBER_WORDS is keyed
+    on bare scalars only, so "1d6" looks up nothing. An explicit `if "d" in
+    number` guard used to sit here and was measurably dead -- deleting it left
+    the whole suite green -- and worse, it gave false comfort: if the tokenizer
+    ever regressed to splitting "1d6" into "1" and "6" again, the guard would
+    not fire on the pieces, and "one creature" would ground the "1".
+
+    What actually protects dice is that _A_NUMBER emits a "d" only via its dice
+    branch, so a scalar reaching this function never contains one. Keep it that
+    way; a scalar key with a "d" in it would be a real hole.
     """
-    if "d" in number:
-        return False
     return any(
         re.search(rf"\b{re.escape(word)}\b", source, re.I)
         for word in _NUMBER_WORDS.get(number, ())

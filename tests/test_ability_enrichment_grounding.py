@@ -481,7 +481,20 @@ class TestASpelledOutNumberIsGrounded:
     def test_dice_are_never_word_grounded(self):
         # "one creature" must not ground the 1 inside 1d6 -- the source says
         # "one" constantly for unrelated reasons.
+        #
+        # What makes this hold is that _A_NUMBER emits a "d" only from its dice
+        # branch, so "1d6" arrives whole and looks up nothing in _NUMBER_WORDS.
+        # It is NOT held by an explicit dice check: one used to exist, was
+        # measurably dead, and would not have fired on "1" and "6" if the
+        # tokenizer ever regressed to splitting them.
         assert ungrounded({"damage": "1d6"}, "one creature takes damage") == "1d6"
+
+    def test_no_number_word_key_contains_a_dice_marker(self):
+        # The invariant the test above actually depends on. A scalar key with a
+        # "d" in it would let a dice expression reach the word table.
+        from pfsrd2.ability_enrichment import _NUMBER_WORDS
+
+        assert all("d" not in key for key in _NUMBER_WORDS)
 
     def test_an_unlisted_number_is_not_word_grounded(self):
         # The table only covers what AoN actually spells out. Inventing
