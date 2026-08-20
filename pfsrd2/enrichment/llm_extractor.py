@@ -3,30 +3,46 @@
 Uses an Ollama instance with per-type prompts. Each extraction type has its own
 prompt template optimized through iteration against known test cases.
 
-The host is NOT localhost. Ollama was moved off the parser box because running
-it alongside a full corpus parse crashed the machine under load, so it lives on
-valid.evilsoft. Override with PFSRD2_OLLAMA_URL if it moves again -- an env var
-rather than an edit, because the URL is deployment, not behaviour.
+Model, host and every prompt live in llm_config.toml beside this file. Prompts
+are tuning rather than logic -- iterating on wording should not be a code
+change -- and a diff of that file reads as "what we asked the model".
+
+Ollama is NOT on localhost: it was moved off the parser box because running it
+alongside a full corpus parse crashed the machine. Override the host with
+PFSRD2_OLLAMA_URL.
 """
 
 import json
 import os
 import re
 import subprocess
+import tomllib
 
 from pfsrd2.enrichment.llm_cache import cache_get, cache_put, compute_prompt_hash
 from pfsrd2.enrichment.regex_extractor import _SHAPE_MAP, _resolve_damage_type
 
-DEFAULT_MODEL = "qwen2.5:7b"
+_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm_config.toml")
 
-# Every cached record carries extraction_method "llm:<model>", and the 808
-# existing ones say qwen2.5:7b -- so the host may move but the model should not
-# without a deliberate re-enrichment, or the corpus ends up split across two
-# models with no way to tell which produced what.
-_DEFAULT_OLLAMA_HOST = "valid.evilsoft"
-OLLAMA_URL = os.environ.get(
-    "PFSRD2_OLLAMA_URL", f"http://{_DEFAULT_OLLAMA_HOST}:11434/api/generate"
-)
+with open(_CONFIG_PATH, "rb") as _fh:
+    _CONFIG = tomllib.load(_fh)
+
+# The host may move -- ollama was taken off the parser box because running it
+# alongside a full corpus parse crashed the machine -- so it is overridable.
+OLLAMA_URL = os.environ.get("PFSRD2_OLLAMA_URL", _CONFIG["url"])
+
+# The model is NOT overridable by environment on purpose. Every enriched record
+# stores "llm:<model>" as its extraction_method; changing it from a shell
+# variable would split the corpus across two models with nothing in the data
+# saying which produced what. Change it in llm_config.toml, deliberately, and
+# expect to re-enrich.
+DEFAULT_MODEL = _CONFIG["model"]
+
+PROMPTS = _CONFIG["prompts"]
+FREQUENCY_PROMPT = PROMPTS["frequency"]
+DAMAGE_PROMPT = PROMPTS["damage"]
+AREA_PROMPT = PROMPTS["area"]
+DC_PROMPT = PROMPTS["dc"]
+CATEGORY_PROMPT = PROMPTS["category"]
 
 
 def _query_ollama(prompt, model=None):
@@ -71,92 +87,10 @@ def _query_ollama(prompt, model=None):
 
 # --- Per-type prompt templates ---
 
-FREQUENCY_PROMPT = """You are extracting frequency constraints from Pathfinder 2E ability text. A frequency constraint is any phrase that limits how often something can be done.
-
-Scan the ENTIRE text carefully. Look for ALL instances of:
-- "once per X"
-- "X times per Y"
-- "can't ... again for X"
-- "only once per X"
-- "Frequency: once per X"
-
-Return every frequency constraint found as a semicolon-separated list.
-
-Ability: {name}
-Text: {text}
-
-Frequency constraints found:"""
 
 
-DAMAGE_PROMPT = """You are extracting damage dice from Pathfinder 2E ability text.
-
-Extract ALL dice formulas (like 2d6, 4d8+10, 1d4) that represent damage.
-
-Patterns to look for:
-- "XdY type damage" (e.g., "2d6 fire damage")
-- "XdY damage" with no type (e.g., "1d4 extra damage")
-- "XdY persistent type damage" (e.g., "1d6 persistent bleed damage")
-- "Damage XdY type" (e.g., "Damage 1d6+2 slashing")
-- "deals/takes XdY type" even without the word "damage"
-- "XdY type, DC" format (e.g., "6d6 spirit, DC 30")
-
-Do NOT extract:
-- Text about damage without dice ("combine their damage", "deals damage equal to")
-- Damage reduction ("takes half damage", "resistance to damage")
-- Healing references ("regains HP equal to damage")
-- Non-damage dice ("1d4 rounds" is a duration, not damage)
-
-For each found: XdY[+/-Z] type [persistent]
-If no type, just: XdY
-Semicolon-separated list, or "none".
-
-Examples:
-Text: "deals 12d6 acid damage in a 60-foot line"
-Result: 12d6 acid
-
-Text: "deals 1d4 extra damage to prone creatures"
-Result: 1d4
-
-Text: "takes 4d6 damage (DC 33 basic Fortitude save)"
-Result: 4d6
-
-Text: "6d6 spirit, DC 30"
-Result: 6d6 spirit
-
-Text: "combine their damage for the purpose of resistances"
-Result: none
-
-Text: "takes 2d6 fire damage and 1d6 persistent bleed damage"
-Result: 2d6 fire; 1d6 persistent bleed
-
-Ability: {name}
-Text: {text}
-
-Damage:"""
 
 
-AREA_PROMPT = """You are extracting area-of-effect information from Pathfinder 2E ability text.
-
-Look for ALL instances of these area patterns anywhere in the text:
-- "X-foot line"
-- "X-foot cone"
-- "X-foot burst"
-- "X-foot emanation"
-- "X-foot wall"
-- "X-foot cylinder"
-- "X-foot radius" (treat as burst)
-
-The text may contain HTML tags — look inside them too.
-Return each UNIQUE area once as: size-foot shape
-
-Do NOT include distances that are reach, range, tether length, movement, or object size.
-
-Return as a semicolon-separated list, or "none" if no areas found.
-
-Ability: {name}
-Text: {text}
-
-Areas:"""
 
 
 # --- Extraction functions ---
@@ -209,42 +143,6 @@ def extract_frequency_llm(name, text, model=None):
     return "; ".join(parts)
 
 
-DC_PROMPT = """You are extracting DCs (Difficulty Classes) from Pathfinder 2E ability text. A DC is a specific number a creature must meet or beat.
-
-Extract ALL static numeric DCs. These include:
-- "DC 30 Fortitude save" or "DC 30 basic Reflex"
-- "Escape DC 18" or "DC to Escape is 18"
-- "DC to Balance is 18" or "DC to stop the bleeding is 35"
-- "a DC of 30"
-- "DC 5 flat check"
-
-Do NOT extract:
-- References to another creature's DC ("creature's Fortitude DC", "Athletics DC")
-- "the DC is X rather than Y" (conditional text)
-
-Examples:
-Text: "DC 30 basic Reflex save. It can't use Breath Weapon again for 1d4 rounds."
-Result: DC 30 basic Reflex
-
-Text: "The DC to Escape the net is 16."
-Result: DC 16
-
-Text: "Athletics check with a DC of 30 or the pilot's Sailing Lore DC"
-Result: DC 30
-
-Text: "They can Cast the Spell using the original caster's DC."
-Result: none
-
-Text: "all adjacent creatures are exposed to the same disease, at the same DC."
-Result: none
-
-Return ONLY the semicolon-separated list or "none". No explanations.
-
-Now extract from:
-Ability: {name}
-Text: {text}
-
-DCs found:"""
 
 
 def _parse_area_response(parts):
@@ -430,40 +328,6 @@ VALID_CATEGORIES = {
     "communication",
 }
 
-CATEGORY_PROMPT = """You are classifying a Pathfinder 2E monster ability into the correct section of a creature's stat block.
-
-The sections of a creature stat block are:
-
-1. **special_sense** — Perception-related abilities: darkvision, low-light vision, scent, tremorsense, lifesense, echolocation, or any ability that lets the creature detect or perceive things.
-
-2. **communication** — Language and communication abilities: telepathy, tongues, or abilities that enable non-standard communication.
-
-3. **interaction** — Abilities that affect how a creature interacts with the world PASSIVELY, not tied to combat actions. Examples: At-Will Spells notes, animal empathy, camouflage, light blindness. These appear BEFORE the defense section.
-
-4. **hp_automatic** — Abilities tied to the creature's hit points: regeneration, fast healing, negative healing, void healing. These appear inside the HP line of the defense section.
-
-5. **automatic** — Passive defensive abilities and auras that are always active. Examples: frightful presence, stench aura, troop defenses, golem antimagic, all-around vision (when defensive), resistances that have special rules. These appear in the defense section after HP.
-
-6. **reactive** — Abilities that are reactions or free actions usually triggered when it's NOT the creature's turn. Examples: Attack of Opportunity, Reactive Strike, Shield Block, Ferocity, nimble dodge. These are defensive reactions.
-
-7. **offensive** — Abilities the creature actively uses on its turn. Any ability with an action cost (1 action, 2 actions, 3 actions, free action on own turn). Examples: Breath Weapon, Change Shape, Sneak Attack, Constrict, Swallow Whole, Trample, special strikes.
-
-**Rules:**
-- If the ability has an action cost (one-action, two-actions, three-actions), it is almost always **offensive** unless it's clearly a **reaction**.
-- If the ability is a reaction (triggered by another's action), it is **reactive**.
-- Auras are **automatic**.
-- Senses are **special_sense**.
-- Healing/regeneration/negative healing → **hp_automatic**.
-- When unsure, default to **offensive**. Most abilities are offensive.
-
-Respond with ONLY the category name. No explanation.
-
-Ability name: {name}
-Action type: {action}
-Traits: {traits}
-Text: {text}
-
-Category:"""
 
 
 def classify_ability_category_llm(name, text, action="", traits="", model=None):
