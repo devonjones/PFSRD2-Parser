@@ -180,6 +180,23 @@ def _dcs_in(text):
     return found
 
 
+_SAVE_WORDS = {
+    "Fort": ("fortitude", "fort"),
+    "Ref": ("reflex", "ref"),
+    "Will": ("will",),
+    "Flat Check": ("flat check", "flat"),
+}
+
+
+def _save_types_in(text):
+    """Save types the source actually names."""
+    low = (text or "").lower()
+    return {
+        code for code, words in _SAVE_WORDS.items()
+        if any(re.search(rf"\b{re.escape(w)}\b", low) for w in words)
+    }
+
+
 def extract_dc_structured(name, text, model=None):
     """Save DCs via constrained decoding. Returns save_dc objects, or None.
 
@@ -205,26 +222,38 @@ def extract_dc_structured(name, text, model=None):
     # produce one, so constrained decoding makes this failure more likely, not
     # less.
     published = _dcs_in(text)
+    named = _save_types_in(text)
 
     seen, out = set(), []
     for entry in parsed.get("saves", []):
         dc = entry.get("dc")
+        if dc is None or dc not in published:
+            continue
+        # A save type the text never names is invented, exactly like a DC it
+        # never prints. The model reaches for one because a bare number looks
+        # incomplete: "DC 22, 3d8 piercing, Escape DC 22" became DC 22 Ref, and
+        # a skill check became all three saves at once. Dropping the type keeps
+        # the DC, which is what the source actually said.
         save_type = entry.get("save_type")
-        if dc is None or not save_type:
-            continue
-        if dc not in published:
-            continue
+        if save_type and save_type not in named:
+            save_type = None
         key = (dc, save_type, bool(entry.get("basic")))
         if key in seen:
             continue
         seen.add(key)
+        label = f"DC {dc}"
+        if entry.get("basic"):
+            label += " basic"
+        if save_type:
+            label += f" {save_type}"
         obj = {
             "type": "stat_block_section",
             "subtype": "save_dc",
             "dc": dc,
-            "save_type": save_type,
-            "text": f"DC {dc}{' basic' if entry.get('basic') else ''} {save_type}",
+            "text": label,
         }
+        if save_type:
+            obj["save_type"] = save_type
         if entry.get("basic"):
             obj["basic"] = True
         out.append(obj)
@@ -262,6 +291,46 @@ def extract_area_structured(name, text, model=None):
     return out or None
 
 
+# The published vocabulary is small -- 35 distinct values across the corpus,
+# dominated by "1d4 rounds", "once per round", "once per day". A new spelling of
+# an existing concept is a value nobody can group by, so the phrasing is
+# normalised HERE rather than asked for in the prompt. Asking did not work: the
+# model kept "can't use again for 1d4 rounds" through explicit examples, the
+# same way it wrote prose into the damage formula field until a regex stopped
+# it. Constrain mechanically, not in prose.
+_FREQ_STRIPS = (
+    re.compile(r"^\s*(?:the\s+\w+\s+)?can(?:'|\u2019)?t\s+use\b.*?\bagain\s+for\s+", re.I),
+    re.compile(r"^\s*only\s+", re.I),
+    re.compile(r"^\s*(?:it|they|the\s+\w+)\s+can\s+(?:be\s+)?used?\s+", re.I),
+)
+_NUMBER_WORD_START = re.compile(r"^(one|two|three|four|five|six|seven|eight|nine|ten)\b", re.I)
+
+
+# The model's ways of saying "nothing here". Without this they arrive as
+# frequency VALUES: a test that had been skipped while ollama was unreachable
+# caught "no constraint" being published for an ability whose only "per round"
+# is a rate ("1 gallon per round").
+_FREQ_NOTHING = frozenset({
+    "none", "no constraint", "no constraints", "no frequency",
+    "no frequency constraint", "no frequency constraints", "n/a", "not applicable",
+})
+
+
+def _normalise_frequency(value):
+    """Reduce a frequency phrase to the form the published data uses."""
+    out = value.strip().rstrip(".;,")
+    if out.lower() in _FREQ_NOTHING:
+        return None
+    for pattern in _FREQ_STRIPS:
+        out = pattern.sub("", out).strip()
+    if not out:
+        return None
+    # Lowercase, except a leading number word which the corpus title-cases only
+    # when the source sentence began with it -- "three times per day" is the
+    # dominant published spelling, so lowercase wins.
+    return out[0].lower() + out[1:] if out else None
+
+
 def extract_frequency_structured(name, text, model=None):
     """Frequency via constrained decoding. Returns a joined string, or None.
 
@@ -274,7 +343,7 @@ def extract_frequency_structured(name, text, model=None):
         return None
     seen, out = set(), []
     for item in parsed.get("frequencies", []):
-        value = str(item).strip()
+        value = _normalise_frequency(str(item))
         if value and value.lower() not in seen:
             seen.add(value.lower())
             out.append(value)
@@ -342,7 +411,13 @@ def _clean_llm_response(response):
     if not response:
         return None
     lower = response.lower()
-    # Filter obvious non-answers
+    # Filter obvious non-answers. The exact-match set is shared with the
+    # structured path so the two cannot disagree about what "nothing" looks
+    # like -- this list had "no constraints" and the model said "no
+    # constraint", so the singular sailed through and was published as a
+    # frequency value.
+    if lower.strip() in _FREQ_NOTHING:
+        return None
     if any(
         phrase in lower
         for phrase in [
@@ -350,12 +425,10 @@ def _clean_llm_response(response):
             "no instances",
             "none found",
             "not found",
-            "no constraints",
+            "no constraint",
             "there are no",
         ]
     ):
-        return None
-    if lower.strip() == "none":
         return None
 
     parts = [p.strip() for p in response.split(";") if p.strip()]

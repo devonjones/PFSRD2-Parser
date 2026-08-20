@@ -326,3 +326,75 @@ class TestStructuredAreaRejectsNonAreas:
             lambda *a, **k: {"areas": [{"size": 30}, {"shape": "cone"}]},
         )
         assert llm_extractor.extract_area_structured("X", "text") is None
+
+
+class TestStructuredDCDoesNotInventSaveTypes:
+    """Requiring save_type in the schema made the model invent one.
+
+    "a basic save of a type indicated below" became Ref; "an Athletics check
+    with a DC of 30" -- a skill check, not a save -- became Fort AND Ref AND
+    Will. An absent save type is a real answer, and the cached data had it
+    right where this did not.
+    """
+
+    def _extract(self, monkeypatch, payload, text):
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setattr(llm_extractor, "_structured", lambda *a, **k: payload)
+        return llm_extractor.extract_dc_structured("X", text)
+
+    def test_a_save_type_the_text_never_names_is_dropped(self, monkeypatch):
+        got = self._extract(
+            monkeypatch,
+            {"saves": [{"dc": 26, "save_type": "Ref", "basic": True}]},
+            "deals 9d6 damage to all creatures in the area "
+            "(DC 26 basic save of a type indicated below).",
+        )
+        assert got[0]["dc"] == 26, "the DC is published, so it stays"
+        assert "save_type" not in got[0], "the type is not named, so it must not"
+        assert got[0]["text"] == "DC 26 basic"
+
+    def test_a_named_save_type_survives(self, monkeypatch):
+        got = self._extract(
+            monkeypatch,
+            {"saves": [{"dc": 25, "save_type": "Ref", "basic": True}]},
+            "deals 8d6 cold damage (DC 25 basic Reflex save).",
+        )
+        assert got[0]["save_type"] == "Ref"
+
+    def test_save_types_are_read_from_the_text(self):
+        from pfsrd2.enrichment.llm_extractor import _save_types_in
+
+        assert _save_types_in("a DC 25 basic Reflex save") == {"Ref"}
+        assert _save_types_in("a Fortitude save or a Will save") == {"Fort", "Will"}
+        assert _save_types_in("attempt a flat check") == {"Flat Check"}
+        assert _save_types_in("an Athletics check with a DC of 30") == set()
+
+
+class TestFrequencyIsNormalised:
+    """The published vocabulary is 35 values corpus-wide. A new spelling of an
+    existing concept is a value nobody can group by.
+
+    Asking the model to normalise did not work through explicit examples, the
+    same way asking it to keep prose out of the damage formula field did not.
+    Normalised in code instead.
+    """
+
+    def _norm(self, value):
+        from pfsrd2.enrichment.llm_extractor import _normalise_frequency
+
+        return _normalise_frequency(value)
+
+    def test_the_recharge_sentence_reduces_to_its_constraint(self):
+        assert self._norm("can't use Breath Weapon again for 1d4 rounds") == "1d4 rounds"
+        assert self._norm("The dragon can’t use Breath Weapon again for 1d4 rounds") == "1d4 rounds"
+
+    def test_a_leading_only_is_dropped(self):
+        assert self._norm("only once per effect") == "once per effect"
+
+    def test_an_already_normal_value_is_untouched(self):
+        assert self._norm("once per day") == "once per day"
+        assert self._norm("1d4 rounds") == "1d4 rounds"
+
+    def test_leading_capital_is_lowered(self):
+        assert self._norm("Three times per day") == "three times per day"

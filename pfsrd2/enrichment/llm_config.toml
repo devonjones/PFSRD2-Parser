@@ -62,21 +62,25 @@ temperature = 0
 
 [prompts]
 frequency = '''
-You are extracting frequency constraints from Pathfinder 2E ability text. A frequency constraint is any phrase that limits how often something can be done.
+Extract every frequency constraint this ability states -- any phrase limiting
+how often it can be used.
 
-Scan the ENTIRE text carefully. Look for ALL instances of:
-- "once per X"
-- "X times per Y"
-- "can't ... again for X"
-- "only once per X"
-- "Frequency: once per X"
+Report each one NORMALISED, not as the sentence phrases it. The published data
+uses a small vocabulary, and a new spelling of an existing concept is a value
+nobody can group by:
 
-Return every frequency constraint found as a semicolon-separated list.
+  "It can't use Breath Weapon again for 1d4 rounds."  ->  1d4 rounds
+  "Three times per day, a pleroma can..."             ->  three times per day
+  "This can be used only once per effect."            ->  once per effect
+  "The dragon can use this once per hour."            ->  once per hour
+
+Drop the verb, the subject, the ability name and any leading "only". Keep just
+the constraint. Lowercase unless it begins with a number word.
+
+Scan the whole text; there may be more than one, or none at all.
 
 Ability: {name}
-Text: {text}
-
-Frequency constraints found:'''
+Text: {text}'''
 
 damage = '''
 You are extracting damage dice from Pathfinder 2E ability text.
@@ -322,7 +326,11 @@ type = "array"
 
 [schemas.dc.properties.saves.items]
 type = "object"
-required = ["dc", "save_type"]
+# save_type is NOT required. Requiring it made the model invent one whenever the
+# source withheld it -- "a basic save of a type indicated below" became Ref, and
+# "an Athletics check with a DC of 30" (a skill check, not a save) became Fort,
+# Ref AND Will. An absent save type is a real answer and the cache had it right.
+required = ["dc"]
 
 [schemas.dc.properties.saves.items.properties.dc]
 type = "integer"
