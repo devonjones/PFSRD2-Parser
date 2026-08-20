@@ -174,3 +174,90 @@ class TestTheSchemaConstrainsTheFormula:
         # the pattern was added.
         for bad in ("3d6 bludgeoning damage", "longsword damage", "36", "3", ""):
             assert not rx.match(bad), bad
+
+
+class TestOptionsArePassedThrough:
+    """Anything ollama accepts can be set in [options] without a code change.
+
+    temperature is the one that matters today: ollama defaults to 0.7, and at
+    0.7 the same prompt returns different answers on different runs -- so the
+    cache memoises a coin flip and no regression test over this pipeline can be
+    trusted.
+    """
+
+    def test_temperature_is_pinned_to_zero(self, config):
+        assert config["options"]["temperature"] == 0, (
+            "extraction must be deterministic; 0.7 is ollama's default and is "
+            "wrong for this task"
+        )
+
+    def test_options_reach_the_request_body(self):
+        from pfsrd2.enrichment.llm_extractor import _request
+
+        body = _request("m", "p")
+        assert body["options"]["temperature"] == 0
+
+    def test_an_arbitrary_option_would_also_reach_it(self, monkeypatch):
+        # The point of the passthrough: seed, top_p, num_ctx and anything else
+        # ollama grows should work without touching this module.
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setattr(llm_extractor, "OPTIONS", {"seed": 42, "top_p": 0.1})
+        body = llm_extractor._request("m", "p")
+        assert body["options"] == {"seed": 42, "top_p": 0.1}
+
+    def test_options_are_part_of_the_cache_key(self, monkeypatch):
+        # Options change the answer, so a cached response from different
+        # options must not be served. Same argument as prompt and schema.
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setattr(llm_extractor, "OPTIONS", {"temperature": 0})
+        cold = llm_extractor._options_key()
+        monkeypatch.setattr(llm_extractor, "OPTIONS", {"temperature": 1})
+        assert llm_extractor._options_key() != cold
+
+    def test_no_options_leaves_old_cache_entries_reachable(self, monkeypatch):
+        # Entries written before options existed hashed the bare prompt. An
+        # empty options table must render to nothing so those still hit.
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setattr(llm_extractor, "OPTIONS", {})
+        assert llm_extractor._options_key() == ""
+        assert "options" not in llm_extractor._request("m", "p")
+
+
+class TestTheSystemPromptIsConfigurable:
+    """/api/generate takes a system prompt separately, and we never set one.
+
+    That is not harmless by default: whatever the model's packaged chat
+    template supplies is in force instead. nuextract-tiny's ollama build
+    injects "You are a helpful assistant." and it leaked into extracted output.
+    """
+
+    def test_it_is_empty_by_default(self, config):
+        # Measured: the obvious extraction-flavoured system prompt scored
+        # WORSE (exact 1/11 vs 4/11), apparently by encouraging supersets.
+        # Empty until a bench says otherwise.
+        assert config["system"] == ""
+
+    def test_an_empty_system_prompt_is_omitted_from_the_request(self):
+        from pfsrd2.enrichment.llm_extractor import _request
+
+        assert "system" not in _request("m", "p")
+
+    def test_a_set_system_prompt_reaches_the_request(self, monkeypatch):
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setattr(llm_extractor, "SYSTEM", "be terse")
+        assert llm_extractor._request("m", "p")["system"] == "be terse"
+
+    def test_it_is_part_of_the_cache_key(self, monkeypatch):
+        # A different system prompt is a different question. Serving a cached
+        # answer from the old one would be the same defect as ignoring a
+        # changed schema.
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setattr(llm_extractor, "SYSTEM", "")
+        bare = llm_extractor._options_key()
+        monkeypatch.setattr(llm_extractor, "SYSTEM", "be terse")
+        assert llm_extractor._options_key() != bare

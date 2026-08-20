@@ -37,6 +37,14 @@ OLLAMA_URL = os.environ.get("PFSRD2_OLLAMA_URL", _CONFIG["url"])
 # expect to re-enrich.
 DEFAULT_MODEL = _CONFIG["model"]
 
+# Request options (temperature and friends), passed through to ollama verbatim.
+OPTIONS = _CONFIG.get("options", {})
+
+# The system prompt. Unset, whatever the model's packaged chat template
+# supplies is in force -- nuextract-tiny's build injects "You are a helpful
+# assistant." and it leaked into extracted output.
+SYSTEM = _CONFIG.get("system", "")
+
 PROMPTS = _CONFIG["prompts"]
 SCHEMAS = _CONFIG.get("schemas", {})
 STRUCTURED_PROMPTS = _CONFIG.get("structured_prompts", {})
@@ -47,6 +55,33 @@ DC_PROMPT = PROMPTS["dc"]
 CATEGORY_PROMPT = PROMPTS["category"]
 
 
+def _options_key():
+    """System prompt and options, rendered for the cache key.
+
+    Both change the answer, so they belong in the key for the same reason the
+    prompt and the schema do. Both empty renders to an empty string, so cache
+    entries written before either existed still hit.
+    """
+    parts = []
+    if SYSTEM:
+        parts.append(SYSTEM)
+    if OPTIONS:
+        parts.append(json.dumps(OPTIONS, sort_keys=True))
+    return ("\x00" + "\x00".join(parts)) if parts else ""
+
+
+def _request(model, prompt, format=None):
+    """The JSON body for an ollama /api/generate call."""
+    body = {"model": model, "prompt": prompt, "stream": False}
+    if SYSTEM:
+        body["system"] = SYSTEM
+    if OPTIONS:
+        body["options"] = OPTIONS
+    if format is not None:
+        body["format"] = format
+    return body
+
+
 def _query_ollama(prompt, model=None):
     """Send a prompt to the Ollama instance and return the response.
 
@@ -54,20 +89,14 @@ def _query_ollama(prompt, model=None):
     If the prompt template changes, the hash changes and the LLM is re-queried.
     """
     model = model or DEFAULT_MODEL
-    prompt_hash = compute_prompt_hash(prompt)
+    prompt_hash = compute_prompt_hash(prompt + _options_key())
 
     # Check cache first
     cached = cache_get(prompt_hash, model)
     if cached is not None:
         return cached
 
-    payload = json.dumps(
-        {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-        }
-    )
+    payload = json.dumps(_request(model, prompt))
     try:
         result = subprocess.run(
             ["curl", "-s", OLLAMA_URL, "-d", payload],
@@ -105,7 +134,7 @@ def _query_ollama_structured(prompt, schema, model=None):
     """
     model = model or DEFAULT_MODEL
     schema_json = json.dumps(schema, sort_keys=True)
-    prompt_hash = compute_prompt_hash(prompt + "\x00" + schema_json)
+    prompt_hash = compute_prompt_hash(prompt + "\x00" + schema_json + _options_key())
 
     cached = cache_get(prompt_hash, model)
     if cached is not None:
@@ -114,9 +143,7 @@ def _query_ollama_structured(prompt, schema, model=None):
         except json.JSONDecodeError:
             return None
 
-    payload = json.dumps(
-        {"model": model, "prompt": prompt, "stream": False, "format": schema}
-    )
+    payload = json.dumps(_request(model, prompt, format=schema))
     try:
         result = subprocess.run(
             ["curl", "-s", OLLAMA_URL, "-d", payload],

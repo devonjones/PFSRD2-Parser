@@ -18,6 +18,48 @@
 url = "http://valid.evilsoft:11434/api/generate"
 model = "qwen2.5:7b"
 
+# The system prompt. Ollama's /api/generate takes this separately from the
+# prompt, and we were never setting it -- so whatever the model's packaged chat
+# template supplied was in force. That is not hypothetical: nuextract-tiny's
+# ollama build injects "You are a helpful assistant." and it leaked into the
+# extracted output.
+#
+# Kept deliberately plain. This is an extraction task, not a conversation, and
+# anything that invites the model to be helpful, explain itself, or fill gaps
+# is working against the grounding guard.
+
+# EMPTY ON PURPOSE, measured rather than assumed. This candidate:
+#
+#   "You extract structured data from Pathfinder 2E rules text. Report only
+#    what the text states. Never infer, complete, or supply a value the text
+#    does not contain -- an absent value is a correct answer. Do not explain
+#    your reasoning or add commentary."
+#
+# scored WORSE on the damage bench: exact 1/11 against 4/11 with no system
+# prompt, containment unchanged at 10/11. It appears to push the model toward
+# reporting every dice expression the text states -- faithful, and also a
+# superset of what the degree itself deals.
+#
+# Set it if a bench says it helps. Do not set it because it reads well.
+
+system = ""
+
+# Passed straight through to ollama as the request's "options". Anything
+# ollama accepts works here -- temperature, top_p, num_ctx, seed, repeat_penalty.
+#
+# temperature 0 is not a tuning preference, it is a correctness requirement.
+# Ollama defaults to 0.7, and at 0.7 the same prompt returns different answers
+# on different runs: llm_cache memoises whichever answer came first, a
+# re-enrichment silently changes data nobody edited, and no regression test
+# over this pipeline can be trusted. Extraction wants the most likely token,
+# not a sampled one.
+#
+# These are part of the request, so they are folded into the cache key. Change
+# one and the affected prompts re-query, exactly as a changed prompt does.
+
+[options]
+temperature = 0
+
 [prompts]
 frequency = '''
 You are extracting frequency constraints from Pathfinder 2E ability text. A frequency constraint is any phrase that limits how often something can be done.
