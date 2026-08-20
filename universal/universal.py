@@ -781,7 +781,7 @@ def extract_degree_effects(ability, owner_name=None):
 def _is_exempt(obj, degree, plain, owner_name=None):
     """A degree the extractor cannot judge, listed by name in constants.py.
 
-    Asserts, at parse time and unconditionally, when the key matches but the
+    Raises, at parse time and unconditionally, when the key matches but the
     pinned phrase is gone: the exemption was granted for a specific sentence,
     so an AoN rewrite has to be re-judged by a person rather than inherited.
 

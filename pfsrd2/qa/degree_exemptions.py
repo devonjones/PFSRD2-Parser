@@ -8,14 +8,15 @@ not the subject's) and DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK (one degree
 that owns the paragraph after it).
 
 Each entry pins the phrase it was written against, and universal._is_exempt
-asserts at parse time if that phrase is rewritten. But that only fires when the
+raises at parse time if that phrase is rewritten. But that only fires when the
 KEY matches. If AoN renames the ability, or the parser stops producing that
 name, the key silently stops matching -- and a suppressed number quietly
 republishes with nothing to say so. That is the same defect the rune verifier
 exists for: a clause that matches nothing is worse than no clause.
 
-This module also carries the check that makes the parse-time assert safe. That
-assert is exact and unsilenceable, at the price of firing on a same-named
+This module also carries the check that makes the parse-time alarm safe. That
+alarm is exact and unsilenceable -- it raises rather than asserts, so python -O
+cannot strip it -- at the price of firing on a same-named
 neighbour; ambiguous_entries() fails the run if any exemption key could ever
 have one.
 
@@ -136,7 +137,7 @@ def _fold_ambiguous_keys(doc, ambiguous):
 def ambiguous_entries(table, ambiguous_keys):
     """Entries whose key matches more than one carrier WITHIN one document.
 
-    _is_exempt asserts per degree, which is exact and cannot be silenced by a
+    _is_exempt raises per degree, which is exact and cannot be silenced by a
     flag -- but an entry written for an ambiguous name would fire on the
     neighbour that never held the phrase. Ambiguity is a property of the
     corpus, not of any one parse, so it is checked here.
@@ -217,11 +218,18 @@ def unmodelled_outside_the_deferral():
             try:
                 unmodelled = next(_unmodelled_degree_carriers(doc), None)
             except AssertionError as expired:
+                # continue, not break: abandoning the directory here lets an
+                # expired pin hide a stale_scope finding later in the same
+                # directory -- and stale_scope DOES fail the run, so the
+                # verdict flipped with glob enumeration order.
                 expired_pins.append(str(expired))
-                break
+                continue
             if unmodelled is not None:
                 stale.append(name)
-                break
+                # No break: an expired pin later in this directory is a
+                # separate finding, and stopping here made whether it was
+                # reported depend on enumeration order.
+                continue
     return stale, expired_pins
 
 
@@ -271,9 +279,9 @@ def main():
                 )
             )
 
-    deferred = sum(
-        1 for doc in iter_json_dir(*DEFERRED_DIRS) for _ in degree_carriers(doc)
-    )
+    # The tested function, not a third inline copy of the same fold: it takes
+    # any iterable, so a generator streams through it just as well as a list.
+    deferred = count_deferred_carriers(iter_json_dir(*DEFERRED_DIRS))
     stale_scope, expired_pins = unmodelled_outside_the_deferral()
 
     print(f"distinct (name, degree) keys published: {len(texts)}")
@@ -310,16 +318,21 @@ def main():
             "silently. Re-read the object and update or delete the entry."
         )
         return 1
-    if stale_scope:
+    if stale_scope or expired_pins:
         # Reported above; returned here so EVERY problem prints. An early
         # return on the scope check hid any dead exemption behind it.
         #
-        # expired_pins deliberately does NOT appear in this condition. A
-        # reworded pin is already reported by dead_entries, which asks the same
-        # question of the same published texts -- so failing on it here would
-        # be a second vote for a condition already counted. Catching the raise
-        # is what matters: uncaught, it aborted the run before a single line
-        # printed and hid every other finding behind it.
+        # expired_pins IS part of this condition, and an earlier version of
+        # this file wrongly dropped it on the theory that dead_entries already
+        # covers the same ground. It does not: dead_entries asks whether the
+        # phrase survives in ANY carrier under the key, while _is_exempt asks
+        # whether it survives in THIS one. With two same-named carriers and one
+        # reworded, dead_entries is satisfied and _is_exempt raises -- so the
+        # run printed EXPIRED PINS and the all-clear together and exited 0.
+        #
+        # That removal was justified by a surviving mutation. The mutation
+        # survived because the test could not observe the condition, not
+        # because the condition could not occur.
         return 1
     print(
         "\nevery degree exemption still names a real, published degree, still "

@@ -159,12 +159,15 @@ def run_audit_enriched(conn, args):
     re-marked stale so the enrichment pipeline re-extracts it. Human-verified
     records are left alone.
 
-    --dry-run reports and commits nothing. It is enforced by ONE rollback at
-    the end rather than by a guard on each write, deliberately: it used to
-    guard only the newest of the two writes, so it printed "would requeue N"
-    and then re-staled records for real and committed. Per-write guards have
-    to be remembered every time a write is added; a rollback covers writes
-    nobody has written yet.
+    --dry-run reports and commits nothing, enforced by ONE rollback at the end
+    rather than a guard on each write: it used to guard only the newest of the
+    two writes, so it printed "would requeue N" and then re-staled records for
+    real and committed.
+
+    That is NOT the same as being safe against writes added later. main() wraps
+    the connection in `with conn:`, and sqlite3.Connection.__exit__ commits on
+    a clean exit -- so a write added after this rollback still persists. The
+    rollback covers this function's body and nothing beyond it.
     """
     from pfsrd2.ability_enrichment import ENRICHMENT_FIELDS, _raws_equivalent
 

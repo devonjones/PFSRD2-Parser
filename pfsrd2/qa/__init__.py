@@ -25,7 +25,7 @@ def load_json_dir(*kinds):
     docs = []
     for kind in kinds:
         pattern = os.path.join(data_dir(), kind, "**", "*.json")
-        for path in glob.glob(pattern, recursive=True):
+        for path in sorted(glob.glob(pattern, recursive=True)):
             with open(path) as handle:
                 docs.append(json.load(handle))
     return docs
@@ -41,7 +41,11 @@ def iter_json_dir(*kinds):
     """
     for kind in kinds:
         pattern = os.path.join(data_dir(), kind, "**", "*.json")
-        for path in glob.glob(pattern, recursive=True):
+        # sorted: glob order is arbitrary, so verifier output could differ
+        # between machines. Not load-bearing any more -- the callers no longer
+        # stop early -- and not observable from a single process, so no test
+        # pins it. Kept for reproducible output, which is worth a sort().
+        for path in sorted(glob.glob(pattern, recursive=True)):
             with open(path) as handle:
                 yield json.load(handle)
 

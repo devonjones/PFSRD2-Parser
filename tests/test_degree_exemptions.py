@@ -188,9 +188,10 @@ class TestUnmodelledOutsideTheDeferral:
     """The cross-check on DEFERRED_DIRS, which could be replaced by `return []`
     with a green suite.
 
-    It also must not be written with try/except AssertionError: under
-    `python -O` there is no assert to catch, so the check would pass for every
-    directory and say nothing.
+    It reads the walker directly rather than inferring a result from
+    assert_every_degree_was_modelled's failure. (A separate try/except around
+    _is_exempt's raise DOES exist in the same function, and is correct: that
+    raise is a finding to report, not control flow to infer from.)
     """
 
     def _corpus(self, tmp_path, directory, doc):
@@ -378,6 +379,27 @@ class TestAmbiguityIsPerDocument:
             ("Frightful Presence", "failure"): 2
         }
 
+    def test_main_reports_the_deferred_carrier_count(self, tmp_path, monkeypatch, capsys):
+        # main() computes this itself, so hardcoding it to 0 left the suite
+        # green -- the streaming rewrite had swapped a tested call for an
+        # untested inline copy.
+        import json
+
+        from pfsrd2.qa import degree_exemptions
+
+        (tmp_path / "monsters").mkdir()
+        (tmp_path / "monsters" / "d.json").write_text(
+            json.dumps({"name": "X", "failure": "some text"})
+        )
+        (tmp_path / "weapons").mkdir()
+        (tmp_path / "weapons" / "w.json").write_text(
+            json.dumps({"name": "W", "a": {"failure": "x"}, "b": {"success": "y"}})
+        )
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        degree_exemptions.main()
+        out = capsys.readouterr().out
+        assert "deferred by _DEGREE_MODELLING_DEFERRED: 2 degree carriers" in out, out
+
     def test_main_fails_on_an_ambiguous_exemption(self, tmp_path, monkeypatch, capsys):
         import json
 
@@ -456,3 +478,92 @@ class TestAnExpiredPinIsReportedNotThrown:
         assert "Endsong" in out
         # The run reached its normal reporting rather than dying on a traceback.
         assert "distinct (name, degree) keys published" in out
+
+
+class TestAnExpiredPinFailsTheRunOnItsOwn:
+    """dead_entries and _is_exempt do NOT ask the same question.
+
+    dead_entries: does the phrase survive in ANY carrier under this key?
+    _is_exempt:   does it survive in THIS carrier?
+
+    With two same-named carriers and only one reworded, the first is satisfied
+    and the second raises. An earlier version dropped expired_pins from main()'s
+    return condition on the theory that they were redundant; the mutation that
+    should have caught it survived because the test could not observe the
+    condition -- the fixture had only one carrier, so main() failed through the
+    dead-entry branch either way.
+    """
+
+    def _corpus(self, tmp_path, doc):
+        import json
+
+        (tmp_path / "spells").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "spells" / "d.json").write_text(json.dumps(doc))
+
+    def _pin_one_exemption(self, monkeypatch):
+        # BOTH references. The verifier reads its own import for the dead and
+        # ambiguous checks; _is_exempt reads universal.universal's. Patching
+        # only the first is why an earlier version of this test saw no raise
+        # and quietly proved nothing.
+        table = {("Twinned", "failure"): ("the pinned phrase", "isolated for this test")}
+        for module in ("pfsrd2.qa.degree_exemptions", "universal.universal"):
+            monkeypatch.setattr(f"{module}.DEGREE_EFFECT_NOT_THE_SUBJECTS", table)
+            monkeypatch.setattr(
+                f"{module}.DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK", {}
+            )
+
+    def test_one_reworded_carrier_beside_an_intact_one_fails_the_run(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # Two separate FILES, one carrier each. This is the gap: ambiguity is
+        # per-document so neither file is ambiguous, and dead_entries asks
+        # whether the phrase survives anywhere under the key -- file a
+        # satisfies it. Only _is_exempt, asking about file b specifically,
+        # sees the problem.
+        import json
+
+        from pfsrd2.qa import degree_exemptions
+
+        (tmp_path / "spells").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "spells" / "a_intact.json").write_text(
+            json.dumps({"name": "Twinned", "failure": "still contains the pinned phrase here"})
+        )
+        (tmp_path / "spells" / "b_reworded.json").write_text(
+            json.dumps({"name": "Twinned", "failure": "this one was reworded and has none"})
+        )
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        self._pin_one_exemption(monkeypatch)
+
+        rc = degree_exemptions.main()
+        out = capsys.readouterr().out
+        assert "EXPIRED PINS" in out, out
+        assert "still names a real, published degree" not in out, (
+            "the run must not print an all-clear while reporting an expired pin"
+        )
+        assert rc == 1, "an expired pin must fail the run on its own"
+
+    def test_an_expired_pin_does_not_hide_a_later_stale_scope_finding(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # `break` on catching abandoned the rest of the directory, so whether
+        # the stale-scope finding was reported depended on glob order.
+        import json
+
+        from pfsrd2.qa import degree_exemptions
+
+        (tmp_path / "spells").mkdir(parents=True)
+        (tmp_path / "spells" / "a_expired.json").write_text(
+            json.dumps({"name": "Twinned", "failure": "reworded, phrase gone"})
+        )
+        (tmp_path / "spells" / "b_unmodelled.json").write_text(
+            json.dumps({"name": "Other", "failure": "The target takes 2d6 fire damage."})
+        )
+        monkeypatch.setenv("PF2_DATA_DIR", str(tmp_path))
+        self._pin_one_exemption(monkeypatch)
+
+        assert degree_exemptions.main() == 1
+        out = capsys.readouterr().out
+        assert "EXPIRED PINS" in out
+        assert "DEFERRAL SCOPE IS STALE" in out, (
+            "the unmodelled file after the expired one must still be reported"
+        )

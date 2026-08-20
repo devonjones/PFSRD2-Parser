@@ -1076,7 +1076,7 @@ class TestTheGuardIsActuallyWired:
 class TestTheAlarmsSurviveDashO:
     """`python -O` strips asserts. Both alarms in this module raise instead.
 
-    This matters unevenly and both cases are covered. In
+    This matters unevenly and all three cases are covered. In
     assert_every_degree_was_modelled the walk, the recompute and the message
     are ordinary code, so `assert False` would pay 100% of the cost and perform
     0% of the check. In _is_exempt the cost is nil either way, but an alarm
@@ -1084,17 +1084,64 @@ class TestTheAlarmsSurviveDashO:
     by an interpreter flag.
     """
 
-    def test_neither_alarm_uses_a_bare_assert_statement(self):
+    def test_no_alarm_uses_a_bare_assert_statement(self):
+        # Scoped to the three alarms this feature added, by name. The module is
+        # full of pre-existing parse-time asserts -- the repo's fail-fast idiom
+        # for malformed HTML -- and those are out of scope: they stop a parse
+        # rather than decide what gets published.
+        #
+        # Checking for the string "assert False" instead of `assert <expr>` is
+        # what let _continues_past_a_break ship its fix untested; its bare
+        # assert guarded a RETURN VALUE, so under -O it returned True with the
+        # justifying phrase gone.
+        import ast
 
         source = (Path(__file__).parent.parent / "universal" / "universal.py").read_text()
-        statements = [
-            line.strip() for line in source.splitlines() if not line.strip().startswith("#")
-        ]
-        assert not any(line.startswith("assert False") for line in statements), (
-            "`assert False` is deleted by python -O while everything that "
-            "computed the failure still runs; raise AssertionError instead"
+        tree = ast.parse(source)
+        alarms = {"_is_exempt", "_continues_past_a_break", "assert_every_degree_was_modelled"}
+        found = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name in alarms:
+                bare = [n.lineno for n in ast.walk(node) if isinstance(n, ast.Assert)]
+                if bare:
+                    found[node.name] = bare
+        assert not found, (
+            "python -O deletes assert statements. These alarms decide what gets "
+            "published, so they must raise AssertionError instead -- especially "
+            f"any guarding a return value. Found bare asserts: {found}"
         )
-        assert "raise AssertionError(" in source
+        assert found == {}, found
+
+    def test_the_paragraph_boundary_alarm_fires_under_O(self):
+        # The third alarm, and the one b1079be actually fixed. It was the only
+        # one with no -O test, so reverting it to a bare assert left the suite
+        # green. It is also the worst place for a stripped assert: it guards
+        # the RETURN VALUE, so under -O the degree keeps swallowing a paragraph
+        # nobody re-read.
+        import subprocess
+        import sys
+        import textwrap
+
+        script = textwrap.dedent(
+            """
+            import sys
+            sys.path.insert(0, %r)
+            from bs4 import BeautifulSoup
+            from universal.universal import _continues_past_a_break
+            html = ("<b>Failure</b> ...to a maximum of 5 continuous minutes of"
+                    " memory.<br/><br/>Something else entirely.")
+            bold = BeautifulSoup(html, "html.parser").find("b")
+            try:
+                got = _continues_past_a_break({"name": "Rewrite Memory"}, "failure", bold)
+                print("SILENT-RETURNED-%%s" %% got)
+            except AssertionError:
+                print("FIRED")
+            """
+        ) % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        out = subprocess.run(
+            [sys.executable, "-O", "-c", script], capture_output=True, text=True
+        )
+        assert out.stdout.strip() == "FIRED", out.stdout + out.stderr
 
     def test_the_modelling_alarm_fires_under_O(self):
         # Driven in a subprocess, because -O is an interpreter-level flag.
