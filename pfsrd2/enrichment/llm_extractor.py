@@ -1,11 +1,16 @@
 """LLM-based extraction of structured mechanics from ability text.
 
-Uses a local Ollama instance with per-type prompts. Each extraction type
-has its own prompt template optimized through iteration against known
-test cases.
+Uses an Ollama instance with per-type prompts. Each extraction type has its own
+prompt template optimized through iteration against known test cases.
+
+The host is NOT localhost. Ollama was moved off the parser box because running
+it alongside a full corpus parse crashed the machine under load, so it lives on
+valid.evilsoft. Override with PFSRD2_OLLAMA_URL if it moves again -- an env var
+rather than an edit, because the URL is deployment, not behaviour.
 """
 
 import json
+import os
 import re
 import subprocess
 
@@ -13,11 +18,19 @@ from pfsrd2.enrichment.llm_cache import cache_get, cache_put, compute_prompt_has
 from pfsrd2.enrichment.regex_extractor import _SHAPE_MAP, _resolve_damage_type
 
 DEFAULT_MODEL = "qwen2.5:7b"
-OLLAMA_URL = "http://localhost:11434/api/generate"
+
+# Every cached record carries extraction_method "llm:<model>", and the 808
+# existing ones say qwen2.5:7b -- so the host may move but the model should not
+# without a deliberate re-enrichment, or the corpus ends up split across two
+# models with no way to tell which produced what.
+_DEFAULT_OLLAMA_HOST = "valid.evilsoft"
+OLLAMA_URL = os.environ.get(
+    "PFSRD2_OLLAMA_URL", f"http://{_DEFAULT_OLLAMA_HOST}:11434/api/generate"
+)
 
 
 def _query_ollama(prompt, model=None):
-    """Send a prompt to the local Ollama instance and return the response.
+    """Send a prompt to the Ollama instance and return the response.
 
     Results are cached in ~/.pfsrd2/llm_cache.db keyed on (prompt_hash, model).
     If the prompt template changes, the hash changes and the LLM is re-queried.
