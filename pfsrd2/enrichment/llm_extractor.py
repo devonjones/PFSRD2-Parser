@@ -173,6 +173,27 @@ def _structured(field, name, text, model):
     return _query_ollama_structured(template.format(name=name, text=text), schema, model)
 
 
+_DICE = re.compile(r"\b\d+d\d+\s*(?:[+-]\s*\d+)?")
+
+
+def _dice_in(text):
+    """Every dice formula the source text actually prints, whitespace removed.
+
+    The parallel of _dcs_in, and it exists for the same reason. Constrained
+    decoding makes fabrication *easier*, not harder: the schema pattern
+    "^[0-9]+d[0-9]+([+-][0-9]+)?$" guarantees whatever the model emits LOOKS
+    like dice, so a bare number anywhere near the text gets completed into a
+    plausible formula. Measured against the corpus, the model turned
+    "30-foot cone" into 30d6, "60-foot line" into 60d6, "3 rounds in total"
+    into 3d12 and a "+2 circumstance bonus" into 2d6+6.
+
+    Two prompt revisions tried to instruct this away and both made extraction
+    worse overall (see llm_config.toml damage). A formula the source never
+    printed is decidable without asking the model anything, so decide it here.
+    """
+    return {m.group(0).replace(" ", "") for m in _DICE.finditer(text or "")}
+
+
 def _dcs_in(text):
     """Every DC the source text actually prints."""
     found = set()
@@ -401,10 +422,15 @@ def extract_damage_structured(name, text, model=None):
         by_formula = {e.get("formula"): e for e in entries}
         entries = [by_formula.get(f, {"formula": f}) for f in corrected]
 
+    # Only formulas the source actually prints. reject_if_ungrounded is
+    # all-or-nothing per field, so without this one invented 30d6 discards the
+    # real 9d6 alongside it and the ability ends up with no damage at all.
+    published = _dice_in(text)
+
     seen, out = set(), []
     for entry in entries:
         formula = (entry.get("formula") or "").strip()
-        if not formula:
+        if not formula or formula.replace(" ", "") not in published:
             continue
         damage_type = (entry.get("damage_type") or "").strip().lower() or None
         persistent = bool(entry.get("persistent"))

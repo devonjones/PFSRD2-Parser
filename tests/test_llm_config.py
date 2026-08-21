@@ -110,13 +110,20 @@ class TestStructuredDamageExtraction:
     normalisation around the model call rather than the model itself.
     """
 
-    def _extract(self, monkeypatch, payload):
+    def _extract(self, monkeypatch, payload, text=None):
+        """text must print the formulas the payload claims -- _dice_in drops
+        any the source never published, so a paraphrased fixture would test
+        the filter instead of the normalisation these cases are about."""
         from pfsrd2.enrichment import llm_extractor
 
+        if text is None:
+            text = " ".join(
+                e["formula"] for e in (payload or {}).get("damage", []) if e.get("formula")
+            ) or "some text"
         monkeypatch.setattr(
             llm_extractor, "_query_ollama_structured", lambda *a, **k: payload
         )
-        return llm_extractor.extract_damage_structured("X", "some text")
+        return llm_extractor.extract_damage_structured("X", text)
 
     def test_it_shapes_entries_like_the_rest_of_the_pipeline(self, monkeypatch):
         got = self._extract(
@@ -149,6 +156,25 @@ class TestStructuredDamageExtraction:
             {"damage": [{"formula": "3d10"}] * 4},
         )
         assert len(got) == 1
+
+    def test_a_formula_the_source_never_printed_is_dropped(self, monkeypatch):
+        # Real case: "a 30-foot cone" came back as 30d6 alongside the real 9d6.
+        # reject_if_ungrounded discards the whole field, so keeping the pair
+        # would have cost the 9d6 too.
+        got = self._extract(
+            monkeypatch,
+            {"damage": [{"formula": "9d6"}, {"formula": "30d6"}]},
+            text="a 30-foot cone dealing 9d6 fire damage",
+        )
+        assert [e["formula"] for e in got] == ["9d6"]
+
+    def test_all_ungrounded_returns_none_not_an_empty_list(self, monkeypatch):
+        got = self._extract(
+            monkeypatch,
+            {"damage": [{"formula": "30d6"}]},
+            text="a 30-foot cone of poison",
+        )
+        assert got is None
 
     def test_an_empty_list_is_not_an_error(self, monkeypatch):
         # "no damage here" and "the request failed" must stay distinguishable:
@@ -449,3 +475,45 @@ class TestTheCritic:
         got = llm_extractor.extract_damage_structured("X", "takes 2d6 fire damage")
         assert [d["formula"] for d in got] == ["2d6"], "the critic's list wins"
         assert got[0]["damage_type"] == "fire", "the first pass's type survives"
+
+
+class TestDiceGrounding:
+    """_dice_in is the deterministic floor under damage extraction.
+
+    Every case here is real text from the corpus that the model turned into a
+    plausible-looking formula the source never printed.
+    """
+
+    def test_finds_what_the_source_prints(self):
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+        assert _dice_in("deals 9d6 fire damage") == {"9d6"}
+
+    def test_normalises_spacing_around_the_modifier(self):
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+        assert _dice_in("3d6 + 5 slashing") == {"3d6+5"}
+        assert _dice_in("3d6+5 slashing") == {"3d6+5"}
+
+    def test_a_distance_is_not_dice(self):
+        """Breath Weapon: '30-foot cone of poison' became 30d6."""
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+        assert _dice_in("a 30-foot cone of poison (Fortitude)") == set()
+
+    def test_a_duration_is_not_dice(self):
+        """Dance of Ruin: '3 rounds in total' became 3d12."""
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+        assert _dice_in("lasting 3 rounds in total") == set()
+
+    def test_a_bonus_is_not_dice(self):
+        """Strangle: '+2 circumstance bonus' became 2d6+6."""
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+        assert _dice_in("a +2 circumstance bonus to the check") == set()
+
+    def test_keeps_the_real_formula_beside_the_invented_one(self):
+        """The whole point: one fabrication must not cost the real value.
+
+        reject_if_ungrounded discards the entire field, so 9d6 would be lost
+        along with the invented 30d6 if this filter did not run first.
+        """
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+        text = "a 30-foot cone dealing 9d6 fire damage"
+        assert _dice_in(text) == {"9d6"}
