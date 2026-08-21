@@ -45,6 +45,8 @@ OPTIONS = _CONFIG.get("options", {})
 # assistant." and it leaked into extracted output.
 SYSTEM = _CONFIG.get("system", "")
 
+CRITIC = _CONFIG.get("critic", {})
+
 PROMPTS = _CONFIG["prompts"]
 SCHEMAS = _CONFIG.get("schemas", {})
 STRUCTURED_PROMPTS = _CONFIG.get("structured_prompts", {})
@@ -350,6 +352,32 @@ def extract_frequency_structured(name, text, model=None):
     return "; ".join(out) or None
 
 
+def _critique(field, name, text, proposed):
+    """Second opinion on an extraction. Returns a corrected list, or None.
+
+    Off unless llm_config.toml enables it, and pointless without the grounding
+    guard downstream: measured over 40 records it recovered 3 real values, and
+    invented 2. It is fabrication-neutral, not fabrication-free.
+
+    The critic model must differ from the extractor. qwen2.5:7b reviewing its
+    own output invented damage for an ability whose text contains no dice --
+    handed an empty list it produced one rather than agree with nothing. A
+    larger model left it empty and recovered a case nothing else did.
+    """
+    if not CRITIC.get("enabled") or field != "damage":
+        return None
+    schema, template = SCHEMAS.get(field), CRITIC.get("prompt")
+    if not schema or not template:
+        return None
+    prompt = template.format(
+        name=name, text=text, proposed=json.dumps(sorted(set(proposed)))
+    )
+    parsed = _query_ollama_structured(prompt, schema, CRITIC.get("model"))
+    if not parsed:
+        return None
+    return [d.get("formula") for d in parsed.get("damage", []) if d.get("formula")]
+
+
 def extract_damage_structured(name, text, model=None):
     """Damage via constrained decoding. Returns attack_damage objects, or None.
 
@@ -364,8 +392,17 @@ def extract_damage_structured(name, text, model=None):
     if not parsed:
         return None
 
+    entries = parsed.get("damage", [])
+    corrected = _critique("damage", name, text, [e.get("formula") for e in entries])
+    if corrected is not None:
+        # Keep the first pass's types where the critic kept the formula; it is
+        # asked about dice, not about damage types, and rebuilding an entry from
+        # a bare formula would throw those away.
+        by_formula = {e.get("formula"): e for e in entries}
+        entries = [by_formula.get(f, {"formula": f}) for f in corrected]
+
     seen, out = set(), []
-    for entry in parsed.get("damage", []):
+    for entry in entries:
         formula = (entry.get("formula") or "").strip()
         if not formula:
             continue

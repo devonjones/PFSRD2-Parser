@@ -398,3 +398,54 @@ class TestFrequencyIsNormalised:
 
     def test_leading_capital_is_lowered(self):
         assert self._norm("Three times per day") == "three times per day"
+
+
+class TestTheCritic:
+    """A second pass that checks the first against the rules.
+
+    Measured on 40 real records: recovered 3 values the extractor missed,
+    removed 2 it had invented, and invented 2 of its own. Fabrication-neutral,
+    net positive on recall, and only safe because the grounding guard
+    downstream catches what it invents.
+    """
+
+    def test_it_is_off_by_default(self, config):
+        # It doubles the calls and loads a second model, on 40 records of
+        # evidence. Off until a larger sample justifies the cost.
+        assert config["critic"]["enabled"] is False
+
+    def test_the_critic_model_differs_from_the_extractor(self, config):
+        # The load-bearing part. qwen2.5:7b reviewing its own output invented
+        # damage for an ability whose text contains no dice at all -- handed an
+        # empty list, it produced one rather than agree with nothing.
+        assert config["critic"]["model"] != config["model"]
+
+    def test_disabled_means_no_second_call(self, monkeypatch):
+        from pfsrd2.enrichment import llm_extractor
+
+        calls = []
+        monkeypatch.setattr(llm_extractor, "CRITIC", {"enabled": False})
+        monkeypatch.setattr(
+            llm_extractor, "_query_ollama_structured",
+            lambda *a, **k: calls.append(a) or {"damage": [{"formula": "2d6"}]},
+        )
+        llm_extractor.extract_damage_structured("X", "takes 2d6 fire damage")
+        assert len(calls) == 1, "the critic must not run when disabled"
+
+    def test_enabled_replaces_the_extraction_but_keeps_types(self, monkeypatch):
+        # The critic is asked about dice, not damage types. Rebuilding an entry
+        # from a bare formula would throw the type away.
+        from pfsrd2.enrichment import llm_extractor
+
+        responses = [
+            {"damage": [{"formula": "2d6", "damage_type": "fire"},
+                        {"formula": "9d9", "damage_type": "cold"}]},
+            {"damage": [{"formula": "2d6"}]},
+        ]
+        monkeypatch.setattr(llm_extractor, "CRITIC",
+                            {"enabled": True, "model": "other", "prompt": "{name}{text}{proposed}"})
+        monkeypatch.setattr(llm_extractor, "_query_ollama_structured",
+                            lambda *a, **k: responses.pop(0))
+        got = llm_extractor.extract_damage_structured("X", "takes 2d6 fire damage")
+        assert [d["formula"] for d in got] == ["2d6"], "the critic's list wins"
+        assert got[0]["damage_type"] == "fire", "the first pass's type survives"

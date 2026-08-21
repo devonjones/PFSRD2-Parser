@@ -383,3 +383,48 @@ type = "array"
 
 [schemas.frequency.properties.frequencies.items]
 type = "string"
+
+
+# A second pass that checks the first against the rules and corrects it.
+#
+# Measured on 40 real records, 7 changed: it recovered 3 values the extractor
+# had missed and removed 2 it had invented -- but it also invented 2 of its own.
+# Fabrication-neutral, net positive on recall, and only safe because the
+# grounding guard downstream catches what it invents. Do not enable this
+# without that guard.
+#
+# The critic MODEL matters more than the prompt. qwen2.5:7b critiquing its own
+# output invented damage for an ability whose text contains no dice at all --
+# handed an empty list, it produced one rather than agree with nothing.
+# qwen2.5:14b left it empty and recovered the one bench case nothing else did.
+# Use a different, larger model than the extractor.
+#
+# Off by default: it doubles the calls and loads a second model, and the
+# evidence is 40 records. Turn it on when a larger sample says the recall is
+# worth the cost.
+
+[critic]
+enabled = false
+model = "qwen2.5:14b"
+prompt = '''
+A previous pass extracted damage dice from this ability. Check its work against
+the rules and return the CORRECTED list.
+
+Rules it was given:
+1. Include every dice expression the text states as damage the ABILITY ITSELF
+   deals, including alternatives and conditional cases.
+2. Exclude dice that are not damage: recharge timers ("1d4 rounds"), durations,
+   table rolls ("roll 1d6 and consult").
+3. Exclude damage belonging to a DIFFERENT ability that happens to be mentioned
+   in the same text.
+4. Never include a dice expression that does not appear in the text. If the
+   extraction is empty and the text states no damage dice, an empty list is the
+   correct answer -- do not fill it in.
+
+Ability: {name}
+Text: {text}
+
+It extracted: {proposed}
+
+Return the corrected list. If the extraction was already right, return it
+unchanged.'''
