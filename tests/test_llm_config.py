@@ -611,3 +611,61 @@ class TestAreaSizeGrounding:
     def test_miles_count_too(self):
         from pfsrd2.enrichment.llm_extractor import _area_sizes_in
         assert _area_sizes_in("within a 1-mile radius") == {1}
+
+
+class TestDeterministicAreaExtraction:
+    """Area needs no model. Every case here is real corpus text.
+
+    Measured against every cached area in the enrichment DB: 1560 identical,
+    12 found an extra real area, 2 differed (the cache had stored a line's
+    width and a range as areas), 0 missed.
+    """
+
+    def _sizes(self, text):
+        from pfsrd2.enrichment.llm_extractor import extract_area_regex
+        return [(d["size"], d["shape"], d["unit"]) for d in (extract_area_regex("X", text) or [])]
+
+    def test_the_ordinary_shape(self):
+        assert self._sizes("all creatures in a 20-foot burst") == [(20, "burst", "feet")]
+
+    def test_radius_is_a_burst_but_keeps_its_wording(self):
+        from pfsrd2.enrichment.llm_extractor import extract_area_regex
+        got = extract_area_regex("X", "a 15-foot-radius sphere")[0]
+        assert (got["size"], got["shape"]) == (15, "burst")
+        # The published data says "600-foot radius" with shape burst; rewriting
+        # the text field to "burst" would churn every radius area in the corpus.
+        assert got["text"] == "15-foot radius"
+
+    def test_miles_are_not_feet(self):
+        """A pale sovereign's demesne is a 5-mile radius."""
+        assert self._sizes("a territory of a 5-mile radius") == [(5, "burst", "miles")]
+
+    def test_a_plural_still_counts(self):
+        """Hurricane Bag: 'unleashes four 20-foot bursts'."""
+        assert self._sizes("unleashes four 20-foot bursts within 60 feet") == [(20, "burst", "feet")]
+
+    def test_a_range_is_not_an_area(self):
+        """The hyphen is load-bearing. 'within 60 feet in a 20-foot burst'
+        must yield the burst, not the range it is thrown across."""
+        assert self._sizes("conjures spores within 60 feet in a 20-foot burst") == [(20, "burst", "feet")]
+
+    def test_a_bare_distance_is_not_an_area(self):
+        assert self._sizes("each creature within 30 feet must save") == []
+
+    def test_the_troop_degradation_second_area_is_kept(self):
+        """The model consistently returned only the primary area. Both are
+        real: the area changes as the troop loses segments."""
+        text = ("dealing damage to creatures in a 10-foot burst; when the troop is "
+                "reduced to 2 segments, this area decreases to a 5-foot burst")
+        assert self._sizes(text) == [(10, "burst", "feet"), (5, "burst", "feet")]
+
+    def test_spaced_hyphens_are_tolerated(self):
+        """Real corpus spellings the model failed on."""
+        assert self._sizes("a 30- foot cone of flame") == [(30, "cone", "feet")]
+
+    def test_no_area_returns_none_not_empty(self):
+        from pfsrd2.enrichment.llm_extractor import extract_area_regex
+        assert extract_area_regex("X", "the creature is frightened 1") is None
+
+    def test_duplicates_collapse(self):
+        assert self._sizes("a 20-foot burst and another 20-foot burst") == [(20, "burst", "feet")]

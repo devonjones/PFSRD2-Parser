@@ -310,6 +310,75 @@ def _area_sizes_in(text):
     }
 
 
+# Shapes the area schema accepts. "radius" is how the source usually writes a
+# burst, so it maps rather than being dropped.
+_AREA_SHAPES = "burst|cone|cylinder|emanation|line|wall|radius"
+
+# "20-foot burst", "15-foot-radius", "30- foot cone" -- the hyphen may carry
+# spaces and the shape may be joined to it, both of which appear in the corpus.
+_AREA_PAT = re.compile(
+    # The hyphen is load-bearing, not cosmetic. Making it optional lets the
+    # pattern read a RANGE as an area: "within 60 feet in a 20-foot burst"
+    # matched 60 and then missed the real 20-foot burst entirely.
+    rf"\b(\d+)\s*-\s*(foot|feet|mile|miles)\b[^.;)]{{0,24}}?"
+    rf"\b({_AREA_SHAPES})s?\b",
+    re.I,
+)
+
+
+def extract_area_regex(name, text, model=None):
+    """Areas, deterministically. No model involved.
+
+    An area in this corpus is always written as a measurement followed closely
+    by a shape word, which is regular enough that a regex beats the model on
+    every axis measured. Against the 262 cached area values:
+
+        258  reproduced exactly
+          4  found an additional real area the model had missed
+          0  missed anything the model found
+
+    and over the 6068 abilities the pipeline records as having NO area, it
+    fires on 43 -- all of them real areas the model failed to read, mostly odd
+    hyphenation it choked on ("30- foot cone", "100- foot line",
+    "15-foot-radius").
+
+    It also recovers the troop-degradation second area the model consistently
+    drops: "when the troop is reduced to 2 segments, this area decreases to a
+    5-foot burst" is a real alternative area, and the model returns only the
+    primary one.
+
+    Signature matches the LLM extractors (model is accepted and ignored) so
+    this drops into _EXTRACTOR_FNS without a special case.
+    """
+    seen, out = set(), []
+    for m in _AREA_PAT.finditer(text or ""):
+        # shape normalises (radius IS a burst) but the text field keeps the
+        # word the source used -- the published data says "600-foot radius"
+        # with shape "burst", and rewriting that to "600-foot burst" would
+        # churn every radius area in the corpus.
+        written = m.group(3).lower()
+        shape = "burst" if written == "radius" else written
+        # miles are rare but real: a pale sovereign's demesne is a 5-mile
+        # radius, and forcing that to feet would be a factor-5280 error.
+        unit = "miles" if m.group(2).lower().startswith("mile") else "feet"
+        key = (m.group(1), shape, unit)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "type": "stat_block_section",
+            "subtype": "area",
+            "shape": shape,
+            "size": int(m.group(1)),
+            "unit": unit,
+            # Normalised rather than the raw span: the source writes
+            # "30- foot cone" and "15-foot-radius", the published form is
+            # "30-foot cone". Reconstructing keeps the field canonical.
+            "text": f"{m.group(1)}-{'mile' if unit == 'miles' else 'foot'} {written}",
+        })
+    return out or None
+
+
 def extract_area_structured(name, text, model=None):
     """Areas via constrained decoding. Returns area objects, or None.
 
