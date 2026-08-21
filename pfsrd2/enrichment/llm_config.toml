@@ -298,6 +298,23 @@ may be more than one, or none.
 
 Ability: {name}
 Text: {text}'''
+# DO NOT "improve" this prompt by adding rules. Three revisions were measured
+# against all 675 cached damage values and every one was worse:
+#
+#   baseline (this text)                          changed  66   lost  28
+#   + Strike examples + separate-ability rule     changed 317   lost 266
+#   - the "dice that are not damage" line         changed  70   lost  36
+#   - that line + positive Strike examples        changed 153   lost 121
+#
+# The failure mode is consistent: a negative instruction over-applies and the
+# model discards legitimate values, and a positive example narrows extraction
+# to text matching the example's phrasing. "The dog's Strikes deal 1d4 extra"
+# taught it to require the word Strike, so "The lion deals 1d4 extra damage"
+# returned nothing.
+#
+# The ~28 remaining losses are damage a Strike GAINS ("Strikes deal 1d4 extra
+# damage", "also deals 1d6 persistent bleed"). They are a known limitation.
+# Fix them with a mechanical filter in llm_extractor.py, not with wording.
 damage = '''
 Extract every damage dice expression this ability deals.
 

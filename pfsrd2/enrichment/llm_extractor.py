@@ -294,6 +294,22 @@ def extract_dc_structured(name, text, model=None):
     return out or None
 
 
+def _area_sizes_in(text):
+    """Sizes the source writes as a measurement: "20-foot", "1-mile".
+
+    Every one of the 284 area sizes already in the enrichment cache appears in
+    its source text in this hyphenated form -- there were no exceptions -- so
+    requiring it costs nothing and rejects the failure this exists for. A bare
+    "within 30 feet" is a CONDITION on who is affected, not the area: "if more
+    vrocks within 30 feet also Dance" became a 30-foot emanation alongside the
+    real 20-foot one, and "120-foot line" produced a spurious 60-foot line.
+    """
+    return {
+        int(m.group(1))
+        for m in re.finditer(r"\b(\d+)\s*-\s*(?:foot|feet|mile|miles)\b", text or "", re.I)
+    }
+
+
 def extract_area_structured(name, text, model=None):
     """Areas via constrained decoding. Returns area objects, or None.
 
@@ -304,10 +320,18 @@ def extract_area_structured(name, text, model=None):
     parsed = _structured("area", name, text, model)
     if not parsed:
         return None
+    published = _area_sizes_in(text)
     seen, out = set(), []
     for entry in parsed.get("areas", []):
         size, shape = entry.get("size"), entry.get("shape")
         if not size or not shape:
+            continue
+        # A size the source never states as a measurement is not this
+        # ability's area, however plausible the shape beside it looks.
+        try:
+            if int(size) not in published:
+                continue
+        except (TypeError, ValueError):
             continue
         unit = entry.get("unit") or "feet"
         key = (size, shape, unit)
@@ -333,7 +357,15 @@ def extract_area_structured(name, text, model=None):
 # same way it wrote prose into the damage formula field until a regex stopped
 # it. Constrain mechanically, not in prose.
 _FREQ_STRIPS = (
-    re.compile(r"^\s*(?:the\s+\w+\s+)?can(?:'|\u2019)?t\s+use\b.*?\bagain\s+for\s+", re.I),
+    # Up to four words for the subject, not one: creature names are routinely
+    # two or three words ("the crag linnorm can't use breath weapon again for
+    # 1d4 rounds"), and the single-word pattern left the entire sentence
+    # standing as the frequency value.
+    re.compile(
+        r"^\s*(?:the\s+)?(?:[\w'\u2019-]+\s+){0,4}?"
+        r"can(?:'|\u2019)?t\s+use\b.*?\bagain\s+for\s+",
+        re.I,
+    ),
     re.compile(r"^\s*only\s+", re.I),
     re.compile(r"^\s*(?:it|they|the\s+\w+)\s+can\s+(?:be\s+)?used?\s+", re.I),
 )

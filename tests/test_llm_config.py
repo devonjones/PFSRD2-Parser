@@ -546,3 +546,68 @@ class TestDurationDiceAreNotDamage:
         from pfsrd2.enrichment.llm_extractor import _dice_in
         for unit in ("rounds", "minutes", "hours", "days", "turns", "weeks"):
             assert _dice_in(f"lasts 1d4 {unit}") == set(), unit
+
+
+class TestFrequencySubjectStripping:
+    """The recharge sentence must reduce to the period the corpus publishes.
+
+    The pattern allowed one word between "the" and "can't", so a two-word
+    creature name defeated it and the whole sentence was published as the
+    frequency: "the crag linnorm can't use breath weapon again for 1d4 rounds"
+    instead of "1d4 rounds".
+    """
+
+    def test_a_two_word_subject_is_stripped(self):
+        from pfsrd2.enrichment.llm_extractor import _normalise_frequency
+        got = _normalise_frequency(
+            "the crag linnorm can't use breath weapon again for 1d4 rounds"
+        )
+        assert got == "1d4 rounds"
+
+    def test_a_curly_apostrophe_works_too(self):
+        from pfsrd2.enrichment.llm_extractor import _normalise_frequency
+        got = _normalise_frequency(
+            "the tor linnorm can’t use breath weapon again for 1d4 rounds"
+        )
+        assert got == "1d4 rounds"
+
+    def test_the_bare_form_still_works(self):
+        from pfsrd2.enrichment.llm_extractor import _normalise_frequency
+        assert _normalise_frequency("can't use again for 1d4 rounds") == "1d4 rounds"
+
+    def test_an_ordinary_frequency_is_untouched(self):
+        from pfsrd2.enrichment.llm_extractor import _normalise_frequency
+        for v in ("once per day", "3 times per day", "once per round"):
+            assert _normalise_frequency(v) == v
+
+
+class TestAreaSizeGrounding:
+    """An area size must be stated as a measurement, not merely mentioned.
+
+    All 284 area sizes in the enrichment cache appear hyphenated in their
+    source text, so this requirement costs nothing on known-good data.
+    """
+
+    def test_a_measurement_is_found(self):
+        from pfsrd2.enrichment.llm_extractor import _area_sizes_in
+        assert _area_sizes_in("a 120-foot line of acid") == {120}
+
+    def test_a_range_condition_is_not_an_area(self):
+        """Dance of Ruin: 'more vrocks within 30 feet' became a 30-foot
+        emanation beside the real 20-foot one."""
+        from pfsrd2.enrichment.llm_extractor import _area_sizes_in
+        assert _area_sizes_in("a 20-foot emanation; more vrocks within 30 feet") == {20}
+
+    def test_a_size_inside_a_larger_number_is_not_matched(self):
+        """'120-foot line' must not yield a 20-foot area."""
+        from pfsrd2.enrichment.llm_extractor import _area_sizes_in
+        assert 20 not in _area_sizes_in("a 120-foot line")
+
+    def test_spacing_around_the_hyphen_is_tolerated(self):
+        """Qi Blast prints '10- foot burst'."""
+        from pfsrd2.enrichment.llm_extractor import _area_sizes_in
+        assert _area_sizes_in("all creatures in a 10- foot burst") == {10}
+
+    def test_miles_count_too(self):
+        from pfsrd2.enrichment.llm_extractor import _area_sizes_in
+        assert _area_sizes_in("within a 1-mile radius") == {1}
