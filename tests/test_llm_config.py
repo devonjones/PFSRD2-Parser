@@ -517,3 +517,32 @@ class TestDiceGrounding:
         from pfsrd2.enrichment.llm_extractor import _dice_in
         text = "a 30-foot cone dealing 9d6 fire damage"
         assert _dice_in(text) == {"9d6"}
+
+
+class TestDurationDiceAreNotDamage:
+    """A die followed by a unit of time is a timer, never damage.
+
+    The prompt used to carry this as an instruction ("Do NOT include recharge
+    timers"). It over-applied: given "blinded for 1d4 rounds, then deals 15d10
+    fire damage" the model discarded the 15d10 as well. Deciding it here
+    removes the need to ask.
+    """
+
+    def test_a_recharge_timer_is_excluded(self):
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+        assert _dice_in("The creature is stunned for 1d4 rounds") == set()
+
+    def test_the_real_damage_beside_a_timer_survives(self):
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+        text = "blinded for 1d4 rounds, then deals 15d10 fire damage"
+        assert _dice_in(text) == {"15d10"}
+
+    def test_damage_per_round_is_still_damage(self):
+        """'2d6 damage each round' must not be read as a duration."""
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+        assert _dice_in("deals 2d6 damage each round for 1d4 rounds") == {"2d6"}
+
+    def test_every_time_unit_counts(self):
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+        for unit in ("rounds", "minutes", "hours", "days", "turns", "weeks"):
+            assert _dice_in(f"lasts 1d4 {unit}") == set(), unit

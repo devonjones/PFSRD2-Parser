@@ -191,7 +191,18 @@ def _dice_in(text):
     worse overall (see llm_config.toml damage). A formula the source never
     printed is decidable without asking the model anything, so decide it here.
     """
-    return {m.group(0).replace(" ", "") for m in _DICE.finditer(text or "")}
+    return {
+        m.group(0).replace(" ", "")
+        for m in _DICE.finditer(text or "")
+        if not _DURATION_AFTER.match(text or "", m.end())
+    }
+
+
+# A die immediately followed by a unit of time is a duration or a recharge
+# timer, never damage: "stunned for 1d4 rounds", "recharges in 1d6 minutes".
+_DURATION_AFTER = re.compile(
+    r"\s*(?:more\s+)?(?:rounds?|minutes?|hours?|days?|turns?|weeks?)\b", re.I
+)
 
 
 def _dcs_in(text):
