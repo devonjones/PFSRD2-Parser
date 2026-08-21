@@ -302,24 +302,9 @@ damage = '''
 Extract every damage dice expression this ability deals.
 
 Include every dice expression the text states as damage, including alternatives
-and conditional cases.
-
-Damage this ability ADDS to a Strike is the ability's own damage. Include it:
-
-  "The dog's Strikes deal 1d4 extra damage to creatures within reach of at
-   least two of its allies."                                        -> 1d4
-  "A bearded devil's glaive Strike also deals 1d6 persistent bleed
-   damage."                                                         -> 1d6
-  "deals an additional 2d6 fire damage on a hit"                     -> 2d6
-
-Do NOT include dice that are not damage: recharge timers ("1d4 rounds"),
-durations, or table rolls ("roll 1d6 and consult the following").
-
-Do NOT include the stat line of a SEPARATE named ability that happens to appear
-in the same text. If the text reads "...within reach of two allies. Swallow
-Whole (attack); Huge, 3d12+10 bludgeoning, Rupture 36", the 3d12+10 belongs to
-Swallow Whole, not to this ability.
-
+and conditional cases. Do NOT include dice that are not damage: recharge timers
+("1d4 rounds"), durations, or table rolls ("roll 1d6 and consult").
+Do NOT include damage from a DIFFERENT ability mentioned in the same text.
 If there is no dice damage at all, return an empty list.
 
 Ability: {name}
