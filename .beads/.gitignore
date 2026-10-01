@@ -59,6 +59,13 @@ backup/
 *.db-shm
 db.sqlite
 bd.db
+# Federation credential key (SECRET — must never be committed).
+# Encrypts stored federation peer credentials. It was committed to this PUBLIC
+# repo on 2026-03-20 and sat in the tree until it was untracked; no beads
+# .gitignore template on this machine carries this pattern, so a regenerated
+# key would simply be committed again without it.
+.beads-credential-key
+
 # NOTE: Do NOT add negation patterns here.
 # They would override fork protection in .git/info/exclude.
 # Config files (metadata.json, config.yaml) are tracked by git by default
