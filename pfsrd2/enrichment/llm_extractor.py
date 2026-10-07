@@ -166,10 +166,11 @@ def _query_ollama_structured(prompt, schema, model=None):
 
 def _structured(field, name, text, model):
     """Shared plumbing: render the prompt, query under the schema, return raw."""
-    schema = SCHEMAS.get(field)
-    template = STRUCTURED_PROMPTS.get(field)
-    if not schema or not template:
-        return None
+    # Fail fast on missing config: returning None here reads as "the source has
+    # no value", and inline enrichment stamps the ability current without it.
+    schema = SCHEMAS[field]
+    template = STRUCTURED_PROMPTS[field]
+    assert schema and template, f"llm_config.toml: empty schema or prompt for {field!r}"
     return _query_ollama_structured(template.format(name=name, text=text), schema, model)
 
 
@@ -499,9 +500,8 @@ def _critique(field, name, text, proposed):
     """
     if not CRITIC.get("enabled") or field != "damage":
         return None
-    schema, template = SCHEMAS.get(field), CRITIC.get("prompt")
-    if not schema or not template:
-        return None
+    schema, template = SCHEMAS[field], CRITIC["prompt"]
+    assert schema and template, "llm_config.toml: critic enabled without a schema or prompt"
     prompt = template.format(
         name=name, text=text, proposed=json.dumps(sorted(set(proposed)))
     )

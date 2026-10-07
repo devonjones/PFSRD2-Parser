@@ -477,6 +477,39 @@ class TestTheCritic:
         assert got[0]["damage_type"] == "fire", "the first pass's type survives"
 
 
+class TestMissingConfigFailsLoudly:
+    """A missing schema or prompt must raise, not return None.
+
+    None reads as "the source has no value": inline enrichment would stamp the
+    ability current at ENRICHMENT_VERSION with the field silently absent.
+    """
+
+    @pytest.mark.parametrize("table", ["SCHEMAS", "STRUCTURED_PROMPTS"])
+    @pytest.mark.parametrize("value", [None, {}, ""])
+    def test_absent_or_empty_entry_raises(self, monkeypatch, table, value):
+        from pfsrd2.enrichment import llm_extractor
+
+        entries = dict(getattr(llm_extractor, table))
+        if value is None:
+            entries.pop("damage")
+        else:
+            entries["damage"] = value
+        monkeypatch.setattr(llm_extractor, table, entries)
+        monkeypatch.setattr(llm_extractor, "_query_ollama_structured",
+                            lambda *a, **k: pytest.fail("must not query"))
+        with pytest.raises((KeyError, AssertionError)):
+            llm_extractor.extract_damage_structured("X", "takes 2d6 fire damage")
+
+    def test_enabled_critic_without_a_prompt_raises(self, monkeypatch):
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setattr(llm_extractor, "CRITIC", {"enabled": True, "model": "other"})
+        monkeypatch.setattr(llm_extractor, "_query_ollama_structured",
+                            lambda *a, **k: {"damage": [{"formula": "2d6"}]})
+        with pytest.raises(KeyError):
+            llm_extractor.extract_damage_structured("X", "takes 2d6 fire damage")
+
+
 class TestDiceGrounding:
     """_dice_in is the deterministic floor under damage extraction.
 
