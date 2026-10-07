@@ -81,3 +81,5 @@ bd.db
 beads.left.jsonl*
 .migration-hint-ts
 *.jsonl.lock
+# Dolt monitor runtime pid (per-machine)
+dolt-monitor.pid
