@@ -131,7 +131,13 @@ class TestTheRejectPathActuallyRejects:
         )
         import pfsrd2.enrichment.llm_extractor as le
 
-        monkeypatch.setattr(le, "extract_dc_llm", lambda name, text: llm_result)
+        # Patch the extractor ability_enrichment actually wires. When the dc
+        # field moved to constrained decoding this stubbed extract_dc_llm,
+        # which production no longer calls -- so the stub was inert, the real
+        # extractor ran, and the guard under test was never reached.
+        monkeypatch.setattr(
+            le, "extract_dc_structured", lambda name, text, model=None: llm_result
+        )
         raw = json.dumps({"name": "Repelling Blast", "text": self.SOURCE, "type": "ability"})
         out = ae._try_inline_enrich(object(), 17662, raw)
         return json.loads(out) if out else None, marked
