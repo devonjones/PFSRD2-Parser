@@ -163,7 +163,9 @@ class TestTheRejectPathActuallyRejects:
         import pfsrd2.enrichment.llm_extractor as le
 
         monkeypatch.setattr(
-            le, "extract_dc_llm", lambda n, t: [{"dc": 25, "text": "DC 25 basic Reflex"}]
+            le,
+            "extract_dc_structured",
+            lambda n, t, model=None: [{"dc": 25, "text": "DC 25 basic Reflex"}],
         )
         raw = json.dumps(
             {
