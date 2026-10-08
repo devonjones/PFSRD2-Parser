@@ -1,42 +1,103 @@
 """LLM-based extraction of structured mechanics from ability text.
 
-Uses a local Ollama instance with per-type prompts. Each extraction type
-has its own prompt template optimized through iteration against known
-test cases.
+Uses an Ollama instance with per-type prompts. Each extraction type has its own
+prompt template optimized through iteration against known test cases.
+
+Model, host and every prompt live in llm_config.toml beside this file. Prompts
+are tuning rather than logic -- iterating on wording should not be a code
+change -- and a diff of that file reads as "what we asked the model".
+
+Ollama is NOT on localhost: it was moved off the parser box because running it
+alongside a full corpus parse crashed the machine. Override the host with
+PFSRD2_OLLAMA_URL.
 """
 
 import json
+import os
 import re
 import subprocess
+import tomllib
 
 from pfsrd2.enrichment.llm_cache import cache_get, cache_put, compute_prompt_hash
 from pfsrd2.enrichment.regex_extractor import _SHAPE_MAP, _resolve_damage_type
 
-DEFAULT_MODEL = "qwen2.5:7b"
-OLLAMA_URL = "http://localhost:11434/api/generate"
+_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm_config.toml")
+
+with open(_CONFIG_PATH, "rb") as _fh:
+    _CONFIG = tomllib.load(_fh)
+
+# `or`, not a .get default: an exported-but-empty variable is unset, not a URL.
+OLLAMA_URL = os.environ.get("PFSRD2_OLLAMA_URL") or _CONFIG["url"]
+
+# The model is NOT overridable by environment on purpose. Every enriched record
+# stores "llm:<model>" as its extraction_method; changing it from a shell
+# variable would split the corpus across two models with nothing in the data
+# saying which produced what. Change it in llm_config.toml, deliberately, and
+# expect to re-enrich.
+DEFAULT_MODEL = _CONFIG["model"]
+
+# Request options (temperature and friends), passed through to ollama verbatim.
+OPTIONS = _CONFIG.get("options", {})
+
+# The system prompt. Unset, whatever the model's packaged chat template
+# supplies is in force -- nuextract-tiny's build injects "You are a helpful
+# assistant." and it leaked into extracted output.
+SYSTEM = _CONFIG.get("system", "")
+
+CRITIC = _CONFIG.get("critic", {})
+
+PROMPTS = _CONFIG["prompts"]
+SCHEMAS = _CONFIG["schemas"]
+STRUCTURED_PROMPTS = _CONFIG["structured_prompts"]
+FREQUENCY_PROMPT = PROMPTS["frequency"]
+DAMAGE_PROMPT = PROMPTS["damage"]
+AREA_PROMPT = PROMPTS["area"]
+DC_PROMPT = PROMPTS["dc"]
+CATEGORY_PROMPT = PROMPTS["category"]
+
+
+def _options_key():
+    """System prompt and options, rendered for the cache key.
+
+    Both change the answer, so they belong in the key for the same reason the
+    prompt and the schema do. Both empty renders to an empty string, so cache
+    entries written before either existed still hit.
+    """
+    parts = []
+    if SYSTEM:
+        parts.append(SYSTEM)
+    if OPTIONS:
+        parts.append(json.dumps(OPTIONS, sort_keys=True))
+    return ("\x00" + "\x00".join(parts)) if parts else ""
+
+
+def _request(model, prompt, format=None):
+    """The JSON body for an ollama /api/generate call."""
+    body = {"model": model, "prompt": prompt, "stream": False}
+    if SYSTEM:
+        body["system"] = SYSTEM
+    if OPTIONS:
+        body["options"] = OPTIONS
+    if format is not None:
+        body["format"] = format
+    return body
 
 
 def _query_ollama(prompt, model=None):
-    """Send a prompt to the local Ollama instance and return the response.
+    """Send a prompt to the Ollama instance and return the response.
 
     Results are cached in ~/.pfsrd2/llm_cache.db keyed on (prompt_hash, model).
     If the prompt template changes, the hash changes and the LLM is re-queried.
     """
     model = model or DEFAULT_MODEL
-    prompt_hash = compute_prompt_hash(prompt)
+    prompt_hash = compute_prompt_hash(prompt + _options_key())
 
     # Check cache first
     cached = cache_get(prompt_hash, model)
     if cached is not None:
         return cached
 
-    payload = json.dumps(
-        {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-        }
-    )
+    payload = json.dumps(_request(model, prompt))
     try:
         result = subprocess.run(
             ["curl", "-s", OLLAMA_URL, "-d", payload],
@@ -56,94 +117,340 @@ def _query_ollama(prompt, model=None):
     return response_text
 
 
+def _query_ollama_structured(prompt, schema, model=None):
+    """Query with constrained decoding: the model can only emit `schema`.
+
+    Ollama takes a JSON Schema as "format" and constrains generation to it, so
+    malformed output stops being a failure mode. That is worth more here than
+    any model swap -- see PFSRD2-Parser-4k8b for the bench.
+
+    Returns the parsed object. A failed request, an error body or unparseable
+    output raises: callers read an empty answer as "the source has no value"
+    and stamp the ability enriched, so an outage must stop the run instead.
+
+    The schema is folded into the cache key. It is part of the request, so a
+    changed schema has to re-query for the same reason a changed prompt does --
+    otherwise an old answer, shaped by the old schema, is served for a question
+    nobody asked.
+    """
+    model = model or DEFAULT_MODEL
+    schema_json = json.dumps(schema, sort_keys=True)
+    prompt_hash = compute_prompt_hash(prompt + "\x00" + schema_json + _options_key())
+
+    cached = cache_get(prompt_hash, model)
+    if cached is not None:
+        return json.loads(cached)
+
+    payload = json.dumps(_request(model, prompt, format=schema))
+    result = subprocess.run(
+        ["curl", "-s", OLLAMA_URL, "-d", payload],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+    body = json.loads(result.stdout)
+    if "response" not in body:
+        raise RuntimeError(f"ollama at {OLLAMA_URL}: {body.get('error', body)}")
+    response_text = body["response"].strip()
+    parsed = json.loads(response_text)
+
+    cache_put(prompt_hash, model, response_text)
+    return parsed
+
+
+def _structured(field, name, text, model):
+    """Shared plumbing: render the prompt, query under the schema, return raw."""
+    # Fail fast on missing config: returning None here reads as "the source has
+    # no value", and inline enrichment stamps the ability current without it.
+    schema = SCHEMAS[field]
+    template = STRUCTURED_PROMPTS[field]
+    assert schema and template, f"llm_config.toml: empty schema or prompt for {field!r}"
+    return _query_ollama_structured(template.format(name=name, text=text), schema, model)
+
+
+_DICE = re.compile(r"\b\d+d\d+\s*(?:[+-]\s*\d+)?")
+
+
+def _dice_in(text):
+    """Every dice formula the source text actually prints, whitespace removed.
+
+    The parallel of _dcs_in, and it exists for the same reason. Constrained
+    decoding makes fabrication *easier*, not harder: the schema pattern
+    "^[0-9]+d[0-9]+([+-][0-9]+)?$" guarantees whatever the model emits LOOKS
+    like dice, so a bare number anywhere near the text gets completed into a
+    plausible formula. Measured against the corpus, the model turned
+    "30-foot cone" into 30d6, "60-foot line" into 60d6, "3 rounds in total"
+    into 3d12 and a "+2 circumstance bonus" into 2d6+6.
+
+    Two prompt revisions tried to instruct this away and both made extraction
+    worse overall (see llm_config.toml damage). A formula the source never
+    printed is decidable without asking the model anything, so decide it here.
+    """
+    return {
+        m.group(0).replace(" ", "")
+        for m in _DICE.finditer(text or "")
+        if not _DURATION_AFTER.match(text or "", m.end())
+    }
+
+
+# A die immediately followed by a unit of time is a duration or a recharge
+# timer, never damage: "stunned for 1d4 rounds", "recharges in 1d6 minutes".
+_DURATION_AFTER = re.compile(
+    r"\s*(?:more\s+)?(?:rounds?|minutes?|hours?|days?|turns?|weeks?)\b", re.I
+)
+
+
+def _dcs_in(text):
+    """Every DC the source text actually prints."""
+    found = set()
+    for pattern in (r"\bDC\s+(\d+)", r"\bDC\b.{0,50}?\b(\d+)\b"):
+        for m in re.finditer(pattern, text or "", re.I):
+            found.add(int(m.group(1)))
+    return found
+
+
+_SAVE_WORDS = {
+    "Fort": ("fortitude", "fort"),
+    "Ref": ("reflex", "ref"),
+    "Will": ("will",),
+    "Flat Check": ("flat check", "flat"),
+}
+
+
+def _save_types_in(text):
+    """Save types the source actually names."""
+    low = (text or "").lower()
+    return {
+        code
+        for code, words in _SAVE_WORDS.items()
+        if any(re.search(rf"\b{re.escape(w)}\b", low) for w in words)
+    }
+
+
+def extract_dc_structured(name, text, model=None):
+    """Save DCs via constrained decoding. Returns save_dc objects, or None.
+
+    The schema does two things the free-text path could not. save_type is an
+    enum, so the model picks from the four values that exist rather than
+    writing "Fortitude" or "basic Reflex" into a lookup that silently dropped
+    what it did not recognise. And dc is an integer, which removes the
+    "DC 30" / "30" / "DC of 30" parsing spread.
+
+    The grounding check stays: PFSRD2-Parser-l59s was a schema-valid DC that
+    the source never published, and a constrained decoder emits those just as
+    happily as a free-text one.
+    """
+    parsed = _structured("dc", name, text, model)
+    if not parsed:
+        return None
+
+    # Only DCs the source actually prints. This is the check _parse_dc_response
+    # does on the free-text path, and dropping it here reintroduced
+    # PFSRD2-Parser-l59s immediately: given "a basic Reflex save of the same
+    # DC", the free-text path correctly returns nothing while the constrained
+    # one invented DC 13. A schema that REQUIRES an integer pushes the model to
+    # produce one, so constrained decoding makes this failure more likely, not
+    # less.
+    published = _dcs_in(text)
+    named = _save_types_in(text)
+
+    seen, out = set(), []
+    for entry in parsed.get("saves", []):
+        dc = entry.get("dc")
+        if dc is None or dc not in published:
+            continue
+        # A save type the text never names is invented, exactly like a DC it
+        # never prints. The model reaches for one because a bare number looks
+        # incomplete: "DC 22, 3d8 piercing, Escape DC 22" became DC 22 Ref, and
+        # a skill check became all three saves at once. Dropping the type keeps
+        # the DC, which is what the source actually said.
+        save_type = entry.get("save_type")
+        if save_type and save_type not in named:
+            save_type = None
+        key = (dc, save_type, bool(entry.get("basic")))
+        if key in seen:
+            continue
+        seen.add(key)
+        label = f"DC {dc}"
+        if entry.get("basic"):
+            label += " basic"
+        if save_type:
+            label += f" {save_type}"
+        obj = {
+            "type": "stat_block_section",
+            "subtype": "save_dc",
+            "dc": dc,
+            "text": label,
+        }
+        if save_type:
+            obj["save_type"] = save_type
+        if entry.get("basic"):
+            obj["basic"] = True
+        out.append(obj)
+    return out or None
+
+
+# Shapes the area schema accepts. "radius" is how the source usually writes a
+# burst, so it maps rather than being dropped.
+_AREA_SHAPES = "burst|cone|cylinder|emanation|line|wall|radius"
+
+# "20-foot burst", "15-foot-radius", "30- foot cone" -- the hyphen may carry
+# spaces and the shape may be joined to it, both of which appear in the corpus.
+_AREA_PAT = re.compile(
+    # The hyphen is load-bearing, not cosmetic. Making it optional lets the
+    # pattern read a RANGE as an area: "within 60 feet in a 20-foot burst"
+    # matched 60 and then missed the real 20-foot burst entirely.
+    rf"\b(\d+)\s*-\s*(foot|feet|mile|miles)\b[^.;)]{{0,24}}?" rf"\b({_AREA_SHAPES})s?\b",
+    re.I,
+)
+
+
+def extract_area_regex(name, text, model=None):
+    """Areas, deterministically. No model involved.
+
+    An area in this corpus is always written as a measurement followed closely
+    by a shape word, which is regular enough that a regex beats the model on
+    every axis measured: against the cached areas it missed nothing the model
+    found, and it reads hyphenation the model choked on ("30- foot cone",
+    "100- foot line", "15-foot-radius").
+
+    It also recovers the troop-degradation second area the model consistently
+    drops: "when the troop is reduced to 2 segments, this area decreases to a
+    5-foot burst" is a real alternative area, and the model returns only the
+    primary one.
+
+    Signature matches the LLM extractors (model is accepted and ignored) so
+    this drops into _EXTRACTOR_FNS without a special case.
+    """
+    seen, out = set(), []
+    for m in _AREA_PAT.finditer(text or ""):
+        # shape normalises (radius IS a burst) but the text field keeps the
+        # word the source used -- the published data says "600-foot radius"
+        # with shape "burst", and rewriting that to "600-foot burst" would
+        # churn every radius area in the corpus.
+        written = m.group(3).lower()
+        shape = "burst" if written == "radius" else written
+        # miles are rare but real: a pale sovereign's demesne is a 5-mile
+        # radius, and forcing that to feet would be a factor-5280 error.
+        unit = "miles" if m.group(2).lower().startswith("mile") else "feet"
+        key = (m.group(1), shape, unit)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "type": "stat_block_section",
+                "subtype": "area",
+                "shape": shape,
+                "size": int(m.group(1)),
+                "unit": unit,
+                # Normalised rather than the raw span: the source writes
+                # "30- foot cone" and "15-foot-radius", the published form is
+                # "30-foot cone". Reconstructing keeps the field canonical.
+                "text": f"{m.group(1)}-{'mile' if unit == 'miles' else 'foot'} {written}",
+            }
+        )
+    return out or None
+
+
+# The model's ways of saying "nothing here". Without this they arrive as
+# frequency VALUES: a test that had been skipped while ollama was unreachable
+# caught "no constraint" being published for an ability whose only "per round"
+# is a rate ("1 gallon per round").
+_FREQ_NOTHING = frozenset(
+    {
+        "none",
+        "no constraint",
+        "no constraints",
+        "no frequency",
+        "no frequency constraint",
+        "no frequency constraints",
+        "n/a",
+        "not applicable",
+    }
+)
+
+
+def _critique(field, name, text, proposed):
+    """Second opinion on an extraction. Returns a corrected list, or None.
+
+    Off unless llm_config.toml enables it, and pointless without the grounding
+    guard downstream: on the bench it both recovered real values and invented
+    some. It is fabrication-neutral, not fabrication-free.
+
+    The critic model must differ from the extractor. qwen2.5:7b reviewing its
+    own output invented damage for an ability whose text contains no dice --
+    handed an empty list it produced one rather than agree with nothing. A
+    larger model left it empty and recovered a case nothing else did.
+    """
+    if not CRITIC.get("enabled") or field != "damage":
+        return None
+    schema, template = SCHEMAS[field], CRITIC["prompt"]
+    assert schema and template, "llm_config.toml: critic enabled without a schema or prompt"
+    prompt = template.format(name=name, text=text, proposed=json.dumps(sorted(set(proposed))))
+    parsed = _query_ollama_structured(prompt, schema, CRITIC["model"])
+    if not parsed:
+        return None
+    return [d.get("formula") for d in parsed.get("damage", []) if d.get("formula")]
+
+
+def extract_damage_structured(name, text, model=None):
+    """Damage via constrained decoding. Returns attack_damage objects, or None.
+
+    De-duplicates. The model emitted the same formula four times for one
+    ability, which is harmless in itself and must not reach the data.
+    """
+    parsed = _structured("damage", name, text, model)
+    if not parsed:
+        return None
+
+    entries = parsed.get("damage", [])
+    corrected = _critique("damage", name, text, [e.get("formula") for e in entries])
+    if corrected is not None:
+        # Keep the first pass's types where the critic kept the formula; it is
+        # asked about dice, not about damage types, and rebuilding an entry from
+        # a bare formula would throw those away.
+        by_formula = {e.get("formula"): e for e in entries}
+        entries = [by_formula.get(f, {"formula": f}) for f in corrected]
+
+    # Only formulas the source actually prints. reject_if_ungrounded is
+    # all-or-nothing per field, so without this one invented 30d6 discards the
+    # real 9d6 alongside it and the ability ends up with no damage at all.
+    published = _dice_in(text)
+
+    seen, out = set(), []
+    for entry in entries:
+        formula = (entry.get("formula") or "").strip()
+        if not formula or formula.replace(" ", "") not in published:
+            continue
+        damage_type = (entry.get("damage_type") or "").strip().lower() or None
+        persistent = bool(entry.get("persistent"))
+        # The model reliably writes "persistent bleed" into damage_type rather
+        # than setting the boolean beside it. Both spellings mean the same
+        # thing and only one of them matches what the rest of the pipeline
+        # emits, so normalise rather than teach the prompt.
+        if damage_type and damage_type.startswith("persistent "):
+            damage_type = damage_type[len("persistent ") :].strip() or None
+            persistent = True
+        key = (formula, damage_type, persistent)
+        if key in seen:
+            continue
+        seen.add(key)
+        obj = {
+            "type": "stat_block_section",
+            "subtype": "attack_damage",
+            "formula": formula,
+        }
+        if damage_type:
+            obj["damage_type"] = damage_type
+        if persistent:
+            obj["persistent"] = True
+        out.append(obj)
+    return out or None
+
+
 # --- Per-type prompt templates ---
-
-FREQUENCY_PROMPT = """You are extracting frequency constraints from Pathfinder 2E ability text. A frequency constraint is any phrase that limits how often something can be done.
-
-Scan the ENTIRE text carefully. Look for ALL instances of:
-- "once per X"
-- "X times per Y"
-- "can't ... again for X"
-- "only once per X"
-- "Frequency: once per X"
-
-Return every frequency constraint found as a semicolon-separated list.
-
-Ability: {name}
-Text: {text}
-
-Frequency constraints found:"""
-
-
-DAMAGE_PROMPT = """You are extracting damage dice from Pathfinder 2E ability text.
-
-Extract ALL dice formulas (like 2d6, 4d8+10, 1d4) that represent damage.
-
-Patterns to look for:
-- "XdY type damage" (e.g., "2d6 fire damage")
-- "XdY damage" with no type (e.g., "1d4 extra damage")
-- "XdY persistent type damage" (e.g., "1d6 persistent bleed damage")
-- "Damage XdY type" (e.g., "Damage 1d6+2 slashing")
-- "deals/takes XdY type" even without the word "damage"
-- "XdY type, DC" format (e.g., "6d6 spirit, DC 30")
-
-Do NOT extract:
-- Text about damage without dice ("combine their damage", "deals damage equal to")
-- Damage reduction ("takes half damage", "resistance to damage")
-- Healing references ("regains HP equal to damage")
-- Non-damage dice ("1d4 rounds" is a duration, not damage)
-
-For each found: XdY[+/-Z] type [persistent]
-If no type, just: XdY
-Semicolon-separated list, or "none".
-
-Examples:
-Text: "deals 12d6 acid damage in a 60-foot line"
-Result: 12d6 acid
-
-Text: "deals 1d4 extra damage to prone creatures"
-Result: 1d4
-
-Text: "takes 4d6 damage (DC 33 basic Fortitude save)"
-Result: 4d6
-
-Text: "6d6 spirit, DC 30"
-Result: 6d6 spirit
-
-Text: "combine their damage for the purpose of resistances"
-Result: none
-
-Text: "takes 2d6 fire damage and 1d6 persistent bleed damage"
-Result: 2d6 fire; 1d6 persistent bleed
-
-Ability: {name}
-Text: {text}
-
-Damage:"""
-
-
-AREA_PROMPT = """You are extracting area-of-effect information from Pathfinder 2E ability text.
-
-Look for ALL instances of these area patterns anywhere in the text:
-- "X-foot line"
-- "X-foot cone"
-- "X-foot burst"
-- "X-foot emanation"
-- "X-foot wall"
-- "X-foot cylinder"
-- "X-foot radius" (treat as burst)
-
-The text may contain HTML tags — look inside them too.
-Return each UNIQUE area once as: size-foot shape
-
-Do NOT include distances that are reach, range, tether length, movement, or object size.
-
-Return as a semicolon-separated list, or "none" if no areas found.
-
-Ability: {name}
-Text: {text}
-
-Areas:"""
 
 
 # --- Extraction functions ---
@@ -154,7 +461,13 @@ def _clean_llm_response(response):
     if not response:
         return None
     lower = response.lower()
-    # Filter obvious non-answers
+    # Filter obvious non-answers. The exact-match set is shared with the
+    # structured path so the two cannot disagree about what "nothing" looks
+    # like -- this list had "no constraints" and the model said "no
+    # constraint", so the singular sailed through and was published as a
+    # frequency value.
+    if lower.strip() in _FREQ_NOTHING:
+        return None
     if any(
         phrase in lower
         for phrase in [
@@ -162,12 +475,10 @@ def _clean_llm_response(response):
             "no instances",
             "none found",
             "not found",
-            "no constraints",
+            "no constraint",
             "there are no",
         ]
     ):
-        return None
-    if lower.strip() == "none":
         return None
 
     parts = [p.strip() for p in response.split(";") if p.strip()]
@@ -194,44 +505,6 @@ def extract_frequency_llm(name, text, model=None):
     if not parts:
         return None
     return "; ".join(parts)
-
-
-DC_PROMPT = """You are extracting DCs (Difficulty Classes) from Pathfinder 2E ability text. A DC is a specific number a creature must meet or beat.
-
-Extract ALL static numeric DCs. These include:
-- "DC 30 Fortitude save" or "DC 30 basic Reflex"
-- "Escape DC 18" or "DC to Escape is 18"
-- "DC to Balance is 18" or "DC to stop the bleeding is 35"
-- "a DC of 30"
-- "DC 5 flat check"
-
-Do NOT extract:
-- References to another creature's DC ("creature's Fortitude DC", "Athletics DC")
-- "the DC is X rather than Y" (conditional text)
-
-Examples:
-Text: "DC 30 basic Reflex save. It can't use Breath Weapon again for 1d4 rounds."
-Result: DC 30 basic Reflex
-
-Text: "The DC to Escape the net is 16."
-Result: DC 16
-
-Text: "Athletics check with a DC of 30 or the pilot's Sailing Lore DC"
-Result: DC 30
-
-Text: "They can Cast the Spell using the original caster's DC."
-Result: none
-
-Text: "all adjacent creatures are exposed to the same disease, at the same DC."
-Result: none
-
-Return ONLY the semicolon-separated list or "none". No explanations.
-
-Now extract from:
-Ability: {name}
-Text: {text}
-
-DCs found:"""
 
 
 def _parse_area_response(parts):
@@ -416,41 +689,6 @@ VALID_CATEGORIES = {
     "hp_automatic",
     "communication",
 }
-
-CATEGORY_PROMPT = """You are classifying a Pathfinder 2E monster ability into the correct section of a creature's stat block.
-
-The sections of a creature stat block are:
-
-1. **special_sense** — Perception-related abilities: darkvision, low-light vision, scent, tremorsense, lifesense, echolocation, or any ability that lets the creature detect or perceive things.
-
-2. **communication** — Language and communication abilities: telepathy, tongues, or abilities that enable non-standard communication.
-
-3. **interaction** — Abilities that affect how a creature interacts with the world PASSIVELY, not tied to combat actions. Examples: At-Will Spells notes, animal empathy, camouflage, light blindness. These appear BEFORE the defense section.
-
-4. **hp_automatic** — Abilities tied to the creature's hit points: regeneration, fast healing, negative healing, void healing. These appear inside the HP line of the defense section.
-
-5. **automatic** — Passive defensive abilities and auras that are always active. Examples: frightful presence, stench aura, troop defenses, golem antimagic, all-around vision (when defensive), resistances that have special rules. These appear in the defense section after HP.
-
-6. **reactive** — Abilities that are reactions or free actions usually triggered when it's NOT the creature's turn. Examples: Attack of Opportunity, Reactive Strike, Shield Block, Ferocity, nimble dodge. These are defensive reactions.
-
-7. **offensive** — Abilities the creature actively uses on its turn. Any ability with an action cost (1 action, 2 actions, 3 actions, free action on own turn). Examples: Breath Weapon, Change Shape, Sneak Attack, Constrict, Swallow Whole, Trample, special strikes.
-
-**Rules:**
-- If the ability has an action cost (one-action, two-actions, three-actions), it is almost always **offensive** unless it's clearly a **reaction**.
-- If the ability is a reaction (triggered by another's action), it is **reactive**.
-- Auras are **automatic**.
-- Senses are **special_sense**.
-- Healing/regeneration/negative healing → **hp_automatic**.
-- When unsure, default to **offensive**. Most abilities are offensive.
-
-Respond with ONLY the category name. No explanation.
-
-Ability name: {name}
-Action type: {action}
-Traits: {traits}
-Text: {text}
-
-Category:"""
 
 
 def classify_ability_category_llm(name, text, action="", traits="", model=None):

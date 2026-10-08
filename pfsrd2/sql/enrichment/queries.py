@@ -277,9 +277,7 @@ def add_review_reason(curs, ability_id, reason, supersedes=None):
     # believes it flagged something and nothing is flagged.
     row = curs.fetchone()
     if row is None:
-        raise ValueError(
-            f"no ability_record with ability_id={ability_id!r} to flag for review"
-        )
+        raise ValueError(f"no ability_record with ability_id={ability_id!r} to flag for review")
     existing = row["review_reason"] or ""
 
     # Clause-wise, and a clause REPLACES the one of its own kind rather than

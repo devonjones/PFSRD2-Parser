@@ -9,7 +9,7 @@ import re
 
 # Version number for tracking which enrichment logic produced the data.
 # Bump when extract_all behavior changes.
-ENRICHMENT_VERSION = 2
+ENRICHMENT_VERSION = 3
 
 # --- Damage type mapping ---
 

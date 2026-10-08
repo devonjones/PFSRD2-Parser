@@ -58,9 +58,9 @@ def _try_inline_enrich(curs, ability_id, raw_json):
     # Phase 2: LLM extraction for missed keywords (cached, so fast after first run)
     if missed:
         from pfsrd2.enrichment.llm_extractor import (
-            extract_area_llm,
-            extract_damage_llm,
-            extract_dc_llm,
+            extract_area_regex,
+            extract_damage_structured,
+            extract_dc_structured,
             extract_frequency_llm,
         )
 
@@ -74,10 +74,27 @@ def _try_inline_enrich(curs, ability_id, raw_json):
             result = dict(ability)
 
         _EXTRACTOR_FNS = {
+            # Constrained decoding (PFSRD2-Parser-4k8b). Validated against the
+            # cached LLM values before wiring, with remaining differences
+            # adjudicated against source text rather than against the cache
+            # (numbers in the ticket). Each extractor applies a
+            # mechanical grounding filter (_dice_in, _dcs_in, _save_types_in)
+            # because a schema constrains SHAPE, never truth.
+            # frequency stays on the free-text path. Constrained decoding was
+            # wired and measured over the real corpus and was worse: it read
+            # DURATIONS as frequencies ("can survive on any Elemental Plane for
+            # up to 48 hours" -> "48 hours"; "remain away from water for only
+            # 12 hours" -> "12 hours"), truncated a compound constraint ("100
+            # orts per day, to a maximum of 1,100 orts in 11 days" -> "11
+            # days"), and abandoned the corpus's normalised wording ("5 times
+            # per day" -> "five readings per day"). See PFSRD2-Parser-awee.
             "frequency": extract_frequency_llm,
-            "dc": extract_dc_llm,
-            "area": extract_area_llm,
-            "damage": extract_damage_llm,
+            "dc": extract_dc_structured,
+            # Deterministic, no model. Against the cached areas it missed
+            # nothing the model found, and it reads hyphenation the model
+            # choked on ("30- foot cone", "15-foot-radius").
+            "area": extract_area_regex,
+            "damage": extract_damage_structured,
         }
         # Fields come from LLM_TYPE_FIELDS, so this dict cannot drift from the
         # one the CLI and rejection_reason use.
@@ -170,9 +187,7 @@ def rejection_reason(field_name, ungrounded):
     )
 
 
-def reject_if_ungrounded(
-    llm_result, source, field, record: FlagTarget, mark: bool = True
-) -> bool:
+def reject_if_ungrounded(llm_result, source, field, record: FlagTarget, mark: bool = True) -> bool:
     """True when the extractor invented a number, and the record is flagged.
 
     `record` is a FlagTarget -- the thing being flagged, as one value rather
@@ -309,8 +324,7 @@ def _spelled_out(number, source):
     way; a scalar key with a "d" in it would be a real hole.
     """
     return any(
-        re.search(rf"\b{re.escape(word)}\b", source, re.I)
-        for word in _NUMBER_WORDS.get(number, ())
+        re.search(rf"\b{re.escape(word)}\b", source, re.I) for word in _NUMBER_WORDS.get(number, ())
     )
 
 

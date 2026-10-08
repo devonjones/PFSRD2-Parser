@@ -351,12 +351,10 @@ class TestTheRecordReachesATerminalState:
         )
         cli._update_review_flag(curs, record, "dc", was_enriched=True)
         db.commit()
-        curs.execute(
-            "SELECT needs_review FROM ability_records WHERE ability_id = ?", (ability_id,)
-        )
-        assert curs.fetchone()["needs_review"] == 0, (
-            "a grounded dc must retire the saving_throw rejection"
-        )
+        curs.execute("SELECT needs_review FROM ability_records WHERE ability_id = ?", (ability_id,))
+        assert (
+            curs.fetchone()["needs_review"] == 0
+        ), "a grounded dc must retire the saving_throw rejection"
 
 
 class TestHealStaleRespectsDryRun:
@@ -375,8 +373,7 @@ class TestHealStaleRespectsDryRun:
         raw = json.dumps({"name": "A", "text": "no mechanics here"})
         ability_id = insert_ability_record(curs, "A", "h", raw)
         curs.execute(
-            "UPDATE ability_records SET stale = 1, enriched_json = NULL"
-            " WHERE ability_id = ?",
+            "UPDATE ability_records SET stale = 1, enriched_json = NULL" " WHERE ability_id = ?",
             (ability_id,),
         )
         conn.commit()

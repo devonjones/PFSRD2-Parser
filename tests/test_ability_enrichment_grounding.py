@@ -126,12 +126,14 @@ class TestTheRejectPathActuallyRejects:
             lambda j: (json.loads(j) if isinstance(j, str) else dict(j), ["dc"]),
         )
         monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
-        monkeypatch.setattr(
-            ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r))
-        )
+        monkeypatch.setattr(ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r)))
         import pfsrd2.enrichment.llm_extractor as le
 
-        monkeypatch.setattr(le, "extract_dc_llm", lambda name, text: llm_result)
+        # Patch the extractor ability_enrichment actually wires. When the dc
+        # field moved to constrained decoding this stubbed extract_dc_llm,
+        # which production no longer calls -- so the stub was inert, the real
+        # extractor ran, and the guard under test was never reached.
+        monkeypatch.setattr(le, "extract_dc_structured", lambda name, text, model=None: llm_result)
         raw = json.dumps({"name": "Repelling Blast", "text": self.SOURCE, "type": "ability"})
         out = ae._try_inline_enrich(object(), 17662, raw)
         return json.loads(out) if out else None, marked
@@ -157,13 +159,13 @@ class TestTheRejectPathActuallyRejects:
             lambda j: (json.loads(j) if isinstance(j, str) else dict(j), ["dc"]),
         )
         monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
-        monkeypatch.setattr(
-            ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r))
-        )
+        monkeypatch.setattr(ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r)))
         import pfsrd2.enrichment.llm_extractor as le
 
         monkeypatch.setattr(
-            le, "extract_dc_llm", lambda n, t: [{"dc": 25, "text": "DC 25 basic Reflex"}]
+            le,
+            "extract_dc_structured",
+            lambda n, t, model=None: [{"dc": 25, "text": "DC 25 basic Reflex"}],
         )
         raw = json.dumps(
             {
@@ -303,7 +305,11 @@ class TestRejectIfUngrounded:
         # would be the opposite of what the flag promises.
         conn, curs, aid = self._db()
         assert reject_if_ungrounded(
-            {"dc": 30}, "a basic Reflex save", "saving_throw", FlagTarget(curs, aid, "X"), mark=False
+            {"dc": 30},
+            "a basic Reflex save",
+            "saving_throw",
+            FlagTarget(curs, aid, "X"),
+            mark=False,
         )
         assert self._reason(curs, aid) is None
         assert "REJECTED" in capsys.readouterr().err
@@ -316,7 +322,9 @@ class TestRejectIfUngrounded:
         # queue -- with its damage value already cleared, nothing would ever
         # re-derive it.
         conn, curs, aid = self._db()
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X"))
+        reject_if_ungrounded(
+            {"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X")
+        )
         reject_if_ungrounded({"dc": 30}, "no dice here", "saving_throw", FlagTarget(curs, aid, "X"))
         reason = self._reason(curs, aid)
         assert "damage" in reason
@@ -324,9 +332,13 @@ class TestRejectIfUngrounded:
 
     def test_the_same_rejection_twice_does_not_grow_the_reason(self):
         conn, curs, aid = self._db()
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X"))
+        reject_if_ungrounded(
+            {"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X")
+        )
         once = self._reason(curs, aid)
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X"))
+        reject_if_ungrounded(
+            {"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X")
+        )
         assert self._reason(curs, aid) == once
 
 
@@ -364,9 +376,7 @@ class TestAddReviewReasonIsClauseWise:
         return _memory_db("A")
 
     def _reason(self, curs, aid):
-        curs.execute(
-            "SELECT review_reason FROM ability_records WHERE ability_id = ?", (aid,)
-        )
+        curs.execute("SELECT review_reason FROM ability_records WHERE ability_id = ?", (aid,))
         return curs.fetchone()["review_reason"]
 
     def test_a_narrowed_reason_replaces_the_wider_one(self):
@@ -463,20 +473,26 @@ class TestASpelledOutNumberIsGrounded:
     """
 
     def test_the_word_form_grounds_the_digit(self):
-        assert ungrounded(
-            {"frequency": "5 times per day"},
-            "The harrow reader can conduct up to five readings per day.",
-        ) is None
+        assert (
+            ungrounded(
+                {"frequency": "5 times per day"},
+                "The harrow reader can conduct up to five readings per day.",
+            )
+            is None
+        )
 
     def test_once_and_twice_count_as_word_forms(self):
         assert ungrounded({"frequency": "1 per day"}, "can do this once per day") is None
         assert ungrounded({"frequency": "2 per day"}, "can do this twice per day") is None
 
     def test_a_word_does_not_ground_a_DIFFERENT_number(self):
-        assert ungrounded(
-            {"frequency": "7 times per day"},
-            "The harrow reader can conduct up to five readings per day.",
-        ) == "7"
+        assert (
+            ungrounded(
+                {"frequency": "7 times per day"},
+                "The harrow reader can conduct up to five readings per day.",
+            )
+            == "7"
+        )
 
     def test_dice_are_never_word_grounded(self):
         # "one creature" must not ground the 1 inside 1d6 -- the source says
@@ -500,3 +516,30 @@ class TestASpelledOutNumberIsGrounded:
         # The table only covers what AoN actually spells out. Inventing
         # coverage for text that does not exist widens the guard for nothing.
         assert ungrounded({"dc": 50}, "fifty feet away") == "50"
+
+
+class TestEachFieldUsesItsExtractor:
+    """_EXTRACTOR_FNS is a local dict, so pin the routing by behaviour: a
+    field wired to the wrong extractor passed the whole suite."""
+
+    WIRING = {
+        "frequency": "extract_frequency_llm",
+        "dc": "extract_dc_structured",
+        "area": "extract_area_regex",
+        "damage": "extract_damage_structured",
+    }
+
+    def test_each_field_is_filled_by_its_extractor(self, monkeypatch):
+        import pfsrd2.ability_enrichment as ae
+        import pfsrd2.enrichment.llm_extractor as le
+
+        for fn in self.WIRING.values():
+            monkeypatch.setattr(le, fn, lambda name, text, model=None, fn=fn: [fn])
+        monkeypatch.setattr(ae, "extract_all", lambda j: (json.loads(j), list(self.WIRING)))
+        monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
+        monkeypatch.setattr(ae, "reject_if_ungrounded", lambda *a, **k: False)
+        raw = json.dumps({"name": "X", "text": "some text", "type": "ability"})
+        out = json.loads(ae._try_inline_enrich(object(), 1, raw))
+        assert {kw: out[field] for kw, field in ae.LLM_TYPE_FIELDS.items()} == {
+            kw: [fn] for kw, fn in self.WIRING.items()
+        }

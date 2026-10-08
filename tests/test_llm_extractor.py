@@ -19,21 +19,31 @@ import pytest
 
 
 def ollama_available():
+    """Probe the SAME host the extractor uses.
+
+    This used to hardcode localhost, which could report "available" against an
+    entirely different server than the one under test -- and there is one
+    listening there. Derive the /api/tags URL from OLLAMA_URL so the probe and
+    the code cannot disagree about which machine they mean.
+    """
+    from pfsrd2.enrichment.llm_extractor import OLLAMA_URL
+
+    tags_url = OLLAMA_URL.rsplit("/api/", 1)[0] + "/api/tags"
     try:
         result = subprocess.run(
-            ["curl", "-s", "http://localhost:11434/api/tags"],
+            ["curl", "-s", "-m", "5", tags_url],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=10,
         )
-        return result.returncode == 0
+        return result.returncode == 0 and bool(result.stdout.strip())
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return False
 
 
 skip_no_ollama = pytest.mark.skipif(
     not ollama_available(),
-    reason="Local Ollama not available",
+    reason="Ollama not reachable at OLLAMA_URL",
 )
 
 
