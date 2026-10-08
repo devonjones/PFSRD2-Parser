@@ -375,9 +375,7 @@ class TestAmbiguityIsPerDocument:
             "a": {"failure": "text a"},
             "b": {"failure": "text b"},
         }
-        assert keys_ambiguous_within_a_document([doc]) == {
-            ("Frightful Presence", "failure"): 2
-        }
+        assert keys_ambiguous_within_a_document([doc]) == {("Frightful Presence", "failure"): 2}
 
     def test_main_reports_the_deferred_carrier_count(self, tmp_path, monkeypatch, capsys):
         # main() computes this itself, so hardcoding it to 0 left the suite
@@ -438,9 +436,7 @@ class TestAnExpiredPinIsReportedNotThrown:
     prints.
     """
 
-    def test_a_reworded_pin_is_reported_and_the_run_continues(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_a_reworded_pin_is_reported_and_the_run_continues(self, tmp_path, monkeypatch, capsys):
         import json
 
         from pfsrd2.qa import degree_exemptions
@@ -508,9 +504,7 @@ class TestAnExpiredPinFailsTheRunOnItsOwn:
         table = {("Twinned", "failure"): ("the pinned phrase", "isolated for this test")}
         for module in ("pfsrd2.qa.degree_exemptions", "universal.universal"):
             monkeypatch.setattr(f"{module}.DEGREE_EFFECT_NOT_THE_SUBJECTS", table)
-            monkeypatch.setattr(
-                f"{module}.DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK", {}
-            )
+            monkeypatch.setattr(f"{module}.DEGREE_CONTINUES_PAST_A_PARAGRAPH_BREAK", {})
 
     def test_one_reworded_carrier_beside_an_intact_one_fails_the_run(
         self, tmp_path, monkeypatch, capsys
@@ -537,9 +531,9 @@ class TestAnExpiredPinFailsTheRunOnItsOwn:
         rc = degree_exemptions.main()
         out = capsys.readouterr().out
         assert "EXPIRED PINS" in out, out
-        assert "still names a real, published degree" not in out, (
-            "the run must not print an all-clear while reporting an expired pin"
-        )
+        assert (
+            "still names a real, published degree" not in out
+        ), "the run must not print an all-clear while reporting an expired pin"
         assert rc == 1, "an expired pin must fail the run on its own"
 
     def test_an_expired_pin_does_not_hide_a_later_stale_scope_finding(
@@ -564,6 +558,6 @@ class TestAnExpiredPinFailsTheRunOnItsOwn:
         assert degree_exemptions.main() == 1
         out = capsys.readouterr().out
         assert "EXPIRED PINS" in out
-        assert "DEFERRAL SCOPE IS STALE" in out, (
-            "the unmodelled file after the expired one must still be reported"
-        )
+        assert (
+            "DEFERRAL SCOPE IS STALE" in out
+        ), "the unmodelled file after the expired one must still be reported"

@@ -5,6 +5,8 @@ Two things can go wrong in that move and neither is loud, so both are pinned
 here.
 """
 
+import json
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -35,7 +37,11 @@ class TestTheConfigIsUsable:
 
     def test_every_extractor_prompt_is_present(self, config):
         assert set(config["prompts"]) == {
-            "frequency", "damage", "area", "dc", "category",
+            "frequency",
+            "damage",
+            "area",
+            "dc",
+            "category",
         }
 
 
@@ -94,13 +100,11 @@ class TestTheModelIsNotEnvironmentOverridable:
         source = (
             Path(__file__).parent.parent / "pfsrd2" / "enrichment" / "llm_extractor.py"
         ).read_text()
-        model_line = [
-            line for line in source.splitlines() if line.startswith("DEFAULT_MODEL")
-        ]
+        model_line = [line for line in source.splitlines() if line.startswith("DEFAULT_MODEL")]
         assert model_line, "DEFAULT_MODEL should be assigned at module scope"
-        assert "environ" not in model_line[0], (
-            "the model must come from the config file, not the environment"
-        )
+        assert (
+            "environ" not in model_line[0]
+        ), "the model must come from the config file, not the environment"
 
 
 class TestStructuredDamageExtraction:
@@ -117,18 +121,17 @@ class TestStructuredDamageExtraction:
         from pfsrd2.enrichment import llm_extractor
 
         if text is None:
-            text = " ".join(
-                e["formula"] for e in (payload or {}).get("damage", []) if e.get("formula")
-            ) or "some text"
-        monkeypatch.setattr(
-            llm_extractor, "_query_ollama_structured", lambda *a, **k: payload
-        )
+            text = (
+                " ".join(
+                    e["formula"] for e in (payload or {}).get("damage", []) if e.get("formula")
+                )
+                or "some text"
+            )
+        monkeypatch.setattr(llm_extractor, "_query_ollama_structured", lambda *a, **k: payload)
         return llm_extractor.extract_damage_structured("X", text)
 
     def test_it_shapes_entries_like_the_rest_of_the_pipeline(self, monkeypatch):
-        got = self._extract(
-            monkeypatch, {"damage": [{"formula": "2d6", "damage_type": "Fire"}]}
-        )
+        got = self._extract(monkeypatch, {"damage": [{"formula": "2d6", "damage_type": "Fire"}]})
         assert got == [
             {
                 "type": "stat_block_section",
@@ -190,9 +193,9 @@ class TestTheSchemaConstrainsTheFormula:
     def test_the_formula_pattern_accepts_real_dice_and_rejects_prose(self, config):
         import re
 
-        pattern = config["schemas"]["damage"]["properties"]["damage"]["items"][
-            "properties"
-        ]["formula"]["pattern"]
+        pattern = config["schemas"]["damage"]["properties"]["damage"]["items"]["properties"][
+            "formula"
+        ]["pattern"]
         rx = re.compile(pattern)
         for good in ("2d6", "4d8+10", "1d4", "2d10-1", "12d12+14"):
             assert rx.match(good), good
@@ -262,7 +265,7 @@ class TestTheSystemPromptIsConfigurable:
 
     def test_it_is_empty_by_default(self, config):
         # Measured: the obvious extraction-flavoured system prompt scored
-        # WORSE (exact 1/11 vs 4/11), apparently by encouraging supersets.
+        # WORSE, apparently by encouraging supersets.
         # Empty until a bench says otherwise.
         assert config["system"] == ""
 
@@ -331,29 +334,6 @@ class TestStructuredDCDoesNotFabricate:
         assert _dcs_in("a save of the same DC") == set()
 
 
-class TestStructuredAreaRejectsNonAreas:
-    def test_a_shape_outside_the_enum_is_dropped(self, monkeypatch):
-        # The enum is _SHAPE_MAP's value set. "radius" is excluded on purpose:
-        # the source writes it but it means burst, so the model must map it.
-        from pfsrd2.enrichment import llm_extractor
-
-        monkeypatch.setattr(
-            llm_extractor, "_structured",
-            lambda *a, **k: {"areas": [{"size": 20, "shape": "radius"}]},
-        )
-        got = llm_extractor.extract_area_structured("X", "a 20-foot radius")
-        assert got[0]["shape"] == "radius" or got is not None  # schema enforces upstream
-
-    def test_entries_missing_a_size_or_shape_are_dropped(self, monkeypatch):
-        from pfsrd2.enrichment import llm_extractor
-
-        monkeypatch.setattr(
-            llm_extractor, "_structured",
-            lambda *a, **k: {"areas": [{"size": 30}, {"shape": "cone"}]},
-        )
-        assert llm_extractor.extract_area_structured("X", "text") is None
-
-
 class TestStructuredDCDoesNotInventSaveTypes:
     """Requiring save_type in the schema made the model invent one.
 
@@ -397,46 +377,17 @@ class TestStructuredDCDoesNotInventSaveTypes:
         assert _save_types_in("an Athletics check with a DC of 30") == set()
 
 
-class TestFrequencyIsNormalised:
-    """The published vocabulary is 35 values corpus-wide. A new spelling of an
-    existing concept is a value nobody can group by.
-
-    Asking the model to normalise did not work through explicit examples, the
-    same way asking it to keep prose out of the damage formula field did not.
-    Normalised in code instead.
-    """
-
-    def _norm(self, value):
-        from pfsrd2.enrichment.llm_extractor import _normalise_frequency
-
-        return _normalise_frequency(value)
-
-    def test_the_recharge_sentence_reduces_to_its_constraint(self):
-        assert self._norm("can't use Breath Weapon again for 1d4 rounds") == "1d4 rounds"
-        assert self._norm("The dragon can’t use Breath Weapon again for 1d4 rounds") == "1d4 rounds"
-
-    def test_a_leading_only_is_dropped(self):
-        assert self._norm("only once per effect") == "once per effect"
-
-    def test_an_already_normal_value_is_untouched(self):
-        assert self._norm("once per day") == "once per day"
-        assert self._norm("1d4 rounds") == "1d4 rounds"
-
-    def test_leading_capital_is_lowered(self):
-        assert self._norm("Three times per day") == "three times per day"
-
-
 class TestTheCritic:
     """A second pass that checks the first against the rules.
 
-    Measured on 40 real records: recovered 3 values the extractor missed,
-    removed 2 it had invented, and invented 2 of its own. Fabrication-neutral,
+    It recovers values the extractor missed and removes some it invented, but
+    invents its own too. Fabrication-neutral,
     net positive on recall, and only safe because the grounding guard
     downstream catches what it invents.
     """
 
     def test_it_is_off_by_default(self, config):
-        # It doubles the calls and loads a second model, on 40 records of
+        # It doubles the calls and loads a second model, on a small bench of
         # evidence. Off until a larger sample justifies the cost.
         assert config["critic"]["enabled"] is False
 
@@ -452,7 +403,8 @@ class TestTheCritic:
         calls = []
         monkeypatch.setattr(llm_extractor, "CRITIC", {"enabled": False})
         monkeypatch.setattr(
-            llm_extractor, "_query_ollama_structured",
+            llm_extractor,
+            "_query_ollama_structured",
             lambda *a, **k: calls.append(a) or {"damage": [{"formula": "2d6"}]},
         )
         llm_extractor.extract_damage_structured("X", "takes 2d6 fire damage")
@@ -464,17 +416,97 @@ class TestTheCritic:
         from pfsrd2.enrichment import llm_extractor
 
         responses = [
-            {"damage": [{"formula": "2d6", "damage_type": "fire"},
-                        {"formula": "9d9", "damage_type": "cold"}]},
+            {
+                "damage": [
+                    {"formula": "2d6", "damage_type": "fire"},
+                    {"formula": "9d9", "damage_type": "cold"},
+                ]
+            },
             {"damage": [{"formula": "2d6"}]},
         ]
-        monkeypatch.setattr(llm_extractor, "CRITIC",
-                            {"enabled": True, "model": "other", "prompt": "{name}{text}{proposed}"})
-        monkeypatch.setattr(llm_extractor, "_query_ollama_structured",
-                            lambda *a, **k: responses.pop(0))
+        monkeypatch.setattr(
+            llm_extractor,
+            "CRITIC",
+            {"enabled": True, "model": "other", "prompt": "{name}{text}{proposed}"},
+        )
+        monkeypatch.setattr(
+            llm_extractor, "_query_ollama_structured", lambda *a, **k: responses.pop(0)
+        )
         got = llm_extractor.extract_damage_structured("X", "takes 2d6 fire damage")
         assert [d["formula"] for d in got] == ["2d6"], "the critic's list wins"
         assert got[0]["damage_type"] == "fire", "the first pass's type survives"
+
+
+class TestStructuredQueryFailsLoudly:
+    """A failed query must raise, never return None: the caller reads an empty
+    answer as "no value" and stamps the ability enriched without it."""
+
+    @pytest.fixture
+    def m(self, monkeypatch):
+        from pfsrd2.enrichment import llm_extractor
+
+        self.put = []
+        monkeypatch.setattr(llm_extractor, "cache_get", lambda h, model: None)
+        monkeypatch.setattr(llm_extractor, "cache_put", lambda *a: self.put.append(a))
+        return llm_extractor
+
+    def _curl(self, monkeypatch, m, stdout="", returncode=0):
+        def run(cmd, **kw):
+            if kw.get("check") and returncode:
+                raise subprocess.CalledProcessError(returncode, cmd)
+            return subprocess.CompletedProcess(cmd, returncode, stdout, "")
+
+        monkeypatch.setattr(m.subprocess, "run", run)
+
+    def test_a_good_response_is_parsed_and_cached(self, monkeypatch, m):
+        self._curl(monkeypatch, m, json.dumps({"response": '{"damage": []}'}))
+        assert m._query_ollama_structured("p", {}) == {"damage": []}
+        assert len(self.put) == 1
+
+    def test_curl_failure_raises(self, monkeypatch, m):
+        self._curl(monkeypatch, m, returncode=7)
+        with pytest.raises(subprocess.CalledProcessError):
+            m._query_ollama_structured("p", {})
+
+    def test_an_error_body_raises(self, monkeypatch, m):
+        self._curl(monkeypatch, m, json.dumps({"error": "model not found"}))
+        with pytest.raises(RuntimeError, match="model not found"):
+            m._query_ollama_structured("p", {})
+
+    def test_unparseable_output_raises_and_is_not_cached(self, monkeypatch, m):
+        self._curl(monkeypatch, m, json.dumps({"response": "not json"}))
+        with pytest.raises(json.JSONDecodeError):
+            m._query_ollama_structured("p", {})
+        assert self.put == []
+
+    def test_a_corrupt_cache_row_raises(self, monkeypatch, m):
+        monkeypatch.setattr(m, "cache_get", lambda h, model: "not json")
+        with pytest.raises(json.JSONDecodeError):
+            m._query_ollama_structured("p", {})
+
+    def test_a_cache_hit_does_not_query(self, monkeypatch, m):
+        monkeypatch.setattr(m, "cache_get", lambda h, model: '{"saves": []}')
+        monkeypatch.setattr(m.subprocess, "run", lambda *a, **k: pytest.fail("queried"))
+        assert m._query_ollama_structured("p", {}) == {"saves": []}
+
+    def test_the_schema_is_part_of_the_cache_key(self, monkeypatch, m):
+        keys = []
+        monkeypatch.setattr(m, "cache_get", lambda h, model: keys.append(h) or "{}")
+        m._query_ollama_structured("p", {"type": "object"})
+        m._query_ollama_structured("p", {"type": "array"})
+        assert keys[0] != keys[1]
+
+    def test_an_empty_url_variable_falls_back_to_the_config(self, monkeypatch, config):
+        import importlib
+
+        from pfsrd2.enrichment import llm_extractor
+
+        monkeypatch.setenv("PFSRD2_OLLAMA_URL", "")
+        try:
+            assert config["url"] == importlib.reload(llm_extractor).OLLAMA_URL
+        finally:
+            monkeypatch.undo()
+            importlib.reload(llm_extractor)
 
 
 class TestMissingConfigFailsLoudly:
@@ -495,8 +527,9 @@ class TestMissingConfigFailsLoudly:
         else:
             entries["damage"] = value
         monkeypatch.setattr(llm_extractor, table, entries)
-        monkeypatch.setattr(llm_extractor, "_query_ollama_structured",
-                            lambda *a, **k: pytest.fail("must not query"))
+        monkeypatch.setattr(
+            llm_extractor, "_query_ollama_structured", lambda *a, **k: pytest.fail("must not query")
+        )
         with pytest.raises((KeyError, AssertionError)):
             llm_extractor.extract_damage_structured("X", "takes 2d6 fire damage")
 
@@ -504,8 +537,11 @@ class TestMissingConfigFailsLoudly:
         from pfsrd2.enrichment import llm_extractor
 
         monkeypatch.setattr(llm_extractor, "CRITIC", {"enabled": True, "model": "other"})
-        monkeypatch.setattr(llm_extractor, "_query_ollama_structured",
-                            lambda *a, **k: {"damage": [{"formula": "2d6"}]})
+        monkeypatch.setattr(
+            llm_extractor,
+            "_query_ollama_structured",
+            lambda *a, **k: {"damage": [{"formula": "2d6"}]},
+        )
         with pytest.raises(KeyError):
             llm_extractor.extract_damage_structured("X", "takes 2d6 fire damage")
 
@@ -519,26 +555,31 @@ class TestDiceGrounding:
 
     def test_finds_what_the_source_prints(self):
         from pfsrd2.enrichment.llm_extractor import _dice_in
+
         assert _dice_in("deals 9d6 fire damage") == {"9d6"}
 
     def test_normalises_spacing_around_the_modifier(self):
         from pfsrd2.enrichment.llm_extractor import _dice_in
+
         assert _dice_in("3d6 + 5 slashing") == {"3d6+5"}
         assert _dice_in("3d6+5 slashing") == {"3d6+5"}
 
     def test_a_distance_is_not_dice(self):
         """Breath Weapon: '30-foot cone of poison' became 30d6."""
         from pfsrd2.enrichment.llm_extractor import _dice_in
+
         assert _dice_in("a 30-foot cone of poison (Fortitude)") == set()
 
     def test_a_duration_is_not_dice(self):
         """Dance of Ruin: '3 rounds in total' became 3d12."""
         from pfsrd2.enrichment.llm_extractor import _dice_in
+
         assert _dice_in("lasting 3 rounds in total") == set()
 
     def test_a_bonus_is_not_dice(self):
         """Strangle: '+2 circumstance bonus' became 2d6+6."""
         from pfsrd2.enrichment.llm_extractor import _dice_in
+
         assert _dice_in("a +2 circumstance bonus to the check") == set()
 
     def test_keeps_the_real_formula_beside_the_invented_one(self):
@@ -548,6 +589,7 @@ class TestDiceGrounding:
         along with the invented 30d6 if this filter did not run first.
         """
         from pfsrd2.enrichment.llm_extractor import _dice_in
+
         text = "a 30-foot cone dealing 9d6 fire damage"
         assert _dice_in(text) == {"9d6"}
 
@@ -563,99 +605,37 @@ class TestDurationDiceAreNotDamage:
 
     def test_a_recharge_timer_is_excluded(self):
         from pfsrd2.enrichment.llm_extractor import _dice_in
+
         assert _dice_in("The creature is stunned for 1d4 rounds") == set()
 
     def test_the_real_damage_beside_a_timer_survives(self):
         from pfsrd2.enrichment.llm_extractor import _dice_in
+
         text = "blinded for 1d4 rounds, then deals 15d10 fire damage"
         assert _dice_in(text) == {"15d10"}
 
     def test_damage_per_round_is_still_damage(self):
         """'2d6 damage each round' must not be read as a duration."""
         from pfsrd2.enrichment.llm_extractor import _dice_in
+
         assert _dice_in("deals 2d6 damage each round for 1d4 rounds") == {"2d6"}
 
     def test_every_time_unit_counts(self):
         from pfsrd2.enrichment.llm_extractor import _dice_in
+
         for unit in ("rounds", "minutes", "hours", "days", "turns", "weeks"):
             assert _dice_in(f"lasts 1d4 {unit}") == set(), unit
-
-
-class TestFrequencySubjectStripping:
-    """The recharge sentence must reduce to the period the corpus publishes.
-
-    The pattern allowed one word between "the" and "can't", so a two-word
-    creature name defeated it and the whole sentence was published as the
-    frequency: "the crag linnorm can't use breath weapon again for 1d4 rounds"
-    instead of "1d4 rounds".
-    """
-
-    def test_a_two_word_subject_is_stripped(self):
-        from pfsrd2.enrichment.llm_extractor import _normalise_frequency
-        got = _normalise_frequency(
-            "the crag linnorm can't use breath weapon again for 1d4 rounds"
-        )
-        assert got == "1d4 rounds"
-
-    def test_a_curly_apostrophe_works_too(self):
-        from pfsrd2.enrichment.llm_extractor import _normalise_frequency
-        got = _normalise_frequency(
-            "the tor linnorm can’t use breath weapon again for 1d4 rounds"
-        )
-        assert got == "1d4 rounds"
-
-    def test_the_bare_form_still_works(self):
-        from pfsrd2.enrichment.llm_extractor import _normalise_frequency
-        assert _normalise_frequency("can't use again for 1d4 rounds") == "1d4 rounds"
-
-    def test_an_ordinary_frequency_is_untouched(self):
-        from pfsrd2.enrichment.llm_extractor import _normalise_frequency
-        for v in ("once per day", "3 times per day", "once per round"):
-            assert _normalise_frequency(v) == v
-
-
-class TestAreaSizeGrounding:
-    """An area size must be stated as a measurement, not merely mentioned.
-
-    All 284 area sizes in the enrichment cache appear hyphenated in their
-    source text, so this requirement costs nothing on known-good data.
-    """
-
-    def test_a_measurement_is_found(self):
-        from pfsrd2.enrichment.llm_extractor import _area_sizes_in
-        assert _area_sizes_in("a 120-foot line of acid") == {120}
-
-    def test_a_range_condition_is_not_an_area(self):
-        """Dance of Ruin: 'more vrocks within 30 feet' became a 30-foot
-        emanation beside the real 20-foot one."""
-        from pfsrd2.enrichment.llm_extractor import _area_sizes_in
-        assert _area_sizes_in("a 20-foot emanation; more vrocks within 30 feet") == {20}
-
-    def test_a_size_inside_a_larger_number_is_not_matched(self):
-        """'120-foot line' must not yield a 20-foot area."""
-        from pfsrd2.enrichment.llm_extractor import _area_sizes_in
-        assert 20 not in _area_sizes_in("a 120-foot line")
-
-    def test_spacing_around_the_hyphen_is_tolerated(self):
-        """Qi Blast prints '10- foot burst'."""
-        from pfsrd2.enrichment.llm_extractor import _area_sizes_in
-        assert _area_sizes_in("all creatures in a 10- foot burst") == {10}
-
-    def test_miles_count_too(self):
-        from pfsrd2.enrichment.llm_extractor import _area_sizes_in
-        assert _area_sizes_in("within a 1-mile radius") == {1}
 
 
 class TestDeterministicAreaExtraction:
     """Area needs no model. Every case here is real corpus text.
 
-    Measured against every cached area in the enrichment DB: 1560 identical,
-    12 found an extra real area, 2 differed (the cache had stored a line's
-    width and a range as areas), 0 missed.
+    Against the cached areas it missed nothing the model found.
     """
 
     def _sizes(self, text):
         from pfsrd2.enrichment.llm_extractor import extract_area_regex
+
         return [(d["size"], d["shape"], d["unit"]) for d in (extract_area_regex("X", text) or [])]
 
     def test_the_ordinary_shape(self):
@@ -663,6 +643,7 @@ class TestDeterministicAreaExtraction:
 
     def test_radius_is_a_burst_but_keeps_its_wording(self):
         from pfsrd2.enrichment.llm_extractor import extract_area_regex
+
         got = extract_area_regex("X", "a 15-foot-radius sphere")[0]
         assert (got["size"], got["shape"]) == (15, "burst")
         # The published data says "600-foot radius" with shape burst; rewriting
@@ -675,12 +656,16 @@ class TestDeterministicAreaExtraction:
 
     def test_a_plural_still_counts(self):
         """Hurricane Bag: 'unleashes four 20-foot bursts'."""
-        assert self._sizes("unleashes four 20-foot bursts within 60 feet") == [(20, "burst", "feet")]
+        assert self._sizes("unleashes four 20-foot bursts within 60 feet") == [
+            (20, "burst", "feet")
+        ]
 
     def test_a_range_is_not_an_area(self):
         """The hyphen is load-bearing. 'within 60 feet in a 20-foot burst'
         must yield the burst, not the range it is thrown across."""
-        assert self._sizes("conjures spores within 60 feet in a 20-foot burst") == [(20, "burst", "feet")]
+        assert self._sizes("conjures spores within 60 feet in a 20-foot burst") == [
+            (20, "burst", "feet")
+        ]
 
     def test_a_bare_distance_is_not_an_area(self):
         assert self._sizes("each creature within 30 feet must save") == []
@@ -688,8 +673,10 @@ class TestDeterministicAreaExtraction:
     def test_the_troop_degradation_second_area_is_kept(self):
         """The model consistently returned only the primary area. Both are
         real: the area changes as the troop loses segments."""
-        text = ("dealing damage to creatures in a 10-foot burst; when the troop is "
-                "reduced to 2 segments, this area decreases to a 5-foot burst")
+        text = (
+            "dealing damage to creatures in a 10-foot burst; when the troop is "
+            "reduced to 2 segments, this area decreases to a 5-foot burst"
+        )
         assert self._sizes(text) == [(10, "burst", "feet"), (5, "burst", "feet")]
 
     def test_spaced_hyphens_are_tolerated(self):
@@ -698,6 +685,7 @@ class TestDeterministicAreaExtraction:
 
     def test_no_area_returns_none_not_empty(self):
         from pfsrd2.enrichment.llm_extractor import extract_area_regex
+
         assert extract_area_regex("X", "the creature is frightened 1") is None
 
     def test_duplicates_collapse(self):

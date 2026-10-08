@@ -26,9 +26,8 @@ _CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm_con
 with open(_CONFIG_PATH, "rb") as _fh:
     _CONFIG = tomllib.load(_fh)
 
-# The host may move -- ollama was taken off the parser box because running it
-# alongside a full corpus parse crashed the machine -- so it is overridable.
-OLLAMA_URL = os.environ.get("PFSRD2_OLLAMA_URL", _CONFIG["url"])
+# `or`, not a .get default: an exported-but-empty variable is unset, not a URL.
+OLLAMA_URL = os.environ.get("PFSRD2_OLLAMA_URL") or _CONFIG["url"]
 
 # The model is NOT overridable by environment on purpose. Every enriched record
 # stores "llm:<model>" as its extraction_method; changing it from a shell
@@ -48,8 +47,8 @@ SYSTEM = _CONFIG.get("system", "")
 CRITIC = _CONFIG.get("critic", {})
 
 PROMPTS = _CONFIG["prompts"]
-SCHEMAS = _CONFIG.get("schemas", {})
-STRUCTURED_PROMPTS = _CONFIG.get("structured_prompts", {})
+SCHEMAS = _CONFIG["schemas"]
+STRUCTURED_PROMPTS = _CONFIG["structured_prompts"]
 FREQUENCY_PROMPT = PROMPTS["frequency"]
 DAMAGE_PROMPT = PROMPTS["damage"]
 AREA_PROMPT = PROMPTS["area"]
@@ -125,9 +124,9 @@ def _query_ollama_structured(prompt, schema, model=None):
     malformed output stops being a failure mode. That is worth more here than
     any model swap -- see PFSRD2-Parser-4k8b for the bench.
 
-    Returns the parsed object, or None. A None means the request failed or the
-    response did not parse; it does NOT mean "no values found", which comes
-    back as an empty list inside a valid object.
+    Returns the parsed object. A failed request, an error body or unparseable
+    output raises: callers read an empty answer as "the source has no value"
+    and stamp the ability enriched, so an outage must stop the run instead.
 
     The schema is folded into the cache key. It is part of the request, so a
     changed schema has to re-query for the same reason a changed prompt does --
@@ -140,25 +139,21 @@ def _query_ollama_structured(prompt, schema, model=None):
 
     cached = cache_get(prompt_hash, model)
     if cached is not None:
-        try:
-            return json.loads(cached)
-        except json.JSONDecodeError:
-            return None
+        return json.loads(cached)
 
     payload = json.dumps(_request(model, prompt, format=schema))
-    try:
-        result = subprocess.run(
-            ["curl", "-s", OLLAMA_URL, "-d", payload],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode != 0:
-            return None
-        response_text = json.loads(result.stdout).get("response", "").strip()
-        parsed = json.loads(response_text)
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError):
-        return None
+    result = subprocess.run(
+        ["curl", "-s", OLLAMA_URL, "-d", payload],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+    body = json.loads(result.stdout)
+    if "response" not in body:
+        raise RuntimeError(f"ollama at {OLLAMA_URL}: {body.get('error', body)}")
+    response_text = body["response"].strip()
+    parsed = json.loads(response_text)
 
     cache_put(prompt_hash, model, response_text)
     return parsed
@@ -227,7 +222,8 @@ def _save_types_in(text):
     """Save types the source actually names."""
     low = (text or "").lower()
     return {
-        code for code, words in _SAVE_WORDS.items()
+        code
+        for code, words in _SAVE_WORDS.items()
         if any(re.search(rf"\b{re.escape(w)}\b", low) for w in words)
     }
 
@@ -295,22 +291,6 @@ def extract_dc_structured(name, text, model=None):
     return out or None
 
 
-def _area_sizes_in(text):
-    """Sizes the source writes as a measurement: "20-foot", "1-mile".
-
-    Every one of the 284 area sizes already in the enrichment cache appears in
-    its source text in this hyphenated form -- there were no exceptions -- so
-    requiring it costs nothing and rejects the failure this exists for. A bare
-    "within 30 feet" is a CONDITION on who is affected, not the area: "if more
-    vrocks within 30 feet also Dance" became a 30-foot emanation alongside the
-    real 20-foot one, and "120-foot line" produced a spurious 60-foot line.
-    """
-    return {
-        int(m.group(1))
-        for m in re.finditer(r"\b(\d+)\s*-\s*(?:foot|feet|mile|miles)\b", text or "", re.I)
-    }
-
-
 # Shapes the area schema accepts. "radius" is how the source usually writes a
 # burst, so it maps rather than being dropped.
 _AREA_SHAPES = "burst|cone|cylinder|emanation|line|wall|radius"
@@ -321,8 +301,7 @@ _AREA_PAT = re.compile(
     # The hyphen is load-bearing, not cosmetic. Making it optional lets the
     # pattern read a RANGE as an area: "within 60 feet in a 20-foot burst"
     # matched 60 and then missed the real 20-foot burst entirely.
-    rf"\b(\d+)\s*-\s*(foot|feet|mile|miles)\b[^.;)]{{0,24}}?"
-    rf"\b({_AREA_SHAPES})s?\b",
+    rf"\b(\d+)\s*-\s*(foot|feet|mile|miles)\b[^.;)]{{0,24}}?" rf"\b({_AREA_SHAPES})s?\b",
     re.I,
 )
 
@@ -332,16 +311,9 @@ def extract_area_regex(name, text, model=None):
 
     An area in this corpus is always written as a measurement followed closely
     by a shape word, which is regular enough that a regex beats the model on
-    every axis measured. Against the 262 cached area values:
-
-        258  reproduced exactly
-          4  found an additional real area the model had missed
-          0  missed anything the model found
-
-    and over the 6068 abilities the pipeline records as having NO area, it
-    fires on 43 -- all of them real areas the model failed to read, mostly odd
-    hyphenation it choked on ("30- foot cone", "100- foot line",
-    "15-foot-radius").
+    every axis measured: against the cached areas it missed nothing the model
+    found, and it reads hyphenation the model choked on ("30- foot cone",
+    "100- foot line", "15-foot-radius").
 
     It also recovers the troop-degradation second area the model consistently
     drops: "when the troop is reduced to 2 segments, this area decreases to a
@@ -366,132 +338,46 @@ def extract_area_regex(name, text, model=None):
         if key in seen:
             continue
         seen.add(key)
-        out.append({
-            "type": "stat_block_section",
-            "subtype": "area",
-            "shape": shape,
-            "size": int(m.group(1)),
-            "unit": unit,
-            # Normalised rather than the raw span: the source writes
-            # "30- foot cone" and "15-foot-radius", the published form is
-            # "30-foot cone". Reconstructing keeps the field canonical.
-            "text": f"{m.group(1)}-{'mile' if unit == 'miles' else 'foot'} {written}",
-        })
+        out.append(
+            {
+                "type": "stat_block_section",
+                "subtype": "area",
+                "shape": shape,
+                "size": int(m.group(1)),
+                "unit": unit,
+                # Normalised rather than the raw span: the source writes
+                # "30- foot cone" and "15-foot-radius", the published form is
+                # "30-foot cone". Reconstructing keeps the field canonical.
+                "text": f"{m.group(1)}-{'mile' if unit == 'miles' else 'foot'} {written}",
+            }
+        )
     return out or None
-
-
-def extract_area_structured(name, text, model=None):
-    """Areas via constrained decoding. Returns area objects, or None.
-
-    shape is an enum matching _SHAPE_MAP's values. "radius" is excluded from it
-    deliberately: the source writes it, but it means burst, so the model has to
-    map it rather than emit a shape nothing downstream accepts.
-    """
-    parsed = _structured("area", name, text, model)
-    if not parsed:
-        return None
-    published = _area_sizes_in(text)
-    seen, out = set(), []
-    for entry in parsed.get("areas", []):
-        size, shape = entry.get("size"), entry.get("shape")
-        if not size or not shape:
-            continue
-        # A size the source never states as a measurement is not this
-        # ability's area, however plausible the shape beside it looks.
-        try:
-            if int(size) not in published:
-                continue
-        except (TypeError, ValueError):
-            continue
-        unit = entry.get("unit") or "feet"
-        key = (size, shape, unit)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({
-            "type": "stat_block_section",
-            "subtype": "area",
-            "shape": shape,
-            "size": size,
-            "unit": unit,
-            "text": f"{size}-{'mile' if unit == 'miles' else 'foot'} {shape}",
-        })
-    return out or None
-
-
-# The published vocabulary is small -- 35 distinct values across the corpus,
-# dominated by "1d4 rounds", "once per round", "once per day". A new spelling of
-# an existing concept is a value nobody can group by, so the phrasing is
-# normalised HERE rather than asked for in the prompt. Asking did not work: the
-# model kept "can't use again for 1d4 rounds" through explicit examples, the
-# same way it wrote prose into the damage formula field until a regex stopped
-# it. Constrain mechanically, not in prose.
-_FREQ_STRIPS = (
-    # Up to four words for the subject, not one: creature names are routinely
-    # two or three words ("the crag linnorm can't use breath weapon again for
-    # 1d4 rounds"), and the single-word pattern left the entire sentence
-    # standing as the frequency value.
-    re.compile(
-        r"^\s*(?:the\s+)?(?:[\w'\u2019-]+\s+){0,4}?"
-        r"can(?:'|\u2019)?t\s+use\b.*?\bagain\s+for\s+",
-        re.I,
-    ),
-    re.compile(r"^\s*only\s+", re.I),
-    re.compile(r"^\s*(?:it|they|the\s+\w+)\s+can\s+(?:be\s+)?used?\s+", re.I),
-)
-_NUMBER_WORD_START = re.compile(r"^(one|two|three|four|five|six|seven|eight|nine|ten)\b", re.I)
 
 
 # The model's ways of saying "nothing here". Without this they arrive as
 # frequency VALUES: a test that had been skipped while ollama was unreachable
 # caught "no constraint" being published for an ability whose only "per round"
 # is a rate ("1 gallon per round").
-_FREQ_NOTHING = frozenset({
-    "none", "no constraint", "no constraints", "no frequency",
-    "no frequency constraint", "no frequency constraints", "n/a", "not applicable",
-})
-
-
-def _normalise_frequency(value):
-    """Reduce a frequency phrase to the form the published data uses."""
-    out = value.strip().rstrip(".;,")
-    if out.lower() in _FREQ_NOTHING:
-        return None
-    for pattern in _FREQ_STRIPS:
-        out = pattern.sub("", out).strip()
-    if not out:
-        return None
-    # Lowercase, except a leading number word which the corpus title-cases only
-    # when the source sentence began with it -- "three times per day" is the
-    # dominant published spelling, so lowercase wins.
-    return out[0].lower() + out[1:] if out else None
-
-
-def extract_frequency_structured(name, text, model=None):
-    """Frequency via constrained decoding. Returns a joined string, or None.
-
-    The weakest of the four: frequency is stored as prose, so the schema only
-    guarantees a list of strings. It removes the semicolon-splitting, not any
-    ambiguity about what the model should say.
-    """
-    parsed = _structured("frequency", name, text, model)
-    if not parsed:
-        return None
-    seen, out = set(), []
-    for item in parsed.get("frequencies", []):
-        value = _normalise_frequency(str(item))
-        if value and value.lower() not in seen:
-            seen.add(value.lower())
-            out.append(value)
-    return "; ".join(out) or None
+_FREQ_NOTHING = frozenset(
+    {
+        "none",
+        "no constraint",
+        "no constraints",
+        "no frequency",
+        "no frequency constraint",
+        "no frequency constraints",
+        "n/a",
+        "not applicable",
+    }
+)
 
 
 def _critique(field, name, text, proposed):
     """Second opinion on an extraction. Returns a corrected list, or None.
 
     Off unless llm_config.toml enables it, and pointless without the grounding
-    guard downstream: measured over 40 records it recovered 3 real values, and
-    invented 2. It is fabrication-neutral, not fabrication-free.
+    guard downstream: on the bench it both recovered real values and invented
+    some. It is fabrication-neutral, not fabrication-free.
 
     The critic model must differ from the extractor. qwen2.5:7b reviewing its
     own output invented damage for an ability whose text contains no dice --
@@ -502,10 +388,8 @@ def _critique(field, name, text, proposed):
         return None
     schema, template = SCHEMAS[field], CRITIC["prompt"]
     assert schema and template, "llm_config.toml: critic enabled without a schema or prompt"
-    prompt = template.format(
-        name=name, text=text, proposed=json.dumps(sorted(set(proposed)))
-    )
-    parsed = _query_ollama_structured(prompt, schema, CRITIC.get("model"))
+    prompt = template.format(name=name, text=text, proposed=json.dumps(sorted(set(proposed))))
+    parsed = _query_ollama_structured(prompt, schema, CRITIC["model"])
     if not parsed:
         return None
     return [d.get("formula") for d in parsed.get("damage", []) if d.get("formula")]
@@ -513,10 +397,6 @@ def _critique(field, name, text, proposed):
 
 def extract_damage_structured(name, text, model=None):
     """Damage via constrained decoding. Returns attack_damage objects, or None.
-
-    Deliberately parallel to extract_damage_llm rather than replacing it: the
-    other four extractors still use the free-text path, and the bench that
-    justifies this covers damage only. Measure before switching anything else.
 
     De-duplicates. The model emitted the same formula four times for one
     ability, which is harmless in itself and must not reach the data.
@@ -551,7 +431,7 @@ def extract_damage_structured(name, text, model=None):
         # thing and only one of them matches what the rest of the pipeline
         # emits, so normalise rather than teach the prompt.
         if damage_type and damage_type.startswith("persistent "):
-            damage_type = damage_type[len("persistent "):].strip() or None
+            damage_type = damage_type[len("persistent ") :].strip() or None
             persistent = True
         key = (formula, damage_type, persistent)
         if key in seen:
@@ -571,11 +451,6 @@ def extract_damage_structured(name, text, model=None):
 
 
 # --- Per-type prompt templates ---
-
-
-
-
-
 
 
 # --- Extraction functions ---
@@ -630,8 +505,6 @@ def extract_frequency_llm(name, text, model=None):
     if not parts:
         return None
     return "; ".join(parts)
-
-
 
 
 def _parse_area_response(parts):
@@ -816,7 +689,6 @@ VALID_CATEGORIES = {
     "hp_automatic",
     "communication",
 }
-
 
 
 def classify_ability_category_llm(name, text, action="", traits="", model=None):

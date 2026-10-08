@@ -271,9 +271,7 @@ def run_regex(conn, args):
                 # Accumulate. This used to replace, which wiped the l59s
                 # rejection reason off any record the regex pass touched
                 # afterwards -- and that reason is what re-queues the record.
-                add_review_reason(
-                    curs, record["ability_id"], reason, supersedes="unextracted:"
-                )
+                add_review_reason(curs, record["ability_id"], reason, supersedes="unextracted:")
             flagged_count += 1
         elif result is None:
             clean_count += 1

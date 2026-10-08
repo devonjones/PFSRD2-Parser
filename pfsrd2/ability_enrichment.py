@@ -90,13 +90,9 @@ def _try_inline_enrich(curs, ability_id, raw_json):
             # per day" -> "five readings per day"). See PFSRD2-Parser-awee.
             "frequency": extract_frequency_llm,
             "dc": extract_dc_structured,
-            # Deterministic, no model. Measured against every cached area in
-            # the enrichment DB: 1560 reproduced identically, 12 found an
-            # additional real area, 2 differed (the cache had stored a line's
-            # WIDTH and a RANGE as areas), 0 missed. It also finds areas on 44
-            # abilities the LLM path recorded as having none, all of them real
-            # -- mostly odd hyphenation the model choked on ("30- foot cone",
-            # "100- foot line", "15-foot-radius").
+            # Deterministic, no model. Against the cached areas it missed
+            # nothing the model found, and it reads hyphenation the model
+            # choked on ("30- foot cone", "15-foot-radius").
             "area": extract_area_regex,
             "damage": extract_damage_structured,
         }
@@ -191,9 +187,7 @@ def rejection_reason(field_name, ungrounded):
     )
 
 
-def reject_if_ungrounded(
-    llm_result, source, field, record: FlagTarget, mark: bool = True
-) -> bool:
+def reject_if_ungrounded(llm_result, source, field, record: FlagTarget, mark: bool = True) -> bool:
     """True when the extractor invented a number, and the record is flagged.
 
     `record` is a FlagTarget -- the thing being flagged, as one value rather
@@ -330,8 +324,7 @@ def _spelled_out(number, source):
     way; a scalar key with a "d" in it would be a real hole.
     """
     return any(
-        re.search(rf"\b{re.escape(word)}\b", source, re.I)
-        for word in _NUMBER_WORDS.get(number, ())
+        re.search(rf"\b{re.escape(word)}\b", source, re.I) for word in _NUMBER_WORDS.get(number, ())
     )
 
 
