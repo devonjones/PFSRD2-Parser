@@ -3,7 +3,7 @@ model: sonnet
 verification: mixed — McCabe complexity, parameter count and nesting depth are evidence-queries (run ruff on a copy or count, quote the result); naming and 'and/or' findings are judgement.
 **Checks:** Added or changed functions with McCabe complexity above 10, over ~100 lines (linear) or ~60 (branching), nesting depth 4+, more than 5 positional parameters, nested ternaries, pass-through wrappers or generic names.
 **Spawn when:** diff adds or changes a `def` in a non-test `.py` file or extensionless Python script under `bin/`; skip `tests/`, data-only and docs-only diffs.
-**Contents:** Do NOT flag · DO flag (match/elif-specific)
+**Contents:** Objective floor · Heuristics: And/Or test; One-screen rule; Extractable inner structures; Nesting depth; Parameter count; Class size; Nested ternaries; Redundant single-call wrappers; Generic identifiers · Do NOT flag · DO flag (match/elif-specific) · Note · Severity · Overlap
 
 Review **production code only** for function complexity. **Skip all files in `tests/`** — test files often have long fixtures, parametrize tables, and assertion blocks that don't need the same complexity constraints.
 
