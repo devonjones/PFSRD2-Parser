@@ -3,7 +3,7 @@ model: sonnet
 verification: evidence-query — greps for `open(`, `Popen`, `sqlite3.connect` and `tempfile`, then traces every return and raise path for a close, and quotes the path that skips it.
 **Checks:** Files, sqlite connections, subprocess pipes and temp files not closed on every path; unbounded caches; manual `try/finally` chains that `ExitStack` would handle.
 **Spawn when:** diff adds lines containing `open(`, `Popen`, `sqlite3.connect`, `tempfile`, `lru_cache` or a module-level dict/set cache in a non-test `.py` file or Python script under `bin/`; skip otherwise.
-**Contents:** Patterns to FLAG: `open()` without close; `subprocess.Popen` without wait; database connections not closed; `lru_cache` without `maxsize`; module-level caches without eviction; temp files; ExitStack candidates; identity-keyed caches · Do NOT flag · Severity and scope · Review approach
+**Contents:** Patterns to FLAG: `open()` without close; `subprocess.Popen` without wait; database connections not closed; `lru_cache` without `maxsize`; module-level caches without eviction; temp files; ExitStack candidates; identity-keyed caches · Do NOT flag · Severity and scope · Review approach · Cross-reference
 
 Review Python code for **resource leaks** in long batch runs (parsers walk thousands of files per run; loaders write to sqlite). Python's GC is forgiving but not magic: file handles, connections and subprocess pipes pile up when a loop reopens them per element without closing.
 

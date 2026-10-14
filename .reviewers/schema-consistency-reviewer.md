@@ -3,7 +3,7 @@ model: sonnet
 verification: evidence-query — finds the same object type in sibling `pfsrd2/schema/*.json` files (by `subtype` or structure), diffs the field sets with a short script, and quotes both definitions.
 **Checks:** Schema additions that drift from sibling schemas: bare primitive arrays, superset fields on shared concepts, inline duplication instead of `$ref`, wrong `required`.
 **Spawn when:** diff touches a `pfsrd2/schema/*.json` file; skip otherwise.
-**Contents:** Patterns to FLAG: Arrays of bare primitives where typed objects are the established pattern; Superset fields on shared concepts; Inline duplication instead of `$ref`; Missing or incorrect `required` fields · Acceptable patterns (do NOT flag): Cardinality differences are legitimate; Schema-version-pinned shapes · Review approach
+**Contents:** Patterns to FLAG: Arrays of bare primitives where typed objects are the established pattern; Superset fields on shared concepts; Inline duplication instead of `$ref`; Missing or incorrect `required` fields · Acceptable patterns (do NOT flag): Cardinality differences are legitimate; Schema-version-pinned shapes · Review approach · Note · Severity · Scope
 
 Review JSON schema changes in `pfsrd2/schema/` for consistency with existing patterns. The schemas are documentation contracts that consumers rely on; drift between sibling schemas causes integration bugs. Before reviewing, READ the existing schemas to understand established conventions.
 

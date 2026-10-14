@@ -3,7 +3,7 @@ model: sonnet
 verification: evidence-query — greps `universal/utils.py` and `universal/universal.py` for the helper that matches the inline code and quotes both the inline snippet and the helper signature.
 **Checks:** Inline reimplementation of `universal/` helpers (text splitting, tag cleanup, link extraction, object building, tree walking) and generic parser-local helpers that belong in `universal/`.
 **Spawn when:** diff adds or changes a `def` or BeautifulSoup, regex or string-splitting code in a `.py` file under `pfsrd2/` (not `tests/`); skip otherwise.
-**Contents:** Question any code that reimplements these patterns · Text/String Processing · BeautifulSoup Helpers · Link Extraction · Structured Object Building · Structure Walking · Tag Classification · Patterns to FLAG: Reimplementing a `universal/` function inline; Near-duplicates that diverge in subtle ways; Parser-local utility files that should live in `universal/` · Do NOT flag · Review approach
+**Contents:** Question any code that reimplements these patterns · Text/String Processing · BeautifulSoup Helpers · Link Extraction · Structured Object Building · Structure Walking · Tag Classification · Patterns to FLAG: Reimplementing a `universal/` function inline; Near-duplicates that diverge in subtle ways; Parser-local utility files that should live in `universal/` · Do NOT flag · Review approach · Severity · Scope
 
 Review code for duplication of shared utilities. The pfsrd2-parser project has a `universal/` package containing common helpers used across all parsers; reimplementing them inline creates drift and bypasses battle-tested edge-case handling.
 

@@ -3,7 +3,7 @@ model: sonnet
 verification: evidence-query — greps the changed files for indented `import` / `from` lines and for `from ...` relative imports, and quotes each with the presence or absence of a justifying comment.
 **Checks:** Function-level imports without a justifying comment and relative imports across package boundaries; import order only in `bin/` scripts that ruff skips.
 **Spawn when:** diff adds or changes an `import` or `from ... import` line (including indented ones) in a `.py` file or Python script under `bin/`; skip otherwise.
-**Contents:** Patterns to FLAG: Function-level imports; Relative imports past package boundaries · Acceptable function-level imports · Review approach · Severity and scope
+**Contents:** Patterns to FLAG: Function-level imports; Relative imports past package boundaries · Acceptable function-level imports · Review approach · Severity and scope · Do NOT flag
 
 Review Python imports for **PEP 8 compliance and placement discipline**. Most import-ordering issues are caught by `ruff check --select I`; this reviewer focuses on the structural rules ruff doesn't enforce.
 

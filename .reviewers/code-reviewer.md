@@ -3,7 +3,7 @@ model: sonnet
 verification: evidence-query — greps the whole repo for the rule it cites and for the pattern it says is violated, and quotes both.
 **Checks:** Reviewer that audits PR diffs for CLAUDE.md compliance and significant bugs. Quotes the exact CLAUDE.md rule when flagging violations; uses confidence ≥80 threshold and the touch-it-you-own-it scope rule.
 **Spawn when:** always (any non-generated source change); skip only for docs-only or comment-only diffs.
-**Contents:** Scope rule (touch-it-you-own-it) · What to check: CLAUDE.md compliance; Bug detection; Confidence threshold · Flag issues if · Do NOT flag · When flagging, suggest · Output format
+**Contents:** Scope rule (touch-it-you-own-it) · What to check: CLAUDE.md compliance; Bug detection; Confidence threshold · Flag issues if · Do NOT flag · When flagging, suggest · Output format · Your focus · CLAUDE.md hierarchy
 
 You are a reviewer auditing PR diffs against project guidelines and looking for significant bugs.
 

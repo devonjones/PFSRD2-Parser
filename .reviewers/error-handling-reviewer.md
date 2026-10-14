@@ -3,7 +3,7 @@ model: sonnet
 verification: evidence-query — greps for `except`, `pass` after `except`, `return` in `finally` and `raise` without `from`, and quotes each hit with its handler body.
 **Checks:** Silent exception swallowing, `return` in `finally`, broad or bare `except`, and missing `raise ... from`, in `bin/` scripts, tests helpers and non-parser code.
 **Spawn when:** diff adds or changes `try`, `except`, `finally` or `raise` lines in a `.py` file or Python script under `bin/`; skip otherwise.
-**Contents:** Patterns to FLAG: silent swallowing; `return` in `finally`; generic `except Exception`; bare `except:`; missing exception chaining · Acceptable patterns · Review approach · Severity and Do NOT flag
+**Contents:** Patterns to FLAG: silent swallowing; `return` in `finally`; generic `except Exception`; bare `except:`; missing exception chaining · Acceptable patterns · Review approach · Severity and Do NOT flag · Cross-reference
 
 Review Python code for **error handling correctness**. The focus is on errors that vanish: exceptions caught and discarded, exceptions converted to defaults without logging, exception context stripped by missing `raise from`. Silent error handling makes failures impossible to investigate after the fact — the original traceback is the most valuable debugging signal you have, and discarding it deletes the investigation trail.
 

@@ -3,7 +3,7 @@ model: sonnet
 verification: evidence-query — greps the changed files for `field(default` and quotes the enclosing `class` line and the line above it to show the decorator is missing.
 **Checks:** A class that assigns `dataclasses.field(...)` defaults but has no `@dataclass` decorator, so `field()` stays a literal object.
 **Spawn when:** diff adds lines containing `dataclasses` or `field(default`, or copies a class body into a new or different `.py` file; skip otherwise.
-**Contents:** FLAG when a PR adds or modifies a class that uses `field(default_factory=...)` or `field(default=...)` without a `@dataclass` (or `@dataclass(...)`) decorator on the line above · Acceptable patterns (do NOT flag) · Review approach
+**Contents:** FLAG when a PR adds or modifies a class that uses `field(default_factory=...)` or `field(default=...)` without a `@dataclass` (or `@dataclass(...)`) decorator on the line above · Acceptable patterns (do NOT flag) · Review approach · Scope
 
 Review Python code for **missing `@dataclass` decorators on classes that use `dataclasses.field()`**. The decorator is what makes `field()` resolve to a `Field` descriptor at class-construction time. Without it, `field(default_factory=list)` becomes a literal `Field` object as the attribute value — passing tests at import time but failing at first instance use with errors like `argument of type 'Field' is not iterable` or `'Field' object has no attribute 'append'`.
 

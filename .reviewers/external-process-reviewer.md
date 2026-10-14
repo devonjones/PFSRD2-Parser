@@ -3,7 +3,7 @@ model: sonnet
 verification: evidence-query — greps the diff for `subprocess.`, `Popen`, `os.system`, `shell=True` and `shutil.which` and quotes the call with the missing `timeout=`, `cwd=` or failure handling.
 **Checks:** `subprocess` calls without timeout, with `shell=True` on non-literal input, without stderr capture, `cwd`, failure-mode handling or a binary-presence check.
 **Spawn when:** diff adds or changes lines containing `subprocess`, `Popen`, `os.system`, `os.popen` or `shutil.which` in a `.py` file or Python script under `bin/`; skip otherwise.
-**Contents:** Patterns to FLAG: Missing `timeout=`; `shell=True` with any non-literal input; `subprocess.Popen` without context manager; No stderr capture on failure; Missing `cwd=`; No differentiation between failure modes; Unbounded output capture; Binary presence assumed, never checked; Output parsing without validation · Do NOT flag · Review approach
+**Contents:** Patterns to FLAG: Missing `timeout=`; `shell=True` with any non-literal input; `subprocess.Popen` without context manager; No stderr capture on failure; Missing `cwd=`; No differentiation between failure modes; Unbounded output capture; Binary presence assumed, never checked; Output parsing without validation · Do NOT flag · Review approach · Severity · Scope
 
 Review Python code that shells out via `subprocess`. CLI failures (timeout, malformed output, missing binary) are routine, and Python's defaults are dangerous.
 

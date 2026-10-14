@@ -3,7 +3,7 @@ model: sonnet
 verification: evidence-query — greps the whole workspace (including `bin/`) for each flagged symbol and quotes the zero-hit result in the finding.
 **Checks:** Unreferenced functions, classes, constants and parameters, commented-out code, stale `__all__` entries, `if False:` branches and `pass`-only stubs.
 **Spawn when:** diff in a `.py` file or Python script under `bin/` removes or renames a definition, comments out code, or adds a module-level `def`, `class` or constant; skip data-only and docs-only diffs.
-**Contents:** What to flag: Unused module-level functions, classes, constants; Unused exported names; Unused fixtures in `conftest.py`; Commented-out code; Partial refactors; Stale `__all__` entries; Unused parameters with default values; `if False; `def f() · Review approach · Do NOT flag
+**Contents:** What to flag: Unused module-level functions, classes, constants; Unused exported names; Unused fixtures in `conftest.py`; Commented-out code; Partial refactors; Stale `__all__` entries; Unused parameters with default values; `if False; `def f() · Review approach · Do NOT flag · Tooling · Severity
 
 Review PRs for **dead code introduction**. Python's runtime has no compile-time check for unused symbols, and CI runs `ruff` (`F401` unused imports, `F841` unused variables) but not `vulture`, so unused functions, classes, constants and parameters are caught by nothing else; this reviewer greps for them.
 
