@@ -1,13 +1,13 @@
 # schema-consistency-reviewer
 model: sonnet
-verification: mixed — breaking changes and sibling drift are evidence-queries (the commands under each section, quoted); whether many additions warrant a minor rev is judgement.
+verification: mixed — breaking changes and sibling drift are evidence-queries (breaking changes: the commands in that section; drift: the field-set diff in Review approach); whether many additions warrant a minor rev is judgement.
 **Checks:** Breaking changes to a published schema without a version bump, and additions that drift from sibling schemas: bare primitive arrays, superset fields on shared concepts, inline duplication instead of `$ref`, wrong `required`.
 **Spawn when:** diff touches a `pfsrd2/schema/*.json` file; skip otherwise.
 **Contents:** Breaking changes to published schemas · Patterns to FLAG: Arrays of bare primitives where typed objects are the established pattern; Superset fields on shared concepts; Inline duplication instead of `$ref`; Missing or incorrect `required` fields · Acceptable patterns (do NOT flag): Cardinality differences are legitimate; Intentional version changes · Review approach · Note · Severity · Scope
 
 Review JSON schema changes in `pfsrd2/schema/` for consistency with existing patterns. The schemas are documentation contracts that consumers rely on; drift between sibling schemas causes integration bugs. Before reviewing, READ the existing schemas to understand established conventions.
 
-**Breaking changes to published schemas (P1):**
+**Breaking changes to published schemas:**
 
 Repo policy (CLAUDE.md "Data Versioning for Consumers"; `docs/schema-guide.md` "Published schemas: add freely, rev on change"): every published schema version is a contract. `bin/copy_schema.sh <type>` copies the schema to pfsrd2-data as `<type>.schema.<enum[0]>.json`, where `enum[0]` is the first value of `properties.schema_version.enum`. It overwrites that file in place.
 
