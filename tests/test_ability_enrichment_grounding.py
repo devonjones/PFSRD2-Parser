@@ -126,9 +126,7 @@ class TestTheRejectPathActuallyRejects:
             lambda j: (json.loads(j) if isinstance(j, str) else dict(j), ["dc"]),
         )
         monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
-        monkeypatch.setattr(
-            ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r))
-        )
+        monkeypatch.setattr(ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r)))
         import pfsrd2.enrichment.llm_extractor as le
 
         monkeypatch.setattr(le, "extract_dc_llm", lambda name, text: llm_result)
@@ -157,9 +155,7 @@ class TestTheRejectPathActuallyRejects:
             lambda j: (json.loads(j) if isinstance(j, str) else dict(j), ["dc"]),
         )
         monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
-        monkeypatch.setattr(
-            ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r))
-        )
+        monkeypatch.setattr(ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r)))
         import pfsrd2.enrichment.llm_extractor as le
 
         monkeypatch.setattr(
@@ -303,7 +299,11 @@ class TestRejectIfUngrounded:
         # would be the opposite of what the flag promises.
         conn, curs, aid = self._db()
         assert reject_if_ungrounded(
-            {"dc": 30}, "a basic Reflex save", "saving_throw", FlagTarget(curs, aid, "X"), mark=False
+            {"dc": 30},
+            "a basic Reflex save",
+            "saving_throw",
+            FlagTarget(curs, aid, "X"),
+            mark=False,
         )
         assert self._reason(curs, aid) is None
         assert "REJECTED" in capsys.readouterr().err
@@ -316,7 +316,9 @@ class TestRejectIfUngrounded:
         # queue -- with its damage value already cleared, nothing would ever
         # re-derive it.
         conn, curs, aid = self._db()
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X"))
+        reject_if_ungrounded(
+            {"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X")
+        )
         reject_if_ungrounded({"dc": 30}, "no dice here", "saving_throw", FlagTarget(curs, aid, "X"))
         reason = self._reason(curs, aid)
         assert "damage" in reason
@@ -324,9 +326,13 @@ class TestRejectIfUngrounded:
 
     def test_the_same_rejection_twice_does_not_grow_the_reason(self):
         conn, curs, aid = self._db()
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X"))
+        reject_if_ungrounded(
+            {"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X")
+        )
         once = self._reason(curs, aid)
-        reject_if_ungrounded({"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X"))
+        reject_if_ungrounded(
+            {"damage": "9d9"}, "no dice here", "damage", FlagTarget(curs, aid, "X")
+        )
         assert self._reason(curs, aid) == once
 
 
@@ -364,9 +370,7 @@ class TestAddReviewReasonIsClauseWise:
         return _memory_db("A")
 
     def _reason(self, curs, aid):
-        curs.execute(
-            "SELECT review_reason FROM ability_records WHERE ability_id = ?", (aid,)
-        )
+        curs.execute("SELECT review_reason FROM ability_records WHERE ability_id = ?", (aid,))
         return curs.fetchone()["review_reason"]
 
     def test_a_narrowed_reason_replaces_the_wider_one(self):
@@ -463,20 +467,26 @@ class TestASpelledOutNumberIsGrounded:
     """
 
     def test_the_word_form_grounds_the_digit(self):
-        assert ungrounded(
-            {"frequency": "5 times per day"},
-            "The harrow reader can conduct up to five readings per day.",
-        ) is None
+        assert (
+            ungrounded(
+                {"frequency": "5 times per day"},
+                "The harrow reader can conduct up to five readings per day.",
+            )
+            is None
+        )
 
     def test_once_and_twice_count_as_word_forms(self):
         assert ungrounded({"frequency": "1 per day"}, "can do this once per day") is None
         assert ungrounded({"frequency": "2 per day"}, "can do this twice per day") is None
 
     def test_a_word_does_not_ground_a_DIFFERENT_number(self):
-        assert ungrounded(
-            {"frequency": "7 times per day"},
-            "The harrow reader can conduct up to five readings per day.",
-        ) == "7"
+        assert (
+            ungrounded(
+                {"frequency": "7 times per day"},
+                "The harrow reader can conduct up to five readings per day.",
+            )
+            == "7"
+        )
 
     def test_dice_are_never_word_grounded(self):
         # "one creature" must not ground the 1 inside 1d6 -- the source says

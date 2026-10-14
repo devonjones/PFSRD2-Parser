@@ -170,9 +170,7 @@ def rejection_reason(field_name, ungrounded):
     )
 
 
-def reject_if_ungrounded(
-    llm_result, source, field, record: FlagTarget, mark: bool = True
-) -> bool:
+def reject_if_ungrounded(llm_result, source, field, record: FlagTarget, mark: bool = True) -> bool:
     """True when the extractor invented a number, and the record is flagged.
 
     `record` is a FlagTarget -- the thing being flagged, as one value rather
@@ -309,8 +307,7 @@ def _spelled_out(number, source):
     way; a scalar key with a "d" in it would be a real hole.
     """
     return any(
-        re.search(rf"\b{re.escape(word)}\b", source, re.I)
-        for word in _NUMBER_WORDS.get(number, ())
+        re.search(rf"\b{re.escape(word)}\b", source, re.I) for word in _NUMBER_WORDS.get(number, ())
     )
 
 

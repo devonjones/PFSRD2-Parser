@@ -810,9 +810,7 @@ class TestNamedExemptions:
         # guard, which inherits one, resolved a key the writer could not and
         # then reported the writer as broken.
         section = {"subtype": "spell_defense"}
-        extract_result_blocks(
-            section, BeautifulSoup(html, "html.parser"), owner_name="Endsong"
-        )
+        extract_result_blocks(section, BeautifulSoup(html, "html.parser"), owner_name="Endsong")
         assert section.get("degree_effects") is None
 
         section = {"name": "Endsong", "subtype": "spell_defense"}
@@ -901,9 +899,7 @@ class TestNamedExemptions:
             " Volnagur's song, dealing an additional 1d6 sonic damage."
         )
         section = {"subtype": "spell_defense"}
-        extract_result_blocks(
-            section, BeautifulSoup(html, "html.parser"), owner_name="Endsong"
-        )
+        extract_result_blocks(section, BeautifulSoup(html, "html.parser"), owner_name="Endsong")
         # Whatever the writer decided, the guard must agree -- and the guard
         # reaches the same key by inheritance rather than by argument.
         assert_every_degree_was_modelled(
@@ -1122,8 +1118,9 @@ class TestTheAlarmsSurviveDashO:
         import sys
         import textwrap
 
-        script = textwrap.dedent(
-            """
+        script = (
+            textwrap.dedent(
+                """
             import sys
             sys.path.insert(0, %r)
             from bs4 import BeautifulSoup
@@ -1137,10 +1134,10 @@ class TestTheAlarmsSurviveDashO:
             except AssertionError:
                 print("FIRED")
             """
-        ) % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-        out = subprocess.run(
-            [sys.executable, "-O", "-c", script], capture_output=True, text=True
+            )
+            % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
         )
+        out = subprocess.run([sys.executable, "-O", "-c", script], capture_output=True, text=True)
         assert out.stdout.strip() == "FIRED", out.stdout + out.stderr
 
     def test_the_modelling_alarm_fires_under_O(self):
@@ -1149,8 +1146,9 @@ class TestTheAlarmsSurviveDashO:
         import sys
         import textwrap
 
-        script = textwrap.dedent(
-            """
+        script = (
+            textwrap.dedent(
+                """
             import sys
             sys.path.insert(0, %r)
             from universal.universal import assert_every_degree_was_modelled
@@ -1163,10 +1161,10 @@ class TestTheAlarmsSurviveDashO:
             except AssertionError:
                 print("FIRED")
             """
-        ) % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-        out = subprocess.run(
-            [sys.executable, "-O", "-c", script], capture_output=True, text=True
+            )
+            % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
         )
+        out = subprocess.run([sys.executable, "-O", "-c", script], capture_output=True, text=True)
         assert out.stdout.strip() == "FIRED", out.stdout + out.stderr
 
     def test_the_exemption_alarm_fires_under_O(self):
@@ -1174,8 +1172,9 @@ class TestTheAlarmsSurviveDashO:
         import sys
         import textwrap
 
-        script = textwrap.dedent(
-            """
+        script = (
+            textwrap.dedent(
+                """
             import sys
             sys.path.insert(0, %r)
             from universal.universal import degree_effects_for
@@ -1188,8 +1187,8 @@ class TestTheAlarmsSurviveDashO:
             except AssertionError:
                 print("FIRED")
             """
-        ) % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-        out = subprocess.run(
-            [sys.executable, "-O", "-c", script], capture_output=True, text=True
+            )
+            % os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
         )
+        out = subprocess.run([sys.executable, "-O", "-c", script], capture_output=True, text=True)
         assert out.stdout.strip() == "FIRED", out.stdout + out.stderr
