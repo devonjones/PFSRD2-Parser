@@ -1,11 +1,22 @@
 # schema-consistency-reviewer
 model: sonnet
-verification: evidence-query — finds the same object type in sibling `pfsrd2/schema/*.json` files (by `subtype` or structure), diffs the field sets with a short script, and quotes both definitions.
-**Checks:** Schema additions that drift from sibling schemas: bare primitive arrays, superset fields on shared concepts, inline duplication instead of `$ref`, wrong `required`.
+verification: evidence-query — for a breaking change, quotes the changed schema line and the schema_version enum and parser constant at head and origin/main; for drift, finds the same object type in sibling `pfsrd2/schema/*.json` files (by `subtype` or structure), diffs the field sets with a short script, and quotes both definitions.
+**Checks:** Breaking changes to a published schema without a version bump, and additions that drift from sibling schemas: bare primitive arrays, superset fields on shared concepts, inline duplication instead of `$ref`, wrong `required`.
 **Spawn when:** diff touches a `pfsrd2/schema/*.json` file; skip otherwise.
-**Contents:** Patterns to FLAG: Arrays of bare primitives where typed objects are the established pattern; Superset fields on shared concepts; Inline duplication instead of `$ref`; Missing or incorrect `required` fields · Acceptable patterns (do NOT flag): Cardinality differences are legitimate; Schema-version-pinned shapes · Review approach · Note · Severity · Scope
+**Contents:** Breaking changes to published schemas · Patterns to FLAG: Arrays of bare primitives where typed objects are the established pattern; Superset fields on shared concepts; Inline duplication instead of `$ref`; Missing or incorrect `required` fields · Acceptable patterns (do NOT flag): Cardinality differences are legitimate; Schema-version-pinned shapes · Review approach · Note · Severity · Scope
 
 Review JSON schema changes in `pfsrd2/schema/` for consistency with existing patterns. The schemas are documentation contracts that consumers rely on; drift between sibling schemas causes integration bugs. Before reviewing, READ the existing schemas to understand established conventions.
+
+**Breaking changes to published schemas (P1):**
+
+`bin/copy_schema.sh <type>` publishes a schema to pfsrd2-data as `<type>.schema.<version>.json`. Consumers such as pfsrd2-display read each file's `schema_version` and keep rendering the old versions, so a published version is a contract.
+
+- **Compatible (no bump needed):** adding an optional property.
+- **Breaking:** removing, renaming or retyping a property; redefining what one means; adding a name to `required`; removing an enum value; tightening a `pattern`, `minimum` or `maxLength`.
+- **The rule:** a breaking change must bump `properties.schema_version.enum` in the schema AND the parser's `struct["schema_version"] = …` (for example `pfsrd2/creatures.py`) in the same PR. Without both, `copy_schema.sh` overwrites the live published file in place.
+- **Consumed today:** creature, monster_family, monster_template and equipment. A breaking change to another schema without a bump is P3, since nothing reads it yet.
+- **Proof:** quote the removed or changed line from `git diff origin/main -- pfsrd2/schema/<type>.schema.json`. Then quote both `jq '.properties.schema_version.enum' pfsrd2/schema/<type>.schema.json` and `git grep -n 'schema_version"\] =' pfsrd2/` at the PR head and at `origin/main`.
+- **Judgement (P3):** many additions on one version. Suggest a bump, so consumers get one signal instead of a version whose meaning drifted.
 
 **Patterns to FLAG:**
 
@@ -54,7 +65,7 @@ Review JSON schema changes in `pfsrd2/schema/` for consistency with existing pat
 
 **Note:** It is acceptable to acknowledge a schema inconsistency and defer the fix by creating a beads ticket for schema re-alignment, rather than fixing it in the current PR.
 
-**Severity:** P2 by default (P3 for inline duplication, as marked). P2/P3 may be deferred with a beads ticket.
+**Severity:** P1 for an unbumped breaking change to a consumed schema; P2 by default (P3 for inline duplication, as marked). P2/P3 may be deferred with a beads ticket.
 
 **Scope:** properties this PR adds or changes. Existing arrays of bare strings (for example `classes` in `trait.schema.json`) are established pattern, not findings. JSON formatting (indent 2, sorted keys) is enforced by CI; do not comment on it.
 
