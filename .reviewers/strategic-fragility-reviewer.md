@@ -3,7 +3,7 @@ model: sonnet
 verification: mixed — grep hits on `except`, `finally`, `.get(` and `or {}` are evidence-queries (quote the line and the handler); whether a default would mask malformed HTML is labelled judgement.
 **Checks:** Fail-fast violations in parser code: swallowed exceptions, defensive defaults and fallbacks that would silently turn malformed HTML into wrong data.
 **Spawn when:** diff changes a non-test `.py` file under `pfsrd2/` or `universal/`; skip tests, docs, schema-only and data-only diffs.
-**Contents:** Patterns to FLAG: Silent exception swallowing; Return in finally blocks; Overly defensive defaults that mask missing data; Generic exception handling without re-raising; Fallback logic that hides structural problems; Defensive `.get()` / `or {}` / `if x else default` in code paths that consume parser output · Acceptable patterns: Assertions with context; Specific exception handling with re-raise; Known exception handling for documented expected cases; Bare except with re-raise; Well-documented intentional exceptions · Why this matters · Review approach
+**Contents:** Patterns to FLAG: Silent exception swallowing; Return in finally blocks; Overly defensive defaults that mask missing data; Generic exception handling without re-raising; Fallback logic that hides structural problems; Defensive `.get()` / `or {}` / `if x else default` in code paths that consume parser output · Do NOT flag (acceptable patterns): Assertions with context; Specific exception handling with re-raise; Known exception handling for documented expected cases; Bare except with re-raise; Well-documented intentional exceptions · Why this matters · Review approach
 
 Review code to ensure it follows the **strategic fragility** design philosophy. This parser deliberately uses fail-fast, assertion-heavy patterns because **wrong data is worse than no data**. The parser should fail loudly and immediately when encountering unexpected conditions, rather than silently producing incorrect data.
 
@@ -83,7 +83,7 @@ This reviewer is parser-specific and **extends** the universal `error-handling-r
    assert trait_name, f"Trait link missing title: {link}"
    ```
 
-**Acceptable patterns:**
+**Do NOT flag (acceptable patterns):**
 
 1. **Assertions with context:**
 
@@ -157,6 +157,6 @@ This reviewer is parser-specific and **extends** the universal `error-handling-r
 
 **Severity:** silent swallow and `return` in `finally` P1; every other pattern P2. P1 is not deferrable; P2/P3 may be deferred with a beads ticket.
 
-**Scope:** lines this PR adds or changes. Defensive lookups already exist in the corpus (~100 `.get(key, default)` calls, ~20 `or {}` / `or []`); an untouched one is not a finding. Item 6 applies when the changed line consumes parser output (BeautifulSoup tags or intermediate dicts), not to configuration, CLI or database code. The first-party pattern list is in `docs/architecture.md`, section "Design Philosophy: Strict Validation Over Graceful Degradation".
+**Scope:** lines this PR adds or changes. Defensive lookups already exist in the corpus; an untouched one is not a finding. Item 6 applies when the changed line consumes parser output (BeautifulSoup tags or intermediate dicts), not to configuration, CLI or database code. The first-party pattern list is in `docs/architecture.md`, section "Design Philosophy: Strict Validation Over Graceful Degradation".
 
 ---

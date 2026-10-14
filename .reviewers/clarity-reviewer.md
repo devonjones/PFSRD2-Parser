@@ -7,10 +7,6 @@ verification: mixed — docstring claims are evidence-queries (grep each named s
 
 Review markdown documentation AND Python docstrings/comments for terseness, structure, and factual accuracy. Every token costs money and attention — cut the fat, fix the layout, and don't let docstrings lie about what the code does.
 
-This reviewer applies to:
-- Any `.md` file in the PR — design docs, READMEs, runbooks, ADRs.
-- Docstrings and inline comments in `.py` files.
-
 **Markdown — what to check:**
 
 1. Look at the PR diff for changes to `.md` files.

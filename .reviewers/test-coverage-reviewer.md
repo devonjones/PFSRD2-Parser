@@ -149,3 +149,5 @@ Beyond coverage existence, the reviewer also flags tests whose behavior is broke
 **Tooling:** CI runs `pytest tests/` without coverage measurement (no `pytest-cov`), so establish coverage by reading tests and grepping `tests/` for the touched names; do not cite a coverage percentage.
 
 ---
+
+**Do NOT flag:** code the PR does not touch; `.sh` runners in `bin/`; schema-, JSON- or docs-only changes; tests the PR deletes along with the code they covered.

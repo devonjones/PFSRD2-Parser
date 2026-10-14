@@ -48,7 +48,7 @@ Review Python imports for **PEP 8 compliance and placement discipline**. Most im
 
 **Severity:** P3. May be deferred with a beads ticket.
 
-**Scope:** added or changed import lines only. CI runs ruff `I` and `F` on `pfsrd2/`, `universal/` and `tests/`, so order, unused imports and wildcard imports are not yours there. Existing code has ~226 indented imports in 31 files (`import sys` under `__main__`, circular-import deferrals in `universal/utils.py`, lazy imports in `pfsrd2/sql/`); untouched ones are never findings.
+**Scope:** added or changed import lines only. CI runs ruff `I` and `F` on `pfsrd2/`, `universal/` and `tests/`, so order, unused imports and wildcard imports are not yours there. Existing code has many indented imports (`import sys` under `__main__`, circular-import deferrals in `universal/utils.py`, lazy imports in `pfsrd2/sql/`); untouched ones are never findings.
 
 **Do NOT flag:** imports inside `if __name__ == "__main__":` blocks.
 
