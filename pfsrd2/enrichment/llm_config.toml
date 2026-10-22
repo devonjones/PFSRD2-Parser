@@ -1,0 +1,375 @@
+# LLM extraction configuration.
+#
+# Prompts live here rather than in llm_extractor.py because they are tuning,
+# not logic: iterating on wording should not be a code change, and a diff of
+# this file is readable as "what we asked the model".
+#
+# WARNING, and it is not a small one: llm_cache keys on a hash of the rendered
+# prompt. Changing ANY character here -- including whitespace -- invalidates
+# every cached extraction made with the old wording and re-queries the model
+# for all of them. That is the intended behaviour (a changed prompt deserves a
+# fresh answer) but it is not free, so edit deliberately.
+#
+# The host is overridable at runtime with PFSRD2_OLLAMA_URL. The model is not,
+# on purpose: every enriched record stores "llm:<model>" as its
+# extraction_method, and silently changing it splits the corpus across two
+# models with nothing in the data saying which produced what.
+
+url = "http://valid.evilsoft:11434/api/generate"
+model = "qwen2.5:7b"
+
+# The system prompt. Ollama's /api/generate takes this separately from the
+# prompt, and we were never setting it -- so whatever the model's packaged chat
+# template supplied was in force. That is not hypothetical: nuextract-tiny's
+# ollama build injects "You are a helpful assistant." and it leaked into the
+# extracted output.
+#
+# Kept deliberately plain. This is an extraction task, not a conversation, and
+# anything that invites the model to be helpful, explain itself, or fill gaps
+# is working against the grounding guard.
+
+# EMPTY ON PURPOSE, measured rather than assumed. This candidate:
+#
+#   "You extract structured data from Pathfinder 2E rules text. Report only
+#    what the text states. Never infer, complete, or supply a value the text
+#    does not contain -- an absent value is a correct answer. Do not explain
+#    your reasoning or add commentary."
+#
+# scored WORSE on the damage bench than no system prompt. It appears to push the model toward
+# reporting every dice expression the text states -- faithful, and also a
+# superset of what the degree itself deals.
+#
+# Set it if a bench says it helps. Do not set it because it reads well.
+
+system = ""
+
+# Passed straight through to ollama as the request's "options". Anything
+# ollama accepts works here -- temperature, top_p, num_ctx, seed, repeat_penalty.
+#
+# temperature 0 is not a tuning preference, it is a correctness requirement.
+# Ollama defaults to 0.7, and at 0.7 the same prompt returns different answers
+# on different runs: llm_cache memoises whichever answer came first, a
+# re-enrichment silently changes data nobody edited, and no regression test
+# over this pipeline can be trusted. Extraction wants the most likely token,
+# not a sampled one.
+#
+# These are part of the request, so they are folded into the cache key. Change
+# one and the affected prompts re-query, exactly as a changed prompt does.
+
+[options]
+temperature = 0
+
+[prompts]
+frequency = '''
+Extract every frequency constraint this ability states -- any phrase limiting
+how often it can be used.
+
+Report each one NORMALISED, not as the sentence phrases it. The published data
+uses a small vocabulary, and a new spelling of an existing concept is a value
+nobody can group by:
+
+  "It can't use Breath Weapon again for 1d4 rounds."  ->  1d4 rounds
+  "Three times per day, a pleroma can..."             ->  three times per day
+  "This can be used only once per effect."            ->  once per effect
+  "The dragon can use this once per hour."            ->  once per hour
+
+Drop the verb, the subject, the ability name and any leading "only". Keep just
+the constraint. Lowercase unless it begins with a number word.
+
+Scan the whole text; there may be more than one, or none at all.
+
+Ability: {name}
+Text: {text}'''
+
+damage = '''
+You are extracting damage dice from Pathfinder 2E ability text.
+
+Extract ALL dice formulas (like 2d6, 4d8+10, 1d4) that represent damage.
+
+Patterns to look for:
+- "XdY type damage" (e.g., "2d6 fire damage")
+- "XdY damage" with no type (e.g., "1d4 extra damage")
+- "XdY persistent type damage" (e.g., "1d6 persistent bleed damage")
+- "Damage XdY type" (e.g., "Damage 1d6+2 slashing")
+- "deals/takes XdY type" even without the word "damage"
+- "XdY type, DC" format (e.g., "6d6 spirit, DC 30")
+
+Do NOT extract:
+- Text about damage without dice ("combine their damage", "deals damage equal to")
+- Damage reduction ("takes half damage", "resistance to damage")
+- Healing references ("regains HP equal to damage")
+- Non-damage dice ("1d4 rounds" is a duration, not damage)
+
+For each found: XdY[+/-Z] type [persistent]
+If no type, just: XdY
+Semicolon-separated list, or "none".
+
+Examples:
+Text: "deals 12d6 acid damage in a 60-foot line"
+Result: 12d6 acid
+
+Text: "deals 1d4 extra damage to prone creatures"
+Result: 1d4
+
+Text: "takes 4d6 damage (DC 33 basic Fortitude save)"
+Result: 4d6
+
+Text: "6d6 spirit, DC 30"
+Result: 6d6 spirit
+
+Text: "combine their damage for the purpose of resistances"
+Result: none
+
+Text: "takes 2d6 fire damage and 1d6 persistent bleed damage"
+Result: 2d6 fire; 1d6 persistent bleed
+
+Ability: {name}
+Text: {text}
+
+Damage:'''
+
+area = '''
+You are extracting area-of-effect information from Pathfinder 2E ability text.
+
+Look for ALL instances of these area patterns anywhere in the text:
+- "X-foot line"
+- "X-foot cone"
+- "X-foot burst"
+- "X-foot emanation"
+- "X-foot wall"
+- "X-foot cylinder"
+- "X-foot radius" (treat as burst)
+
+The text may contain HTML tags — look inside them too.
+Return each UNIQUE area once as: size-foot shape
+
+Do NOT include distances that are reach, range, tether length, movement, or object size.
+
+Return as a semicolon-separated list, or "none" if no areas found.
+
+Ability: {name}
+Text: {text}
+
+Areas:'''
+
+dc = '''
+You are extracting DCs (Difficulty Classes) from Pathfinder 2E ability text. A DC is a specific number a creature must meet or beat.
+
+Extract ALL static numeric DCs. These include:
+- "DC 30 Fortitude save" or "DC 30 basic Reflex"
+- "Escape DC 18" or "DC to Escape is 18"
+- "DC to Balance is 18" or "DC to stop the bleeding is 35"
+- "a DC of 30"
+- "DC 5 flat check"
+
+Do NOT extract:
+- References to another creature's DC ("creature's Fortitude DC", "Athletics DC")
+- "the DC is X rather than Y" (conditional text)
+
+Examples:
+Text: "DC 30 basic Reflex save. It can't use Breath Weapon again for 1d4 rounds."
+Result: DC 30 basic Reflex
+
+Text: "The DC to Escape the net is 16."
+Result: DC 16
+
+Text: "Athletics check with a DC of 30 or the pilot's Sailing Lore DC"
+Result: DC 30
+
+Text: "They can Cast the Spell using the original caster's DC."
+Result: none
+
+Text: "all adjacent creatures are exposed to the same disease, at the same DC."
+Result: none
+
+Return ONLY the semicolon-separated list or "none". No explanations.
+
+Now extract from:
+Ability: {name}
+Text: {text}
+
+DCs found:'''
+
+category = '''
+You are classifying a Pathfinder 2E monster ability into the correct section of a creature's stat block.
+
+The sections of a creature stat block are:
+
+1. **special_sense** — Perception-related abilities: darkvision, low-light vision, scent, tremorsense, lifesense, echolocation, or any ability that lets the creature detect or perceive things.
+
+2. **communication** — Language and communication abilities: telepathy, tongues, or abilities that enable non-standard communication.
+
+3. **interaction** — Abilities that affect how a creature interacts with the world PASSIVELY, not tied to combat actions. Examples: At-Will Spells notes, animal empathy, camouflage, light blindness. These appear BEFORE the defense section.
+
+4. **hp_automatic** — Abilities tied to the creature's hit points: regeneration, fast healing, negative healing, void healing. These appear inside the HP line of the defense section.
+
+5. **automatic** — Passive defensive abilities and auras that are always active. Examples: frightful presence, stench aura, troop defenses, golem antimagic, all-around vision (when defensive), resistances that have special rules. These appear in the defense section after HP.
+
+6. **reactive** — Abilities that are reactions or free actions usually triggered when it's NOT the creature's turn. Examples: Attack of Opportunity, Reactive Strike, Shield Block, Ferocity, nimble dodge. These are defensive reactions.
+
+7. **offensive** — Abilities the creature actively uses on its turn. Any ability with an action cost (1 action, 2 actions, 3 actions, free action on own turn). Examples: Breath Weapon, Change Shape, Sneak Attack, Constrict, Swallow Whole, Trample, special strikes.
+
+**Rules:**
+- If the ability has an action cost (one-action, two-actions, three-actions), it is almost always **offensive** unless it's clearly a **reaction**.
+- If the ability is a reaction (triggered by another's action), it is **reactive**.
+- Auras are **automatic**.
+- Senses are **special_sense**.
+- Healing/regeneration/negative healing → **hp_automatic**.
+- When unsure, default to **offensive**. Most abilities are offensive.
+
+Respond with ONLY the category name. No explanation.
+
+Ability name: {name}
+Action type: {action}
+Traits: {traits}
+Text: {text}
+
+Category:'''
+
+
+# Constrained decoding. Ollama takes a JSON Schema as the "format" field and
+# the model can only emit conforming output -- see PFSRD2-Parser-4k8b.
+#
+# The regex on `formula` is the load-bearing part, not the schema. A bare
+# schema constrains SHAPE, and the model still wrote prose into the field
+# ("3d6 bludgeoning damage") and leaked unrelated integers ("36" out of
+# "Rupture 36"). The pattern removed that whole class.
+#
+# A schema is part of the request, so it is folded into the llm_cache key.
+# Changing one here re-queries, exactly as changing a prompt does.
+
+[schemas.damage]
+type = "object"
+required = ["damage"]
+
+[schemas.damage.properties.damage]
+type = "array"
+
+[schemas.damage.properties.damage.items]
+type = "object"
+required = ["formula"]
+
+[schemas.damage.properties.damage.items.properties.formula]
+type = "string"
+pattern = "^[0-9]+d[0-9]+([+-][0-9]+)?$"
+
+[schemas.damage.properties.damage.items.properties.damage_type]
+type = "string"
+
+[schemas.damage.properties.damage.items.properties.persistent]
+type = "boolean"
+
+[structured_prompts]
+
+dc = '''
+Extract every DC this ability states, with the save it belongs to.
+
+A DC is a specific NUMBER a creature must meet or beat. Report only DCs the
+text states as a number. If the text defers to another DC without giving one --
+"a basic Reflex save of the same DC", "using the original caster's DC", "at the
+same DC" -- report nothing for it. An absent DC is a correct answer.
+
+Do not treat distances, damage, ranges or counts as DCs.
+
+Ability: {name}
+Text: {text}'''
+
+# DO NOT "improve" this prompt by adding rules. Three revisions were measured
+# against the cached damage values and every one was worse (PFSRD2-Parser-4k8b).
+#
+# The failure mode is consistent: a negative instruction over-applies and the
+# model discards legitimate values, and a positive example narrows extraction
+# to text matching the example's phrasing. "The dog's Strikes deal 1d4 extra"
+# taught it to require the word Strike, so "The lion deals 1d4 extra damage"
+# returned nothing.
+#
+# The remaining losses are damage a Strike GAINS ("Strikes deal 1d4 extra
+# damage", "also deals 1d6 persistent bleed"). They are a known limitation.
+# Fix them with a mechanical filter in llm_extractor.py, not with wording.
+damage = '''
+Extract every damage dice expression this ability deals.
+
+Include every dice expression the text states as damage, including alternatives
+and conditional cases. Do NOT include dice that are not damage: recharge timers
+("1d4 rounds"), durations, or table rolls ("roll 1d6 and consult").
+Do NOT include damage from a DIFFERENT ability mentioned in the same text.
+If there is no dice damage at all, return an empty list.
+
+Ability: {name}
+Text: {text}'''
+
+
+# --- dc ---------------------------------------------------------------
+# save_type is an ENUM. The free-text path let the model write "Fortitude" or
+# "Fort" or "basic Reflex", then mapped it with a lookup that silently dropped
+# anything unrecognised. A schema makes it choose from the four that exist.
+# dc is an INTEGER, which removes the "DC 30" / "30" / "DC of 30" spread too.
+
+[schemas.dc]
+type = "object"
+required = ["saves"]
+
+[schemas.dc.properties.saves]
+type = "array"
+
+[schemas.dc.properties.saves.items]
+type = "object"
+# save_type is NOT required. Requiring it made the model invent one whenever the
+# source withheld it -- "a basic save of a type indicated below" became Ref, and
+# "an Athletics check with a DC of 30" (a skill check, not a save) became Fort,
+# Ref AND Will. An absent save type is a real answer and the cache had it right.
+required = ["dc"]
+
+[schemas.dc.properties.saves.items.properties.dc]
+type = "integer"
+
+[schemas.dc.properties.saves.items.properties.save_type]
+type = "string"
+enum = ["Fort", "Ref", "Will", "Flat Check"]
+
+[schemas.dc.properties.saves.items.properties.basic]
+type = "boolean"
+
+
+# A second pass that checks the first against the rules and corrects it.
+#
+# On the bench it recovered values the extractor had missed and removed some it
+# had invented -- but it also invented its own. Fabrication-neutral, net positive on recall, and only safe because the
+# grounding guard downstream catches what it invents. Do not enable this
+# without that guard.
+#
+# The critic MODEL matters more than the prompt. qwen2.5:7b critiquing its own
+# output invented damage for an ability whose text contains no dice at all --
+# handed an empty list, it produced one rather than agree with nothing.
+# qwen2.5:14b left it empty and recovered the one bench case nothing else did.
+# Use a different, larger model than the extractor.
+#
+# Off by default: it doubles the calls and loads a second model, and the
+# evidence is a small bench. Turn it on when a larger sample says the recall is
+# worth the cost.
+
+[critic]
+enabled = false
+model = "qwen2.5:14b"
+prompt = '''
+A previous pass extracted damage dice from this ability. Check its work against
+the rules and return the CORRECTED list.
+
+Rules it was given:
+1. Include every dice expression the text states as damage the ABILITY ITSELF
+   deals, including alternatives and conditional cases.
+2. Exclude dice that are not damage: recharge timers ("1d4 rounds"), durations,
+   table rolls ("roll 1d6 and consult").
+3. Exclude damage belonging to a DIFFERENT ability that happens to be mentioned
+   in the same text.
+4. Never include a dice expression that does not appear in the text. If the
+   extraction is empty and the text states no damage dice, an empty list is the
+   correct answer -- do not fill it in.
+
+Ability: {name}
+Text: {text}
+
+It extracted: {proposed}
+
+Return the corrected list. If the extraction was already right, return it
+unchanged.'''
