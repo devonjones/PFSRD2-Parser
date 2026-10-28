@@ -311,6 +311,13 @@ required = ["saves"]
 
 [schemas.dc.properties.saves]
 type = "array"
+# Bounded, because the model can loop. Sea Serpent's Capsize ("an Athletics
+# check with a DC of 35") produced {"dc": 35, "save_type": "Ref"} forever, so the
+# request ran until the 120s timeout and stopped the rebuild (PFSRD2-Parser-4pw0).
+# A cap of 8 leaves room above any real ability's DCs, and grounding plus de-dupe
+# below collapse the padding. Changing this re-queries every dc, as any schema
+# change does.
+maxItems = 8
 
 [schemas.dc.properties.saves.items]
 type = "object"

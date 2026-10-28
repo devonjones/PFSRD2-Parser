@@ -6,6 +6,7 @@ from pfsrd2.change_identity import compute_change_hash
 from pfsrd2.enrichment.change_extractor import ENRICHMENT_VERSION
 from pfsrd2.enrichment.overrides import (
     load_overrides,
+    seed_ability_field_overrides,
     seed_ability_overrides,
     seed_change_overrides,
 )
@@ -194,3 +195,56 @@ class TestSeedAbilityOverrides:
 
         with pytest.raises(AssertionError, match="Invalid ability category"):
             seed_ability_overrides(curs, [override])
+
+
+class TestSeedAbilityFieldOverrides:
+    TEXT = "Each creature takes 3d6 nonlethal bludgeoning damage (DC 21 basic Reflex save)."
+    DAMAGE = [{"formula": "3d6", "damage_type": "nonlethal"}]
+
+    def _record(self, curs, text=TEXT, enriched=None):
+        raw = json.dumps({"name": "Bola Hurl", "text": text})
+        ability_id = insert_ability_record(curs, "Bola Hurl", "hash1", raw)
+        if enriched is not None:
+            curs.execute(
+                "UPDATE ability_records SET enriched_json = ? WHERE ability_id = ?",
+                (json.dumps(enriched), ability_id),
+            )
+        return ability_id
+
+    def _override(self, text=TEXT, enriched=None):
+        return {"name": "Bola Hurl", "text": text, "enriched": enriched or {"damage": self.DAMAGE}}
+
+    def test_seed_replaces_only_the_listed_field(self, db):
+        curs = db.cursor()
+        save = [{"dc": 21, "save_type": "Ref"}]
+        ability_id = self._record(
+            curs,
+            enriched={"name": "Bola Hurl", "damage": [{"formula": "3d6"}], "saving_throw": save},
+        )
+
+        seeded, misses = seed_ability_field_overrides(curs, [self._override()])
+
+        assert (seeded, misses) == (1, [])
+        row = fetch_ability_by_id(curs, ability_id)
+        enriched = json.loads(row["enriched_json"])
+        assert enriched["damage"] == self.DAMAGE
+        assert enriched["saving_throw"] == save, "fields the override does not name are kept"
+        assert row["human_verified"] == 1
+        assert row["extraction_method"] == "manual"
+
+    def test_changed_text_is_a_miss_not_a_silent_apply(self, db):
+        # AoN errata: the override was verified against text that no longer
+        # exists, so it must be re-reviewed rather than applied.
+        curs = db.cursor()
+        self._record(curs, text=self.TEXT.replace("3d6", "4d6"))
+        override = self._override()
+
+        seeded, misses = seed_ability_field_overrides(curs, [override])
+
+        assert (seeded, misses) == (0, [override])
+
+    def test_a_field_enrichment_never_writes_asserts(self, db):
+        curs = db.cursor()
+        self._record(curs)
+        with pytest.raises(AssertionError, match="enrichment never writes"):
+            seed_ability_field_overrides(curs, [self._override(enriched={"hp": 5})])

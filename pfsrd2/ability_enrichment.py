@@ -42,6 +42,61 @@ def set_inline_enrich(enabled):
     _inline_enrich = enabled
 
 
+def llm_extractors():
+    """{llm_type: (extractor, enriched field)} -- the ONE routing table.
+
+    Shared by inline enrichment and bin/pf2_enrich_abilities. The CLI kept its
+    own copy wired to the old free-text extractors after the inline path moved
+    to constrained decoding, and the two silently diverged: Paint Bomb's
+    "4d6 bludgeoning splash damage" kept its type inline and lost it in the
+    batch run (PFSRD2-Parser-4pw0).
+
+    Imported lazily: llm_extractor loads llm_config.toml at import, and a
+    parser run with enrichment off must not need it.
+    """
+    from pfsrd2.enrichment.llm_extractor import (
+        extract_area_regex,
+        extract_damage_structured,
+        extract_dc_llm,
+        extract_frequency_llm,
+    )
+
+    extractor_fns = {
+        # Constrained decoding (PFSRD2-Parser-4k8b). Validated against the
+        # cached LLM values before wiring, with remaining differences
+        # adjudicated against source text rather than against the cache
+        # (numbers in the ticket). Each extractor applies a
+        # mechanical grounding filter (_dice_in, _dcs_in, _save_types_in)
+        # because a schema constrains SHAPE, never truth.
+        # frequency stays on the free-text path. Constrained decoding was
+        # wired and measured over the real corpus and was worse: it read
+        # DURATIONS as frequencies ("can survive on any Elemental Plane for
+        # up to 48 hours" -> "48 hours"; "remain away from water for only
+        # 12 hours" -> "12 hours"), truncated a compound constraint ("100
+        # orts per day, to a maximum of 1,100 orts in 11 days" -> "11
+        # days"), and abandoned the corpus's normalised wording ("5 times
+        # per day" -> "five readings per day"). See PFSRD2-Parser-awee.
+        "frequency": extract_frequency_llm,
+        # dc stays on the free-text path too. Constrained decoding was wired
+        # in #179 and measured worse over the full corpus: asked for "the save
+        # it belongs to", it dropped every DC that is not a save (Web Tether's
+        # "DC to Escape ... is 30", Bloodbird's First Aid DC 35),
+        # and invented save types for "a basic save of a type indicated below".
+        # It also looped without bound on Capsize. See PFSRD2-Parser-4pw0.
+        "dc": extract_dc_llm,
+        # Deterministic, no model. Against the cached areas it missed
+        # nothing the model found, and it reads hyphenation the model
+        # choked on ("30- foot cone", "15-foot-radius").
+        "area": extract_area_regex,
+        "damage": extract_damage_structured,
+    }
+    # Fields come from LLM_TYPE_FIELDS, so this dict cannot drift from the
+    # one the CLI and rejection_reason use.
+    return {
+        llm_type: (extractor_fns[llm_type], field) for llm_type, field in LLM_TYPE_FIELDS.items()
+    }
+
+
 def _try_inline_enrich(curs, ability_id, raw_json):
     """Run regex + LLM extraction on a new/unenriched record and store the result.
 
@@ -57,13 +112,6 @@ def _try_inline_enrich(curs, ability_id, raw_json):
 
     # Phase 2: LLM extraction for missed keywords (cached, so fast after first run)
     if missed:
-        from pfsrd2.enrichment.llm_extractor import (
-            extract_area_regex,
-            extract_damage_structured,
-            extract_dc_structured,
-            extract_frequency_llm,
-        )
-
         ability = json.loads(raw_json)
         name = ability.get("name", "")
         text = ability.get("text", "")
@@ -73,39 +121,11 @@ def _try_inline_enrich(curs, ability_id, raw_json):
         if result is None:
             result = dict(ability)
 
-        _EXTRACTOR_FNS = {
-            # Constrained decoding (PFSRD2-Parser-4k8b). Validated against the
-            # cached LLM values before wiring, with remaining differences
-            # adjudicated against source text rather than against the cache
-            # (numbers in the ticket). Each extractor applies a
-            # mechanical grounding filter (_dice_in, _dcs_in, _save_types_in)
-            # because a schema constrains SHAPE, never truth.
-            # frequency stays on the free-text path. Constrained decoding was
-            # wired and measured over the real corpus and was worse: it read
-            # DURATIONS as frequencies ("can survive on any Elemental Plane for
-            # up to 48 hours" -> "48 hours"; "remain away from water for only
-            # 12 hours" -> "12 hours"), truncated a compound constraint ("100
-            # orts per day, to a maximum of 1,100 orts in 11 days" -> "11
-            # days"), and abandoned the corpus's normalised wording ("5 times
-            # per day" -> "five readings per day"). See PFSRD2-Parser-awee.
-            "frequency": extract_frequency_llm,
-            "dc": extract_dc_structured,
-            # Deterministic, no model. Against the cached areas it missed
-            # nothing the model found, and it reads hyphenation the model
-            # choked on ("30- foot cone", "15-foot-radius").
-            "area": extract_area_regex,
-            "damage": extract_damage_structured,
-        }
-        # Fields come from LLM_TYPE_FIELDS, so this dict cannot drift from the
-        # one the CLI and rejection_reason use.
-        _LLM_EXTRACTORS = {
-            llm_type: (_EXTRACTOR_FNS[llm_type], field)
-            for llm_type, field in LLM_TYPE_FIELDS.items()
-        }
+        extractors = llm_extractors()
 
         for keyword in missed:
-            if keyword in _LLM_EXTRACTORS and combined:
-                extractor_fn, field_name = _LLM_EXTRACTORS[keyword]
+            if keyword in extractors and combined:
+                extractor_fn, field_name = extractors[keyword]
                 if not result.get(field_name):
                     llm_result = extractor_fn(name, combined)
                     rejected = reject_if_ungrounded(

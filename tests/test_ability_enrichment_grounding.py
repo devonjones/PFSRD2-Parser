@@ -524,7 +524,7 @@ class TestEachFieldUsesItsExtractor:
 
     WIRING = {
         "frequency": "extract_frequency_llm",
-        "dc": "extract_dc_structured",
+        "dc": "extract_dc_llm",
         "area": "extract_area_regex",
         "damage": "extract_damage_structured",
     }
