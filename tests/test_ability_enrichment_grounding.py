@@ -127,13 +127,16 @@ class TestTheRejectPathActuallyRejects:
         )
         monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
         monkeypatch.setattr(ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r)))
-        import pfsrd2.enrichment.llm_extractor as le
-
-        # Patch the extractor ability_enrichment actually wires. When the dc
-        # field moved to constrained decoding this stubbed extract_dc_llm,
-        # which production no longer calls -- so the stub was inert, the real
-        # extractor ran, and the guard under test was never reached.
-        monkeypatch.setattr(le, "extract_dc_structured", lambda name, text, model=None: llm_result)
+        # Stub through the routing table, not a named extractor. Twice a
+        # stub named the extractor production had just stopped calling (dc
+        # moved to constrained decoding, then back): the stub went inert, the
+        # real extractor ran, and the test passed only on a warm LLM cache.
+        # Which function dc routes to is pinned by TestEachFieldUsesItsExtractor.
+        monkeypatch.setattr(
+            ae,
+            "llm_extractors",
+            lambda: {"dc": (lambda name, text, model=None: llm_result, "saving_throw")},
+        )
         raw = json.dumps({"name": "Repelling Blast", "text": self.SOURCE, "type": "ability"})
         out = ae._try_inline_enrich(object(), 17662, raw)
         return json.loads(out) if out else None, marked
@@ -160,12 +163,16 @@ class TestTheRejectPathActuallyRejects:
         )
         monkeypatch.setattr(ae, "update_enriched_json", lambda *a, **k: None)
         monkeypatch.setattr(ae, "add_review_reason", lambda c, i, r, **kw: marked.append((i, r)))
-        import pfsrd2.enrichment.llm_extractor as le
-
+        # Through the routing table, as _run above does, so it cannot go inert.
         monkeypatch.setattr(
-            le,
-            "extract_dc_structured",
-            lambda n, t, model=None: [{"dc": 25, "text": "DC 25 basic Reflex"}],
+            ae,
+            "llm_extractors",
+            lambda: {
+                "dc": (
+                    lambda n, t, model=None: [{"dc": 25, "text": "DC 25 basic Reflex"}],
+                    "saving_throw",
+                )
+            },
         )
         raw = json.dumps(
             {
