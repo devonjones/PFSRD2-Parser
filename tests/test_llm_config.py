@@ -131,7 +131,11 @@ class TestStructuredDamageExtraction:
         return llm_extractor.extract_damage_structured("X", text)
 
     def test_it_shapes_entries_like_the_rest_of_the_pipeline(self, monkeypatch):
-        got = self._extract(monkeypatch, {"damage": [{"formula": "2d6", "damage_type": "Fire"}]})
+        got = self._extract(
+            monkeypatch,
+            {"damage": [{"formula": "2d6", "damage_type": "Fire"}]},
+            text="deals 2d6 fire damage",
+        )
         assert got == [
             {
                 "type": "stat_block_section",
@@ -146,7 +150,9 @@ class TestStructuredDamageExtraction:
         # than setting the boolean. Both spellings mean the same thing and only
         # one matches what the rest of the pipeline emits.
         got = self._extract(
-            monkeypatch, {"damage": [{"formula": "1d4", "damage_type": "persistent bleed"}]}
+            monkeypatch,
+            {"damage": [{"formula": "1d4", "damage_type": "persistent bleed"}]},
+            text="1d4 persistent bleed damage",
         )
         assert got[0]["damage_type"] == "bleed"
         assert got[0]["persistent"] is True
@@ -188,6 +194,69 @@ class TestStructuredDamageExtraction:
     def test_a_failed_request_returns_none(self, monkeypatch):
         assert self._extract(monkeypatch, None) is None
 
+    # PFSRD2-Parser-4pw0: the type was passed through unchecked, and these
+    # real model outputs failed the creature schema at parse time.
+    @pytest.mark.parametrize(
+        "junk,formula,text",
+        [
+            ("qi blast", "16d6", "a qi blast dealing 16d6 damage"),
+            ("healing", "4d6", "deals 4d6 damage to each living creature"),
+            ("unspecified", "1d10", "takes 1d10 damage"),
+        ],
+    )
+    def test_a_type_that_is_not_a_damage_type_is_dropped(self, monkeypatch, junk, formula, text):
+        got = self._extract(
+            monkeypatch, {"damage": [{"formula": formula, "damage_type": junk}]}, text=text
+        )
+        assert got[0]["formula"] == formula
+        assert "damage_type" not in got[0]
+
+    def test_a_rejected_type_falls_back_to_the_type_the_source_prints(self, monkeypatch):
+        # Real case: the model wrote "falchion damage" for Power Dive, whose
+        # text prints the type. Rejecting the junk must not lose "slashing".
+        got = self._extract(
+            monkeypatch,
+            {"damage": [{"formula": "2d10+7", "damage_type": "falchion damage"}]},
+            text="swoops down with its falchion, dealing 2d10+7 slashing damage",
+        )
+        assert got[0]["damage_type"] == "slashing"
+
+    def test_a_missing_type_falls_back_to_the_type_the_source_prints(self, monkeypatch):
+        got = self._extract(
+            monkeypatch,
+            {"damage": [{"formula": "8d6"}]},
+            text="breathes a line that deals 8d6 electricity damage",
+        )
+        assert got[0]["damage_type"] == "electricity"
+
+    def test_a_trailing_energy_word_is_tolerated(self, monkeypatch):
+        # Real case: Essence Drain and Vordakai's Consume Memories. The model
+        # wrote "negative energy" and the type was lost.
+        got = self._extract(
+            monkeypatch,
+            {"damage": [{"formula": "6d6", "damage_type": "negative energy"}]},
+            text="if he hits, he deals 6d6 negative energy damage",
+        )
+        assert got[0]["damage_type"] == "negative"
+
+    def test_a_real_type_the_source_never_names_is_dropped(self, monkeypatch):
+        # An enum was measured instead and coerced junk into types like these;
+        # the filter must not accept a valid type the text does not support.
+        got = self._extract(
+            monkeypatch,
+            {"damage": [{"formula": "1d10", "damage_type": "unholy"}]},
+            text="takes 1d10 damage",
+        )
+        assert "damage_type" not in got[0]
+
+    def test_a_trailing_damage_word_is_tolerated(self, monkeypatch):
+        got = self._extract(
+            monkeypatch,
+            {"damage": [{"formula": "2d6", "damage_type": "spirit damage"}]},
+            text="deals 2d6 spirit damage",
+        )
+        assert got[0]["damage_type"] == "spirit"
+
 
 class TestTheSchemaConstrainsTheFormula:
     def test_the_formula_pattern_accepts_real_dice_and_rejects_prose(self, config):
@@ -203,6 +272,13 @@ class TestTheSchemaConstrainsTheFormula:
         # the pattern was added.
         for bad in ("3d6 bludgeoning damage", "longsword damage", "36", "3", ""):
             assert not rx.match(bad), bad
+
+
+class TestStructuredArraysAreBounded:
+    def test_the_dc_array_has_a_cap(self, config):
+        # Unbounded, the model looped on Sea Serpent's Capsize until the 120s
+        # timeout and stopped a full rebuild (PFSRD2-Parser-4pw0).
+        assert config["schemas"]["dc"]["properties"]["saves"]["maxItems"] >= 3
 
 
 class TestOptionsArePassedThrough:
@@ -563,6 +639,40 @@ class TestDiceGrounding:
 
         assert _dice_in("3d6 + 5 slashing") == {"3d6+5"}
         assert _dice_in("3d6+5 slashing") == {"3d6+5"}
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "slither up into the cultist's flesh, healing 4d6 points of damage.",
+            "ends the bleed effect immediately and restores 2d6 Hit Points to the target",
+            "increasing the damage die from 1d8 to 1d10 and gaining a +2 bonus",
+            "increase the size of his damage die with fist attacks to 1d6. If he does so",
+            "a randomly determined alchemical effect, roll 1d6 and consult the following",
+        ],
+    )
+    def test_dice_that_are_not_damage(self, text):
+        # Absorb the Bloom, Wound Thief, Calculated Reload, Brutal Brawler and
+        # Alchemical Chambers: each reached the data as untyped damage
+        # (PFSRD2-Parser-4pw0).
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+
+        assert _dice_in(text) == set()
+
+    @pytest.mark.parametrize(
+        "text,dice",
+        [
+            # "die" near real damage: the die-size rule must need "to"/"from".
+            ("deals one extra weapon die of damage and 2d6 persistent fire damage", {"2d6"}),
+            # A table roll beside real damage keeps the damage.
+            ("the weapon deals an extra 2d6 damage. Roll 1d20 to determine the type", {"2d6"}),
+            # Damage and healing of the same dice in one sentence.
+            ("either deal 3d10 points of damage or heal 3d10 Hit Points", {"3d10"}),
+        ],
+    )
+    def test_damage_beside_those_words_survives(self, text, dice):
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+
+        assert _dice_in(text) == dice
 
     def test_a_distance_is_not_dice(self):
         """Breath Weapon: '30-foot cone of poison' became 30d6."""

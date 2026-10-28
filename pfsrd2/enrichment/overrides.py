@@ -25,13 +25,16 @@ from pfsrd2.enrichment.change_extractor import (
     TraitLookupError,
     canonicalize_trait_effects,
 )
+from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION as ABILITY_ENRICHMENT_VERSION
 from pfsrd2.sql.enrichment import (
     clear_change_needs_review,
+    clear_needs_review,
     fetch_change_by_hash,
     mark_change_human_verified,
     mark_human_verified,
     update_ability_category,
     update_change_enriched_json,
+    update_enriched_json,
 )
 
 OVERRIDES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "overrides")
@@ -108,6 +111,54 @@ def seed_change_overrides(curs, overrides):
         )
         mark_change_human_verified(curs, record["change_id"])
         clear_change_needs_review(curs, record["change_id"])
+        seeded += 1
+    return seeded, misses
+
+
+# The fields enrichment writes onto an ability (ability_enrichment.ENRICHMENT_FIELDS,
+# not imported: that module imports the parser stack).
+_ABILITY_FIELDS = {"saving_throw", "damage", "area", "range", "frequency"}
+
+
+def seed_ability_field_overrides(curs, overrides):
+    """Seed hand-verified enrichment FIELDS onto ability records.
+
+    For one-offs the extractors cannot get right (PFSRD2-Parser-4pw0: Bola
+    Hurl's "nonlethal bludgeoning", Ekriathe's Breath's chosen save). Keyed on
+    name AND exact ability text, as change overrides key on their text: an AoN
+    errata makes the entry a miss to re-review, never a silent apply to text
+    nobody checked. Only the listed fields are replaced.
+    Returns (seeded_count, misses).
+    """
+    seeded = 0
+    misses = []
+    for ov in overrides:
+        fields = ov["enriched"]
+        assert set(fields) <= _ABILITY_FIELDS, (
+            f"Override {ov['name']!r} sets {sorted(set(fields) - _ABILITY_FIELDS)}, "
+            f"which enrichment never writes. Allowed: {sorted(_ABILITY_FIELDS)}"
+        )
+        curs.execute(
+            "SELECT ability_id, raw_json, enriched_json FROM ability_records"
+            " WHERE LOWER(name) = LOWER(?) AND json_extract(raw_json, '$.text') = ?",
+            (ov["name"], ov["text"]),
+        )
+        rows = curs.fetchall()
+        if not rows:
+            misses.append(ov)
+            continue
+        for row in rows:
+            enriched = json.loads(row["enriched_json"] or row["raw_json"])
+            enriched.update(fields)
+            update_enriched_json(
+                curs,
+                row["ability_id"],
+                json.dumps(enriched, sort_keys=True, ensure_ascii=False),
+                ABILITY_ENRICHMENT_VERSION,
+                "manual",
+            )
+            mark_human_verified(curs, row["ability_id"])
+            clear_needs_review(curs, row["ability_id"])
         seeded += 1
     return seeded, misses
 

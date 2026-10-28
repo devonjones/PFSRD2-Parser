@@ -19,7 +19,7 @@ import subprocess
 import tomllib
 
 from pfsrd2.enrichment.llm_cache import cache_get, cache_put, compute_prompt_hash
-from pfsrd2.enrichment.regex_extractor import _SHAPE_MAP, _resolve_damage_type
+from pfsrd2.enrichment.regex_extractor import _SHAPE_MAP, _resolve_damage_type, extract_damage
 
 _CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm_config.toml")
 
@@ -187,10 +187,13 @@ def _dice_in(text):
     worse overall (see llm_config.toml damage). A formula the source never
     printed is decidable without asking the model anything, so decide it here.
     """
+    text = text or ""
     return {
         m.group(0).replace(" ", "")
-        for m in _DICE.finditer(text or "")
-        if not _DURATION_AFTER.match(text or "", m.end())
+        for m in _DICE.finditer(text)
+        if not _DURATION_AFTER.match(text, m.end())
+        and not _NOT_DAMAGE_AFTER.match(text, m.end())
+        and not _NOT_DAMAGE_BEFORE.search(text[max(0, m.start() - 40) : m.start()])
     }
 
 
@@ -198,6 +201,20 @@ def _dice_in(text):
 # timer, never damage: "stunned for 1d4 rounds", "recharges in 1d6 minutes".
 _DURATION_AFTER = re.compile(
     r"\s*(?:more\s+)?(?:rounds?|minutes?|hours?|days?|turns?|weeks?)\b", re.I
+)
+
+# Dice that are not damage, by the words around them (PFSRD2-Parser-4pw0). Each
+# one reached the data as an untyped damage entry:
+#   healing    Absorb the Bloom "healing 4d6 points", Wound Thief "restores 2d6 Hit Points"
+#   die size   Calculated Reload "damage die from 1d8 to 1d10",
+#              Brutal Brawler "damage die with fist attacks to 1d6"
+#   table      Alchemical Chambers "roll 1d6 and consult the following"
+_NOT_DAMAGE_AFTER = re.compile(r"\s*(?:Hit Points|HP)\b", re.I)
+_NOT_DAMAGE_BEFORE = re.compile(
+    # "die ... to/from" and not bare "die": Volcanic Hammer's "one extra weapon
+    # die of damage and 2d6 persistent fire damage" is real damage.
+    r"(?:\b(?:healing|heals?|regains?|restores?|roll)\s+$)|(?:\bdie\b[^.]{0,30}\b(?:to|from)\s+$)",
+    re.I,
 )
 
 
@@ -226,6 +243,31 @@ def _save_types_in(text):
         for code, words in _SAVE_WORDS.items()
         if any(re.search(rf"\b{re.escape(w)}\b", low) for w in words)
     }
+
+
+def _grounded_damage_type(damage_type, formula, text, printed):
+    """A damage type the source supports for this formula, or None.
+
+    The parallel of _dice_in for the type. Left unchecked the model wrote "qi
+    blast", "healing" and "falchion damage" here, which failed the creature
+    schema (PFSRD2-Parser-4pw0). A schema enum was measured and was worse: it
+    coerced those into wrong valid types ("unspecified" -> "unholy",
+    "bludgeoning or slashing" -> "bludgeoning or positive"), silently.
+
+    Rejecting the model's type must not lose a type the source prints: "falchion
+    damage" sat beside "2d10+7 slashing". So a rejected or missing type falls
+    back to `printed`, the type the regex extractor reads next to the same
+    formula. None only when the source itself gives none.
+    """
+    # "negative energy damage" -> "negative". Suffixes the vocabulary never
+    # carries; "energy" alone is a type and is left intact.
+    for suffix in (" damage", " energy"):
+        if damage_type and damage_type.endswith(suffix):
+            damage_type = damage_type[: -len(suffix)]
+    resolved = _resolve_damage_type(damage_type) if damage_type else None
+    if resolved and re.search(rf"\b{re.escape(resolved)}\b", (text or "").lower()):
+        return resolved
+    return printed.get(formula)
 
 
 def extract_dc_structured(name, text, model=None):
@@ -418,6 +460,7 @@ def extract_damage_structured(name, text, model=None):
     # all-or-nothing per field, so without this one invented 30d6 discards the
     # real 9d6 alongside it and the ability ends up with no damage at all.
     published = _dice_in(text)
+    printed = {d["formula"]: d.get("damage_type") for d in extract_damage(text)}
 
     seen, out = set(), []
     for entry in entries:
@@ -433,6 +476,7 @@ def extract_damage_structured(name, text, model=None):
         if damage_type and damage_type.startswith("persistent "):
             damage_type = damage_type[len("persistent ") :].strip() or None
             persistent = True
+        damage_type = _grounded_damage_type(damage_type, formula, text, printed)
         key = (formula, damage_type, persistent)
         if key in seen:
             continue

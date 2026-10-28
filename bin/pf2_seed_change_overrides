@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(script_dir, ".."))
 
 from pfsrd2.enrichment.overrides import (
     load_overrides,
+    seed_ability_field_overrides,
     seed_ability_overrides,
     seed_change_overrides,
     seed_change_quarantines,
@@ -54,17 +55,21 @@ def main():
         ability_overrides = load_overrides("ability_overrides.json")
 
         quarantines = load_overrides("change_overrides.json", key="quarantines")
+        field_overrides = load_overrides("ability_overrides.json", key="fields")
 
         changes_seeded, change_misses = seed_change_overrides(curs, change_overrides)
         abilities_seeded, ability_misses = seed_ability_overrides(curs, ability_overrides)
         quarantined, quarantine_misses = seed_change_quarantines(curs, quarantines)
+        fields_seeded, field_misses = seed_ability_field_overrides(curs, field_overrides)
         conn.commit()
 
         print(f"Change overrides seeded: {changes_seeded}/{len(change_overrides)}")
         print(f"Ability overrides seeded: {abilities_seeded}/{len(ability_overrides)}")
         print(f"Quarantines seeded: {quarantined}/{len(quarantines)}")
+        print(f"Ability field overrides seeded: {fields_seeded}/{len(field_overrides)}")
 
         change_misses = change_misses + quarantine_misses
+        ability_misses = ability_misses + field_misses
         if change_misses or ability_misses:
             print(
                 "\nERROR: stale overrides — no matching record. The source text "

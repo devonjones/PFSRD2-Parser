@@ -297,6 +297,27 @@ _DAMAGE_PATTERNS = [
         _DICE + r"\s+(?:extra|additional)\s+" r"(persistent\s+)?" + _TYPE + r"\s+damage",
         re.IGNORECASE,
     ),
+    # Pattern 7: "XdY <type>, DC N" (stat line, no "damage" word). Failed
+    # Prophet's "6d6 spirit, DC 30"; the structured LLM path returns nothing
+    # for this form (PFSRD2-Parser-4pw0).
+    re.compile(
+        _DICE + r"\s+" + _TYPE + r",\s*DC\s+\d+",
+        re.IGNORECASE,
+    ),
+    # Pattern 8: "XdY extra/additional [persistent] damage" (untyped rider).
+    # Pack Attack's "Its Strikes deal 1d4 extra damage" -- the type is the
+    # Strike's. The structured LLM path returns nothing for these, and losing
+    # them dropped values the free-text path had (PFSRD2-Parser-4pw0).
+    re.compile(
+        _DICE + r"\s+(?:extra|additional)\s+(persistent\s+)?damage\b",
+        re.IGNORECASE,
+    ),
+    # Pattern 9: the same rider with the word first -- Aspect's Agony's "an
+    # additional 1d6 persistent damage of a type determined by their aspect".
+    re.compile(
+        r"(?:extra|additional)\s+" + _DICE + r"\s+(persistent\s+)?damage\b",
+        re.IGNORECASE,
+    ),
 ]
 
 
@@ -384,6 +405,19 @@ def extract_damage(text):
         damage_type = _resolve_damage_type(m.group(3))
         if damage_type:
             _add(formula, damage_type, is_persistent)
+
+    # Pattern 7: "XdY <type>, DC N" (stat line)
+    for m in _DAMAGE_PATTERNS[6].finditer(text):
+        formula = m.group(1).replace(" ", "")
+        damage_type = _resolve_damage_type(m.group(2))
+        if damage_type:
+            _add(formula, damage_type)
+
+    # Patterns 8 and 9: untyped extra/additional rider, either word order
+    for pattern in _DAMAGE_PATTERNS[7:9]:
+        for m in pattern.finditer(text):
+            formula = m.group(1).replace(" ", "")
+            _add(formula, None, m.group(2) is not None)
 
     return damages
 

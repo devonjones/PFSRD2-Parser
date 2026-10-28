@@ -16,6 +16,8 @@ import os
 
 import pytest
 
+import pfsrd2.enrichment.llm_extractor as le
+
 CLI = os.path.join(os.path.dirname(__file__), "..", "bin", "pf2_enrich_abilities")
 
 
@@ -76,7 +78,7 @@ class TestTheBatchPathIsGuarded:
             db, "a basic Reflex save of the same DC", "unextracted: dc(1) --llm-type dc"
         )
         monkeypatch.setattr(
-            cli, "extract_dc_llm", lambda name, text, **kw: {"dc": 30, "text": "DC 30 basic Reflex"}
+            le, "extract_dc_llm", lambda name, text, **kw: {"dc": 30, "text": "DC 30 basic Reflex"}
         )
         cli.run_llm(db, Args(llm_type="dc"))
 
@@ -93,8 +95,8 @@ class TestTheBatchPathIsGuarded:
             db, "takes 4d6 fire damage", "unextracted: damage(1) --llm-type damage"
         )
         monkeypatch.setattr(
-            cli,
-            "extract_damage_llm",
+            le,
+            "extract_damage_structured",
             lambda name, text, **kw: [{"formula": "4d6", "damage_type": "fire"}],
         )
         cli.run_llm(db, Args(llm_type="damage"))
@@ -112,7 +114,7 @@ class TestTheBatchPathIsGuarded:
         ability_id = _flagged_record(
             db, "no numbers at all here", "unextracted: dc(1) --llm-type dc"
         )
-        monkeypatch.setattr(cli, "extract_dc_llm", lambda name, text, **kw: {"dc": 99})
+        monkeypatch.setattr(le, "extract_dc_llm", lambda name, text, **kw: {"dc": 99})
         cli.run_llm(db, Args(llm_type="dc"))
         assert "99" in _row(db, ability_id)["review_reason"]
 
@@ -390,3 +392,25 @@ class TestHealStaleRespectsDryRun:
         ability_id = self._stale(db)
         cli.run_heal_stale(db, Args(dry_run=False))
         assert _row(db, ability_id)["stale"] == 0
+
+
+class TestOneRoutingTable:
+    def test_the_cli_routes_through_the_inline_table(self, db, monkeypatch):
+        # PFSRD2-Parser-4pw0: the CLI kept its own table on the old free-text
+        # extractors after inline moved on, and the batch run lost a damage
+        # type the inline path kept. Pin it by behaviour, not by import.
+        import pfsrd2.ability_enrichment as ae
+
+        cli = load_cli()
+        calls = []
+        real = ae.llm_extractors
+
+        def spy():
+            calls.append(1)
+            return real()
+
+        monkeypatch.setattr(cli, "llm_extractors", spy)
+        monkeypatch.setattr(le, "extract_damage_structured", lambda name, text, **kw: None)
+        _flagged_record(db, "takes 4d6 fire damage", "unextracted: damage(1) --llm-type damage")
+        cli.run_llm(db, Args(llm_type="damage"))
+        assert calls, "run_llm must take its extractors from ability_enrichment.llm_extractors"
