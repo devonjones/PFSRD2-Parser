@@ -2,9 +2,11 @@ import json
 
 import pytest
 
+from pfsrd2.ability_enrichment import ENRICHMENT_FIELDS
 from pfsrd2.change_identity import compute_change_hash
 from pfsrd2.enrichment.change_extractor import ENRICHMENT_VERSION
 from pfsrd2.enrichment.overrides import (
+    _ABILITY_FIELDS,
     load_overrides,
     seed_ability_field_overrides,
     seed_ability_overrides,
@@ -200,6 +202,10 @@ class TestSeedAbilityOverrides:
 class TestSeedAbilityFieldOverrides:
     TEXT = "Each creature takes 3d6 nonlethal bludgeoning damage (DC 21 basic Reflex save)."
     DAMAGE = [{"formula": "3d6", "damage_type": "nonlethal"}]
+
+    def test_allowed_fields_are_the_fields_enrichment_writes(self):
+        # overrides.py keeps its own copy so it need not import the parser stack.
+        assert set(ENRICHMENT_FIELDS) == _ABILITY_FIELDS
 
     def _record(self, curs, text=TEXT, enriched=None):
         raw = json.dumps({"name": "Bola Hurl", "text": text})

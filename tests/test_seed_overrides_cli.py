@@ -123,6 +123,20 @@ class TestSeedCLIExitCodes:
         )
         assert expected == result.stderr.count("  change: ")
 
+    def test_a_stale_field_override_alone_exits_nonzero(self, tmp_path):
+        # Every other override matches; only the field overrides' text is gone.
+        db_path = tmp_path / "enrichment.db"
+        _populate_records(
+            db_path,
+            load_overrides("change_overrides.json")
+            + load_overrides("change_overrides.json", key="quarantines"),
+            load_overrides("ability_overrides.json"),
+        )
+        result = _run_cli(db_path)
+        assert result.returncode == 1, result.stdout + result.stderr
+        for ov in load_overrides("ability_overrides.json", key="fields"):
+            assert f"  ability: {ov['name']!r}" in result.stderr
+
     def test_clean_seed_exits_zero(self, tmp_path):
         # With a matching record staged for every committed override, the CLI
         # seeds cleanly and exits 0.

@@ -245,7 +245,7 @@ def _save_types_in(text):
     }
 
 
-def _grounded_damage_type(damage_type, formula, text, printed):
+def _grounded_damage_type(damage_type, formula, text, printed, taken=()):
     """A damage type the source supports for this formula, or None.
 
     The parallel of _dice_in for the type. Left unchecked the model wrote "qi
@@ -256,8 +256,10 @@ def _grounded_damage_type(damage_type, formula, text, printed):
 
     Rejecting the model's type must not lose a type the source prints: "falchion
     damage" sat beside "2d10+7 slashing". So a rejected or missing type falls
-    back to `printed`, the type the regex extractor reads next to the same
-    formula. None only when the source itself gives none.
+    back to `printed`, the types the regex extractor reads next to the same
+    formula, in text order. A formula can be printed more than once ("2d6 fire
+    ... 2d6 cold"), so take the first type not already `taken` for it.
+    None only when the source itself gives none.
     """
     # "negative energy damage" -> "negative". Suffixes the vocabulary never
     # carries; "energy" alone is a type and is left intact.
@@ -267,11 +269,15 @@ def _grounded_damage_type(damage_type, formula, text, printed):
     resolved = _resolve_damage_type(damage_type) if damage_type else None
     if resolved and re.search(rf"\b{re.escape(resolved)}\b", (text or "").lower()):
         return resolved
-    return printed.get(formula)
+    types = printed.get(formula, [])
+    return next((t for t in types if t not in taken), types[0] if types else None)
 
 
 def extract_dc_structured(name, text, model=None):
     """Save DCs via constrained decoding. Returns save_dc objects, or None.
+
+    Not wired: dc runs on extract_dc_llm until PFSRD2-Parser-ny9h fixes this
+    and re-measures it to zero losses.
 
     The schema does two things the free-text path could not. save_type is an
     enum, so the model picks from the four values that exist rather than
@@ -460,7 +466,9 @@ def extract_damage_structured(name, text, model=None):
     # all-or-nothing per field, so without this one invented 30d6 discards the
     # real 9d6 alongside it and the ability ends up with no damage at all.
     published = _dice_in(text)
-    printed = {d["formula"]: d.get("damage_type") for d in extract_damage(text)}
+    printed = {}
+    for d in extract_damage(text):
+        printed.setdefault(d["formula"], []).append(d.get("damage_type"))
 
     seen, out = set(), []
     for entry in entries:
@@ -476,7 +484,8 @@ def extract_damage_structured(name, text, model=None):
         if damage_type and damage_type.startswith("persistent "):
             damage_type = damage_type[len("persistent ") :].strip() or None
             persistent = True
-        damage_type = _grounded_damage_type(damage_type, formula, text, printed)
+        taken = {t for f, t, _ in seen if f == formula}
+        damage_type = _grounded_damage_type(damage_type, formula, text, printed, taken)
         key = (formula, damage_type, persistent)
         if key in seen:
             continue

@@ -65,9 +65,8 @@ def llm_extractors():
         # Constrained decoding (PFSRD2-Parser-4k8b). Validated against the
         # cached LLM values before wiring, with remaining differences
         # adjudicated against source text rather than against the cache
-        # (numbers in the ticket). Each extractor applies a
-        # mechanical grounding filter (_dice_in, _dcs_in, _save_types_in)
-        # because a schema constrains SHAPE, never truth.
+        # (numbers in the ticket). Damage applies a mechanical grounding
+        # filter (_dice_in) because a schema constrains SHAPE, never truth.
         # frequency stays on the free-text path. Constrained decoding was
         # wired and measured over the real corpus and was worse: it read
         # DURATIONS as frequencies ("can survive on any Elemental Plane for

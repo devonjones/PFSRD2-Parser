@@ -229,6 +229,16 @@ class TestStructuredDamageExtraction:
         )
         assert got[0]["damage_type"] == "electricity"
 
+    def test_a_formula_printed_twice_keeps_both_types(self, monkeypatch):
+        # One fallback type per formula let the last one win, so the fire
+        # entry came back cold and de-duped away.
+        got = self._extract(
+            monkeypatch,
+            {"damage": [{"formula": "2d6"}, {"formula": "2d6"}]},
+            text="deals 2d6 fire damage, then the aura deals 2d6 cold damage",
+        )
+        assert [e["damage_type"] for e in got] == ["fire", "cold"]
+
     def test_a_trailing_energy_word_is_tolerated(self, monkeypatch):
         # Real case: Essence Drain and Vordakai's Consume Memories. The model
         # wrote "negative energy" and the type was lost.
@@ -278,7 +288,7 @@ class TestStructuredArraysAreBounded:
     def test_the_dc_array_has_a_cap(self, config):
         # Unbounded, the model looped on Sea Serpent's Capsize until the 120s
         # timeout and stopped a full rebuild (PFSRD2-Parser-4pw0).
-        assert config["schemas"]["dc"]["properties"]["saves"]["maxItems"] >= 3
+        assert 3 <= config["schemas"]["dc"]["properties"]["saves"]["maxItems"] <= 8
 
 
 class TestOptionsArePassedThrough:
@@ -645,6 +655,7 @@ class TestDiceGrounding:
         [
             "slither up into the cultist's flesh, healing 4d6 points of damage.",
             "ends the bleed effect immediately and restores 2d6 Hit Points to the target",
+            "the target gets back 3d8 HP",
             "increasing the damage die from 1d8 to 1d10 and gaining a +2 bonus",
             "increase the size of his damage die with fist attacks to 1d6. If he does so",
             "a randomly determined alchemical effect, roll 1d6 and consult the following",

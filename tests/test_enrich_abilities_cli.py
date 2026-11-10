@@ -16,6 +16,7 @@ import os
 
 import pytest
 
+import pfsrd2.ability_enrichment as ae
 import pfsrd2.enrichment.llm_extractor as le
 
 CLI = os.path.join(os.path.dirname(__file__), "..", "bin", "pf2_enrich_abilities")
@@ -399,7 +400,6 @@ class TestOneRoutingTable:
         # PFSRD2-Parser-4pw0: the CLI kept its own table on the old free-text
         # extractors after inline moved on, and the batch run lost a damage
         # type the inline path kept. Pin it by behaviour, not by import.
-        import pfsrd2.ability_enrichment as ae
 
         cli = load_cli()
         calls = []

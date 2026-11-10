@@ -306,6 +306,7 @@ Text: {text}'''
 # dc is an INTEGER, which removes the "DC 30" / "30" / "DC of 30" spread too.
 
 [schemas.dc]
+# Used only by extract_dc_structured, which is not wired (PFSRD2-Parser-ny9h).
 type = "object"
 required = ["saves"]
 
