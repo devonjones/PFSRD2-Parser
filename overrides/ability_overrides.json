@@ -1471,6 +1471,14 @@
         ]
       },
       "note": "Save type depends on the chosen damage type; the three options are listed. The free-text extractor now returns 'DC 25 basic' with no type. Value copied from committed data (PFSRD2-Parser-4pw0)."
+    },
+    {
+      "name": "Read the Harrow",
+      "text": "The harrow reader can conduct a reading over the course of 10 minutes to duplicate the effects of the <i>augury</i> spell. The harrow reader can conduct up to five readings per day, but the flat check DC increases by 2. This is cumulative, to a maximum of DC 14 for the fifth.",
+      "enriched": {
+        "frequency": "5 times per day"
+      },
+      "note": "Devon's call (2026-11-10, PFSRD2-Parser-aiub): keep the corpus's normalised wording. The text prints 'up to five readings per day'; the grounded LLM value is that phrase verbatim."
     }
   ]
 }
