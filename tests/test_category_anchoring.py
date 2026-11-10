@@ -157,6 +157,19 @@ class TestPins:
         assert seed_ability_overrides(curs, [pin]) == (0, [pin])
         assert fetch_ability_by_id(curs, aid)["human_verified"] == 0
 
+    def test_one_conflicting_record_among_several_makes_the_pin_a_miss(self, db):
+        # Same name and text, two editions: one plain, one a Reaction.
+        curs = db.cursor()
+        plain = insert_ability_record(
+            curs, "Snap", "h1", json.dumps({"name": "Snap", "text": "It snaps."})
+        )
+        raw = {"name": "Snap", "text": "It snaps.", "action_type": {"name": "Reaction"}}
+        insert_ability_record(curs, "Snap", "h2", json.dumps(raw))
+        pin = {"name": "Snap", "text": "It snaps.", "ability_category": "automatic"}
+
+        assert seed_ability_overrides(curs, [pin]) == (0, [pin])
+        assert fetch_ability_by_id(curs, plain)["ability_category"] is None
+
     def test_a_pin_that_agrees_with_the_action_type_seeds(self, db):
         curs = db.cursor()
         raw = {"name": "Snap", "text": "It snaps.", "action_type": {"name": "Reaction"}}
