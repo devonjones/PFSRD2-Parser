@@ -584,7 +584,7 @@ def run_uma_detection(conn, args):
     if not args.dry_run:
         curs.execute(
             "SELECT ability_id, name FROM ability_records"
-            " WHERE is_uma = 1 AND ability_category IS NULL"
+            " WHERE is_uma = 1 AND ability_category IS NULL AND human_verified = 0"
         )
         uma_uncategorized = curs.fetchall()
         categorized = 0
@@ -600,11 +600,21 @@ def run_uma_detection(conn, args):
             print(f"  Also categorized {categorized} UMAs from creature data")
 
 
-def run_llm_classify(conn, args):
-    """Tier 3: Classify remaining abilities using LLM.
+# No "; " anywhere: add_review_reason splits clauses on it, and a reason that
+# splits cannot supersede its own earlier copy.
+LLM_CATEGORY_SUGGESTION = "unpinned ability_category, LLM suggests "
 
-    Sends uncategorized abilities (excluding spell noise) to the LLM
-    with their name, text, action type, and traits.
+
+def run_llm_classify(conn, args):
+    """Tier 3: ask the LLM about uncategorized abilities -- as a SUGGESTION.
+
+    The answer is never written as ability_category. It is recorded in
+    review_reason, needs_review is set, and a human pins the real value in
+    overrides/ability_overrides.json. LLM categories were the only ones nothing
+    anchored: the v3 rebuild missed the cache and reshuffled 36 published
+    values (Ghostly Hand -> special_sense, Unholy Speed -> interaction), and
+    checking the rest against the HTML found many of the unchanged ones wrong
+    too (PFSRD2-Parser-aiub).
     """
     curs = conn.cursor()
     uncategorized = fetch_uncategorized_abilities(curs)
@@ -662,9 +672,15 @@ def run_llm_classify(conn, args):
 
         if category:
             if args.dry_run:
-                print(f"  {name} → {category}")
+                print(f"  {name} → {category} (suggestion)")
             else:
-                update_ability_category(curs, record["ability_id"], category)
+                add_review_reason(
+                    curs,
+                    record["ability_id"],
+                    f"{LLM_CATEGORY_SUGGESTION}{category} (pin it in"
+                    " overrides/ability_overrides.json)",
+                    supersedes=LLM_CATEGORY_SUGGESTION,
+                )
             classified += 1
         else:
             if args.dry_run:
@@ -679,7 +695,7 @@ def run_llm_classify(conn, args):
     if not args.dry_run:
         conn.commit()
 
-    print(f"\nTier 3 — LLM classify: classified={classified}, failed={failed}")
+    print(f"\nTier 3 — LLM classify: suggested={classified} (flagged for review), failed={failed}")
 
 
 def print_classification_stats(conn):

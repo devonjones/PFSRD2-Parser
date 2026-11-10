@@ -490,8 +490,17 @@ def update_is_uma(curs, ability_id, is_uma=True):
 
 
 def fetch_uncategorized_abilities(curs):
-    """Fetch ability records that don't have an ability_category yet."""
-    sql = "SELECT * FROM ability_records WHERE ability_category IS NULL ORDER BY name"
+    """Fetch ability records that don't have an ability_category yet.
+
+    A human-verified record is never uncategorized: a NULL there is a decision
+    (overrides/ability_overrides.json pins it as "no category" because it is a
+    stat line, a lore sidebar or a price list), and every classify step reads
+    this list to decide what to fill in.
+    """
+    sql = (
+        "SELECT * FROM ability_records"
+        " WHERE ability_category IS NULL AND human_verified = 0 ORDER BY name"
+    )
     curs.execute(sql)
     return curs.fetchall()
 
@@ -510,7 +519,7 @@ def fetch_majority_category_for_name(curs, name):
         JOIN ability_creature_links acl ON ar.ability_id = acl.ability_id
         WHERE LOWER(ar.name) = LOWER(?)
         GROUP BY acl.ability_category
-        ORDER BY cnt DESC
+        ORDER BY cnt DESC, acl.ability_category
     """
     curs.execute(sql, (name,))
     rows = curs.fetchall()

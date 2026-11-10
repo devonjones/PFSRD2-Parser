@@ -60,8 +60,13 @@ def _populate_records(db_path, change_overrides, ability_overrides, field_overri
                     identity_hash,
                     json.dumps({"text": ov["change_text"]}),
                 )
-            for ov in ability_overrides:
-                insert_ability_record(curs, ov["name"], "hash-" + ov["name"], "{}")
+            for i, ov in enumerate(ability_overrides):
+                # Text-keyed pins share names ("Immunities" in a dozen
+                # families) and match on the exact text.
+                raw = {"name": ov["name"]}
+                if ov.get("text"):
+                    raw["text"] = ov["text"]
+                insert_ability_record(curs, ov["name"], f"hash-{i}", json.dumps(raw))
             for ov in field_overrides:
                 # Field overrides match on name AND exact text.
                 raw = json.dumps({"name": ov["name"], "text": ov["text"]})

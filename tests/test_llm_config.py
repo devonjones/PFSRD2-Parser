@@ -693,6 +693,18 @@ class TestDiceGrounding:
 
         assert _dice_in(text) == dice
 
+    def test_a_typical_total_is_not_a_second_damage_entry(self):
+        """Focused Flames: '(typically 6d6 extra damage)' sums the per-knife 2d6
+        already listed, and was published as an extra untyped 6d6
+        (PFSRD2-Parser-aiub)."""
+        from pfsrd2.enrichment.llm_extractor import _dice_in
+
+        text = (
+            "plus an additional 2d6 negative damage for every black flame knife they "
+            "wield beyond the first (typically 6d6 extra damage)."
+        )
+        assert _dice_in(text) == {"2d6"}
+
     def test_a_distance_is_not_dice(self):
         """Breath Weapon: '30-foot cone of poison' became 30d6."""
         from pfsrd2.enrichment.llm_extractor import _dice_in

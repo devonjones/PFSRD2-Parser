@@ -188,24 +188,40 @@ def seed_change_quarantines(curs, quarantines):
 
 
 def seed_ability_overrides(curs, overrides):
-    """Seed ability_category overrides, name-keyed (case-insensitive).
+    """Seed ability_category overrides (case-insensitive name).
 
-    Updates every record variant sharing the name — legacy/remastered
-    editions of the same ability get the same category.
+    Name-keyed entries update every record sharing the name, so
+    legacy/remastered editions get the same category. An entry with "text" is
+    keyed on name AND exact text instead: generic names ("Speed", "Giant",
+    "Resistances") recur across families with different meanings, and a
+    name-only pin would leak onto all of them. AoN errata to that text makes
+    the entry a miss to re-review.
+
+    "ability_category": null pins NO category: the entry is a stat line, a lore
+    sidebar or a price list, not an ability with a stat-block section.
     Returns (seeded_count, misses).
     """
     seeded = 0
     misses = []
     for ov in overrides:
         category = ov["ability_category"]
-        assert category in CATEGORY_TARGETS, (
+        assert category is None or category in CATEGORY_TARGETS, (
             f"Invalid ability category {category!r} for override {ov['name']!r}. "
-            f"Must be one of: {sorted(CATEGORY_TARGETS)}"
+            f"Must be null or one of: {sorted(CATEGORY_TARGETS)}"
         )
-        curs.execute(
-            "SELECT ability_id FROM ability_records WHERE LOWER(name) = LOWER(?)",
-            (ov["name"],),
-        )
+        if "text" in ov:
+            curs.execute(
+                "SELECT ability_id FROM ability_records WHERE LOWER(name) = LOWER(?)"
+                # COALESCE: an ability whose body is all addon fields (Kiai!,
+                # Afterimage: just an Effect) has no text key at all.
+                " AND COALESCE(json_extract(raw_json, '$.text'), '') = ?",
+                (ov["name"], ov["text"]),
+            )
+        else:
+            curs.execute(
+                "SELECT ability_id FROM ability_records WHERE LOWER(name) = LOWER(?)",
+                (ov["name"],),
+            )
         rows = curs.fetchall()
         if not rows:
             misses.append(ov)
