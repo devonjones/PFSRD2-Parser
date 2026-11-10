@@ -19,6 +19,13 @@ CATEGORY_TARGETS = {
     "special_sense": "$.senses.special_senses",
 }
 
+# A pinned "this has no category" (overrides/ability_overrides.json null):
+# bare stat lines, lore sidebars, price lists. Not NULL, which every classify
+# step reads as "still to do" -- and not human_verified either, which
+# bin/pf2_ability_review sets for checking FIELDS on a record whose category
+# may still be unset. Falsy, so the output merge never writes it.
+NO_CATEGORY = ""
+
 # Default target when ability is not found in the DB
 DEFAULT_TARGET = "$.defense.automatic_abilities"
 

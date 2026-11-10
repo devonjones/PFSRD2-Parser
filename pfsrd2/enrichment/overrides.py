@@ -18,7 +18,11 @@ import json
 import os
 import sys
 
-from pfsrd2.ability_placement import CATEGORY_TARGETS
+from pfsrd2.ability_placement import (
+    CATEGORY_TARGETS,
+    NO_CATEGORY,
+    deterministic_ability_category,
+)
 from pfsrd2.change_identity import compute_change_hash
 from pfsrd2.enrichment.change_extractor import (
     ENRICHMENT_VERSION,
@@ -188,30 +192,49 @@ def seed_change_quarantines(curs, quarantines):
 
 
 def seed_ability_overrides(curs, overrides):
-    """Seed ability_category overrides, name-keyed (case-insensitive).
+    """Seed ability_category overrides (case-insensitive name).
 
-    Updates every record variant sharing the name — legacy/remastered
-    editions of the same ability get the same category.
+    Name-keyed entries update every record sharing the name, so
+    legacy/remastered editions get the same category. An entry with "text" is
+    keyed on name AND exact text instead: generic names ("Speed", "Giant",
+    "Resistances") recur across families with different meanings, and a
+    name-only pin would leak onto all of them. AoN errata to that text makes
+    the entry a miss to re-review.
+
+    "ability_category": null pins NO category: the entry is a stat line, a lore
+    sidebar or a price list, not an ability with a stat-block section.
     Returns (seeded_count, misses).
     """
     seeded = 0
     misses = []
     for ov in overrides:
         category = ov["ability_category"]
-        assert category in CATEGORY_TARGETS, (
+        assert category is None or category in CATEGORY_TARGETS, (
             f"Invalid ability category {category!r} for override {ov['name']!r}. "
-            f"Must be one of: {sorted(CATEGORY_TARGETS)}"
+            f"Must be null or one of: {sorted(CATEGORY_TARGETS)}"
         )
-        curs.execute(
-            "SELECT ability_id FROM ability_records WHERE LOWER(name) = LOWER(?)",
-            (ov["name"],),
-        )
+        sql = "SELECT ability_id, raw_json FROM ability_records WHERE LOWER(name) = LOWER(?)"
+        params = [ov["name"]]
+        if "text" in ov:
+            # COALESCE: an ability whose body is all addon fields (Kiai!,
+            # Afterimage: just an Effect) has no text key at all.
+            sql += " AND COALESCE(json_extract(raw_json, '$.text'), '') = ?"
+            params.append(ov["text"])
+        curs.execute(sql, params)
         rows = curs.fetchall()
-        if not rows:
+        # The action type decides first: run_classify's Step 0 and the output
+        # merge both apply it over anything stored. A pin that disagrees would
+        # be silently overwritten, so it is a miss to re-review instead.
+        if not rows or any(
+            deterministic_ability_category(json.loads(row["raw_json"])) not in (None, category)
+            for row in rows
+        ):
             misses.append(ov)
             continue
         for row in rows:
-            update_ability_category(curs, row["ability_id"], category)
+            update_ability_category(
+                curs, row["ability_id"], NO_CATEGORY if category is None else category
+            )
             mark_human_verified(curs, row["ability_id"])
         seeded += 1
     return seeded, misses

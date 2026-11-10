@@ -510,7 +510,7 @@ def fetch_majority_category_for_name(curs, name):
         JOIN ability_creature_links acl ON ar.ability_id = acl.ability_id
         WHERE LOWER(ar.name) = LOWER(?)
         GROUP BY acl.ability_category
-        ORDER BY cnt DESC
+        ORDER BY cnt DESC, acl.ability_category
     """
     curs.execute(sql, (name,))
     rows = curs.fetchall()

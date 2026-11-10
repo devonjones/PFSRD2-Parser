@@ -19,7 +19,12 @@ import subprocess
 import tomllib
 
 from pfsrd2.enrichment.llm_cache import cache_get, cache_put, compute_prompt_hash
-from pfsrd2.enrichment.regex_extractor import _SHAPE_MAP, _resolve_damage_type, extract_damage
+from pfsrd2.enrichment.regex_extractor import (
+    _SHAPE_MAP,
+    _resolve_damage_type,
+    extract_damage,
+    without_typical_totals,
+)
 
 _CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm_config.toml")
 
@@ -187,7 +192,7 @@ def _dice_in(text):
     worse overall (see llm_config.toml damage). A formula the source never
     printed is decidable without asking the model anything, so decide it here.
     """
-    text = text or ""
+    text = without_typical_totals(text)
     return {
         m.group(0).replace(" ", "")
         for m in _DICE.finditer(text)
@@ -534,7 +539,10 @@ def _clean_llm_response(response):
     ):
         return None
 
-    parts = [p.strip() for p in response.split(";") if p.strip()]
+    # A newline separates values as often as "; " does: Prophetic Wings came
+    # back "once per hour  \nonce per week", which read as ONE value matched
+    # nothing in the text and lost both.
+    parts = [p.strip() for p in re.split(r"[;\n]", response) if p.strip()]
     cleaned = []
     for part in parts:
         p = part.lower().strip()
@@ -547,6 +555,48 @@ def _clean_llm_response(response):
     return cleaned if cleaned else None
 
 
+# What makes a phrase a frequency rather than a duration or a rate's tail.
+_FREQ_SHAPE = re.compile(r"\b(?:per|once|twice|thrice|times|every)\b", re.IGNORECASE)
+# A bare span ("1d4 rounds") is a frequency only as a recharge: "can't use X
+# again for 1d4 rounds", "can't be reactivated for 1 hour". Anywhere else it is
+# a duration ("can survive ... for up to 48 hours").
+_FREQ_SPAN = re.compile(r"^\S+ (?:rounds?|minutes?|hours?|days?)$", re.IGNORECASE)
+# The gap may not cross another "for": "again for 1d4 rounds and survives for
+# 48 hours" grounds only the first span.
+_RECHARGE_LEAD = r"(?:\bagain|\bcan['\u2019]t|\bcannot)\b(?:(?!\bfor\b)[^.;]){0,80}\bfor "
+
+
+def _normalise_for_grounding(s):
+    s = re.sub(r"<[^>]+>", "", s)
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+
+def grounded_frequencies(parts, text):
+    """Keep only the frequencies the ability text itself prints.
+
+    Filter, don't instruct: the prompt already says what a frequency is, and the
+    model still answered rates and durations with one. "1 damage per hour"
+    wakes the frequency detector, and the model replied with the nearby
+    duration ("survive ... for up to 48 hours" -> "48 hours", "remain away
+    from water for only 12 hours" -> "12 hours") or a truncated compound
+    limit ("100 orts per day, to a maximum of 1,100 orts in 11 days" ->
+    "11 days"). A value survives only if it appears verbatim in the text
+    AND reads as a frequency: it says per/once/times/every, or it is the span
+    of a recharge ("again for 1d4 rounds", "can't be reactivated for 1 hour").
+    """
+    source = _normalise_for_grounding(text)
+    kept = []
+    for part in parts:
+        value = _normalise_for_grounding(part)
+        if not value or value not in source:
+            continue
+        if _FREQ_SHAPE.search(value) or (
+            _FREQ_SPAN.match(value) and re.search(_RECHARGE_LEAD + re.escape(value), source)
+        ):
+            kept.append(part)
+    return kept
+
+
 def extract_frequency_llm(name, text, model=None):
     """Extract frequency constraints using LLM.
 
@@ -554,7 +604,7 @@ def extract_frequency_llm(name, text, model=None):
     """
     prompt = FREQUENCY_PROMPT.format(name=name, text=text)
     response = _query_ollama(prompt, model)
-    parts = _clean_llm_response(response)
+    parts = grounded_frequencies(_clean_llm_response(response) or [], text)
     if not parts:
         return None
     return "; ".join(parts)

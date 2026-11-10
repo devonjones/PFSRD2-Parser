@@ -1,5 +1,5 @@
 {
-  "description": "Human-verified ability_category corrections for ability_records, keyed by ability name (case-insensitive). Seeded by bin/pf2_seed_change_overrides as human_verified=1 so classification passes never overwrite them. A seed failure (no matching record) means the ability was renamed or never parsed.",
+  "description": "Human-verified ability_category for ability_records. An entry with only a name matches every record with that name (case-insensitive); an entry with a name and text matches that exact text only, for generic names like Speed or Resistances that recur with different meanings. \"ability_category\": null pins NO category: a stat line (bare Immunities/Resistances/Saving Throws), a lore sidebar, a price list or an adjustment list, which creatures.py never makes into an ability. Seeded by bin/pf2_seed_change_overrides as human_verified=1, so no classification pass overwrites them. Rubric: PFSRD2-Parser-aiub. A seed failure (no matching record) means AoN changed the text or the ability was renamed: re-review it.",
   "overrides": [
     {
       "name": "Cold Stasis",
@@ -10,6 +10,1416 @@
       "name": "Mythic Power (Recharge Spell)",
       "ability_category": "offensive",
       "note": "No action_type in source and no creature links to vote with; it recharges spell slots and belongs with offensive actions (Mythic Caster)."
+    },
+    {
+      "name": "Immunities",
+      "text": "death effects, disease, paralyzed, poison, precision, unconscious",
+      "ability_category": null,
+      "note": "bare immunity list (checked against MonsterFamilies 51; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Resistances",
+      "text": "all damage 5 (except force, ghost touch, or positive; double resistance to non-magical). This resistance increases to 10 at 9th level and 15 at 16th level.",
+      "ability_category": null,
+      "note": "bare resistance list with rider (checked against MonsterFamilies 51; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Fly Speed",
+      "text": "equal to its Speed",
+      "ability_category": "offensive",
+      "note": "full-text movement (checked against MonsterFamilies 51, MonsterFamilies 418; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Ghostly Hand",
+      "text": "All ghosts have a ghostly hand unarmed attack that deals negative damage. It typically has the agile, finesse, and magical traits. Some ghosts wield ghostly memories of weapons they held in life, but the effect is the same.",
+      "ability_category": "offensive",
+      "note": "granted unarmed Strike (checked against MonsterFamilies 51; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Cold Spot",
+      "text": "The air within 5 feet of the ghost is supernaturally cold. Characters that enter or begin their turn in the ghost's aura take 1d6 cold damage per 3 levels the ghost has (basic Fortitude save).",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 51; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Dreamwalker",
+      "text": "Anyone who meets the ghost or visits its bound site can become subject to this effect. The first time the subject sleeps after their ghostly encounter, they're targeted by a *nightmare* spell, with the nightmares being somehow related to the ghost. Most often this means that the subject relives the ghost's last moments alive, but there are other possibilities. If the ghost wishes, it can manipulate the dreams to send messages or even hold entire conversations with dreamers.",
+      "ability_category": "interaction",
+      "note": "nightmares and dream conversations act outside combat (checked against MonsterFamilies 51; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Ghost Storm",
+      "text": "Wind surrounds the ghost out to a range of 30 feet. The wind extinguishes small non-magical fires, disperses fog and mist, blows objects of light Bulk or less around, and pushes larger objects. Squares in the ghost's aura are difficult terrain and flying creatures are always considered to be moving against the wind. The ghost can dismiss or resume the wind as an action, which has the concentrate trait.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 51; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Lynchpin",
+      "text": "The ghost extends some of its nature to one or more undead of equal or lower level, who are connected to the ghost's story and unfinished business. These undead gain the ghost's Rejuvenation ability and can't be permanently destroyed so long as the ghost exists. If the ghost is laid to rest, all linked undead are likewise instantly destroyed. Linked undead often, but not always, share the ghost's Site-Bound ability as well. The ghost doesn't have any control over such undead, and indeed the ghost and their partners in eternity may be unremittingly hostile to one another.",
+      "ability_category": "interaction",
+      "note": "lore-mechanic linking other undead, outside combat (checked against MonsterFamilies 51; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Immunities",
+      "text": "death effects, disease, paralyzed, poison, unconscious",
+      "ability_category": null,
+      "note": "bare immunity list (checked against MonsterFamilies 52, MonsterFamilies 68, MonsterFamilies 148, MonsterFamilies 310; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Claws",
+      "text": "If the creature had hands, it gains a claw Strike (an agile unarmed attack that deals slashing damage plus paralysis). If it had any agile attacks, the damage dealt by its claws should be roughly the same as the damage dealt by those attacks. If it had only non-agile attacks, its claws should deal three-quarters that damage.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 52; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Harmed By",
+      "text": "Any magic of this type that targets the golem causes it to take the listed amount of damage (this damage has no type) instead of the usual effect. If the golem starts its turn in an area of magic of this type or is affected by a persistent effect of the appropriate type, it takes the damage listed in the parenthetical.",
+      "ability_category": "automatic",
+      "note": "always-on defensive vulnerability to magic types (checked against MonsterFamilies 57; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Saving Throws",
+      "text": "+1 status bonus to all saves vs. positive",
+      "ability_category": null,
+      "note": "bare save rider (checked against MonsterFamilies 68; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Resistances",
+      "text": "cold 20, physical 15 (except magic bludgeoning)",
+      "ability_category": null,
+      "note": "bare resistance list (checked against MonsterFamilies 68; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Hand of the Lich",
+      "text": "All liches have a hand unarmed attack that deals 1d8 negative damage for every 3 levels and inflicts a paralyzing touch. This attack has the finesse trait.",
+      "ability_category": "offensive",
+      "note": "granted unarmed attack (checked against MonsterFamilies 68; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Blasphemous Utterances",
+      "text": "The lich is accompanied by a constant echo of blasphemous murmurs and tainted whispers. A creature in the aura takes a –2 circumstance penalty to saves against mental effects and can't take actions that have the concentrate trait unless they succeed at a DC 10 flat check. Failing this check wastes the action.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 68; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Dark Deliverance",
+      "text": "The lich has resistance to positive equal to its level.",
+      "ability_category": "automatic",
+      "note": "resistance to positive equal to level, not an HP-line item (checked against MonsterFamilies 68; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Void Shroud",
+      "text": "The lich is surrounded by an aura of death, drawing forth souls to be consumed by the lich's constant hunger. Living creatures in the emanation take a –2 status penalty to saves against fear and death effects. In addition, any creature that starts its turn in the area gains the doomed 1 condition unless it succeeds at a Will save against the lich's spell DC – 4.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 68, MonsterFamilies 438; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Animate Cage",
+      "text": "The lich has placed their soul cage inside an animated object that fights fiercely to defend itself, or at the very least to elude capture. If the lich's body is destroyed, the lich can control this animated object directly, although they can't cast any spells while inside the vessel. The lich's body is often restored inside this object, being ejected from the animated object after 1d10 days in the normal manner for a soul cage. The animated object is usually at least 4 levels lower than the lich, but it doesn't engage in combat unless directly threatened or if the lich is in control of it.",
+      "ability_category": "interaction",
+      "note": "soul cage lore-mechanic outside combat (checked against MonsterFamilies 68; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Aura of Rot",
+      "text": "The lich is surrounded by pervasive, supernatural rot. Unattended food and drink within 30 feet of the lich immediately spoils. Anyone attempting to eat or drink within this area must succeed at a DC 5 flat check or become sickened 1 as the sustenance spoils before it can be ingested (ruining potions and other magical food and drink). Ordinary plants that remain within this aura for more than 1 minute wither and begin to die (depending on their size, this might take significantly longer).",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 68; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Familiar Soul",
+      "text": "The lich has an undead familiar (using the familiar rules, except it's undead instead of an animal). Instead of a traditional soul cage, this lich stores their soul in the body of their undead familiar. While doing so makes it significantly more vulnerable, the moment the lich's body is destroyed, it can take over the body of the familiar. After 1 hour, the lich can use this body to cast spells, assuming it has an appendage capable of making somatic components. After 1d10 days, the lich's body reforms as normal.",
+      "ability_category": "interaction",
+      "note": "familiar/soul storage lore-mechanic (checked against MonsterFamilies 68; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Metamagic Alteration",
+      "text": "If the lich's next action is to Cast a Spell, they can alter it in one of two ways. \n* Increase the range of that spell by 30 feet (giving it a range of 30 feet if it's a touch spell).\n* Alternatively, the lich can change the area of the spell if the spell has an area and doesn't have a duration. If the spell is a burst with a radius of at least 10 feet, increase the radius by 5 feet. If it is a line or a cone that has an area of 15 feet or smaller, add 10 feet to the area.",
+      "ability_category": "offensive",
+      "note": "concentrate metamagic on next action, spell range/area (checked against MonsterFamilies 68; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Unholy Touch",
+      "text": "The lich's touch is suffused with evil, dealing evil damage instead of negative. On a critical hit, the target also takes persistent evil damage equal to half the lich's level.",
+      "ability_category": "offensive",
+      "note": "changes touch damage type, crit persistent damage (checked against MonsterFamilies 68; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Bloody",
+      "text": "The skeleton is covered in dripping blood and gains fast healing equal to its level.",
+      "ability_category": "hp_automatic",
+      "note": "fast healing equal to level (checked against MonsterFamilies 92; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Explosive Death",
+      "text": "When the skeleton is destroyed, its bones shatter and explode as the necromantic energy holding it together is released. Adjacent creatures take 1d6 slashing damage per 2 levels (minimum 1d6) with a basic Reflex save.",
+      "ability_category": "automatic",
+      "note": "triggered on destruction (checked against MonsterFamilies 92; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Blaze",
+      "text": "The skeleton is wreathed with fire, which doesn't consume its bones or gear. The skeleton gains immunity to fire and weakness 5 to cold, loses its resistance to cold, and its Strikes deal additional persistent fire damage equal to half the skeleton's level (minimum 1 damage).",
+      "ability_category": "automatic",
+      "note": "mixed: immunity/weakness changes plus extra persistent fire damage; defensive changes lead (checked against MonsterFamilies 92, MonsterFamilies 472; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Bone Powder",
+      "text": "**Source** When the skeleton takes physical damage from a critical hit, one of its bones is pulverized into a fine powder. All creatures in a 5-foot emanation that breathe take 1d6 persistent poison damage (plus an additional 1d6 for every 6 levels the skeleton has).",
+      "ability_category": "automatic",
+      "note": "triggered on being critically hit (checked against MonsterFamilies 92; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Skeleton of Roses",
+      "text": "Thick briars have grown through the skeleton's bones, covering it in red roses with inch-long thorns. The skeleton's unarmed melee Strikes deal additional piercing damage equal to 1/3 the skeleton's level (minimum 1 damage). At the end of each of its turns, if the skeleton has caused piercing damage with its thorns, it regains HP equal to its level (minimum 1). Each time the skeleton regains HP in this way, another rose blossoms.",
+      "ability_category": "offensive",
+      "note": "mixed: extra piercing damage on Strikes plus HP regain; offense leads (checked against MonsterFamilies 92; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Aquatic Bones",
+      "text": "The skeleton has bones from aquatic creatures, allowing it to swim using a simple tail, paddles, or similar appendage. The skeleton has a swim Speed of 20 feet and gains the aquatic trait and the aquatic ambush ability.",
+      "ability_category": "offensive",
+      "note": "swim speed movement (checked against MonsterFamilies 92; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Crumbling Bones",
+      "text": "The skeleton is made from crumbling bones that drift in clouds of dust. The skeleton has a fly Speed of 20 but it must end its turn within no more than 5 feet off the ground, or it falls, taking damage as normal. In addition, the skeleton can move through any space that's large enough for its skull to fit through.",
+      "ability_category": "offensive",
+      "note": "fly speed movement (checked against MonsterFamilies 92; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Frozen",
+      "text": "The skeleton's bones are covered in a thin layer of ice. The skeleton gains immunity to cold and weakness 5 to fire and loses resistance to fire. The skeleton is surrounded by an aura of cold that deals cold damage equal to half the skeleton's level to all adjacent creatures at the start of the skeleton's turn (basic Reflex save with a standard DC for its level).",
+      "ability_category": "automatic",
+      "note": "immunity/weakness and cold aura (checked against MonsterFamilies 92; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Lacquered",
+      "text": "During the process to create the skeleton, it was covered with several layers of an alchemical lacquer, giving its bones a golden hue and granting added protection. The skeleton gains acid resistance 5 and a +2 status bonus to saves against effects that age or erode the target.",
+      "ability_category": "automatic",
+      "note": "acid resistance and save bonus (checked against MonsterFamilies 92; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Nimble",
+      "text": "The skeleton is particularly fast and nimble. Its land Speed increases by 10 feet and it has a climb Speed of 20 feet. In addition, it gains the Nimble Dodge reaction.",
+      "ability_category": "offensive",
+      "note": "speed increase, climb speed, plus Nimble Dodge reaction; movement leads (checked against MonsterFamilies 92; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Rotten",
+      "text": "The bones of this skeleton are black and rotten, having spent years in polluted water or some other foul substance. The skeleton loses its resistance to piercing and slashing damage and is surrounded by a horrific stench in a 10-foot aura. A creature entering or starting its turn in the aura must succeed at a Fortitude save against the standard DC of the skeleton's level or become sickened 1 (plus slowed 1 for as long as it remains sickened on a critical failure). While within the aura, affected creatures take a –2 circumstance penalty to saves against disease and to recover from the sickened condition. A creature that succeeds at its save is temporarily immune for 1 minute. This stench remains for 1 hour after the rotten skeleton has been destroyed unless the bones are burned, or the rot is washed away with at least 1 gallon of water.",
+      "ability_category": "automatic",
+      "note": "aura and resistance loss (checked against MonsterFamilies 92; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Immunities",
+      "text": "death effects, disease, paralyze, poison, sleep",
+      "ability_category": null,
+      "note": "bare immunity list (checked against MonsterFamilies 97, MonsterFamilies 564, MonsterFamilies 314; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Vampire Weaknesses",
+      "text": "All vampires possess the following weaknesses.",
+      "ability_category": null,
+      "note": "header introducing weakness list, no mechanics itself (checked against MonsterFamilies 97; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Climb Speed",
+      "text": "Vampires gain a climb Speed equal to their land Speed.",
+      "ability_category": "offensive",
+      "note": "full-text movement (checked against MonsterFamilies 97, MonsterFamilies 480; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Claws",
+      "text": "If the creature had hands, its fingernails thicken and grow, granting it an unarmed claw Strike that deals slashing damage and has the agile trait. If the monster had any agile attacks, the damage dealt by its claws should be roughly the same as the damage dealt by those attacks. If it had only non-agile attacks, its claws should deal three-quarters that damage.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 97; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Resistances",
+      "text": "The vampire resists all physical damage except magical silver.",
+      "ability_category": null,
+      "note": "bare resistance rider (checked against MonsterFamilies 97, MonsterFamilies 480; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Senses",
+      "text": "The werecreature gains all the senses of the animal.",
+      "ability_category": "special_sense",
+      "note": "gains all senses of the animal (checked against MonsterFamilies 100, MonsterFamilies 484; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Claws",
+      "text": "The werecreature gains a claw Strike (an agile unarmed attack that deals slashing damage). If it had any agile attacks, the damage dealt by its claws should be roughly the same as the damage dealt by those attacks. If it had only non-agile attacks, its claws should deal three-quarters that damage.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 100, MonsterFamilies 484; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Curse of the Werecreature",
+      "text": "This curse affects only humanoids. Saving Throw Fortitude DC is the standard DC for the werecreature's new level – 1. On each full moon, the cursed creature must succeed at another Fortitude save or turn into the same kind of werecreature until dawn. The creature is under the GM's control and goes on a rampage for half the night before falling unconscious until dawn.",
+      "ability_category": "offensive",
+      "note": "curse the creature spreads (checked against MonsterFamilies 100; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Disgusting Pustules",
+      "text": "The zombie is covered in pustules that rupture when it takes any piercing damage or any critical hit. In either case, adjacent creatures are hit with vile fluid, causing them to become sickened 1 unless they succeed at a Fortitude save.",
+      "ability_category": "automatic",
+      "note": "no-action trigger when damaged/crit (checked against MonsterFamilies 103, MonsterFamilies 303; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Plague-Ridden",
+      "text": "The zombie carries a plague that can create more of its own kind. This functions as the plague zombie's zombie rot, except at stage 5, the victim rises as another of the zombie's type, rather than a plague zombie.",
+      "ability_category": "offensive",
+      "note": "affliction spread (checked against MonsterFamilies 103, MonsterFamilies 303; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Ankle Biter",
+      "text": "This zombie fights just as well on the ground as it does standing. While prone, the zombie isn't flat-footed, it ignores the status penalty to its attack rolls, and it gains a +2 circumstance bonus to Athletics checks to Trip. The zombie can also move up to half its Speed when it Crawls.",
+      "ability_category": "offensive",
+      "note": "prone offense bonuses and crawl movement (checked against MonsterFamilies 103, MonsterFamilies 303; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Persistent Limbs",
+      "text": "The first time the zombie is critically hit with a melee or ranged Strike, a limb falls off its body and continues to attack. The limb acts on the zombie's initiative; each round it can Stride up to half the zombie's Speed and make a Strike. The limb uses and contributes to the zombie's multiple attack penalty.",
+      "ability_category": "automatic",
+      "note": "no-action trigger when critically hit; spawns attacking limb (checked against MonsterFamilies 103, MonsterFamilies 487, MonsterFamilies 303; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Unholy Speed",
+      "text": "The zombie gains a +10 status bonus to all its Speeds",
+      "ability_category": "offensive",
+      "note": "speed bonus movement (checked against MonsterFamilies 103, MonsterFamilies 303; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Infested",
+      "text": "The zombie's flesh is infested with swarming vermin. When the zombie is hit with a critical hit or destroyed, the swarm is set free. Its initiative is immediately after the zombie's. If the swarm is 4 or more levels lower than the zombie, it isn't worth XP (and doesn't add its XP to the encounter budget).",
+      "ability_category": "automatic",
+      "note": "triggered on crit hit or destroyed (checked against MonsterFamilies 103; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Spitting Zombie",
+      "text": "The zombie spits acid as a ranged Strike with a range of 30 feet. This uses the highest attack bonus among the zombie's Strikes and deals 1d12 acid damage per 3 levels of the zombie (or 1d6 acid damage below level 3). On a critical hit, the target also takes 1d4 persistent acid damage per 3 levels of the zombie. Once used, the zombie must spend 1 action to cough up enough acid to use this ability again.",
+      "ability_category": "offensive",
+      "note": "ranged Strike (checked against MonsterFamilies 103; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Tearing Grapple",
+      "text": "The zombies work in groups to rip foes to pieces. Whenever a zombie with this ability successfully Grapples a foe that's already grabbed or restrained by another zombie with this ability, they violently struggle over the poor victim, dealing fist damage (or a similar Strike's damage if the zombie doesn't have a fist Strike). If the grapple is a critical success, the target takes double damage and ceases being grabbed or restrained by any other creatures. If the zombie has the Grab ability, using Grab deals half its fist Strike damage to the target.",
+      "ability_category": "offensive",
+      "note": "grapple damage (checked against MonsterFamilies 103; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Ravenous Breath",
+      "text": "A ravener's Breath Weapon is infused with negative energy and strips life essence from the victims. Any creature that fails its save against the ravener's Breath Weapon is drained 1 (or drained 2 on a critical failure). If at least one creature is drained by the ravener's Breath Weapon, the ravener's soul ward gains 5 Hit Points.",
+      "ability_category": "offensive",
+      "note": "Breath Weapon modification (checked against MonsterFamilies 148; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Immunities",
+      "text": "death effects, disease, paralyzed, poison, sleep",
+      "ability_category": null,
+      "note": "bare immunity list (checked against MonsterFamilies 159, MonsterFamilies 273, MonsterFamilies 311, MonsterFamilies 480, MonsterFamilies 630, MonsterFamilies 557; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Climb Speed",
+      "text": "A vrykolakas gains a climb Speed equal to one-half its land Speed.",
+      "ability_category": "offensive",
+      "note": "full-text movement (checked against MonsterFamilies 159; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Claws",
+      "text": "If the base creature had hands, it gains an unarmed claw Strike that deals slashing damage and has the agile trait. Use the moderate damage for the creature's level on the Strike Damage table.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 159; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Fangs",
+      "text": "The teeth of the vrykolakas grow long, sharp, and deadly, granting it a fangs Strike: an unarmed attack that deals piercing damage and enables the use of its Drink Blood ability. Use the high damage for the creature's level on the Strike Damage table.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 159; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Immunities",
+      "text": "All worms that walk have immunity to disease, paralyzed, poison, precision, and unconscious. They also have the swarm mind ability, which makes them immune to mental effects that target a specific number of creatures, though they are still subject to mental effects that affect all creatures in an area.",
+      "ability_category": null,
+      "note": "bare Immunities line though rider mentions swarm mind (checked against MonsterFamilies 161; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Tendril",
+      "text": "Regardless of the creature’s former anatomy, it gains a tendril melee Strike with reach that deals persistent piercing damage as it leaves biting worms on the target. If it had any agile attacks, the damage dealt by its tendril should be roughly the same as the damage dealt by those attacks. If it had only non-agile attacks, its tendril should deal three-quarters of that damage.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 161; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Bleeding",
+      "text": "The beheaded is covered in slimy blood. The target of a successful Strike is splattered with gore and must succeed at a Fortitude save or become sickened 1.",
+      "ability_category": "offensive",
+      "note": "effect on target of its successful Strikes (sickened) (checked against MonsterFamilies 220, MonsterFamilies 574; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Entangling",
+      "text": "Long, stringy hair clings to the beheaded's scalp. Its Strikes gain the Grab ability.",
+      "ability_category": "offensive",
+      "note": "Strikes gain Grab (checked against MonsterFamilies 220; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Fiendish",
+      "text": "The beheaded has a twisted, unsettling countenance. Foes that begin their turn in the area must succeed at a Will save or be frightened 1.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 220, MonsterFamilies 574; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Giant",
+      "text": "A beheaded created from the head of a giant is a Medium creature, gaining 2 levels and one or more additional beheaded abilities.",
+      "ability_category": null,
+      "note": "template build rule: Medium, +2 levels; nothing a category holds (checked against MonsterFamilies 220, MonsterFamilies 574; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Whispering",
+      "text": "The beheaded constantly whispers twisted incantations in unknown languages secret and foul. Foes that enter or begin their turn in the area must succeed at a Will save or be stupefied 1. The aura uses the moderate DC for the beheaded's level.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 220; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Furious Headbutt",
+      "text": "**Frequency** once per round; **Effect** The beheaded makes a wild Strike, taking a –2 penalty to its AC until the end of its next turn. If the Strike damages a creature, it deals additional damage equal to the beheaded's level.###  Monstrous Heads\n\nWhile the traditional image of a beheaded is that of a disembodied human head or skull, necromancers can create beheaded out of any sort of head. This variety can lead to extremely distinctive beheaded, including dragon heads, giant insect heads, medusa heads, or those of even rarer creatures. Occasionally, such beheaded retain weakened versions of their original special abilities from the constituent creature instead of a beheaded ability, such as a breath weapon for a dragon head or a gaze for a medusa head.###  More Beheaded Abilities\n\nSince beheaded are very similar to skeletons or zombies (or at least the heads from those creatures), you can also customize them with abilities from the skeleton and zombie entries, though take care to avoid abilities that require bodies or limbs. If you give the beheaded more than one additional ability, you might want to increase its level and adjust its statistics accordingly. Use the guidelines in Chapter 2 of the *Pathfinder Gamemastery Guide* to determine its new statistics.",
+      "ability_category": "offensive",
+      "note": "Frequency/Effect wild Strike with extra damage (text includes trailing sidebar headings) (checked against MonsterFamilies 220; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Weaknesses",
+      "text": "The strain of being controlled wears on the nosferatu thrall's mind, giving them weakness 10 to mental damage.",
+      "ability_category": null,
+      "note": "bare Weaknesses stat-line entry (weakness 10 mental) (checked against MonsterFamilies 273; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Alignment",
+      "text": "match the acolyte's deity",
+      "ability_category": null,
+      "note": "adjustment-list item \"match the acolyte's deity\" (checked against MonsterFamilies 306; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Aura",
+      "text": "replace the acolyte's aura with an alternate one (see below) if it's more appropriate",
+      "ability_category": null,
+      "note": "adjustment-list item \"replace the acolyte's aura\" (checked against MonsterFamilies 306; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Chastise Heretic and Denounce Heretic",
+      "text": "apply to anyone who doesn't follow the acolyte's deity",
+      "ability_category": null,
+      "note": "adjustment-list item (checked against MonsterFamilies 306; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Weapon",
+      "text": "replace the scythe with the deity's favored weapon",
+      "ability_category": null,
+      "note": "adjustment-list item \"replace the scythe\" (checked against MonsterFamilies 306; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Aura",
+      "text": "field of bloodshed",
+      "ability_category": null,
+      "note": "example-deity adjustment value \"field of bloodshed\" (checked against MonsterFamilies 306; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Weapon",
+      "text": "greatsword (1d12 slashing, versatile P)",
+      "ability_category": null,
+      "note": "example-deity adjustment value greatsword (checked against MonsterFamilies 306; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Field of Bloodshed",
+      "text": "All creatures within the aura gain a +2 status bonus to damage with weapon Strikes. Creatures within the aura who attempt to Cast a Spell that doesn't deal damage must succeed at a DC 5 flat check or the spell fails, and the slot or Focus Point is wasted.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 306; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Resistances",
+      "text": "fire 20, physical 15 (except magic bludgeoning)",
+      "ability_category": null,
+      "note": "bare resistance list (checked against MonsterFamilies 310; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Speed",
+      "text": "The siabrae gains a burrow Speed equal to their land Speed and the earth glide ability (see below).",
+      "ability_category": "offensive",
+      "note": "burrow Speed and earth glide, movement (checked against MonsterFamilies 310; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Stone Antlers",
+      "text": "The siabrae grows a pair of stony antlers or horns from its head, which give it an antler attack that deals 1d6+2 bludgeoning damage for every 3 levels and inflicts stony shards. If the siabrae wishes, they can keep these antlers while polymorphed, using the normal statistics of the stone antler attack.",
+      "ability_category": "offensive",
+      "note": "granted antler attack (checked against MonsterFamilies 310; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Immunities",
+      "text": "death effects, disease, paralyzed, poison, sleep, prone",
+      "ability_category": null,
+      "note": "bare immunity list (checked against MonsterFamilies 286; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Claws",
+      "text": "If the base creature had hands, its fingernails thicken and grow to terrible proportions, granting it an unarmed claw Strike that deals slashing damage, has the agile trait, and can Grab. Use the moderate damage for the creature's level on the Strike Damage table.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 286, MonsterFamilies 311; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Resistances",
+      "text": "The jiang-shi resists all physical damage (except magical darkwood).",
+      "ability_category": null,
+      "note": "bare resistance rider (checked against MonsterFamilies 286; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Dark Enlightenment",
+      "text": "The jiang-shi is no longer limited to seeing living creatures with only their breathsense, and they no longer have the Revulsion vulnerability. They can perceive living creatures normally with either darkvision or breathsense, and they can take the Drop Prone action.",
+      "ability_category": "special_sense",
+      "note": "perceive living creatures with darkvision or breathsense (checked against MonsterFamilies 286; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Distant Steps",
+      "text": "When the jiang-shi Leaps, they can add 10 feet to the horizontal and/or vertical distance they move without affecting the Leap DC. The jiang-shi can stand and walk on water and other solid or liquid surfaces that wouldn't normally support their weight.",
+      "ability_category": "offensive",
+      "note": "movement ability (Leap, walk on water) (checked against MonsterFamilies 286; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Tumult of the Blood",
+      "text": "The third time a jiang-shi successfully Drains Qi within a single minute, they become quickened for 1 minute. They can use their extra action only to Strike or Stride.",
+      "ability_category": "offensive",
+      "note": "becomes quickened for Strike or Stride after Drain Qi (checked against MonsterFamilies 286; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Climb Speed",
+      "text": "A vetalarana gains a climb Speed equal to their land Speed.",
+      "ability_category": "offensive",
+      "note": "full-text movement (checked against MonsterFamilies 311; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Resistances",
+      "text": "The vetalarana manipulator resists mental damage and all physical damage (except magical cold iron).",
+      "ability_category": null,
+      "note": "bare resistance rider (checked against MonsterFamilies 311; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Verduran Forest",
+      "text": "is the largest woodland on the continent of Avistan; the druids and rangers of the Wildwood Lodge earned the forest great autonomy through a thousand-year treaty. The",
+      "ability_category": null,
+      "note": "lore sidebar place name (checked against MonsterFamilies 186, MonsterFamilies 537; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Forest of Spirits",
+      "text": "stretches over a thousand miles of Tian Xia and is the primeval birthplace of the nature spirits known as kami.",
+      "ability_category": null,
+      "note": "lore sidebar place name (checked against MonsterFamilies 186; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "The Fangwood",
+      "text": "in Nirmathas and the Gravelands is home to a secret village of druids, named Crystalhurst, and to one of the most powerful green dragons in the world. The terrible Darkblight devastated the 7,000-year-old fey court that once guarded the wood. The",
+      "ability_category": null,
+      "note": "lore sidebar place name (checked against MonsterFamilies 186; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Fierani Forest",
+      "text": "covers the majority of the elven nation of Kyonin and borders Tanglebriar, home to the Fierani rangers' great nemesis, the demon Treerazer.",
+      "ability_category": null,
+      "note": "lore sidebar place name (checked against MonsterFamilies 186; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "The Church of Razmir",
+      "text": "offers a plan of 31 steps to divinity. The",
+      "ability_category": null,
+      "note": "lore sidebar fragment (checked against MonsterFamilies 191; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Esoteric Order of the Palatine Eye",
+      "text": "seeks celestial truths said to be granted by an ancient angel.",
+      "ability_category": null,
+      "note": "lore sidebar fragment (checked against MonsterFamilies 191; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Knights of the Aeon Star",
+      "text": "search for secret lore. Followers of",
+      "ability_category": null,
+      "note": "lore sidebar fragment (checked against MonsterFamilies 191; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Circus",
+      "text": "1 sp;",
+      "ability_category": null,
+      "note": "price list (checked against MonsterFamilies 193, MonsterFamilies 546; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Dance",
+      "text": "2 cp social, 6 cp stage performance, 1 gp high-society ball;",
+      "ability_category": null,
+      "note": "price list (checked against MonsterFamilies 193, MonsterFamilies 546; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Stage Play",
+      "text": "6 cp small theater, 1 sp major theater;",
+      "ability_category": null,
+      "note": "price list (checked against MonsterFamilies 193, MonsterFamilies 546; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Opera",
+      "text": "5 gp general admission, 20 gp box seats;",
+      "ability_category": null,
+      "note": "price list (checked against MonsterFamilies 193, MonsterFamilies 546; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Music",
+      "text": "5 cp troubadours, 2 sp orchestra;",
+      "ability_category": null,
+      "note": "price list (checked against MonsterFamilies 193, MonsterFamilies 546; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Street Performance",
+      "text": "tips of 1–2 cp.",
+      "ability_category": null,
+      "note": "price list (checked against MonsterFamilies 193, MonsterFamilies 546; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Chimeric Venom",
+      "text": "When the greater chimera critically hits a creature with emperor cobra fangs, it deals an additional 6d6 persistent poison damage.",
+      "ability_category": "offensive",
+      "note": "extra poison damage on crit with fangs (checked against MonsterFamilies 489; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Incorporeal Features",
+      "text": "The greater chimera gains resistance 5 to all damage (except force, spirit, and damage from Strikes with the *ghost touch* property rune).",
+      "ability_category": "automatic",
+      "note": "grants resistance 5 to all damage (checked against MonsterFamilies 489; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Powerful Wings",
+      "text": "The greater chimera's fly Speed increases by 10 feet.",
+      "ability_category": "offensive",
+      "note": "fly Speed increase (checked against MonsterFamilies 489; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Caustic Pustules",
+      "text": "Whenever the mutant takes piercing or slashing damage, creatures adjacent to the mutant take 1d6 acid damage (basic Reflex save). The damage increases to 2d6 if the mutant is at least 8th level and 3d6 if the mutant is at least 15th level.",
+      "ability_category": "automatic",
+      "note": "trigger when damaged (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Eldritch Attraction",
+      "text": "A creature who casts a spell within 30 feet of the mutant must succeed at a Will save or spend its next action to Stride toward the mutant. It can't Delay or take any reactions until it has obeyed the compulsion.",
+      "ability_category": "automatic",
+      "note": "no-action trigger when others cast spells nearby (no action icon); could be read as reactive (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Energy Resistance",
+      "text": "The mutant has strangely colored skin or fur and gains resistance to a single type of energy damage. The amount of energy resistance gained depends on the mutant's level.",
+      "ability_category": "automatic",
+      "note": "grants energy resistance (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Grasping Tentacle",
+      "text": "The mutant grows a writhing, serpentine appendage, granting them a tentacle Strike (an agile unarmed attack that deals bludgeoning damage), and the Grab ability with that Strike. If they had any agile attacks, the damage dealt by their tentacle should be roughly the same as the damage dealt by those attacks. If they had only non-agile attacks, their tentacle should deal three-quarters that damage.",
+      "ability_category": "offensive",
+      "note": "granted Strike with Grab (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Hulking Form",
+      "text": "Increase the mutant's size by one category. Decrease their AC by 1, increase their HP by 1/10 their normal maximum HP, and increase the reach of all their melee Strikes by 5 feet.",
+      "ability_category": "automatic",
+      "note": "size/AC/HP template rule (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Hungry Maw",
+      "text": "A mouth full of razor-sharp teeth opens somewhere on the mutant's body. They gain a maw Strike (an unarmed attack that does piercing damage roughly the same as the damage dealt by their most damaging melee attack), and they gain the Vengeful Bite reaction.",
+      "ability_category": "offensive",
+      "note": "granted maw Strike plus Vengeful Bite reaction; Strike leads (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Increased Speed",
+      "text": "The mutant's limbs change, or they grow new limbs to accommodate their mutation. Either one of their existing Speeds increases by 20 feet or they gain a new Speed (such as fly or swim) of 15 feet.",
+      "ability_category": "offensive",
+      "note": "movement (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Revolting Appearance",
+      "text": "Details of the mutant's appearance are disturbing and unnatural in the extreme. A non-mutant living creature who begins their turn within 60 feet of the mutant must succeed at a Fortitude save or become sickened 2. A creature who succeeds at its save is then temporarily immune to the aura for 24 hours.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Sprouted Limb",
+      "text": "The mutant grows an extra leg, increasing their Speed by 10 feet.",
+      "ability_category": "offensive",
+      "note": "movement (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Too Many Eyes",
+      "text": "Countless eyes sprout on the mutant's skin. They gain all-around vision.",
+      "ability_category": "special_sense",
+      "note": "all-around vision (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Afflicting Strike",
+      "text": "The mutant must have a jaws, claw, sting, or other melee Strike to gain this ability. That Strike now inflicts a disease, poison, or similar affliction on a hit, with a Fortitude save to resist. You can use the rules for existing monsters of the mutant's level for diseases, poisons, and similar afflictions to give to your mutant, or you can simply say the strike inflicts an additional 1d6 poison damage + an additional 1d6 points per 4 mutant levels on a hit, with a basic Fortitude save. This makes the Strike significantly more deadly, so reduce the damage in other ways to account for this increase.",
+      "ability_category": "offensive",
+      "note": "Strike inflicts affliction/extra poison damage (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Energy Resistance",
+      "text": "The mutant has strangely colored skin or fur and gains resistance to a single type of energy damage. The amount of energy resistance gained depends on the mutant's level:",
+      "ability_category": "automatic",
+      "note": "grants energy resistance (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Inoculation",
+      "text": "The mutant's flesh is distorted with the addition of unexpected fur, scales, warts, or other growths. The creature gains a +2 status bonus to saves against disease and poison. In rare cases, you might choose to grant immunity instead.",
+      "ability_category": "automatic",
+      "note": "save bonus vs disease/poison or immunity (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Increased Speed",
+      "text": "The mutant's limbs change, or it grows new limbs to accommodate its mutation. Either one of its existing Speeds increases by 20 feet, or it gains a new Speed (such as fly or swim) of 15 feet.",
+      "ability_category": "offensive",
+      "note": "movement (checked against MonsterFamilies 315; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Saving Throw",
+      "text": "DC 16 Fortitude;",
+      "ability_category": null,
+      "note": "bare \"DC 16 Fortitude;\" fragment (checked against MonsterFamilies 375; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Petrifying Blow",
+      "text": "The adamantine dragon's attacks can turn creatures into sculptures to add to their hoard. A creature critically hit by the dragon's claw or jaw Strike must attempt a Fortitude save with a DC equal to the dragon's Frightful Presence. On a successful save, the creature is temporarily immune for 1 minute.",
+      "ability_category": "offensive",
+      "note": "crit effect on its Strikes (checked against MonsterFamilies 396; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Apex Paranoids",
+      "text": "Conspirator dragons fear more than any one of them would admit; holding power comes with the fear that power will be lost or stolen. The dragon has the quickened condition and can use the extra action only for Feint, Seek, and Sense Motive actions.",
+      "ability_category": "offensive",
+      "note": "quickened with extra action for Feint/Seek/Sense Motive (checked against MonsterFamilies 397; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Obscure Revelations",
+      "text": "When the dragon is subject to a detection, revelation, or scrying effect, the GM rolls a secret counteract check with a counteract rank of half the dragon’s level (rounded up) and a modifier equal to the dragon’s Will. The dragon becomes aware of effects counteracted this way and their sources, then provides false information of its choosing.",
+      "ability_category": "interaction",
+      "note": "passive counteracting detection/scrying and feeding false info; not a sense (checked against MonsterFamilies 397; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Occult Whisperers",
+      "text": "After conversing with a creature for 10 minutes, the dragon can cast one of its occult innate spells targeting the creature by weaving it into the conversation. Spells cast in this way lose the manipulate trait and gain the linguistic trait.",
+      "ability_category": "interaction",
+      "note": "10-minute conversation to cast spells; out-of-combat social mechanic, could be communication (checked against MonsterFamilies 397; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Chimeric Nature",
+      "text": "When the fortune dragon makes a Strike or uses its Disruptive Breath, it can choose acid, cold, electricity, fire, poison, void, or vitality. Its Strike deals an additional 1d6 damage of that type instead of additional force damage, and its Disruptive Breath deals that type of damage instead of force damage.",
+      "ability_category": "offensive",
+      "note": "changes Strike/breath damage types (checked against MonsterFamilies 400; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Apex Dominance",
+      "text": "When the dragon casts *dominate* on a creature with the animal trait, the result of the target’s saving throw is one degree of success worse. An animal the dragon controls with this spell can speak Draconic and gains a +2 status bonus to any Intelligence-, Wisdom-, and Charisma-based skill checks it attempts while controlled.",
+      "ability_category": "offensive",
+      "note": "dominate save degree worse (spell DC change); animal speech is secondary (checked against MonsterFamilies 401; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Afterimage",
+      "text": "",
+      "ability_category": "offensive",
+      "note": "free action on own turn with Frequency, tied to casting invisibility (checked against MonsterFamilies 402; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Forewarned and Forearmed",
+      "text": "At the start of the day, a dragon can perform a 10-minute ritual to prepare themself for any fights they might have in the day ahead. The dragon chooses one of the following effects, which last for 24 hours. Some omen dragons can partially manipulate the destinies of other creatures, linking them together. To make an omen dragon with this ability, replace Draconic Frenzy with the following.",
+      "ability_category": "interaction",
+      "note": "10-minute daily prep ritual; text also bleeds into Link Fates (checked against MonsterFamilies 403; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Immunities",
+      "text": "bleed, death effects, disease, paralyzed, poison, precision, unconscious Resistances all damage 5 (except force, *ghost touch*, spirit, or vitality; double resistance to non-magical). This resistance increases to 10 at 9th level and 15 at 16th level.",
+      "ability_category": null,
+      "note": "bare Immunities line with Resistances run in (checked against MonsterFamilies 418; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Ghostly Hand",
+      "text": "All ghosts have a ghostly hand unarmed attack that deals void damage. It typically has the agile, finesse, and magical traits. Some ghosts wield ghostly memories of weapons they held in life, but the effect is the same.",
+      "ability_category": "offensive",
+      "note": "granted unarmed attack (checked against MonsterFamilies 418; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Burrow",
+      "text": "The ghoul gains a burrow speed of 5 feet.",
+      "ability_category": "offensive",
+      "note": "burrow speed movement (checked against MonsterFamilies 419; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Claws",
+      "text": "If the creature had hands, it gains a claw Strike (an agile unarmed attack that deals slashing damage plus Grab). If it had any agile attacks, the damage dealt by its claws should be roughly the same as the damage dealt by those attacks. If it had only non-agile attacks, its claws should deal three-quarters that damage.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 419; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Forbidden Cravings",
+      "text": "A creature can still eat and drink while sickened by this curse;",
+      "ability_category": "offensive",
+      "note": "curse/affliction ghoul spreads (text truncated to a fragment; HTML shows full curse stages) (checked against MonsterFamilies 419; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Immunities",
+      "text": "bleed, death effects, disease, paralyzed, poison, unconscious, plus one energy type (same type as ruinous weapons).",
+      "ability_category": null,
+      "note": "bare immunity list (checked against MonsterFamilies 423; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Betrayed Revivification",
+      "text": "The graveknight died after being deeply betrayed. Instead of being immune to a type of energy damage, they're immune to mental damage, their weapons deal 1d6 additional mental damage, and their Devastating Blast deals mental damage with a Will saving throw instead of Reflex.",
+      "ability_category": "automatic",
+      "note": "swaps energy immunity for mental immunity; also weapon damage and breath save change (checked against MonsterFamilies 423; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Create Grave Squire",
+      "text": "The graveknight can gift a piece of their armor to another creature, which becomes their grave squire. The graveknight can communicate telepathically with their squire at any distance, see through the squire's senses, and cast suggestion as a divine innate spell through the telepathic link at will; the squire treats their degree of success as one step worse. If the graveknight's main armor is destroyed, the squire's piece expands to cover the squire's body over 1d10 days, after which point it becomes the graveknight's new body. The graveknight can have only one squire at a time and must recover the armor piece to create a new squire.",
+      "ability_category": "communication",
+      "note": "telepathic link with squire; also see through senses and suggestion (checked against MonsterFamilies 423; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Dark Deliverance",
+      "text": "The graveknight has vitality resistance equal to their level.",
+      "ability_category": "automatic",
+      "note": "vitality resistance equal to level (checked against MonsterFamilies 423; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Eager for Battle",
+      "text": "When the graveknight rolls initiative, they roll twice and take the better result. They’re quickened during their first round after rolling initiative and can use this extra action to Step, Stride, or Strike.",
+      "ability_category": "offensive",
+      "note": "initiative reroll and quickened first round for Step/Stride/Strike (checked against MonsterFamilies 423; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Empty Save for Dust",
+      "text": "The graveknight’s armor contains nothing more than swirling dust that puffs out from joints in their armor. A living creature that touches or is touched by the graveknight (including one hit by the graveknight’s fist Strike) must succeed at a Reflex saving throw or become contaminated with the dust. While contaminated, the targeted creature is stupefied 1 and gains weakness to the graveknight’s energy damage equal to half the graveknight’s level. The contamination ends after 1 minute or when the creature is doused with water, whichever occurs first.",
+      "ability_category": "automatic",
+      "note": "same both-ways contact trigger as Palytoxin, which is automatic (checked against MonsterFamilies 423; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Graveknight’s Shield",
+      "text": "The graveknight’s curse extends to their shield, or the graveknight’s armor uses a portion of itself to produce a shield. The graveknight has a shield that uses the statistics of a sturdy shield of a level no higher than the graveknight’s level – 1. The shield is quasi-independent of the graveknight and automatically protects the graveknight from harm. When the shield is raised, it automatically uses Shield Block to reduce the damage of the first attack against the graveknight each round without the graveknight needing to spend their reaction to do so. The shield automatically rejuvenates with the rest of the graveknight and must be destroyed in the same manner as the graveknight’s armor.",
+      "ability_category": "automatic",
+      "note": "always-on automatic Shield Block (checked against MonsterFamilies 423; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Portentous Glare",
+      "text": "The graveknight’s visage is one of overwhelming menace. When a creature ends its turn in the aura, it must attempt a Will saving throw. A creature that fails is doomed 1 (or doomed 1 and frightened 2 on a critical failure). The graveknight can activate or deactivate the aura by using an Interact action to open or close their helmet visor.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 423; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Saving Throws",
+      "text": "+1 status bonus to all saves vs. vitality",
+      "ability_category": null,
+      "note": "bare save rider (checked against MonsterFamilies 438; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Immunities",
+      "text": "bleed, death effects, disease, paralyzed, poison, unconscious",
+      "ability_category": null,
+      "note": "bare immunity list (checked against MonsterFamilies 438, MonsterFamilies 617; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Resistances",
+      "text": "cold 10, physical 10 (except magical bludgeoning)",
+      "ability_category": null,
+      "note": "bare resistance list (checked against MonsterFamilies 438; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Hand of the Lich",
+      "text": "All liches have a hand unarmed attack that deals 1d8 void damage for every 3 levels the lich has. This attack has the finesse trait.",
+      "ability_category": "offensive",
+      "note": "granted unarmed attack (checked against MonsterFamilies 438; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Blasphemous Utterances",
+      "text": "The lich is accompanied by a constant echo of blasphemous murmurs and tainted whispers. A creature in the aura takes a –2 circumstance penalty to saves against mental effects and can't take actions that have the concentrate trait unless they succeed at a DC 10 flat check. On a failure, the action is disrupted.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 438; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Dark Deliverance",
+      "text": "The lich has resistance equal to their level to vitality.",
+      "ability_category": "automatic",
+      "note": "resistance to vitality equal to level (checked against MonsterFamilies 438; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Melee",
+      "text": "halberd +10 (reach 10 feet, versatile S), **Damage** 1d10+4 piercing   \n**Sinful Bite** Creatures that critically fail their saves against an envyspawn's sinful bite are enfeebled 2 for 1 minute. ### Gluttonyspawn\n\n A gluttonyspawn has Survival +10 and usually carries a scythe. They are corpulent, hardy, and strong. **Melee** scythe +10 (deadly d10, trip), **Damage** 1d10+4 slashing   \n**Sinful Bite** Creatures that critically fail their saves against a gluttonyspawn's sinful bite are drained 1. ### Greedspawn\n\n A greedspawn has Thievery +9 and typically wields a glaive. They are the tallest of sinspawn, often 7 feet in height, and with gold-tinged veins. **Melee** glaive +10 (deadly d8, forceful, reach 10 feet), **Damage** 1d8+4 slashing   \n**Sinful Bite** Creatures that critically fail their saves against a greedspawn's sinful bite are clumsy 2 for 1 minute. ### Lustspawn\n\n A lustspawn has Diplomacy +7 and usually carries a guisarme. They move gracefully, but have hideous faces. **Melee** guisarme +10 (reach 10 feet, trip), **Damage** 1d10+4 slashing   \n**Sinful Bite** Creatures that critically fail their saves against a lustspawn's sinful bite are stupefied 2 for 1 minute. ### Pridespawn\n\n A pridespawn has Intimidation +7 and often wields a maul. They are nearly skeletal in their gauntness, and often seek out fine clothes or jewelry to wear, taking pleasure in appearing elegant and regal. **Melee** maul +10 (shove), **Damage** 1d12+4 bludgeoning   \n**Sinful Bite** Creatures that critically fail their saves against a pridespawn's sinful bite are clumsy 1 and enfeebled 1 for 1 minute. ### Slothspawn\n\n A slothspawn has Society +6 and usually carries a longspear. Thick rolls of excess skin drape the slothspawn's hunched frame. **Melee** longspear +10 (reach 10 feet), **Damage** 1d8+4 piercing   \n**Sinful Bite** Creatures that critically fail their saves against a slothspawn's sinful bite take a –10-foot status penalty to their Speeds for 1 minute. ### Wrathspawn\n\n The most commonly encountered of the sinspawn, a wrathspawn has Athletics +12 and typically wields a ranseur. These sinspawn are the most muscular of their kind.  \n**Melee** ranseur +10 (disarm, reach 10 feet), **Damage** 1d10+4 piercing   \n**Sinful Bite** Creatures that critically fail their saves against a wrathspawn's sinful bite are drained 1 as well as enfeebled 1 for 1 minute. ###  Born of Sin\n\nSinspawn retreated from the world for many centuries following the collapse of the runelords' empire, but in recent years they have emerged from ancient dungeons, strange magical pools, and other forgotten ruins. Sinspawn cannot procreate, but in certain cases, incredibly powerful artifacts crafted by the runelords known as runewells can siphon off fragments of sinful memories and emotions related to the runewells' associated sins from the souls of people dying nearby, fueling the spontaneous creation of new sinspawn. When enough sinful energies have been gathered within a runewell, it vomits forth a full-grown sinspawn with no prior loyalty to a long-lost runelord. All sinspawn inherently understand the runewells' role in the propagation of their kind, and they often establish small villages near awakened runewells, hunting down sentient beings they can use to propagate their communities.###  Sinspawn Locations\n\nSinspawn are found in regions where sources for their creation remain buried in ancient ruins—in Golarion, this currently limits them to the frontier lands of Varisia. But as they spread, so too does the potential knowledge of crafting more of them, and fleshwarpers around the world are hoping to craft new sinspawn of their own someday soon.",
+      "ability_category": null,
+      "note": "garbled sinspawn stat-block/lore dump, not an ability (checked against MonsterFamilies 471; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Aquatic Bones",
+      "text": "The skeleton has bones from aquatic creatures, allowing it to swim using a simple tail, paddles, or similar appendage. The skeleton has a swim Speed of 20 feet and gains the aquatic trait and the Aquatic Ambush ability.",
+      "ability_category": "offensive",
+      "note": "swim speed movement (checked against MonsterFamilies 472; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Bloody",
+      "text": "A coating of blood gives the skeleton fast healing equal to its level.",
+      "ability_category": "hp_automatic",
+      "note": "fast healing equal to level (checked against MonsterFamilies 472; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Bone Powder",
+      "text": "When the skeleton takes physical damage from a critical hit, one of its bones is pulverized into a fine powder. All creatures in a 5-foot emanation that breathe take 1d6 persistent poison damage (plus an additional 1d6 for every 6 levels the skeleton has).",
+      "ability_category": "automatic",
+      "note": "trigger when critically hit (checked against MonsterFamilies 472; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Crumbling Bones",
+      "text": "The skeleton is made from crumbling bones that drift in clouds of dust. The skeleton has a fly Speed of 20, but it must end its turn within no more than 5 feet off the ground, or it falls, taking damage as normal. In addition, the skeleton can move through any space that’s large enough for its skull to fit through.",
+      "ability_category": "offensive",
+      "note": "fly speed movement (checked against MonsterFamilies 472; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Explosive Death",
+      "text": "When the skeleton is destroyed, its bones shatter and explode. Adjacent creatures take 1d6 slashing damage per 2 levels (minimum 1d6) with a basic Reflex save against the moderate spell DC for the skeleton's level.",
+      "ability_category": "automatic",
+      "note": "trigger on destruction (checked against MonsterFamilies 472; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Frozen",
+      "text": "The skeleton’s bones are covered in a thin layer of ice. The skeleton gains immunity to cold and weakness 5 to fire, and loses resistance to fire. The skeleton is surrounded by an aura of cold that deals cold damage equal to half the skeleton’s level to all adjacent creatures at the start of the skeleton’s turn (basic Reflex save with a standard DC for its level).",
+      "ability_category": "automatic",
+      "note": "immunity/weakness plus cold aura (checked against MonsterFamilies 472; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Lacquered",
+      "text": "During the process to create the skeleton, it was covered with several layers of an alchemical lacquer, giving its bones a golden hue and granting additional protection. The skeleton gains acid resistance 5 and a +2 status bonus to saves against effects that age or erode the target.",
+      "ability_category": "automatic",
+      "note": "acid resistance and save bonus (checked against MonsterFamilies 472; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Nimble",
+      "text": "The skeleton is particularly fast and nimble. Its land Speed increases by 10 feet, and it has a climb Speed of 20 feet. In addition, it gains the Nimble Dodge reaction.",
+      "ability_category": "offensive",
+      "note": "speed/climb speed lead, plus Nimble Dodge reaction (checked against MonsterFamilies 472; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Rotten",
+      "text": "The bones of this skeleton are black and rotten, having spent years in polluted water or some other foul substance. The skeleton loses its resistance to piercing and slashing damage and is surrounded by a horrific stench in a 10-foot aura. A creature entering or starting its turn in the aura must succeed at a Fortitude save against the standard DC of the skeleton’s level or become sickened 1 (plus slowed 1 for as long as it remains sickened on a critical failure). While within the aura, affected creatures take a –2 circumstance penalty to saves against disease and to recover from the sickened condition. A creature that succeeds at its save is temporarily immune for 1 minute. This stench remains for 1 hour after the rotten skeleton has been destroyed.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 472; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Skeleton of Roses",
+      "text": "Thick briars have grown through the skeleton’s bones, covering it in red roses with inch-long thorns. The skeleton’s unarmed melee Strikes deal additional piercing damage equal to one-third the skeleton’s level (minimum 1 damage). At the end of each of its turns, if the skeleton has caused piercing damage with its thorns, it regains HP equal to its level (minimum 1). Each time the skeleton regains HP in this way, another rose blossoms.",
+      "ability_category": "offensive",
+      "note": "extra Strike damage plus HP regain; offense leads (checked against MonsterFamilies 472; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Claws",
+      "text": "If the creature had hands, their fingernails thicken and grow, granting them an unarmed claw Strike that deals slashing damage and has the agile trait. If the monster had any agile attacks, the damage dealt by their claws should be roughly the same as the damage dealt by those attacks. If they had only non-agile attacks, their claws should deal three-quarters that damage.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 480; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Curse of the Werecreature",
+      "text": "This curse affects only humanoids;",
+      "ability_category": "offensive",
+      "note": "curse spread; text is a truncated fragment, HTML shows full curse (checked against MonsterFamilies 484; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Ankle Biter",
+      "text": "This zombie fights just as well on the ground as it does standing. While prone, the zombie isn’t off-guard, it ignores the status penalty to its attack rolls, and it gains a +2 circumstance bonus to Athletics checks to Trip. The zombie can also move up to half its Speed when it Crawls.",
+      "ability_category": "offensive",
+      "note": "prone offense bonuses and crawl movement (checked against MonsterFamilies 487; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Disgusting Pustules",
+      "text": "The zombie is covered in pustules that rupture when it takes any piercing damage or any critical hit. Adjacent creatures are hit with vile fluid, causing them to become sickened 1 unless they succeed at a Fortitude save against the moderate spell DC for the zombie's level.",
+      "ability_category": "automatic",
+      "note": "trigger when damaged/crit (checked against MonsterFamilies 487; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Plague-Ridden",
+      "text": "The zombie carries a plague that can create more of its own kind. This functions as the plague zombie's zombie rot, except at stage 5, the victim rises as another of the zombie's type, rather than a plague zombie. Use the high spell DC for the zombie's level.",
+      "ability_category": "offensive",
+      "note": "affliction spread (checked against MonsterFamilies 487; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Unholy Speed",
+      "text": "The zombie gains a +10-foot status bonus to all its Speeds.",
+      "ability_category": "offensive",
+      "note": "speed bonus movement (checked against MonsterFamilies 487; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Entangling",
+      "text": "Long, stringy hair clings to the beheaded's scalp. Its Strikes gain the Grab ability (page 361).",
+      "ability_category": "offensive",
+      "note": "Strikes gain Grab (checked against MonsterFamilies 574; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Backfire:",
+      "text": "The clockwork rolls a DC 5 flat check at the start of each of its turns. On a failure, it backfires, dealing 2d6 fire damage in a 15-foot cone, including to itself (basic Reflex save at the standard DC for its level), and is slowed 1 this turn.",
+      "ability_category": "automatic",
+      "note": "clockwork malfunction drawback each turn start; always-on (checked against MonsterFamilies 575; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Damaged Propulsion:",
+      "text": "The clockwork loses 1d4 hours of operational time at the end of each of its turns.",
+      "ability_category": "automatic",
+      "note": "clockwork malfunction drawback each turn end; always-on (checked against MonsterFamilies 575; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Loose Screws:",
+      "text": "When damaged, the clockwork attempts a DC 5 flat check. On a failure, a plate of its armor falls loose. It takes a status penalty to AC equal to the number of lost plates (up to –4).",
+      "ability_category": "automatic",
+      "note": "trigger when damaged, AC penalty (checked against MonsterFamilies 575; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Sanctification",
+      "text": "Divine wardens are often sanctified, gaining the holy or unholy traits as preferred by their deity. If the deity doesn't have a preference, the warden isn't sanctified.",
+      "ability_category": null,
+      "note": "template build note: may gain holy/unholy traits, nothing a category holds (checked against MonsterFamilies 581; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Inextinguishable Aura",
+      "text": "Flames burn underwater in this aura and cannot be doused by non-magical water. When a creature within this aura attempts a flat check to end persistent fire damage, it must roll twice and take the worse result.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 582; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Palytoxin",
+      "text": "Any creature who takes damage from the dragon’s jaws, claws, or tail attack, or who Strikes and does damage to the dragon with an unarmed attack, takes 1d6 poison damage (2d6 for ancient and archdragons) and must attempt a Fortitude saving throw (DC equal to the DC of the dragon’s Hydraulic Breath).",
+      "ability_category": "automatic",
+      "note": "no-action trigger when damaged by/attacking the dragon (checked against MonsterFamilies 583; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Cursed Memories",
+      "text": "Creatures near a despair dragon can't trust their own minds. When any creature in the aura attempts a skill check to Recall Knowledge, they must roll twice and take the lower result.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 584; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Deathless Servant",
+      "text": "When a resurrection dragon performs the *create undead* ritual, they can create any common undead and don’t require secondary casters. If the dragon creates a mindless undead creature whose level is at least 2 lower than themself, it automatically becomes the dragon’s minion—a deathless servant. This minion can’t be destroyed unless the dragon is slain; if reduced to 0 Hit Points, such a minion returns to full Hit Points 1d6 days later. A resurrection dragon can have only one deathless servant at a time.",
+      "ability_category": "interaction",
+      "note": "ritual-created minion that returns after destruction; out of combat (checked against MonsterFamilies 587; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Immunities",
+      "text": "precision, swarm mind",
+      "ability_category": null,
+      "note": "bare immunity list (checked against MonsterFamilies 624; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Resistances",
+      "text": "resistance 2 to physical and poison, increasing to 5 at 5th level, 10 at 10th level, 15 at 15th level, and 20 at 20th level.",
+      "ability_category": null,
+      "note": "bare resistance list (checked against MonsterFamilies 624; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Weaknesses",
+      "text": "weakness 2 to area damage and splash damage, increasing to 5 at 5th level, 10 at 10th level, 15 at 15th level, and 20 at 20th level",
+      "ability_category": null,
+      "note": "bare weakness list (checked against MonsterFamilies 624; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Bookworm:",
+      "text": "Born students trapped in labyrinthine libraries, these swarm striders voraciously consume knowledge—including the spellbooks and scrolls of those damaged by their Squirming Embrace!",
+      "ability_category": null,
+      "note": "flavor variant description, not an ability (checked against MonsterFamilies 624; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Cicada:",
+      "text": "These noisome swarm striders often hibernate for years at a time, and their screeching is known to counteract auditory effects.",
+      "ability_category": null,
+      "note": "flavor variant description, not an ability (checked against MonsterFamilies 624; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Lamprey:",
+      "text": "A kraken’s corpse or awakened whalefall can seep intelligence into the lampreys that feast on their flesh, creating aquatic swarm striders with prodigious size and reach.",
+      "ability_category": null,
+      "note": "flavor variant description, not an ability (checked against MonsterFamilies 624; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Leech:",
+      "text": "This bloodsucking swarm strider usually forms from a fresh corpse exsanguinated in a leechinfested swamp, gaining both the ability to swim and to deal persistent bleed damage instead of piercing damage.",
+      "ability_category": null,
+      "note": "flavor variant description (mentions swim/bleed but is a blurb) (checked against MonsterFamilies 624; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Wasp:",
+      "text": "Stinging and buzzing, a wasp strider flies, moving much faster in the air than on the ground.",
+      "ability_category": null,
+      "note": "flavor variant description (mentions flying but is a blurb) (checked against MonsterFamilies 624; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Claws",
+      "text": "If the creature had hands, their fingernails thicken and grow, granting them an unarmed claw Strike that deals slashing damage and has the agile trait. If the creature had any agile attacks, the damage dealt by their claws should be roughly the same as the damage dealt by those attacks. If they had only non-agile attacks, their claws should deal three-quarters that damage. A creature struck by a nosferatu's claw Strike is also exposed to plague of ancients (see below).",
+      "ability_category": "offensive",
+      "note": "granted Strike plus exposure to plague (checked against MonsterFamilies 630; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Fangs",
+      "text": "If the creature had teeth, their canines grow long and pointy, granting them an unarmed fangs Strike that deals piercing damage. This attack deals moderate to high damage for the nosferatu's level.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 630; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Weaknesses",
+      "text": "The strain of being controlled wears on the thrall's mind, giving them weakness 10 to mental damage.",
+      "ability_category": null,
+      "note": "bare weakness rider (checked against MonsterFamilies 630; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Selective Energy",
+      "text": "When the devotee casts a version of *harm* or *heal* that has an area, they can designate up to 5 creatures in the area. Those creatures are not targeted by the spell.",
+      "ability_category": "offensive",
+      "note": "modifies area harm/heal casting; spell offense (checked against MonsterFamilies 534; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Forest of Spirits",
+      "text": "stretches over a thousand miles of Tian Xia and is the primeval birthplace of the nature spirits known as kami. The",
+      "ability_category": null,
+      "note": "lore sidebar place name (checked against MonsterFamilies 537; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Fangwood",
+      "text": "in Nirmathas and the Gravelands is home to Crystalhurst, a village of druids who fought the terrible Darkblight that devastated the 7,000-year-old fey court who once guarded the wood. The",
+      "ability_category": null,
+      "note": "lore sidebar place name (checked against MonsterFamilies 537; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Fierani Forest",
+      "text": "covers the majority of the elven nation Kyonin.",
+      "ability_category": null,
+      "note": "lore sidebar place name (checked against MonsterFamilies 537; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Constant Feint Stance",
+      "text": "This stance option replaces a different Stance Shift option (usually Secure Grapple Stance). +2 to attempts to Feint. If the mixed martial artist rolls a critical failure to Feint, they get a failure instead. If they successfully Feint, they can use Stance Shift as a free action. Unlike other stances, in this stance the mixed martial artist can't make Strikes.",
+      "ability_category": "offensive",
+      "note": "stance option with +2 Feint, Stance Shift free action (checked against MonsterFamilies 540; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Kiai!",
+      "text": "",
+      "ability_category": "offensive",
+      "note": "free action on own Strike, frightens target (HTML) (checked against MonsterFamilies 540; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Immunities",
+      "text": "death effects, disease, paralyzed, poison, precision, unconscious, plus one energy type (the same chosen for ruinous weapons below).",
+      "ability_category": null,
+      "note": "bare immunity list (checked against MonsterFamilies 291; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Betrayed Revivification",
+      "text": "The graveknight died after being deeply betrayed. Instead of being immune to a type of energy damage, it is immune to mental damage, its weapons deal 1d6 additional mental damage, and its Devastating Blast deals mental damage with a Will saving throw instead of Reflex.",
+      "ability_category": "automatic",
+      "note": "swaps energy immunity for mental immunity; also weapon damage change (checked against MonsterFamilies 291; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Create Grave Squire",
+      "text": "The graveknight can gift a piece of its armor to a willing ally, which becomes its grave squire. The graveknight can communicate telepathically with its squire at any distance, see through the squire's senses, and cast *suggestion* as a divine innate spell through the telepathic link at will; the squire treats its degree of success as one step worse. If the graveknight's main armor is destroyed, the squire's piece expands to cover the squire's body over 1d10 days, after which point it becomes the graveknight's new body. The graveknight can have only one squire at a time, and must recover the gifted piece of armor if it wishes to create a new squire.",
+      "ability_category": "communication",
+      "note": "telepathic link with squire; also senses and suggestion (checked against MonsterFamilies 291; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Dark Deliverance",
+      "text": "The graveknight has positive resistance equal to its level.",
+      "ability_category": "automatic",
+      "note": "resistance equal to level (checked against MonsterFamilies 291; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Eager for Battle",
+      "text": "When the graveknight rolls initiative, they roll twice and take the better result. They're quickened during their first round after rolling initiative and can use this extra action to Step, Stride, or Strike.",
+      "ability_category": "offensive",
+      "note": "initiative reroll and quickened first round (checked against MonsterFamilies 291; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Empty Save for Dust",
+      "text": "The graveknight's armor contains nothing more than swirling dust that puffs out from joints in their armor. A living creature that touches or is touched by the graveknight (including one hit by the graveknight's fist Strike) must succeed at a Reflex saving throw or become contaminated with the dust. While contaminated, the targeted creature is stupefied 1 and gains weakness to the graveknight's energy damage equal to half the graveknight's level. The contamination ends after 1 minute or when the creature is doused with water, whichever occurs first.",
+      "ability_category": "offensive",
+      "note": "contaminates creatures on touch (checked against MonsterFamilies 291; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Portentous Glare",
+      "text": "The graveknight's visage is one of overwhelming menace. When a creature ends its turn in the aura, it must attempt a Will saving throw. A creature that fails is doomed 1 (or doomed 1 and frightened 2 on a critical failure). The graveknight can activate or deactivate the aura by using an Interact action to open or close their helmet visor.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterFamilies 291; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Lictor Shokneir:",
+      "text": "Once the Hellknight leader of the notorious Order of the Crux, Lictor Shokneir was disgraced when he refused a royal order to disband his army of butchers. The other Hellknights surrounded him and razed his castle, Citadel Gheisteno, to the ground. However, Shokneir's determination sustains his now-undead form, and he and his undead legions have rebuilt the citadel in all its haunting glory.",
+      "ability_category": null,
+      "note": "lore sidebar named NPC writeup (checked against MonsterFamilies 291; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "The Black Prince:",
+      "text": "Although the graveknight known simply as the Black Prince was redeemed centuries ago as part of Iomedae's 11 Acts, it is said that the prince's armor remains intact—and that vile forces conspire to reclaim it. If the armor is donned by one of the Black Prince's descendants, the Inner Sea will be beset by a terrible villain indeed.",
+      "ability_category": null,
+      "note": "lore sidebar named NPC writeup (checked against MonsterFamilies 291; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Consume Biomatter",
+      "text": "If the sporeborn is adjacent to a helpless or unconscious creature, or a deceased creature who died in the past hour, the sporeborn can consume its flesh with mycelium tendrils to heal itself. This restores an amount of Hit Points equal to the sporeborn's level. If the creature is alive, the sporeborn deals damage equal to one of its unarmed attacks.",
+      "ability_category": "offensive",
+      "note": "manipulate action that heals and damages; could be read as hp_automatic (healing) (checked against MonsterFamilies 340; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Contagious Spores",
+      "text": "The sporeborn continues to infect creatures with sporeborn infestation, creating more of its own kind.",
+      "ability_category": "offensive",
+      "note": "affliction spread (checked against MonsterFamilies 340; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Sporeborn Infestation",
+      "text": "An infected creature can't heal damage it takes from sporeborn infestation until it has been cured of the disease.",
+      "ability_category": "offensive",
+      "note": "disease affliction spread (checked against MonsterFamilies 340; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Fungal Armor",
+      "text": "The sporeborn grows broad patches of dense fungus on the outside of the corpse. It gains resistance to bludgeoning damage equal to its level. Potent Poison (fungus, poison) The sporeborn fungus enhances the dead creature's natural toxins rather than diminishing them. Increase the DC of poison and spore abilities of the base creature by 2 rather than decreasing them.",
+      "ability_category": "automatic",
+      "note": "grants bludgeoning resistance (text also runs into Potent Poison) (checked against MonsterFamilies 340; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Hard to Burn",
+      "text": "The creature gains resistance to fire damage equal to its level (minimum 1).",
+      "ability_category": "automatic",
+      "note": "fire resistance equal to level (checked against MonsterFamilies 557; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Swimmer",
+      "text": "Despite their ungainly appearance, floodslain are excellent swimmers. The creature gains a swim Speed equal to its base Speed.",
+      "ability_category": "offensive",
+      "note": "swim speed movement (checked against MonsterFamilies 557; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Claws",
+      "text": "If the creature had hands, its shadow solidifies around the fingers when it attacks, granting it a claw Strike that deals slashing damage, and has the agile and magic traits. The damage caused by its claws should be roughly the same as the moderate Strike damage for a creature of its level.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 564, MonsterFamilies 314; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Fly Speed",
+      "text": "Instead of being able to cast *levitate* at will, a strigoi progenitor gains a fly Speed equal to their land Speed. When a strigoi progenitor flies, they manifest batlike wings made of shadow.",
+      "ability_category": "offensive",
+      "note": "movement (checked against MonsterFamilies 564; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Resistances",
+      "text": "The strigoi progenitor resists all physical damage except magical silver weapons or magical weapons that shed at least 5 feet of bright light.",
+      "ability_category": null,
+      "note": "bare resistance rider (checked against MonsterFamilies 314; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Fly Speed",
+      "text": "Instead of being able to *levitate* at will, a strigoi progenitor gains a fly Speed equal to their land Speed. When a strigoi progenitor flies, it manifests batlike wings made of shadow.",
+      "ability_category": "offensive",
+      "note": "movement (checked against MonsterFamilies 314; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Immunities",
+      "text": "bleed, death effects, disease, doomed, drained, fatigued, healing, nonlethal attacks, paralyzed, poison, sickened, unconscious, vitality, void",
+      "ability_category": null,
+      "note": "bare immunity list (checked against MonsterFamilies 563; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Resistances",
+      "text": "cold 10, electricity 10, and physical 10 (except magical bludgeoning); these resistances increase to 15 at 15th level",
+      "ability_category": null,
+      "note": "bare resistance list (checked against MonsterFamilies 563; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Taboos",
+      "text": "Despite the failed prophet’s transformed body, a lifelong adherence to the strictures of the Prophecies of Kalistrade has ingrained the philosophical prohibitions into their soul. Whenever a failed prophet is critically hit by an unarmed attack, is critically hit by or critically fails a save against a touch spell, or is exposed to a disease or poison effect (even though immune), they take a –2 status penalty to their AC, attack bonuses, DCs, Perception, saving throws, and skill modifiers for 1 minute. Breaking other Kalistocratic taboos can also trigger this penalty at the GM’s discretion.",
+      "ability_category": "automatic",
+      "note": "no-action trigger when critically hit or exposed; imposes penalties (checked against MonsterFamilies 563; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Fists",
+      "text": "Failed prophets have a fist unarmed Strike that deals bludgeoning damage. This attack has the magical trait, reach 5 feet longer than the base creature, and triggers Greedy Grab. Use the high Strike attack bonus and moderate Strike damage of the failed prophet’s level.",
+      "ability_category": "offensive",
+      "note": "granted Strike (checked against MonsterFamilies 563; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Lesser Despair",
+      "text": "Living creatures of the mummy creature's level or lower are frightened 1 while in its despair aura. They can't naturally recover from this fear while in the area but recover instantly once they leave.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterTemplates 6; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Augmented",
+      "text": "An experimental cryptid is partially artificial and designed in a way to specifically prevent biological afflictions and instant death. It gains a +2 circumstance bonus to saving throws against death effects, disease, and poison.",
+      "ability_category": "automatic",
+      "note": "save bonuses vs death/disease/poison (checked against MonsterTemplates 12; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Operational Flaw",
+      "text": "An experimental cryptid has a flaw in its construction that can be identified with a successful Perception check to Seek against the hard DC of the creature's level. An experimental cryptid has weakness equal to its level to the attacks of any creature that has successfully located the experiment's operational flaw.",
+      "ability_category": "automatic",
+      "note": "its effect is a weakness; named defense abilities are automatic (checked against MonsterTemplates 12; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Unusual Bane",
+      "text": "The mutant cryptid gains an unusual weakness to a specific bane—such as aversion to saffron or to the sound of children's laughter. The first time each round the creature comes within 15 feet of its bane or interacts with its bane (such as stepping over a line of saffron or hearing children laugh) it takes an amount of mental damage equal to its level and must attempt a Will save with a hard DC for its level. On a failure, it's stunned 1 (stunned 3 on a critical failure).",
+      "ability_category": "automatic",
+      "note": "always-on drawback triggered by bane proximity (checked against MonsterTemplates 13; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Shifting Iridescence",
+      "text": "Whenever the mutant cryptid takes energy damage to which it isn't resistant or immune, after taking the damage normally, it gains resistance 5 to that damage type. If it had a resistance to a different damage type from shifting iridescence, it replaces the old resistance with the new resistance. The resistance increases to 10 at 9th level and 15 at 17th level.",
+      "ability_category": "automatic",
+      "note": "gains resistance when damaged (checked against MonsterTemplates 13; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Marrowlance",
+      "text": "The mutant cryptid can make wicked spears of bone erupt from its body. The creature can make marrowlance ranged unarmed attacks. Use the highest attack modifier from the creature's highest ranged Strike, as well as the damage from that Strike. If it has no ranged attacks, use moderate accuracy and low damage for the creature's level. Marrowlance unarmed attacks have a range of 60 feet and the versatile S trait.",
+      "ability_category": "offensive",
+      "note": "granted ranged unarmed attacks (checked against MonsterTemplates 13; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Broken Arsenal",
+      "text": "Fragments of broken blades and spears, the remnants of countless failed attempts to fell the primeval cryptid, remain lodged in its flesh. When an adjacent creature hits the primeval cryptid with a melee attack or otherwise touches it, that creature takes piercing damage equal to half the primeval cryptid's level (minimum 1 damage).",
+      "ability_category": "automatic",
+      "note": "no-action trigger when hit in melee (checked against MonsterTemplates 14; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Burning Eyes",
+      "text": "The cryptid's eyes are distinctive; perhaps they burn bright red in the dark night. The rumored cryptid gains darkvision. If the base creature already has darkvision, it gains greater darkvision.",
+      "ability_category": "special_sense",
+      "note": "gains darkvision (checked against MonsterTemplates 15; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Creature Obscura",
+      "text": "The cryptid appears in so many urban legends, it can be identified using Society or a Lore skill connected to a nearby settlement, in addition to the normal skills. However, much of the information known about it is dubious. The DC to identify a rumored cryptid is incredibly hard (rather than very hard for most rare creatures), but all failures to identify a rumored cryptid gain the effects of the Dubious Knowledge skill feat.",
+      "ability_category": "interaction",
+      "note": "how it is identified (checked against MonsterTemplates 15; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Obscura Vulnerability",
+      "text": "The cryptid is weakened by those who seek its truth. Whenever a creature succeeds at a Recall Knowledge check to identify the rumored cryptid, the rumored cryptid becomes drained 1 (or drained 2 if the Recall Knowledge check was a critical success).",
+      "ability_category": "interaction",
+      "note": "tied to Recall Knowledge identification; drained on success (checked against MonsterTemplates 15; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Hybrid Form",
+      "text": "The cryptid's form morphs to be like a specific animal as the tales get longer. The rumored cryptid gains either a burrow, climb, or swim Speed equal to its land Speed.",
+      "ability_category": "offensive",
+      "note": "burrow/climb/swim Speed movement (checked against MonsterTemplates 15; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Freezing Adaptation",
+      "text": "The creature treats environmental cold effects as if they were one step less extreme (incredible cold becomes extreme, extreme cold becomes severe, and so on).",
+      "ability_category": "interaction",
+      "note": "environmental adaptation (checked against MonsterTemplates 25; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Winter Senses",
+      "text": "The creature ignores concealment caused by ice or snow.",
+      "ability_category": "interaction",
+      "note": "ignores concealment from ice/snow (checked against MonsterTemplates 25; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Arctic Steps",
+      "text": "The creature ignores uneven ground and difficult terrain caused by ice and the difficult terrain caused by snow (reducing greater difficult terrain from ice or snow to ordinary difficult terrain).",
+      "ability_category": "offensive",
+      "note": "movement ability per rubric (checked against MonsterTemplates 25; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Efficient Metabolism",
+      "text": "The creature can go 10 times as long as normal before it's affected by starvation and thirst.",
+      "ability_category": "interaction",
+      "note": "metabolism (checked against MonsterTemplates 27; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Scorching Adaptation",
+      "text": "The creature treats environmental heat effects as if they were one step less extreme (incredible heat becomes extreme, extreme heat becomes severe, and so on).",
+      "ability_category": "interaction",
+      "note": "environmental adaptation (checked against MonsterTemplates 27; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Desert Steps",
+      "text": "The creature ignores uneven ground and difficult terrain caused by sand (reducing greater difficult terrain from sand to ordinary difficult terrain).",
+      "ability_category": "offensive",
+      "note": "movement ability, same shape as Arctic Steps (checked against MonsterTemplates 27; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Official Bully",
+      "text": "The creature can use the chosen skill to Coerce or Demoralize in place of Intimidation.",
+      "ability_category": "interaction",
+      "note": "skill swap for Coerce/Demoralize (checked against MonsterTemplates 38; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Rusty",
+      "text": "The NPC is out of practice. They take a –1 status penalty to all their rolls and DCs. The NPC also rolls twice on initiative rolls and takes the lower result; this is a misfortune effect.",
+      "ability_category": "automatic",
+      "note": "-1 to rolls and DCs, rubric example (checked against MonsterTemplates 36; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Solidarity",
+      "text": "While leading a demonstration, the union organizer grants themself and their allies a +1 circumstance bonus to saving throws against fatigue and mental effects. Greater numbers amplify the effect. The emanation increases to 20 feet if there are at least 5 allies within 10 feet, and to 30 feet if there are at least 10 allies within 20 feet.",
+      "ability_category": "automatic",
+      "note": "aura (checked against MonsterTemplates 35; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Ambush Excellence",
+      "text": "A mythic ambusher is exceptional at hiding itself. It uses the extreme skill value for a creature of its level as its Stealth modifier.",
+      "ability_category": "interaction",
+      "note": "skill value (checked against MonsterTemplates 31; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Mythic Weakness",
+      "text": "(Frailty) A mythic ambusher relies on stealth and subterfuge. It can't gain mythic immunity to Strikes or mythic resistance.",
+      "ability_category": "automatic",
+      "note": "can't gain mythic immunity/resilience, rubric example (checked against MonsterTemplates 31; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Brutish Athleticism",
+      "text": "A mythic brute excels at rough-and-tumble activities. It always uses the extreme skill value for a creature of its level as its Athletics modifier.",
+      "ability_category": "interaction",
+      "note": "skill value (checked against MonsterTemplates 32; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Mythic Weakness (Weak-Willed)",
+      "text": "A mythic brute is physically potent but not as mentally tough. It can't gain mythic resilience to Will saves.",
+      "ability_category": "automatic",
+      "note": "can't gain mythic resilience (checked against MonsterTemplates 32; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Titanic",
+      "text": "Might A mythic brute ignores size limitations when performing actions like Grapple or Trip.",
+      "ability_category": "offensive",
+      "note": "ignores size limits on Grapple/Trip (checked against MonsterTemplates 32; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Devastating Magic",
+      "text": "A mythic caster uses the high spell DC and spell attack modifier for a creature of its level. If it's 11th level or higher, it instead uses the extreme spell DC and spell attack modifier.",
+      "ability_category": "offensive",
+      "note": "spell DC change, rubric example (checked against MonsterTemplates 33; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Mythic Knowledge",
+      "text": "A mythic caster uses the extreme skill modifier for a creature of its level for the skill linked to its spellcasting tradition: Arcana for arcane, Nature for primal, Occultism for occult, or Religion for divine.",
+      "ability_category": "interaction",
+      "note": "skill modifier value for tradition skill (checked against MonsterTemplates 33; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Mythic Weakness (Extreme Frailty)",
+      "text": "A mythic caster relies on magic in combat and never develops the durability of other mythic creatures. It can't gain mythic resilience in Fortitude, mythic immunity to Strikes, or mythic resistance.",
+      "ability_category": "automatic",
+      "note": "can't gain mythic resilience/immunity (checked against MonsterTemplates 33; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Mythic Mobility",
+      "text": "A mythic striker benefits from high mobility and is difficult to pin down. It always uses the extreme skill value for a creature of its level as its Acrobatics modifier.",
+      "ability_category": "interaction",
+      "note": "skill value (checked against MonsterTemplates 34; PFSRD2-Parser-aiub)"
+    },
+    {
+      "name": "Mythic Weakness (Infirmity)",
+      "text": "A mythic striker relies on swift attacks and lightning coordination to overcome its opponents. It never gains mythic resilience in Fortitude and can't gain the Remove a Condition mythic power action.",
+      "ability_category": "automatic",
+      "note": "can't gain mythic resilience or power action (checked against MonsterTemplates 34; PFSRD2-Parser-aiub)"
     }
   ],
   "fields_description": "Human-verified enrichment FIELDS for one-off abilities the extractors cannot get right. Keyed by name AND exact ability text; a miss means AoN changed the text and the entry must be re-reviewed. Only the listed fields are replaced. Seeded as extraction_method='manual', human_verified=1.",

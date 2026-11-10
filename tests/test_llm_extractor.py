@@ -351,11 +351,85 @@ class TestCleanLLMResponse:
         result = _clean_llm_response("once per day; 1d4 rounds")
         assert result == ["once per day", "1d4 rounds"]
 
+    def test_a_newline_separates_values(self):
+        from pfsrd2.enrichment.llm_extractor import _clean_llm_response
+
+        assert _clean_llm_response("once per hour  \nonce per week") == [
+            "once per hour",
+            "once per week",
+        ]
+
     def test_filters_none_entries(self):
         from pfsrd2.enrichment.llm_extractor import _clean_llm_response
 
         result = _clean_llm_response("once per day; none")
         assert result == ["once per day"]
+
+
+class TestGroundedFrequencies:
+    """The filter under the free-text frequency path -- no Ollama required.
+
+    Every rejected case is a value the v3 rebuild published (PFSRD2-Parser-aiub).
+    """
+
+    @pytest.mark.parametrize(
+        "value,text",
+        [
+            # durations next to a "per hour" rate
+            (
+                "48 hours",
+                "A janni can survive on any Elemental Plane for up to 48 hours, "
+                "after which it takes 1 damage per hour until it leaves or dies.",
+            ),
+            (
+                "12 hours",
+                "It can remain away from water for only 12 hours before its skin "
+                "starts to turn brittle, taking 1d6 damage per hour.",
+            ),
+            # the tail of a compound limit
+            (
+                "11 days",
+                "The nessari can shape 100 orts per day, to a maximum of 1,100 orts " "in 11 days.",
+            ),
+            # a frequency the text never prints
+            ("5 times per day", "The harrow reader can conduct up to five readings per day."),
+        ],
+    )
+    def test_rejected(self, value, text):
+        from pfsrd2.enrichment.llm_extractor import grounded_frequencies
+
+        assert grounded_frequencies([value], text) == []
+
+    @pytest.mark.parametrize(
+        "value,text",
+        [
+            ("1d4 rounds", "It can't use Breath Weapon again for 1d4 rounds."),
+            ("2 rounds", "The dragon cannot use Breath Weapon again for 2 rounds."),
+            ("1 hour", "the aura deactivates and can\u2019t be reactivated for 1 hour."),
+            ("once per effect", "They take this damage only once per effect, even if it repeats."),
+            ("five readings per day", "The harrow reader can conduct up to five readings per day."),
+            ("Once per day", "once per day, the creature can <i>teleport</i>."),
+        ],
+    )
+    def test_kept(self, value, text):
+        from pfsrd2.enrichment.llm_extractor import grounded_frequencies
+
+        assert grounded_frequencies([value], text) == [value]
+
+    def test_the_extractor_applies_the_filter(self, monkeypatch):
+        import pfsrd2.enrichment.llm_extractor as le
+
+        text = "A janni can survive for up to 48 hours. Once per day, it can teleport."
+        monkeypatch.setattr(le, "_query_ollama", lambda *_a, **_k: "48 hours; once per day")
+        assert le.extract_frequency_llm("Elemental Endurance", text) == "once per day"
+        monkeypatch.setattr(le, "_query_ollama", lambda *_a, **_k: "48 hours")
+        assert le.extract_frequency_llm("Elemental Endurance", text) is None
+
+    def test_keeps_the_grounded_part_of_a_mixed_answer(self):
+        from pfsrd2.enrichment.llm_extractor import grounded_frequencies
+
+        text = "It can't use Breath Weapon again for 1d4 rounds and survives for 48 hours."
+        assert grounded_frequencies(["1d4 rounds", "48 hours"], text) == ["1d4 rounds"]
 
 
 class TestParseDCResponse:

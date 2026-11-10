@@ -262,6 +262,18 @@ def extract_range(text):
 
 # --- Damage extraction ---
 
+# "(typically 6d6 extra damage)" is a worked total of dice the text already
+# gave per weapon -- Focused Flames' 2d6 "for every black flame knife beyond
+# the first", Focused Assault's 1d8 per longsword. Matched as dice it became a
+# second, untyped damage entry (PFSRD2-Parser-aiub). Both the regex and the LLM
+# grounding paths read text through this, so neither can see it.
+_TYPICAL_TOTAL = re.compile(r"\(typically [^)]*\)", re.IGNORECASE)
+
+
+def without_typical_totals(text):
+    return _TYPICAL_TOTAL.sub("", text or "")
+
+
 _DICE = r"(\d+d\d+(?:\s*[+\-]\s*\d+)?)"
 _TYPE = r"(\w+)"
 
@@ -337,6 +349,7 @@ def extract_damage(text):
 
     Returns a list of attack_damage objects, or empty list.
     """
+    text = without_typical_totals(text)
     if not text or "damage" not in text.lower():
         return []
 

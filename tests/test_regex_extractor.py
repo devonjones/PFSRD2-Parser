@@ -286,6 +286,29 @@ class TestExtractDamage:
         assert len(result) == 0  # no "damage" word present
 
 
+class TestTypicalTotals:
+    """'(typically 6d6 extra damage)' is a worked total, not more damage
+    (PFSRD2-Parser-aiub). Real text: Focused Flames, Focused Assault."""
+
+    def test_the_total_is_not_extracted(self):
+        text = (
+            "The target takes an additional 2d6 void damage for each knife beyond the first "
+            "(typically 6d6 extra damage) and takes 4d6 persistent void damage."
+        )
+        got = [
+            (d["formula"], d.get("damage_type"), d.get("persistent", False))
+            for d in extract_damage(text)
+        ]
+        assert got == [("2d6", "void", False), ("4d6", "void", True)]
+
+    def test_an_untyped_per_weapon_die_survives(self):
+        text = (
+            "the marilith deals the damage from a longsword Strike plus an additional 1d8 damage "
+            "for every longsword they wield beyond the first (typically 5d8 extra damage)."
+        )
+        assert [d["formula"] for d in extract_damage(text)] == ["1d8"]
+
+
 class TestExtractFrequency:
     def test_cant_use_again_for_rounds(self):
         text = "It can\u2019t use Breath Weapon again for 1d4 rounds."
