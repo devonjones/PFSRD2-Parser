@@ -416,6 +416,15 @@ class TestGroundedFrequencies:
 
         assert grounded_frequencies([value], text) == [value]
 
+    def test_the_extractor_applies_the_filter(self, monkeypatch):
+        import pfsrd2.enrichment.llm_extractor as le
+
+        text = "A janni can survive for up to 48 hours. Once per day, it can teleport."
+        monkeypatch.setattr(le, "_query_ollama", lambda *_a, **_k: "48 hours; once per day")
+        assert le.extract_frequency_llm("Elemental Endurance", text) == "once per day"
+        monkeypatch.setattr(le, "_query_ollama", lambda *_a, **_k: "48 hours")
+        assert le.extract_frequency_llm("Elemental Endurance", text) is None
+
     def test_keeps_the_grounded_part_of_a_mixed_answer(self):
         from pfsrd2.enrichment.llm_extractor import grounded_frequencies
 
