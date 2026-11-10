@@ -239,6 +239,14 @@ class TestStructuredDamageExtraction:
         )
         assert [e["damage_type"] for e in got] == ["fire", "cold"]
 
+    def test_more_entries_than_printed_types_adds_no_untyped_entry(self, monkeypatch):
+        got = self._extract(
+            monkeypatch,
+            {"damage": [{"formula": "2d6"}] * 3},
+            text="deals 2d6 fire damage, then the aura deals 2d6 cold damage",
+        )
+        assert [e.get("damage_type") for e in got] == ["fire", "cold"]
+
     def test_a_trailing_energy_word_is_tolerated(self, monkeypatch):
         # Real case: Essence Drain and Vordakai's Consume Memories. The model
         # wrote "negative energy" and the type was lost.
