@@ -1,5 +1,7 @@
 """Tests for the regex extraction tier."""
 
+import pytest
+
 from pfsrd2.enrichment.regex_extractor import (
     _apply_trailing_modifier,
     detect_keywords,
@@ -234,6 +236,29 @@ class TestExtractDamage:
         assert len(result) == 1
         assert result[0]["damage_type"] == "bleed"
         assert result[0]["persistent"] is True
+
+    def test_stat_line_type_then_dc(self):
+        # Failed Prophet's This Is My Reality! The structured LLM path returns
+        # nothing for this form, so the regex has to (PFSRD2-Parser-4pw0).
+        text = "6d6 spirit, DC 30 The failed prophet ... takes spirit damage."
+        result = extract_damage(text)
+        assert [(d["formula"], d["damage_type"]) for d in result] == [("6d6", "spirit")]
+
+    @pytest.mark.parametrize(
+        "text,formula,persistent",
+        [
+            ("Its Strikes deal 1d4 extra damage to creatures within reach", "1d4", None),
+            ("deals 1d6 extra damage while adjacent to at least 2 enemies", "1d6", None),
+            ("inflict an additional 1d6 persistent damage of a type determined by", "1d6", True),
+        ],
+    )
+    def test_untyped_rider(self, text, formula, persistent):
+        # Pack Attack, Solo Hunter, Aspect's Agony: the structured LLM path
+        # returns nothing for these, so the regex must (PFSRD2-Parser-4pw0).
+        result = extract_damage(text)
+        assert [(d["formula"], d.get("damage_type"), d.get("persistent")) for d in result] == [
+            (formula, None, persistent)
+        ]
 
     def test_no_damage(self):
         text = "The creature is frightened 1."

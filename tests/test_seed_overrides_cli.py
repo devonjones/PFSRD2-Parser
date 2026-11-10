@@ -35,7 +35,7 @@ def _run_cli(db_path):
     )
 
 
-def _populate_records(db_path, change_overrides, ability_overrides):
+def _populate_records(db_path, change_overrides, ability_overrides, field_overrides=()):
     """Insert a matching raw record for each override so seeding can hit."""
     env_backup = os.environ.get("PFSRD2_ENRICHMENT_DB")
     os.environ["PFSRD2_ENRICHMENT_DB"] = str(db_path)
@@ -62,6 +62,10 @@ def _populate_records(db_path, change_overrides, ability_overrides):
                 )
             for ov in ability_overrides:
                 insert_ability_record(curs, ov["name"], "hash-" + ov["name"], "{}")
+            for ov in field_overrides:
+                # Field overrides match on name AND exact text.
+                raw = json.dumps({"name": ov["name"], "text": ov["text"]})
+                insert_ability_record(curs, ov["name"], "fields-" + ov["name"], raw)
             conn.commit()
         finally:
             conn.close()
@@ -119,6 +123,20 @@ class TestSeedCLIExitCodes:
         )
         assert expected == result.stderr.count("  change: ")
 
+    def test_a_stale_field_override_alone_exits_nonzero(self, tmp_path):
+        # Every other override matches; only the field overrides' text is gone.
+        db_path = tmp_path / "enrichment.db"
+        _populate_records(
+            db_path,
+            load_overrides("change_overrides.json")
+            + load_overrides("change_overrides.json", key="quarantines"),
+            load_overrides("ability_overrides.json"),
+        )
+        result = _run_cli(db_path)
+        assert result.returncode == 1, result.stdout + result.stderr
+        for ov in load_overrides("ability_overrides.json", key="fields"):
+            assert f"  ability: {ov['name']!r}" in result.stderr
+
     def test_clean_seed_exits_zero(self, tmp_path):
         # With a matching record staged for every committed override, the CLI
         # seeds cleanly and exits 0.
@@ -126,7 +144,10 @@ class TestSeedCLIExitCodes:
         change_overrides = load_overrides("change_overrides.json")
         quarantines = load_overrides("change_overrides.json", key="quarantines")
         ability_overrides = load_overrides("ability_overrides.json")
-        _populate_records(db_path, change_overrides + quarantines, ability_overrides)
+        field_overrides = load_overrides("ability_overrides.json", key="fields")
+        _populate_records(
+            db_path, change_overrides + quarantines, ability_overrides, field_overrides
+        )
 
         result = _run_cli(db_path)
         assert result.returncode == 0, result.stdout + result.stderr
