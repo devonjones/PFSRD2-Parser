@@ -1,6 +1,6 @@
 """ability_category is anchored: the LLM suggests, a human pins (PFSRD2-Parser-aiub).
 
-The v3 rebuild missed the LLM cache and reshuffled 36 published categories
+The v3 rebuild missed the LLM cache and reshuffled published categories
 (Ghostly Hand -> special_sense, Unholy Speed -> interaction). Driven for real
 against an in-memory DB with the model stubbed.
 """
@@ -12,11 +12,13 @@ import os
 
 import pytest
 
+from pfsrd2.ability_placement import NO_CATEGORY
 from pfsrd2.enrichment.overrides import load_overrides, seed_ability_overrides
 from pfsrd2.sql.enrichment import (
     fetch_ability_by_id,
     get_enrichment_db_connection,
     insert_ability_record,
+    mark_human_verified,
     update_ability_category,
 )
 from pfsrd2.sql.enrichment.queries import (
@@ -47,6 +49,18 @@ def db():
     conn = get_enrichment_db_connection(db_path=":memory:")
     yield conn
     conn.close()
+
+
+OPERA = "5 gp general admission, 20 gp box seats;"
+
+
+def _link(curs, ability_id, category):
+    curs.execute(
+        "INSERT INTO ability_creature_links"
+        " (ability_id, creature_game_id, creature_name, ability_category)"
+        " VALUES (?, ?, ?, ?)",
+        (ability_id, f"g{ability_id}", f"c{ability_id}", category),
+    )
 
 
 def _record(curs, name, text, ident):
@@ -122,31 +136,52 @@ class TestPins:
         assert seeded == 1
         assert fetch_ability_by_id(curs, aid)["ability_category"] == "offensive"
 
-    def test_a_null_pin_clears_the_category_and_stays_out_of_the_classify_queue(self, db):
+    def test_a_null_pin_is_the_sentinel_and_stays_out_of_the_classify_queue(self, db):
         curs = db.cursor()
-        aid = _record(curs, "Opera", "5 gp general admission, 20 gp box seats;", "h1")
+        aid = _record(curs, "Opera", OPERA, "h1")
         update_ability_category(curs, aid, "special_sense")
 
-        seed_ability_overrides(
-            curs,
-            [
-                {
-                    "name": "Opera",
-                    "text": "5 gp general admission, 20 gp box seats;",
-                    "ability_category": None,
-                }
-            ],
-        )
+        seed_ability_overrides(curs, [{"name": "Opera", "text": OPERA, "ability_category": None}])
 
-        row = fetch_ability_by_id(curs, aid)
-        assert row["ability_category"] is None
-        assert row["human_verified"] == 1
+        assert fetch_ability_by_id(curs, aid)["ability_category"] == NO_CATEGORY
         assert aid not in [r["ability_id"] for r in fetch_uncategorized_abilities(curs)]
 
-    def test_an_unpinned_null_is_still_queued(self, db):
+    def test_a_field_verified_record_with_no_category_is_still_queued(self, db):
+        # bin/pf2_ability_review verify/edit set human_verified for checked
+        # FIELDS; that must not take the record out of classification.
         curs = db.cursor()
         aid = _record(curs, "New Ability", "Text.", "h1")
+        mark_human_verified(curs, aid)
         assert aid in [r["ability_id"] for r in fetch_uncategorized_abilities(curs)]
+
+
+class TestPinnedNoCategorySurvivesClassification:
+    """Both vote-filling steps see the pin and leave it alone."""
+
+    @pytest.fixture
+    def pinned(self, db):
+        curs = db.cursor()
+        aid = _record(curs, "Opera", OPERA, "h1")
+        seed_ability_overrides(curs, [{"name": "Opera", "text": OPERA, "ability_category": None}])
+        # A creature somewhere has an ability called Opera, so a name vote exists.
+        voter = _record(curs, "Opera", "A creature's song.", "h2")
+        _link(curs, voter, "interaction")
+        return aid
+
+    def test_the_name_vote_step(self, db, pinned):
+        load_cli().run_classify(db, Args())
+        assert fetch_ability_by_id(db.cursor(), pinned)["ability_category"] == NO_CATEGORY
+
+    def test_the_uma_step(self, db, pinned, monkeypatch):
+        cli = load_cli()
+        db.execute("UPDATE ability_records SET is_uma = 1 WHERE ability_id = ?", (pinned,))
+        main = get_enrichment_db_connection(db_path=":memory:")
+        monkeypatch.setattr(cli, "get_db_connection", lambda *_a, **_k: main)
+        monkeypatch.setattr(cli, "fetch_monster_abilities_by_name", lambda *_a: [])
+
+        cli.run_uma_detection(db, Args())
+
+        assert fetch_ability_by_id(db.cursor(), pinned)["ability_category"] == NO_CATEGORY
 
 
 class TestTheCommittedPins:
@@ -164,12 +199,6 @@ class TestMajorityVoteIsDeterministic:
     def test_a_tie_breaks_by_category_name(self, db):
         curs = db.cursor()
         for i, cat in enumerate(["special_sense", "automatic"]):
-            aid = _record(curs, "Tied", f"text {i}", f"h{i}")
-            curs.execute(
-                "INSERT INTO ability_creature_links"
-                " (ability_id, creature_game_id, creature_name, ability_category)"
-                " VALUES (?, ?, ?, ?)",
-                (aid, f"g{i}", f"c{i}", cat),
-            )
+            _link(curs, _record(curs, "Tied", f"text {i}", f"h{i}"), cat)
 
         assert fetch_majority_category_for_name(curs, "Tied")[0] == "automatic"

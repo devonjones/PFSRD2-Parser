@@ -584,7 +584,7 @@ def run_uma_detection(conn, args):
     if not args.dry_run:
         curs.execute(
             "SELECT ability_id, name FROM ability_records"
-            " WHERE is_uma = 1 AND ability_category IS NULL AND human_verified = 0"
+            " WHERE is_uma = 1 AND ability_category IS NULL"
         )
         uma_uncategorized = curs.fetchall()
         categorized = 0
@@ -611,10 +611,10 @@ def run_llm_classify(conn, args):
     The answer is never written as ability_category. It is recorded in
     review_reason, needs_review is set, and a human pins the real value in
     overrides/ability_overrides.json. LLM categories were the only ones nothing
-    anchored: the v3 rebuild missed the cache and reshuffled 36 published
-    values (Ghostly Hand -> special_sense, Unholy Speed -> interaction), and
-    checking the rest against the HTML found many of the unchanged ones wrong
-    too (PFSRD2-Parser-aiub).
+    anchored: the v3 rebuild missed the cache and reshuffled published values
+    (Ghostly Hand -> special_sense, Unholy Speed -> interaction), and checking
+    the rest against the HTML found many unchanged ones wrong too
+    (PFSRD2-Parser-aiub).
     """
     curs = conn.cursor()
     uncategorized = fetch_uncategorized_abilities(curs)
@@ -724,7 +724,7 @@ def print_classification_stats(conn):
     )
     print("\nCategory breakdown:")
     for row in curs.fetchall():
-        print(f"  {row['ability_category']}: {row['c']}")
+        print(f"  {row['ability_category'] or '(pinned: no category)'}: {row['c']}")
 
     # Show sample uncategorized
     curs.execute(

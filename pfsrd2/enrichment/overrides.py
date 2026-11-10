@@ -18,7 +18,7 @@ import json
 import os
 import sys
 
-from pfsrd2.ability_placement import CATEGORY_TARGETS
+from pfsrd2.ability_placement import CATEGORY_TARGETS, NO_CATEGORY
 from pfsrd2.change_identity import compute_change_hash
 from pfsrd2.enrichment.change_extractor import (
     ENRICHMENT_VERSION,
@@ -209,25 +209,22 @@ def seed_ability_overrides(curs, overrides):
             f"Invalid ability category {category!r} for override {ov['name']!r}. "
             f"Must be null or one of: {sorted(CATEGORY_TARGETS)}"
         )
+        sql = "SELECT ability_id FROM ability_records WHERE LOWER(name) = LOWER(?)"
+        params = [ov["name"]]
         if "text" in ov:
-            curs.execute(
-                "SELECT ability_id FROM ability_records WHERE LOWER(name) = LOWER(?)"
-                # COALESCE: an ability whose body is all addon fields (Kiai!,
-                # Afterimage: just an Effect) has no text key at all.
-                " AND COALESCE(json_extract(raw_json, '$.text'), '') = ?",
-                (ov["name"], ov["text"]),
-            )
-        else:
-            curs.execute(
-                "SELECT ability_id FROM ability_records WHERE LOWER(name) = LOWER(?)",
-                (ov["name"],),
-            )
+            # COALESCE: an ability whose body is all addon fields (Kiai!,
+            # Afterimage: just an Effect) has no text key at all.
+            sql += " AND COALESCE(json_extract(raw_json, '$.text'), '') = ?"
+            params.append(ov["text"])
+        curs.execute(sql, params)
         rows = curs.fetchall()
         if not rows:
             misses.append(ov)
             continue
         for row in rows:
-            update_ability_category(curs, row["ability_id"], category)
+            update_ability_category(
+                curs, row["ability_id"], NO_CATEGORY if category is None else category
+            )
             mark_human_verified(curs, row["ability_id"])
         seeded += 1
     return seeded, misses
