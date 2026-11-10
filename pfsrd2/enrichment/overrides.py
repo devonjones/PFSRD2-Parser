@@ -18,7 +18,11 @@ import json
 import os
 import sys
 
-from pfsrd2.ability_placement import CATEGORY_TARGETS, NO_CATEGORY
+from pfsrd2.ability_placement import (
+    CATEGORY_TARGETS,
+    NO_CATEGORY,
+    deterministic_ability_category,
+)
 from pfsrd2.change_identity import compute_change_hash
 from pfsrd2.enrichment.change_extractor import (
     ENRICHMENT_VERSION,
@@ -209,7 +213,7 @@ def seed_ability_overrides(curs, overrides):
             f"Invalid ability category {category!r} for override {ov['name']!r}. "
             f"Must be null or one of: {sorted(CATEGORY_TARGETS)}"
         )
-        sql = "SELECT ability_id FROM ability_records WHERE LOWER(name) = LOWER(?)"
+        sql = "SELECT ability_id, raw_json FROM ability_records WHERE LOWER(name) = LOWER(?)"
         params = [ov["name"]]
         if "text" in ov:
             # COALESCE: an ability whose body is all addon fields (Kiai!,
@@ -218,7 +222,13 @@ def seed_ability_overrides(curs, overrides):
             params.append(ov["text"])
         curs.execute(sql, params)
         rows = curs.fetchall()
-        if not rows:
+        # The action type decides first: run_classify's Step 0 and the output
+        # merge both apply it over anything stored. A pin that disagrees would
+        # be silently overwritten, so it is a miss to re-review instead.
+        if not rows or any(
+            deterministic_ability_category(json.loads(row["raw_json"])) not in (None, category)
+            for row in rows
+        ):
             misses.append(ov)
             continue
         for row in rows:

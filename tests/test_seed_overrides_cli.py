@@ -61,8 +61,7 @@ def _populate_records(db_path, change_overrides, ability_overrides, field_overri
                     json.dumps({"text": ov["change_text"]}),
                 )
             for i, ov in enumerate(ability_overrides):
-                # Text-keyed pins share names ("Immunities" in a dozen
-                # families) and match on the exact text.
+                # Text-keyed pins share names and match on the exact text.
                 raw = {"name": ov["name"]}
                 if ov.get("text"):
                     raw["text"] = ov["text"]

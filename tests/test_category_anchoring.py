@@ -146,6 +146,25 @@ class TestPins:
         assert fetch_ability_by_id(curs, aid)["ability_category"] == NO_CATEGORY
         assert aid not in [r["ability_id"] for r in fetch_uncategorized_abilities(curs)]
 
+    @pytest.mark.parametrize("pinned", [None, "offensive"])
+    def test_a_pin_that_contradicts_the_action_type_is_a_miss(self, db, pinned):
+        # run_classify Step 0 would overwrite it with "reactive".
+        curs = db.cursor()
+        raw = {"name": "Snap", "text": "It snaps.", "action_type": {"name": "Reaction"}}
+        aid = insert_ability_record(curs, "Snap", "h1", json.dumps(raw))
+        pin = {"name": "Snap", "text": "It snaps.", "ability_category": pinned}
+
+        assert seed_ability_overrides(curs, [pin]) == (0, [pin])
+        assert fetch_ability_by_id(curs, aid)["human_verified"] == 0
+
+    def test_a_pin_that_agrees_with_the_action_type_seeds(self, db):
+        curs = db.cursor()
+        raw = {"name": "Snap", "text": "It snaps.", "action_type": {"name": "Reaction"}}
+        insert_ability_record(curs, "Snap", "h1", json.dumps(raw))
+        pin = {"name": "Snap", "text": "It snaps.", "ability_category": "reactive"}
+
+        assert seed_ability_overrides(curs, [pin]) == (1, [])
+
     def test_a_field_verified_record_with_no_category_is_still_queued(self, db):
         # bin/pf2_ability_review verify/edit set human_verified for checked
         # FIELDS; that must not take the record out of classification.
