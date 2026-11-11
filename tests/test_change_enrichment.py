@@ -196,3 +196,81 @@ class TestChangeEnrichmentPass:
         rows = fetch_changes_for_source(curs, "Vampire", "monster_template")
         # Only the non-empty change should be inserted
         assert len(rows) == 1
+
+
+class TestFamilyLevelTable:
+    """Families attach the starting-level table only to changes citing it,
+    and a table that changes under an existing record stales it."""
+
+    TABLE = [{"starting_level": "3-4", "hp_decrease": "-20"}]
+
+    @pytest.fixture
+    def mock_db(self):
+        real_conn = get_enrichment_db_connection(db_path=":memory:")
+        wrapper = _NonClosingConnection(real_conn)
+        with patch("pfsrd2.change_enrichment.get_enrichment_db_connection", return_value=wrapper):
+            yield real_conn
+        real_conn.close()
+
+    def _rows(self, db):
+        rows = fetch_changes_for_source(db.cursor(), "Vampire", "monster_family")
+        return {json.loads(r["raw_json"])["text"]: r for r in rows}
+
+    def _run(self, texts, adjustments):
+        changes = [_make_change(t) for t in texts]
+        struct = _make_struct("monster_family", "Vampire", changes, adjustments=adjustments)
+        change_enrichment_pass(struct, "monster_family")
+        return changes
+
+    def test_only_table_citing_changes_get_the_table(self, mock_db):
+        cites = "Reduce its HP by the amount listed on the table."
+        plain = "Increase their AC by 2."
+        self._run([cites, plain], self.TABLE)
+        rows = self._rows(mock_db)
+        assert json.loads(rows[cites]["raw_json"])["_adjustments"] == self.TABLE
+        assert "_adjustments" not in json.loads(rows[plain]["raw_json"])
+
+    def test_templates_still_attach_to_every_change(self, mock_db):
+        changes = [_make_change("Increase their AC by 2.")]
+        struct = _make_struct("monster_template", "Elite", changes, adjustments=self.TABLE)
+        change_enrichment_pass(struct, "monster_template")
+        row = fetch_changes_for_source(mock_db.cursor(), "Elite", "monster_template")[0]
+        assert json.loads(row["raw_json"])["_adjustments"] == self.TABLE
+
+    def test_new_table_stales_existing_record_and_skips_merge(self, mock_db):
+        text = "Reduce its HP by the amount listed on the table."
+        self._run([text], None)
+        row = self._rows(mock_db)[text]
+        enriched = json.dumps({"change_category": "hit_points"})
+        update_change_enriched_json(mock_db.cursor(), row["change_id"], enriched, 1, "regex")
+        mock_db.commit()
+
+        changes = self._run([text], self.TABLE)
+        row = self._rows(mock_db)[text]
+        assert row["stale"] == 1
+        assert json.loads(row["raw_json"])["_adjustments"] == self.TABLE
+        assert "change_category" not in changes[0]
+
+    def test_unchanged_table_merges(self, mock_db):
+        text = "Reduce its HP by the amount listed on the table."
+        self._run([text], self.TABLE)
+        row = self._rows(mock_db)[text]
+        enriched = json.dumps({"change_category": "hit_points"})
+        update_change_enriched_json(mock_db.cursor(), row["change_id"], enriched, 1, "regex")
+        mock_db.commit()
+
+        changes = self._run([text], self.TABLE)
+        assert self._rows(mock_db)[text]["stale"] == 0
+        assert changes[0]["change_category"] == "hit_points"
+
+    def test_human_verified_record_is_not_staled(self, mock_db):
+        text = "Reduce its HP by the amount listed on the table."
+        self._run([text], None)
+        row = self._rows(mock_db)[text]
+        mock_db.execute(
+            "UPDATE change_records SET human_verified = 1 WHERE change_id = ?", (row["change_id"],)
+        )
+        mock_db.commit()
+
+        self._run([text], self.TABLE)
+        assert self._rows(mock_db)[text]["stale"] == 0

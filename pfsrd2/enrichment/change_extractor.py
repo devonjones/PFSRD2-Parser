@@ -18,7 +18,7 @@ from pfsrd2.sql.traits import (
     strip_nested_metadata,
 )
 
-ENRICHMENT_VERSION = 29
+ENRICHMENT_VERSION = 30
 
 # HTML says "land Speed" but creature data uses "walk" for walking speed
 _MOVEMENT_TYPE_NORMALIZE = {"land": "walk"}
@@ -246,6 +246,11 @@ def _categorize_change_text(text):
         return "traits"
     if "immunit" in t:
         return "immunities"
+    # "Increase its HP by the amount shown on the table. ...to compensate for
+    # the creature's weakness to silver" is an HP change, not a weakness one
+    # (werecreature). The weakness itself is its own change.
+    if _TABLE_HP_LEAD.match(t):
+        return "hit_points"
     if "weakness" in t:
         return "weaknesses"
     if "resistance" in t:
@@ -405,10 +410,14 @@ def _build_effects(text, category, source_name, adjustments=None, links=None, ab
         return _build_spell_effects(text)
     elif category == "strikes":
         return _build_strike_effects(text)
-    elif category == "weaknesses":
-        return _build_weakness_effects(text, adjustments)
-    elif category == "resistances":
-        return _build_resistance_effects(text, adjustments)
+    elif category in ("weaknesses", "resistances"):
+        if category == "weaknesses":
+            effects = _build_weakness_effects(text, adjustments)
+        else:
+            effects = _build_resistance_effects(text, adjustments)
+        if adjustments and _CITES_TABLE.search(text) and not _any_item_value(effects):
+            return _build_table_defense_effects(text, adjustments)
+        return effects
     elif category == "gear":
         return [
             {
@@ -1780,6 +1789,113 @@ def _hp_effects_from_adjustments(adjustments, sign):
     return effects
 
 
+_CITES_TABLE = re.compile(r"\btable\b|\(see below\)", re.I)
+_TABLE_HP_LEAD = re.compile(
+    r"(?:<li>|\W)*(?:increase|reduce|decrease) (?:its|their|the creature's) (?:hp|hit points)\b.*\btable\b"
+)
+# "...and more HP (see below)" (ravener) — an HP change riding on a defense one.
+_TABLE_HP_CLAUSE = re.compile(r"\bmore hp\b|(?:increase|reduce|decrease)\w* (?:its |their )?hp\b")
+_RESISTANCE_CLAUSE = re.compile(
+    r"resistance to (all )?(\w+) damage"
+    r"(?:\s*\(except ([^)]+)\)|\s+except (?:from )?([^,.(]+?)(?=\s*\(|,|\.|$))?"
+)
+_WEAKNESS_CLAUSE = re.compile(r"weakness to (cold iron|\w+)( damage)?(?: and (\w+) damage)?")
+
+
+def _any_item_value(effects):
+    return any("value" in (e.get("item") or {}) for e in effects)
+
+
+def _build_table_defense_effects(text, adjustments):
+    """Defense changes valued 'as indicated in the table' (vampire family).
+
+    One sentence can grant fast healing, resistances and weaknesses that all
+    read one table column, sometimes alongside an HP change (ravener). Each
+    granted item becomes one add_item per table row, gated on starting level.
+    """
+    t = text.lower()
+    items = []
+    if "fast healing" in t:
+        items.append(
+            (
+                "fast",
+                "$.defense.hitpoints[*].automatic_abilities",
+                {
+                    "type": "stat_block_section",
+                    "subtype": "ability",
+                    "name": "Fast Healing",
+                    "ability_type": "automatic",
+                },
+            )
+        )
+    for m in _RESISTANCE_CLAUSE.finditer(t):
+        item = {
+            "type": "stat_block_section",
+            "subtype": "resistance",
+            "name": f"{m.group(1) or ''}{m.group(2)}",
+        }
+        bypass = m.group(3) or m.group(4)
+        if bypass:
+            item["modifiers"] = [
+                {
+                    "type": "stat_block_section",
+                    "subtype": "modifier",
+                    "name": f"except {bypass.strip()}",
+                }
+            ]
+        items.append(("resist", "$.defense.hitpoints[*].resistances", item))
+    for m in _WEAKNESS_CLAUSE.finditer(t):
+        # Creature stat blocks name "area damage" / "splash damage" in full
+        # but plain energy weaknesses bare ("holy"), so keep "damage" only
+        # when the clause pairs two damage kinds.
+        suffix = " damage" if m.group(3) else ""
+        for name in (m.group(1), m.group(3)):
+            if name:
+                items.append(
+                    (
+                        "weak",
+                        "$.defense.hitpoints[*].weaknesses",
+                        {
+                            "type": "stat_block_section",
+                            "subtype": "weakness",
+                            "name": f"{name}{suffix}",
+                        },
+                    )
+                )
+    effects = []
+    for hint, target, item in items:
+        for adj in adjustments:
+            effects.append(
+                {
+                    "conditional": _level_text_to_conditional(_adjustment_level(adj)),
+                    "target": target,
+                    "operation": "add_item",
+                    "item": dict(item, value=_table_value(adj, hint)),
+                }
+            )
+    if _TABLE_HP_CLAUSE.search(t):
+        sign = -1 if "reduce" in t or "decrease" in t else 1
+        effects.extend(_hp_effects_from_adjustments(adjustments, sign))
+    return effects
+
+
+def _adjustment_level(adj):
+    return adj.get("starting_level", adj.get("level", ""))
+
+
+def _table_value(adj, hint):
+    """The row's value for a fast healing/resistance/weakness item.
+
+    Prefer a column naming the stat (Ravener's 'Weakness'); otherwise the one
+    non-level, non-HP column (vampire's 'Fast Healing/Resistance').
+    """
+    skip = {"type", "subtype", "starting_level", "level"}
+    keys = [k for k in adj if k not in skip and "hp" not in k]
+    named = [k for k in keys if hint in k]
+    key = (named or keys)[0]
+    return abs(int(_normalize_dashes(adj[key])))
+
+
 def _level_text_to_conditional(text):
     """Convert table level text like '2-4' or '20+' to a jsonpath conditional."""
     # Normalize en-dash/em-dash to ASCII hyphen for range detection
@@ -1788,6 +1904,10 @@ def _level_text_to_conditional(text):
         num = re.search(r"(\d+)", text)
         if num:
             return f"$.creature_type.level <= {num.group(1)}"
+    if "or higher" in text or "or greater" in text or "or more" in text:
+        num = re.search(r"(\d+)", text)
+        if num:
+            return f"$.creature_type.level >= {num.group(1)}"
     if text.endswith("+"):
         num = text.rstrip("+").strip()
         return f"$.creature_type.level >= {num}"

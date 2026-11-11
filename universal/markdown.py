@@ -35,7 +35,14 @@ def md(html, **options):
     return PFSRDConverter(**options).convert(html)
 
 
-def markdown_pass(struct, name, path, fxn_valid_tags=None):
+def markdown_pass(struct, name, path, fxn_valid_tags=None, skip_keys=frozenset()):
+    """Convert HTML string values to markdown, validating their tags.
+
+    skip_keys names string fields that are not prose and must pass through
+    untouched (a family effect's conditional is JSONPath: its '<=' would
+    otherwise send it through markdownify, which escapes creature_type).
+    """
+
     def _validate_acceptable_tags(text, fxn_valid_tags):
         # Allowed tags: i, b, u, strong, ol, ul, li, br, table, tr, td, th, hr, sup.
         # NEVER add "div" or "p" to this set. Those tags indicate unparsed content
@@ -70,13 +77,15 @@ def markdown_pass(struct, name, path, fxn_valid_tags=None):
 
     for k, v in struct.items():
         if isinstance(v, dict):
-            markdown_pass(v, name, f"{path}/{k}", fxn_valid_tags=fxn_valid_tags)
+            markdown_pass(v, name, f"{path}/{k}", fxn_valid_tags, skip_keys)
         elif isinstance(v, list):
             for item in v:
                 if isinstance(item, dict):
-                    markdown_pass(item, name, f"{path}/{k}", fxn_valid_tags=fxn_valid_tags)
+                    markdown_pass(item, name, f"{path}/{k}", fxn_valid_tags, skip_keys)
                 elif isinstance(item, str) and item.find("<") > -1:
                     raise AssertionError()  # For now, I'm unaware of any tags in lists of strings
+        elif k in skip_keys:
+            continue
         elif isinstance(v, str) and v.find("<") > -1:
             # Strip empty divs (e.g. <div class="clear"></div>) — structural AoN artifacts
             if "<div" in v:
