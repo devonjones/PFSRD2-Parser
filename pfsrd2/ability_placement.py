@@ -5,6 +5,8 @@ belongs in the creature schema by checking what category the same ability
 appears in across existing creatures.
 """
 
+from contextlib import contextmanager
+
 from pfsrd2.ability_identity import compute_identity_hash
 from pfsrd2.sql.enrichment import get_enrichment_db_connection
 from pfsrd2.sql.enrichment.queries import (
@@ -54,6 +56,19 @@ def deterministic_ability_category(ability):
     return None
 
 
+@contextmanager
+def _enrichment_conn(conn):
+    """Use the caller's connection, or open one and close it afterwards."""
+    if conn is not None:
+        yield conn
+        return
+    conn = get_enrichment_db_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 def _target_for(category, name):
     """Map a category to its schema target, refusing to guess.
 
@@ -72,7 +87,8 @@ def _target_for(category, name):
 
 
 def ability_target(ability):
-    """Pick the schema target for an ability using action_type, then DB history.
+    """Pick the schema target: action_type, then the ability's own record,
+    then the category its name carries across creatures.
 
     A nameless ability is a parser bug — assert rather than silently return a
     default. The assert comes first: the only production caller already
@@ -95,16 +111,9 @@ def recorded_ability_category(ability, conn=None):
     lookup misses them and they used to land on DEFAULT_TARGET even when
     their own record was classified (Marrowlance: offensive, human-verified).
     """
-    close_conn = False
-    if conn is None:
-        conn = get_enrichment_db_connection()
-        close_conn = True
-    try:
+    with _enrichment_conn(conn) as conn:
         row = fetch_ability_by_hash(conn.cursor(), compute_identity_hash(ability))
         return (row["ability_category"] or None) if row else None
-    finally:
-        if close_conn:
-            conn.close()
 
 
 def lookup_ability_category(ability_name, conn=None):
@@ -118,27 +127,16 @@ def lookup_ability_category(ability_name, conn=None):
     used to carry its own copy, and the batch form below carried a third, so
     the three could drift apart silently.
     """
-    close_conn = False
-    if conn is None:
-        conn = get_enrichment_db_connection()
-        close_conn = True
-    try:
+    with _enrichment_conn(conn) as conn:
         row = fetch_majority_category_for_name(conn.cursor(), ability_name)
         if row is None:
             return None, DEFAULT_TARGET
         return row[0], _target_for(row[0], ability_name)
-    finally:
-        if close_conn:
-            conn.close()
 
 
 def lookup_ability_categories(ability_names, conn=None):
     """Batch lookup. Returns {name: (category, target)} for every name asked."""
-    close_conn = False
-    if conn is None:
-        conn = get_enrichment_db_connection()
-        close_conn = True
-    try:
+    with _enrichment_conn(conn) as conn:
         curs = conn.cursor()
         result = {}
         for name in ability_names:
@@ -147,6 +145,3 @@ def lookup_ability_categories(ability_names, conn=None):
                 (None, DEFAULT_TARGET) if row is None else (row[0], _target_for(row[0], name))
             )
         return result
-    finally:
-        if close_conn:
-            conn.close()

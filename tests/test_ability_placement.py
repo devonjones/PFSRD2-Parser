@@ -176,6 +176,13 @@ class TestAbilityTarget:
         ability = {"name": "Grab", "action_type": {"name": "Reaction"}}
         assert ability_target(ability) == CATEGORY_TARGETS["reactive"]
 
+    def test_action_type_beats_its_own_record(self, monkeypatch):
+        monkeypatch.setattr(
+            "pfsrd2.ability_placement.recorded_ability_category", lambda a, conn=None: "automatic"
+        )
+        ability = {"name": "Grasp for Life", "action_type": {"name": "Reaction"}}
+        assert ability_target(ability) == CATEGORY_TARGETS["reactive"]
+
     def test_its_own_record_beats_other_creatures(self, monkeypatch):
         # Template-only abilities have no creature links; their own
         # classification is the only evidence there is.
@@ -226,7 +233,7 @@ class TestRecordedAbilityCategory:
         # same name, different text: a different ability
         assert recorded_ability_category({"name": "Marrowlance", "text": "x"}, conn=db) is None
 
-    def test_an_unclassified_or_pinned_none_record_is_a_miss(self, db):
+    def test_an_unclassified_or_empty_category_record_is_a_miss(self, db):
         ability = {"name": "Lore"}
         curs = db.cursor()
         aid = insert_ability_record(curs, "Lore", compute_identity_hash(ability), "{}")
