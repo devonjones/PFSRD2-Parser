@@ -5,8 +5,12 @@ belongs in the creature schema by checking what category the same ability
 appears in across existing creatures.
 """
 
+from pfsrd2.ability_identity import compute_identity_hash
 from pfsrd2.sql.enrichment import get_enrichment_db_connection
-from pfsrd2.sql.enrichment.queries import fetch_majority_category_for_name
+from pfsrd2.sql.enrichment.queries import (
+    fetch_ability_by_hash,
+    fetch_majority_category_for_name,
+)
 
 # Mapping from enrichment DB category to the JSONPath target in the creature schema
 CATEGORY_TARGETS = {
@@ -77,11 +81,30 @@ def ability_target(ability):
     """
     name = ability.get("name")
     assert name, f"Ability missing required 'name' field: {ability!r}"
-    category = deterministic_ability_category(ability)
+    category = deterministic_ability_category(ability) or recorded_ability_category(ability)
     if category:
         return _target_for(category, name)
     _, target = lookup_ability_category(name)
     return target
+
+
+def recorded_ability_category(ability, conn=None):
+    """This exact ability's own classified category, or None.
+
+    Template and family abilities appear on no creature, so the name-majority
+    lookup misses them and they used to land on DEFAULT_TARGET even when
+    their own record was classified (Marrowlance: offensive, human-verified).
+    """
+    close_conn = False
+    if conn is None:
+        conn = get_enrichment_db_connection()
+        close_conn = True
+    try:
+        row = fetch_ability_by_hash(conn.cursor(), compute_identity_hash(ability))
+        return (row["ability_category"] or None) if row else None
+    finally:
+        if close_conn:
+            conn.close()
 
 
 def lookup_ability_category(ability_name, conn=None):
