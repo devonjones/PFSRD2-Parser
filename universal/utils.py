@@ -598,9 +598,9 @@ def extract_pfs_note(bs, struct):
     assert note_text, "PFS Note tag found and removed from HTML but yielded no text"
 
     pfs_availability = struct["pfs"]
-    assert isinstance(pfs_availability, str), (
-        f"Expected pfs to be a string at this point, got {type(pfs_availability)}"
-    )
+    assert isinstance(
+        pfs_availability, str
+    ), f"Expected pfs to be a string at this point, got {type(pfs_availability)}"
     struct["pfs"] = {
         "type": "stat_block_section",
         "subtype": "pfs",
