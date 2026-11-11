@@ -26,6 +26,7 @@ from pfsrd2.ability_placement import (
 from pfsrd2.change_identity import compute_change_hash
 from pfsrd2.enrichment.change_extractor import (
     ENRICHMENT_VERSION,
+    ChangeReviewError,
     TraitLookupError,
     canonicalize_trait_effects,
 )
@@ -96,8 +97,8 @@ def seed_change_overrides(curs, overrides):
             # name-only badge adds get upgraded (see canonicalize_trait_effects)
             try:
                 enriched["effects"] = canonicalize_trait_effects(enriched["effects"])
-            except TraitLookupError as exc:
-                if _traits_db_empty():
+            except ChangeReviewError as exc:
+                if isinstance(exc, TraitLookupError) and _traits_db_empty():
                     # No traits DB in this environment (CI subprocess, fresh
                     # checkout): seed the override verbatim — real pipeline
                     # runs have the DB and canonicalize.
@@ -106,7 +107,7 @@ def seed_change_overrides(curs, overrides):
                         f"(no badge canonicalization): {ov['change_text'][:60]!r}\n"
                     )
                 else:
-                    ov = dict(ov, change_text=f"{ov['change_text']} [unknown trait: {exc}]")
+                    ov = dict(ov, change_text=f"{ov['change_text']} [{exc.kind}: {exc}]")
                     misses.append(ov)
                     continue
         enriched_json = json.dumps(enriched, sort_keys=True, ensure_ascii=False)
