@@ -384,6 +384,87 @@ class TestBuildTraitEffects:
         assert opt_names == {"Amphibious", "Aquatic"}
         assert all(o["operation"] == "add_item" for o in opts)
 
+    def test_gains_then_remove_keeps_gained_traits_added(self):
+        """Sporeborn: a later "Remove any traits ..." sentence must not turn
+        the traits it gains into removals (PFSRD2-Parser-rx0c)."""
+        text = (
+            "A sporeborn gains the fungus, mindless, rare, and sporeborn traits. "
+            "Remove any traits that represent its life, such as animal or humanoid."
+        )
+        effects = _build_trait_effects(text)
+        assert not [e for e in effects if e["operation"] == "remove_item"]
+        badge = {e["item"]["name"] for e in _badge_adds(effects)}
+        assert {"Fungus", "Mindless", "Rare", "Sporeborn"} <= badge
+
+    def test_conditional_swap_adds_before_gated_removal(self):
+        """Rumored cryptid: the animal->beast swap applies only to animals,
+        and the engine checks each gate against the already-patched
+        creature, so the Beast add must come before the Animal removal."""
+        text = (
+            "- Add the rare trait. If the creature was an animal, it loses the "
+            "animal trait and gains the beast trait."
+        )
+        links = [
+            {"type": "link", "name": n, "game-obj": "Traits", "aonid": i}
+            for i, n in enumerate(["rare", "animal", "beast"])
+        ]
+        effects = _build_trait_effects(text, links)
+        gate = "$.creature_type.creature_types[?(@=='Animal')] != null"
+        # "Add the rare trait" sets both the badge and the rarity string
+        rare = [e for e in _badge_adds(effects) if e["item"]["name"] == "Rare"]
+        assert rare
+        assert {e["value"] for e in effects if e["target"] == "$.creature_type.rarity"} == {"Rare"}
+        beast = [e for e in _type_adds(effects) if e["name"] == "Beast"]
+        removes = [e for e in effects if e["operation"] == "remove_item"]
+        assert beast[0]["conditional"] == gate
+        assert {e["name"] for e in removes} == {"Animal"}
+        assert all(e["conditional"] == gate for e in removes)
+        assert effects.index(beast[0]) < min(effects.index(e) for e in removes)
+
+    def test_rarity_increase_is_not_a_trait_removal(self):
+        """Primeval cryptid: "increase rarity to uncommon if it was common or
+        rare if it was uncommon" steps rarity; it removes no rarity badge."""
+        text = (
+            "- Increase the creature's rarity to uncommon if it was common or rare if it "
+            "was uncommon. If the creature was an animal, it loses the animal trait and "
+            "gains the beast trait."
+        )
+        links = [
+            {"type": "link", "name": n, "game-obj": "Traits", "aonid": i}
+            for i, n in enumerate(["uncommon", "rare", "animal", "beast"])
+        ]
+        effects = _build_trait_effects(text, links)
+        removed = {e["name"] for e in effects if e["operation"] == "remove_item"}
+        assert removed == {"Animal"}
+        assert {e["value"] for e in effects if e["target"] == "$.creature_type.rarity"} == {
+            "Uncommon",
+            "Rare",
+        }
+
+    def test_rarity_badge_and_string_move_together(self):
+        """Engine conditionals cannot compare strings, so rarity is keyed on
+        badges: an Uncommon badge is swapped for Rare, a creature with no
+        rarity badge gets one, and the string follows the badge."""
+        effects = _build_trait_effects("It gains the rare trait.")
+        swap = [e for e in effects if e["operation"] == "replace" and "Uncommon" in e["target"]]
+        assert swap and swap[0]["value"]["name"] == "Rare"
+        add = [e for e in _badge_adds(effects) if e["item"]["name"] == "Rare"][0]
+        assert "[?(@.name=='Rare')] == null" in add["conditional"]
+        assert "[?(@.name=='Unique')] == null" in add["conditional"]
+        string = [e for e in effects if e["target"] == "$.creature_type.rarity"][0]
+        assert string["conditional"] == "$.creature_type.traits[?(@.name=='Rare')] != null"
+        assert effects.index(add) < effects.index(string)
+        assert not any("'Common'" in (e.get("conditional") or "") for e in effects)
+
+    def test_override_rarity_add_is_expanded_once(self):
+        """Override seeding canonicalizes hand-written effects, so a plain
+        Rare badge add (Blackfrost Dead) gets the same rarity change, and
+        re-seeding an expanded list leaves it unchanged."""
+        plain = [{"operation": "add_item", "target": "$.creature_type.traits", "name": "Rare"}]
+        once = change_extractor.canonicalize_trait_effects(plain)
+        assert [e for e in once if e["target"] == "$.creature_type.rarity"]
+        assert change_extractor.canonicalize_trait_effects(once) == once
+
     def test_non_trait_links_ignored(self):
         """Links with game-obj != Traits should not be extracted as traits."""
         text = "Add the undead trait."
