@@ -17,16 +17,23 @@ import json
 
 import pytest
 
+from pfsrd2.ability_identity import compute_identity_hash
 from pfsrd2.ability_placement import (
     CATEGORY_TARGETS,
     DEFAULT_TARGET,
+    _enrichment_conn,
     ability_target,
     deterministic_ability_category,
     lookup_ability_categories,
     lookup_ability_category,
+    recorded_ability_category,
 )
 from pfsrd2.sql.enrichment import get_enrichment_db_connection
-from pfsrd2.sql.enrichment.queries import insert_ability_record, insert_creature_link
+from pfsrd2.sql.enrichment.queries import (
+    insert_ability_record,
+    insert_creature_link,
+    update_ability_category,
+)
 
 
 @pytest.fixture
@@ -170,7 +177,29 @@ class TestAbilityTarget:
         ability = {"name": "Grab", "action_type": {"name": "Reaction"}}
         assert ability_target(ability) == CATEGORY_TARGETS["reactive"]
 
+    def test_action_type_beats_its_own_record(self, monkeypatch):
+        monkeypatch.setattr(
+            "pfsrd2.ability_placement.recorded_ability_category", lambda a, conn=None: "automatic"
+        )
+        ability = {"name": "Grasp for Life", "action_type": {"name": "Reaction"}}
+        assert ability_target(ability) == CATEGORY_TARGETS["reactive"]
+
+    def test_its_own_record_beats_other_creatures(self, monkeypatch):
+        # Template-only abilities have no creature links; their own
+        # classification is the only evidence there is.
+        monkeypatch.setattr(
+            "pfsrd2.ability_placement.recorded_ability_category", lambda a, conn=None: "offensive"
+        )
+        monkeypatch.setattr(
+            "pfsrd2.ability_placement.lookup_ability_category",
+            lambda name, conn=None: ("automatic", CATEGORY_TARGETS["automatic"]),
+        )
+        assert ability_target({"name": "Marrowlance"}) == CATEGORY_TARGETS["offensive"]
+
     def test_it_falls_back_to_the_db_when_action_type_says_nothing(self, monkeypatch):
+        monkeypatch.setattr(
+            "pfsrd2.ability_placement.recorded_ability_category", lambda a, conn=None: None
+        )
         monkeypatch.setattr(
             "pfsrd2.ability_placement.lookup_ability_category",
             lambda name, conn=None: ("special_sense", CATEGORY_TARGETS["special_sense"]),
@@ -192,6 +221,54 @@ class TestAbilityTarget:
         # exactly one test in the repo — this one.
         with pytest.raises(AssertionError, match="missing required 'name'"):
             ability_target({"action_type": {"name": "Reaction"}})
+
+
+class TestEnrichmentConn:
+    class _Conn:
+        closed = 0
+
+        def close(self):
+            self.closed += 1
+
+    def test_it_closes_only_the_connection_it_opened(self, monkeypatch):
+        opened = self._Conn()
+        monkeypatch.setattr("pfsrd2.ability_placement.get_enrichment_db_connection", lambda: opened)
+        with _enrichment_conn(None) as conn:
+            assert conn is opened
+        assert opened.closed == 1
+        with pytest.raises(RuntimeError), _enrichment_conn(None):
+            raise RuntimeError("boom")
+        assert opened.closed == 2
+
+    def test_a_callers_connection_stays_open(self):
+        theirs = self._Conn()
+        with _enrichment_conn(theirs) as conn:
+            assert conn is theirs
+        with pytest.raises(RuntimeError), _enrichment_conn(theirs):
+            raise RuntimeError("boom")
+        assert theirs.closed == 0
+
+
+class TestRecordedAbilityCategory:
+    def test_it_reads_the_category_of_the_record_with_this_identity(self, db):
+        ability = {"name": "Marrowlance", "text": "Bone spear."}
+        curs = db.cursor()
+        aid = insert_ability_record(curs, "Marrowlance", compute_identity_hash(ability), "{}")
+        update_ability_category(curs, aid, "offensive")
+        db.commit()
+        assert recorded_ability_category(ability, conn=db) == "offensive"
+        # same name, different text: a different ability
+        assert recorded_ability_category({"name": "Marrowlance", "text": "x"}, conn=db) is None
+
+    def test_an_unclassified_or_empty_category_record_is_a_miss(self, db):
+        ability = {"name": "Lore"}
+        curs = db.cursor()
+        aid = insert_ability_record(curs, "Lore", compute_identity_hash(ability), "{}")
+        db.commit()
+        assert recorded_ability_category(ability, conn=db) is None
+        update_ability_category(curs, aid, "")
+        db.commit()
+        assert recorded_ability_category(ability, conn=db) is None
 
 
 class TestDeterministicAbilityCategory:
