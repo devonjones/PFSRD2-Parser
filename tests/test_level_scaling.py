@@ -1,10 +1,13 @@
 """Level-scaled damage, one case per phrasing found in templates and families."""
 
+import inspect
 import json
 
 import pytest
 
+from pfsrd2 import monster_family, monster_template
 from pfsrd2.ability_enrichment import _merge_enrichment
+from pfsrd2.enrichment.change_extractor import name_filter
 from pfsrd2.enrichment.level_scaling import (
     extract_level_scaling,
     formula_at_level,
@@ -203,14 +206,17 @@ SHOCKWAVE = (
 )
 
 
-def test_merge_reads_the_effect_field_and_leaves_the_minimum_entry_alone():
-    # Shockwave's text is in `effect`; its "(minimum 2d6 damage)" also becomes
-    # a damage entry, which is a floor, not a second scaling formula.
-    rate, floor = _merged(
-        {"name": "Shockwave", "effect": SHOCKWAVE}, _damage("1d6"), _damage("2d6")
-    )
+def test_merge_reads_the_effect_field_and_drops_the_floor_entry():
+    # Shockwave's text is in `effect`; its "(minimum 2d6 damage)" is also
+    # extracted as a damage entry, which would apply as extra damage
+    (rate,) = _merged({"name": "Shockwave", "effect": SHOCKWAVE}, _damage("1d6"), _damage("2d6"))
     assert rate["level_scaling"]["minimum"] == "2d6"
-    assert "level_scaling" not in floor
+
+
+def test_a_floor_equal_to_the_base_keeps_the_base_entry():
+    vomit = "takes 1d8 bludgeoning damage per level of the floodslain creature (minimum 1d8)"
+    (dmg,) = _merged({"name": "Vomit Flotsam", "text": vomit}, _damage("1d8"))
+    assert dmg["level_scaling"]["minimum"] == "1d8"
 
 
 def test_merge_keeps_an_existing_level_scaling():
@@ -382,7 +388,53 @@ def test_select_options_count_as_placements():
     }
     change = _change(_scaled("X", "1d6", POWER), effects=[select])
     level_scaling_effects([change])
-    assert len(_replaces(change)) == 2
+    # selections apply after every change, so the replaces ride in the option
+    assert _replaces(change) == []
+    (bundle,) = select["selection"]["options"]
+    add, *replaces = bundle["effects"]
+    assert add["operation"] == "add_items"
+    assert [e["value"] for e in replaces] == ["2d6", "3d6"]
+
+
+def test_an_option_without_scaling_is_left_unbundled():
+    options = [
+        _add_items("X", "$.interaction_abilities"),
+        _add_items("Y", "$.interaction_abilities"),
+    ]
+    select = {"operation": "select", "target": "t", "selection": {"options": options}}
+    unscaled = {"name": "Y", "damage": [_damage("1d6")]}
+    level_scaling_effects([_change(_scaled("X", "1d6", POWER), unscaled, effects=[select])])
+    assert "effects" in options[0] and options[1]["operation"] == "add_items"
+
+
+def test_an_ability_placed_twice_fails():
+    effects = [_add_items("X", "$.a"), _add_items("X", "$.b")]
+    with pytest.raises(AssertionError, match="placed twice"):
+        level_scaling_effects([_change(_scaled("X", "1d6", POWER), effects=effects)])
+
+
+def test_a_level_effect_it_cannot_count_fails():
+    level = _change(
+        category="level",
+        effects=[{"operation": "replace", "target": "$.creature_type.level", "value": 5}],
+    )
+    change = _change(_scaled("X", "1d6", POWER), effects=[_add_items("X", "$.a")])
+    with pytest.raises(AssertionError, match="cannot count"):
+        level_scaling_effects([change, level])
+
+
+def test_only_level_changes_after_this_one_shift_the_bands():
+    # a later non-level change that happens to adjust the level is not counted,
+    # and a level adjustment inside this change has already run
+    other = _change(
+        category="hit_points",
+        effects=[{"operation": "adjustment", "target": "$.creature_type.level", "value": 9}],
+    )
+    change = _level_change(1)
+    change["abilities"] = [_scaled("X", "1d6", POWER)]
+    change["effects"].append(_add_items("X", "$.a"))
+    level_scaling_effects([change, other])
+    assert _replaces(change)[0][2] == "$.creature_type.level >= 9 && $.creature_type.level <= 14"
 
 
 def test_a_scaled_ability_with_no_placement_fails():
@@ -419,3 +471,42 @@ def test_the_pass_reaches_subtypes():
     sub = _change(_scaled("X", "1d6", POWER), effects=[_add_items("X", "$.interaction_abilities")])
     level_scaling_effects_pass({"changes": [], "subtypes": [{"changes": [sub]}]})
     assert len(_replaces(sub)) == 2
+
+
+@pytest.mark.parametrize(
+    "module", [monster_template.parse_monster_template, monster_family.parse_monster_family]
+)
+def test_parsers_run_the_pass_after_ability_enrichment(module):
+    # a full parse needs the enrichment DBs, which CI lacks; pin the wiring
+    source = inspect.getsource(module)
+    enrich = source.index("template_ability_enrichment_pass(struct)")
+    assert source.index("level_scaling_effects_pass(struct[") > enrich
+
+
+@pytest.mark.parametrize(
+    "name, field, expected",
+    [
+        ("Power Surge", "name", "[?(@.name=='Power Surge')]"),
+        ("Pyre's Memory", "name", "[?(@.name=='Pyre\\'s Memory')]"),
+        ("a\\b", "name", "[?(@.name=='a\\\\b')]"),
+        ("1d6", "formula", "[?(@.formula=='1d6')]"),
+    ],
+)
+def test_name_filter_quotes(name, field, expected):
+    assert name_filter(name, field) == expected
+
+
+def test_two_scaled_entries_share_one_bundle():
+    ability = {
+        "name": "X",
+        "damage": [
+            _damage("1d6", level_scaling=POWER),
+            _damage("1d8", level_scaling={"steps": [{"min_level": 5, "formula": "2d8"}]}),
+        ],
+    }
+    options = [_add_items("X", "$.interaction_abilities")]
+    select = {"operation": "select", "target": "t", "selection": {"options": options}}
+    level_scaling_effects([_change(ability, effects=[select])])
+    (bundle,) = options
+    add, *replaces = bundle["effects"]
+    assert add["operation"] == "add_items" and len(replaces) == 3

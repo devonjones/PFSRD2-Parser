@@ -525,6 +525,20 @@ def _annotate_level_scaling(ability):
             scaling = extract_level_scaling(text, dmg.get("formula"))
             if scaling:
                 dmg["level_scaling"] = scaling
+    # Shockwave's "(minimum 2d6 damage)" is also extracted as a damage line of
+    # its own; the floor already lives in level_scaling, and a second entry
+    # would apply as extra damage (14d6+2d6).
+    floors = {
+        dmg["level_scaling"]["minimum"]
+        for dmg in ability.get("damage", [])
+        if "minimum" in dmg.get("level_scaling", {})
+    }
+    if floors:
+        ability["damage"] = [
+            dmg
+            for dmg in ability["damage"]
+            if "level_scaling" in dmg or dmg.get("formula") not in floors
+        ]
 
 
 def _apply_uma_from_db(ability, main_curs, edition=None):

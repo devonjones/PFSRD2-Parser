@@ -172,17 +172,39 @@ _LEVEL = "$.creature_type.level"
 
 
 def _placements(change):
-    """Ability name -> add_items target, including options inside selects."""
+    """Ability name -> (target, sink) for every add_items in the change.
+
+    `sink` takes the ability's replace effects. A select option's ability
+    exists only once the option is chosen, and the engine applies selections
+    after every change (pfsrd2-api: applySelections runs after the change
+    loop), so those replaces ride inside the option as an effects bundle.
+    """
     out = {}
+
+    def place(name, target, sink):
+        assert name not in out, f"ability {name!r} is placed twice in one change"
+        out[name] = (target, sink)
+
     for effect in change.get("effects", []):
-        options = (
-            effect["selection"].get("options", []) if effect["operation"] == "select" else [effect]
-        )
-        for option in options:
-            if isinstance(option, dict) and option.get("operation") == "add_items":
-                for name in option.get("names", []):
-                    out[name] = option["target"]
+        if effect["operation"] == "add_items":
+            for name in effect.get("names", []):
+                place(name, effect["target"], change["effects"].extend)
+        elif effect["operation"] == "select":
+            options = effect["selection"].get("options", [])
+            for k, option in enumerate(options):
+                if option.get("operation") == "add_items":
+                    for name in option.get("names", []):
+                        place(name, option["target"], _bundler(options, k))
     return out
+
+
+def _bundler(options, k):
+    def sink(replaces):
+        if "effects" not in options[k]:
+            options[k] = {"effects": [options[k]]}
+        options[k]["effects"].extend(replaces)
+
+    return sink
 
 
 def _level_gained_after(changes, index):
@@ -192,13 +214,16 @@ def _level_gained_after(changes, index):
     level at the moment it runs: templates change the level before their
     abilities, families change it last.
     """
-    return sum(
-        effect["value"]
-        for change in changes[index + 1 :]
-        if change.get("change_category") == "level"
-        for effect in change.get("effects", [])
-        if effect.get("target") == _LEVEL and effect.get("operation") == "adjustment"
-    )
+    gained = 0
+    for change in changes[index + 1 :]:
+        if change.get("change_category") != "level":
+            continue
+        for effect in change["effects"]:
+            assert (
+                effect["target"] == _LEVEL and effect["operation"] == "adjustment"
+            ), f"level change effect this pass cannot count: {effect!r}"
+            gained += effect["value"]
+    return gained
 
 
 def _bands(formula, scaling, delta):
@@ -231,8 +256,15 @@ def _replaces(target, name, formula, scaling, delta):
     ]
 
 
+def _scaled_damage(change):
+    for ability in change.get("abilities", []):
+        for dmg in ability.get("damage", []):
+            if "level_scaling" in dmg:
+                yield ability["name"], dmg
+
+
 def level_scaling_effects(changes):
-    """Append per-level-band replace effects for scaled ability damage.
+    """Add per-level-band replace effects for scaled ability damage.
 
     PFSRD2-Parser-9vah: an applied template must carry the damage for the
     creature's level, not the base dice. The engine resolves no numeric
@@ -241,16 +273,10 @@ def level_scaling_effects(changes):
     for index, change in enumerate(changes):
         placed = _placements(change)
         delta = _level_gained_after(changes, index)
-        for ability in change.get("abilities", []):
-            for dmg in ability.get("damage", []):
-                scaling = dmg.get("level_scaling")
-                if not scaling:
-                    continue
-                name = ability["name"]
-                assert name in placed, f"scaled ability {name!r} has no add_items placement"
-                change["effects"].extend(
-                    _replaces(placed[name], name, dmg["formula"], scaling, delta)
-                )
+        for name, dmg in _scaled_damage(change):
+            assert name in placed, f"scaled ability {name!r} has no add_items placement"
+            target, sink = placed[name]
+            sink(_replaces(target, name, dmg["formula"], dmg["level_scaling"], delta))
 
 
 def level_scaling_effects_pass(obj):
