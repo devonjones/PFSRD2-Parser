@@ -227,7 +227,9 @@ def _categorize_change_text(text):
     if not t.strip():
         return "unknown"
     # Order matters — more specific patterns first
-    if "following abilit" in t or "following optional abilit" in t:
+    # choice_bounds catches pools phrased without "following" — Primeval
+    # Cryptid's "gain two abilities from the list below"
+    if "following abilit" in t or "following optional abilit" in t or choice_bounds(text):
         return "abilities"
     if any(w in t for w in ["darkvision", "low-light vision", "scent", "tremorsense"]):
         return "senses"
