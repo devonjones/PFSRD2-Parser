@@ -506,6 +506,9 @@
         "formula": {
           "type": "string"
         },
+        "level_scaling": {
+          "$ref": "#/definitions/level_scaling"
+        },
         "links": {
           "additionalItems": false,
           "items": {
@@ -1326,6 +1329,80 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "level_scaling": {
+      "additionalProperties": false,
+      "description": "How the damage formula grows with the creature's level, as printed in the ability text. Either steps (explicit thresholds: the formula from min_level up) or an increment (damage = (base if additive else nothing) + k * increment, where k counts start_level, start_level + per_levels, ... reached). minimum is a printed floor on the dice count; below_start is the printed formula used below start_level.",
+      "oneOf": [
+        {
+          "required": [
+            "steps"
+          ]
+        },
+        {
+          "required": [
+            "increment",
+            "per_levels",
+            "start_level",
+            "additive"
+          ]
+        }
+      ],
+      "properties": {
+        "additive": {
+          "type": "boolean"
+        },
+        "below_start": {
+          "type": "string"
+        },
+        "increment": {
+          "type": "string"
+        },
+        "minimum": {
+          "type": "string"
+        },
+        "per_levels": {
+          "type": "integer"
+        },
+        "start_level": {
+          "type": "integer"
+        },
+        "steps": {
+          "additionalItems": false,
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "formula": {
+                "type": "string"
+              },
+              "min_level": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "min_level",
+              "formula"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "subtype": {
+          "enum": [
+            "level_scaling"
+          ]
+        },
+        "type": {
+          "enum": [
+            "stat_block_section"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "subtype"
+      ],
       "type": "object"
     },
     "license": {

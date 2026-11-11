@@ -12,6 +12,7 @@ from typing import NamedTuple
 
 from pfsrd2.ability_identity import ability_to_raw_json, compute_identity_hash
 from pfsrd2.ability_placement import deterministic_ability_category
+from pfsrd2.enrichment.level_scaling import extract_level_scaling
 from pfsrd2.enrichment.regex_extractor import ENRICHMENT_VERSION, extract_all
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import (
@@ -508,6 +509,22 @@ def _merge_enrichment(ability, enriched_json):
             continue
         if field in enriched and field not in ability:
             ability[field] = enriched[field]
+
+    _annotate_level_scaling(ability)
+
+
+def _annotate_level_scaling(ability):
+    """Mark damage whose dice grow with level (PFSRD2-Parser-9vah).
+
+    Read from the text at merge time rather than stored by re-enrichment:
+    re-running regex enrichment would overwrite LLM-extracted fields.
+    """
+    text = f"{ability.get('text', '')} {ability.get('effect', '')}"
+    for dmg in ability.get("damage", []):
+        if "level_scaling" not in dmg:
+            scaling = extract_level_scaling(text, dmg.get("formula"))
+            if scaling:
+                dmg["level_scaling"] = scaling
 
 
 def _apply_uma_from_db(ability, main_curs, edition=None):
