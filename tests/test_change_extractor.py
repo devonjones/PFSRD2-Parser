@@ -1481,6 +1481,52 @@ class TestTableDefenseEffects:
         ]
         assert [e["value"] for e in effects if e["target"].endswith(".hp")] == [50, 80]
 
+    def test_strigoi_bare_except_and_all_prefix(self):
+        text = (
+            "- The strigoi gains fast healing and resistance to all physical damage "
+            "except from silver weapons or weapons that shed bright light (such as "
+            "one with a *light* spell) based on the table below."
+        )
+        effects = self._enrich(text, self.VAMPIRE[:1])["effects"]
+        res = [e["item"] for e in effects if e["target"].endswith("resistances")]
+        assert [(r["name"], r["value"]) for r in res] == [("all physical", 5)]
+        assert [m["name"] for m in res[0]["modifiers"]] == [
+            "except silver weapons or weapons that shed bright light"
+        ]
+
+    def test_hp_clause_reduce_is_negative(self):
+        text = "- It gains weakness to fire and reduce its HP (see below)."
+        effects = self._enrich(text, self.RAVENER)["effects"]
+        assert [e["value"] for e in effects if e["target"].endswith(".hp")] == [-50, -80]
+
+    def test_named_column_beats_first_column(self):
+        """Ravener-style table: the weakness column is chosen over an
+        unrelated earlier column."""
+        table = [{"starting_level": "13-20", "fast_healing": "99", "weakness": "15"}]
+        effects = self._enrich("- It gains weakness to holy damage (see below).", table)
+        assert self._items(effects["effects"], "weaknesses")[0][2] == 15
+
+    @pytest.mark.parametrize(
+        "lead",
+        ["Reduce its HP", "Decrease their Hit Points", "Increase the creature's HP"],
+    )
+    def test_table_hp_lead_variants(self, lead):
+        text = f"<li>{lead} as shown on the table, offsetting its weakness to fire.</li>"
+        assert _categorize_change_text(text) == "hit_points"
+
+    def test_row_without_level_fails_loudly(self):
+        with pytest.raises(AssertionError, match="without a level"):
+            self._enrich("- It gains weakness to holy damage (see below).", [{"weakness": "5"}])
+
+    def test_table_citing_change_with_nothing_to_value_fails_loudly(self):
+        with pytest.raises(AssertionError, match="no effects"):
+            _build_effects(
+                "- Its resistances work as shown on the table.",
+                "resistances",
+                "X",
+                self.VAMPIRE,
+            )
+
     def test_already_valued_effects_keep_their_path(self):
         """Frostbound's 'value dependent on level (see table below)' is
         already valued by the weakness builder; the table path stays out."""

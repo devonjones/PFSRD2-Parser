@@ -34,7 +34,7 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.utils import get_text, remove_empty_fields, strip_block_tags
+from universal.utils import get_text, normalize_dashes, remove_empty_fields, strip_block_tags
 
 
 def parse_monster_family(filename, options):
@@ -78,9 +78,7 @@ def parse_monster_family(filename, options):
     license_pass(struct)
     license_consolidation_pass(struct)
     strip_block_tags(struct)
-    universal_markdown_pass(
-        struct, struct["name"], "", fxn_valid_tags=_valid_tags, skip_keys={"conditional"}
-    )
+    _markdown_pass(struct)
     template_ability_enrichment_pass(struct)
     remove_empty_fields(struct)
     _strip_image_links(struct)
@@ -418,6 +416,14 @@ def _consolidate_creation_changes(struct):
         mf["subtypes"] = subtypes
 
 
+def _markdown_pass(struct):
+    # Effect conditionals are JSONPath; "level <= 4" would otherwise go
+    # through markdownify and come out as "creature\_type".
+    universal_markdown_pass(
+        struct, struct["name"], "", fxn_valid_tags=_valid_tags, skip_keys={"conditional"}
+    )
+
+
 def _extract_level_table_pass(struct):
     """Copy the family's Starting Level table into monster_family.adjustments.
 
@@ -443,21 +449,15 @@ def _extract_level_table_pass(struct):
         return
     assert len(tables) == 1, f"{struct['name']}: {len(tables)} starting-level tables"
     adjustments = tables[0]
+    assert adjustments, f"{struct['name']}: starting-level table has no rows"
+    # Legacy and remastered pages of one family share change records (same
+    # name, same text), so '3–4' and '3-4' must agree or the shared record
+    # would go stale on every parse.
     for adj in adjustments:
         for key, value in adj.items():
             if key not in ("type", "subtype"):
-                adj[key] = _normalize_table_cell(value)
+                adj[key] = normalize_dashes(value).strip()
     struct["monster_family"]["adjustments"] = adjustments
-
-
-def _normalize_table_cell(value):
-    """'–20' -> '-20', '3–4' -> '3-4'.
-
-    Legacy and remastered pages of one family share change records (same
-    name, same text), so their tables must normalize to identical values or
-    the shared record would go stale on every parse.
-    """
-    return value.replace("\u2013", "-").replace("\u2014", "-").strip()
 
 
 def _level_changes_last(struct):

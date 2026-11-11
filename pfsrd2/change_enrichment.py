@@ -14,8 +14,8 @@ offline enrichment pipeline, not in the parser.
 """
 
 import json
-import re
 
+from pfsrd2.change_extraction import CITES_TABLE
 from pfsrd2.change_identity import change_to_raw_json, compute_change_hash
 from pfsrd2.sql.enrichment import (
     fetch_change_by_hash,
@@ -33,7 +33,6 @@ ENRICHMENT_FIELDS = ("change_category", "effects")
 # attaching it to every change would re-stale the shared records each parse.
 # Templates keep the table on every change; their wording ("based on its
 # level") is looser and they share no records across editions.
-_CITES_TABLE = re.compile(r"\btable\b|\(see below\)", re.I)
 
 
 def change_enrichment_pass(struct, source_type):
@@ -87,7 +86,7 @@ def _process_changes(curs, changes, source_name, source_type, adjustments=None):
         identity_hash = compute_change_hash(source_name, source_type, text)
         # Include adjustments context in raw_json so enrichment can use them
         store_obj = dict(change)
-        if adjustments and (source_type != "monster_family" or _CITES_TABLE.search(text)):
+        if adjustments and (source_type != "monster_family" or CITES_TABLE.search(text)):
             store_obj["_adjustments"] = adjustments
         raw_json = change_to_raw_json(store_obj)
 

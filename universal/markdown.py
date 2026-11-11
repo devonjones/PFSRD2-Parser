@@ -84,9 +84,7 @@ def markdown_pass(struct, name, path, fxn_valid_tags=None, skip_keys=frozenset()
                     markdown_pass(item, name, f"{path}/{k}", fxn_valid_tags, skip_keys)
                 elif isinstance(item, str) and item.find("<") > -1:
                     raise AssertionError()  # For now, I'm unaware of any tags in lists of strings
-        elif k in skip_keys:
-            continue
-        elif isinstance(v, str) and v.find("<") > -1:
+        elif isinstance(v, str) and k not in skip_keys and v.find("<") > -1:
             # Strip empty divs (e.g. <div class="clear"></div>) — structural AoN artifacts
             if "<div" in v:
                 bs = BeautifulSoup(v, "html.parser")

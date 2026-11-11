@@ -1,6 +1,7 @@
 import pytest
 
-from pfsrd2.monster_family import _extract_level_table_pass, _level_changes_last
+from pfsrd2.monster_family import _extract_level_table_pass, _level_changes_last, _markdown_pass
+from universal.markdown import markdown_pass
 
 VAMPIRE_TABLE = (
     "<p>Increase the creature's level by 1.</p><table>"
@@ -32,6 +33,36 @@ def test_extracts_starting_level_table_and_normalizes_dashes():
     ]
     # display text keeps the table
     assert "<table>" in struct["sections"][0]["sections"][0]["text"]
+
+
+def test_finds_table_in_a_later_top_level_section():
+    """Strigoi keeps its table in a section after the creation section."""
+    struct = {
+        "name": "Strigoi",
+        "sections": [
+            {"name": "Creating", "text": "<p>steps</p>", "sections": []},
+            {"name": "Statistics", "text": VAMPIRE_TABLE, "sections": []},
+        ],
+        "monster_family": {"name": "Strigoi"},
+    }
+    _extract_level_table_pass(struct)
+    assert len(struct["monster_family"]["adjustments"]) == 2
+
+
+def test_header_only_table_fails_loudly():
+    table = "<table><tr><td>Starting Level</td><td>HP</td></tr></table>"
+    with pytest.raises(AssertionError, match="no rows"):
+        _extract_level_table_pass(_struct("<p>x</p>", table))
+
+
+def test_family_markdown_keeps_conditionals_verbatim():
+    cond = "$.creature_type.level >= 3 && $.creature_type.level <= 4"
+    struct = {
+        "name": "Vampire",
+        "monster_family": {"changes": [{"effects": [{"conditional": cond}]}]},
+    }
+    _markdown_pass(struct)
+    assert struct["monster_family"]["changes"][0]["effects"][0]["conditional"] == cond
 
 
 def test_ignores_non_level_tables():
@@ -72,8 +103,6 @@ def test_level_change_stays_put_without_table():
 
 
 def test_markdown_pass_leaves_skipped_keys_alone():
-    from universal.markdown import markdown_pass
-
     cond = "$.creature_type.level >= 3 && $.creature_type.level <= 4"
     struct = {"effects": [{"conditional": cond, "text": "<i>x</i>"}]}
     markdown_pass(struct, "X", "", skip_keys={"conditional"})

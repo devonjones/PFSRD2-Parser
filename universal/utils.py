@@ -147,6 +147,11 @@ def has_name(tag, name):
     return bool(hasattr(tag, "name") and tag.name == name)
 
 
+def normalize_dashes(text):
+    """Normalize en-dash/em-dash to ASCII hyphen for numeric parsing."""
+    return text.replace("\u2013", "-").replace("\u2014", "-")
+
+
 def get_text(detail):
     return "".join(detail.findAll(text=True))
 
@@ -593,9 +598,9 @@ def extract_pfs_note(bs, struct):
     assert note_text, "PFS Note tag found and removed from HTML but yielded no text"
 
     pfs_availability = struct["pfs"]
-    assert isinstance(
-        pfs_availability, str
-    ), f"Expected pfs to be a string at this point, got {type(pfs_availability)}"
+    assert isinstance(pfs_availability, str), (
+        f"Expected pfs to be a string at this point, got {type(pfs_availability)}"
+    )
     struct["pfs"] = {
         "type": "stat_block_section",
         "subtype": "pfs",

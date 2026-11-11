@@ -230,6 +230,11 @@ class TestFamilyLevelTable:
         assert json.loads(rows[cites]["raw_json"])["_adjustments"] == self.TABLE
         assert "_adjustments" not in json.loads(rows[plain]["raw_json"])
 
+    def test_see_below_counts_as_citing_the_table(self, mock_db):
+        text = "They gain weakness to holy damage and more HP (see below)."
+        self._run([text], self.TABLE)
+        assert json.loads(self._rows(mock_db)[text]["raw_json"])["_adjustments"] == self.TABLE
+
     def test_templates_still_attach_to_every_change(self, mock_db):
         changes = [_make_change("Increase their AC by 2.")]
         struct = _make_struct("monster_template", "Elite", changes, adjustments=self.TABLE)

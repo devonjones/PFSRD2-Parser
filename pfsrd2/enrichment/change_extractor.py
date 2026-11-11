@@ -10,6 +10,7 @@ import re
 import sys
 
 from pfsrd2.ability_placement import CATEGORY_TARGETS, ability_target
+from pfsrd2.change_extraction import CITES_TABLE
 from pfsrd2.sql import get_db_connection, get_db_path
 from pfsrd2.sql.enrichment import fetch_all_creature_types, get_enrichment_db_connection
 from pfsrd2.sql.traits import (
@@ -17,6 +18,7 @@ from pfsrd2.sql.traits import (
     fetch_trait_by_name_preferring_edition,
     strip_nested_metadata,
 )
+from universal.utils import normalize_dashes
 
 ENRICHMENT_VERSION = 30
 
@@ -180,11 +182,6 @@ def _trait_effect(name, operation):
     return {"target": tgt, "operation": operation, "name": name}
 
 
-def _normalize_dashes(text):
-    """Normalize en-dash/em-dash to ASCII hyphen for numeric parsing."""
-    return text.replace("\u2013", "-").replace("\u2014", "-")
-
-
 def enrich_change(raw_json_str, source_name):
     """Enrich a single change record.
 
@@ -246,13 +243,11 @@ def _categorize_change_text(text):
         return "traits"
     if "immunit" in t:
         return "immunities"
-    # "Increase its HP by the amount shown on the table. ...to compensate for
-    # the creature's weakness to silver" is an HP change, not a weakness one
-    # (werecreature). The weakness itself is its own change.
-    if _TABLE_HP_LEAD.match(t):
-        return "hit_points"
     if "weakness" in t:
-        return "weaknesses"
+        # "Increase its HP by the amount shown on the table. ...to compensate
+        # for the creature's weakness to silver" is an HP change (werecreature);
+        # the weakness itself is its own change.
+        return "hit_points" if _TABLE_HP_LEAD.match(t) else "weaknesses"
     if "resistance" in t:
         return "resistances"
     if "language" in t:
@@ -411,13 +406,7 @@ def _build_effects(text, category, source_name, adjustments=None, links=None, ab
     elif category == "strikes":
         return _build_strike_effects(text)
     elif category in ("weaknesses", "resistances"):
-        if category == "weaknesses":
-            effects = _build_weakness_effects(text, adjustments)
-        else:
-            effects = _build_resistance_effects(text, adjustments)
-        if adjustments and _CITES_TABLE.search(text) and not _any_item_value(effects):
-            return _build_table_defense_effects(text, adjustments)
-        return effects
+        return _build_defense_effects(text, category, adjustments)
     elif category == "gear":
         return [
             {
@@ -1766,7 +1755,7 @@ def _hp_effects_from_adjustments(adjustments, sign):
         value_key = hp_keys if hp_keys else [k for k in adj if k not in skip_keys]
         if not value_key:
             continue
-        raw_value = _normalize_dashes(adj[value_key[0]])
+        raw_value = normalize_dashes(adj[value_key[0]])
         try:
             value = int(raw_value)
         except ValueError:
@@ -1789,7 +1778,6 @@ def _hp_effects_from_adjustments(adjustments, sign):
     return effects
 
 
-_CITES_TABLE = re.compile(r"\btable\b|\(see below\)", re.I)
 _TABLE_HP_LEAD = re.compile(
     r"(?:<li>|\W)*(?:increase|reduce|decrease) (?:its|their|the creature's) (?:hp|hit points)\b.*\btable\b"
 )
@@ -1800,6 +1788,16 @@ _RESISTANCE_CLAUSE = re.compile(
     r"(?:\s*\(except ([^)]+)\)|\s+except (?:from )?([^,.(]+?)(?=\s*\(|,|\.|$))?"
 )
 _WEAKNESS_CLAUSE = re.compile(r"weakness to (cold iron|\w+)( damage)?(?: and (\w+) damage)?")
+
+
+def _build_defense_effects(text, category, adjustments):
+    if category == "weaknesses":
+        effects = _build_weakness_effects(text, adjustments)
+    else:
+        effects = _build_resistance_effects(text, adjustments)
+    if adjustments and CITES_TABLE.search(text) and not _any_item_value(effects):
+        return _build_table_defense_effects(text, adjustments)
+    return effects
 
 
 def _any_item_value(effects):
@@ -1814,20 +1812,35 @@ def _build_table_defense_effects(text, adjustments):
     granted item becomes one add_item per table row, gated on starting level.
     """
     t = text.lower()
+    effects = []
+    for hint, target, item in _table_defense_items(t):
+        for adj in adjustments:
+            effects.append(
+                {
+                    "conditional": _level_text_to_conditional(_adjustment_level(adj)),
+                    "target": target,
+                    "operation": "add_item",
+                    "item": dict(item, value=_table_value(adj, hint)),
+                }
+            )
+    if _TABLE_HP_CLAUSE.search(t):
+        sign = -1 if "reduce" in t or "decrease" in t else 1
+        effects.extend(_hp_effects_from_adjustments(adjustments, sign))
+    assert effects, f"table-citing change produced no effects: {text!r}"
+    return effects
+
+
+def _table_defense_items(t):
+    """(column hint, target, item) for each stat a lowercased sentence grants."""
     items = []
     if "fast healing" in t:
-        items.append(
-            (
-                "fast",
-                "$.defense.hitpoints[*].automatic_abilities",
-                {
-                    "type": "stat_block_section",
-                    "subtype": "ability",
-                    "name": "Fast Healing",
-                    "ability_type": "automatic",
-                },
-            )
-        )
+        item = {
+            "type": "stat_block_section",
+            "subtype": "ability",
+            "name": "Fast Healing",
+            "ability_type": "automatic",
+        }
+        items.append(("fast", "$.defense.hitpoints[*].automatic_abilities", item))
     for m in _RESISTANCE_CLAUSE.finditer(t):
         item = {
             "type": "stat_block_section",
@@ -1851,36 +1864,19 @@ def _build_table_defense_effects(text, adjustments):
         suffix = " damage" if m.group(3) else ""
         for name in (m.group(1), m.group(3)):
             if name:
-                items.append(
-                    (
-                        "weak",
-                        "$.defense.hitpoints[*].weaknesses",
-                        {
-                            "type": "stat_block_section",
-                            "subtype": "weakness",
-                            "name": f"{name}{suffix}",
-                        },
-                    )
-                )
-    effects = []
-    for hint, target, item in items:
-        for adj in adjustments:
-            effects.append(
-                {
-                    "conditional": _level_text_to_conditional(_adjustment_level(adj)),
-                    "target": target,
-                    "operation": "add_item",
-                    "item": dict(item, value=_table_value(adj, hint)),
+                item = {
+                    "type": "stat_block_section",
+                    "subtype": "weakness",
+                    "name": f"{name}{suffix}",
                 }
-            )
-    if _TABLE_HP_CLAUSE.search(t):
-        sign = -1 if "reduce" in t or "decrease" in t else 1
-        effects.extend(_hp_effects_from_adjustments(adjustments, sign))
-    return effects
+                items.append(("weak", "$.defense.hitpoints[*].weaknesses", item))
+    return items
 
 
 def _adjustment_level(adj):
-    return adj.get("starting_level", adj.get("level", ""))
+    level = adj.get("starting_level", adj.get("level"))
+    assert level, f"table row without a level: {adj}"
+    return level
 
 
 def _table_value(adj, hint):
@@ -1893,13 +1889,13 @@ def _table_value(adj, hint):
     keys = [k for k in adj if k not in skip and "hp" not in k]
     named = [k for k in keys if hint in k]
     key = (named or keys)[0]
-    return abs(int(_normalize_dashes(adj[key])))
+    return abs(int(normalize_dashes(adj[key])))
 
 
 def _level_text_to_conditional(text):
     """Convert table level text like '2-4' or '20+' to a jsonpath conditional."""
     # Normalize en-dash/em-dash to ASCII hyphen for range detection
-    text = _normalize_dashes(text.strip())
+    text = normalize_dashes(text.strip())
     if "or lower" in text or "or less" in text:
         num = re.search(r"(\d+)", text)
         if num:
@@ -2194,7 +2190,7 @@ def _build_weakness_effects(text, adjustments=None):
                 weak_keys = [k for k in adj if k not in skip_keys and "weak" in k.lower()]
                 val_key = weak_keys if weak_keys else [k for k in adj if k not in skip_keys]
                 if val_key:
-                    raw_val = _normalize_dashes(adj[val_key[0]])
+                    raw_val = normalize_dashes(adj[val_key[0]])
                     try:
                         val = abs(int(raw_val))  # Weakness values are always positive
                     except ValueError:
@@ -2245,7 +2241,7 @@ def _build_resistance_effects(text, adjustments=None):
                 res_keys = [k for k in adj if k not in skip_keys and "resist" in k.lower()]
                 val_key = res_keys if res_keys else [k for k in adj if k not in skip_keys]
                 if val_key:
-                    raw_val = _normalize_dashes(adj[val_key[0]])
+                    raw_val = normalize_dashes(adj[val_key[0]])
                     try:
                         val = abs(int(raw_val))  # Resistance values are always positive
                     except ValueError:
