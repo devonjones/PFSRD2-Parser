@@ -84,7 +84,10 @@ def _trait_target(name):
 
 class ChangeReviewError(Exception):
     """Change text the extractor recognises but cannot encode safely. The
-    record is marked needs_review instead of shipping a wrong effect."""
+    record is marked needs_review instead of shipping a wrong effect.
+    `kind` prefixes the review reason."""
+
+    kind = "review"
 
 
 class TraitLookupError(ChangeReviewError):
@@ -94,11 +97,15 @@ class TraitLookupError(ChangeReviewError):
     ("Revulsion", "Condition") rather than a real trait — the change is
     marked needs_review instead of shipping a display-crashing badge."""
 
+    kind = "unknown_trait"
+
 
 class UnmodelledChangeError(ChangeReviewError):
     """A recognised form the effect model cannot express: a condition that is
     not one trait ("is a growing plant", "is not an animal"), or a
     conditional rarity add."""
+
+    kind = "unmodelled"
 
 
 _TRAIT_ITEM_CACHE = {}

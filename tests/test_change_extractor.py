@@ -479,6 +479,11 @@ class TestBuildTraitEffects:
             ("all of them have the cold trait.", "cold", "add_item"),
             ("it gains the beast trait, then loses the animal trait.", "animal", "remove_item"),
             ("it gains the beast trait, then loses the animal trait.", "beast", "add_item"),
+            # an add verb after a remove verb wins for the later trait
+            ("it loses the fire trait but has the cold trait.", "cold", "add_item"),
+            ("it loses the fire trait and adds the cold trait.", "cold", "add_item"),
+            ("it loses the fire trait; all have the cold trait.", "cold", "add_item"),
+            ("it loses the fire or cold traits.", "fire", "remove_item"),
             # no "the X trait" list: falls back to the first mention
             ("the creature loses fire immunity", "fire", "remove_item"),
         ],
@@ -490,6 +495,89 @@ class TestBuildTraitEffects:
         effects = _build_trait_effects("If it is a plant, it gains the wood trait.", _links("wood"))
         wood = [e for e in _type_adds(effects) if e["name"] == "Wood"]
         assert wood[0]["conditional"] == "$.creature_type.creature_types[?(@=='Plant')] != null"
+
+    def test_review_errors_carry_their_reason_kind(self):
+        assert issubclass(change_extractor.TraitLookupError, change_extractor.ChangeReviewError)
+        assert change_extractor.TraitLookupError("x").kind == "unknown_trait"
+        assert change_extractor.UnmodelledChangeError("x").kind == "unmodelled"
+
+    def test_condition_trait_from_links_is_skipped_by_the_gate(self):
+        """The condition's own trait reaches _trait_gate via links (no
+        "remove it" special case here) and must not become an add."""
+        effects = _build_trait_effects(
+            "If the creature has the cold trait, it gains the water trait.", _links("cold", "water")
+        )
+        assert {e["name"] for e in _type_adds(effects)} == {"Water"}
+
+    def test_unknown_badge_gate_goes_to_review(self, monkeypatch):
+        def unknown(name):
+            raise change_extractor.TraitLookupError(name)
+
+        monkeypatch.setattr(change_extractor, "_trait_item", unknown)
+        with pytest.raises(change_extractor.TraitLookupError):
+            change_extractor._trait_gate(
+                "if the creature has the shiny trait, it gains the water trait.", "water"
+            )
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "- If the base creature was an animal, it gains the beast trait.",
+            "If it was an animal, it gains the beast trait.",
+        ],
+    )
+    def test_gate_clause_variants(self, text):
+        _, cond = change_extractor._trait_gate(text.lower(), "beast")
+        assert cond == "$.creature_type.creature_types[?(@=='Animal')] != null"
+
+    def test_raise_rarity_exact_effects(self):
+        """Badges, not strings, decide each step (engine conditionals cannot
+        compare strings); every condition is pinned."""
+        assert change_extractor._raise_rarity() == [
+            {
+                "operation": "replace",
+                "target": "$.creature_type.traits[?(@.name=='Uncommon')]",
+                "value": change_extractor._trait_item("Rare"),
+            },
+            {
+                "operation": "add_item",
+                "conditional": "$.creature_type.traits[?(@.name=='Uncommon')] == null"
+                " && $.creature_type.traits[?(@.name=='Rare')] == null"
+                " && $.creature_type.traits[?(@.name=='Unique')] == null",
+                "target": "$.creature_type.traits",
+                "item": change_extractor._trait_item("Uncommon"),
+            },
+            {
+                "operation": "replace",
+                "conditional": "$.creature_type.traits[?(@.name=='Rare')] != null",
+                "target": "$.creature_type.rarity",
+                "value": "Rare",
+            },
+            {
+                "operation": "replace",
+                "conditional": "$.creature_type.traits[?(@.name=='Uncommon')] != null",
+                "target": "$.creature_type.rarity",
+                "value": "Uncommon",
+            },
+        ]
+
+    def test_raise_keyword_steps_rarity(self):
+        effects = _build_trait_effects("Raise the creature's rarity by one step.")
+        assert effects[0]["target"] == "$.creature_type.traits[?(@.name=='Uncommon')]"
+
+    def test_rarity_step_text_adds_no_rarity_badge_of_its_own(self):
+        """The rarity words in a rarity-step sentence are steps, not trait
+        adds: only _raise_rarity's two string replaces touch the string."""
+        effects = _build_trait_effects(
+            "Increase the creature's rarity to uncommon if it was common or rare if it was uncommon.",
+            _links("uncommon", "rare"),
+        )
+        assert len([e for e in effects if e["target"] == "$.creature_type.rarity"]) == 2
+
+    def test_duplicate_trait_names_collected_once(self):
+        assert change_extractor._collect_trait_names(
+            "add the beast trait.", _links("beast", "Beast")
+        ) == ["Beast"]
 
     def test_gate_on_badge_trait_filters_by_name(self):
         """A gate trait that is not a creature type lives in the badge array,

@@ -107,8 +107,7 @@ def seed_change_overrides(curs, overrides):
                         f"(no badge canonicalization): {ov['change_text'][:60]!r}\n"
                     )
                 else:
-                    kind = "unknown trait" if isinstance(exc, TraitLookupError) else "unmodelled"
-                    ov = dict(ov, change_text=f"{ov['change_text']} [{kind}: {exc}]")
+                    ov = dict(ov, change_text=f"{ov['change_text']} [{exc.kind}: {exc}]")
                     misses.append(ov)
                     continue
         enriched_json = json.dumps(enriched, sort_keys=True, ensure_ascii=False)

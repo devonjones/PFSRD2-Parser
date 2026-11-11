@@ -62,6 +62,50 @@ class TestSeedChangeOverrides:
         )
         return identity_hash, change_id
 
+    def _trait_override(self, effects):
+        return dict(
+            _change_override("- Add the rare trait."),
+            enriched={"change_category": "traits", "effects": effects},
+        )
+
+    def test_unmodelled_effect_is_a_miss_with_its_kind(self, db):
+        curs = db.cursor()
+        override = self._trait_override(
+            [
+                {
+                    "operation": "add_item",
+                    "target": "$.creature_type.traits",
+                    "conditional": "$.creature_type.level >= 5",
+                    "item": {"name": "Rare"},
+                }
+            ]
+        )
+        self._insert_record(curs, override)
+        seeded, misses = seed_change_overrides(curs, [override])
+        assert seeded == 0
+        assert "[unmodelled: conditional rarity add" in misses[0]["change_text"]
+
+    @pytest.mark.parametrize("db_empty, seeded_count", [(False, 0), (True, 1)])
+    def test_unknown_trait_is_a_miss_unless_the_traits_db_is_empty(
+        self, db, monkeypatch, db_empty, seeded_count
+    ):
+        from pfsrd2.enrichment import change_extractor, overrides
+
+        def unknown(name):
+            raise change_extractor.TraitLookupError(name)
+
+        monkeypatch.setattr(change_extractor, "_trait_item", unknown)
+        monkeypatch.setattr(overrides, "_traits_db_empty", lambda: db_empty)
+        curs = db.cursor()
+        override = self._trait_override(
+            [{"operation": "add_item", "target": "$.creature_type.traits", "name": "Revulsion"}]
+        )
+        self._insert_record(curs, override)
+        seeded, misses = seed_change_overrides(curs, [override])
+        assert seeded == seeded_count
+        if not db_empty:
+            assert "[unknown_trait: Revulsion]" in misses[0]["change_text"]
+
     def test_seed_updates_matching_record(self, db):
         curs = db.cursor()
         override = _change_override()
