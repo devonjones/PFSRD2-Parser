@@ -12,6 +12,8 @@ from pfsrd2.change_extraction import (
     parse_adjustments_table,
     parse_change,
 )
+from pfsrd2.enrichment.change_extractor import name_filter
+from pfsrd2.enrichment.level_scaling import level_scaling_effects_pass
 from pfsrd2.equivalents import equivalent_link_pass
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.prose_changes import _prose_changes_for_line
@@ -80,6 +82,7 @@ def parse_monster_family(filename, options):
     strip_block_tags(struct)
     _markdown_pass(struct)
     template_ability_enrichment_pass(struct)
+    level_scaling_effects_pass(struct["monster_family"])
     remove_empty_fields(struct)
     _strip_image_links(struct)
     if not options.skip_schema:
@@ -334,8 +337,7 @@ def _consolidate_creation_changes(struct):
     def _section_path_filter(name):
         """Build a JSONPath name filter for a section."""
         assert name, "Section name must not be empty for JSONPath filter"
-        escaped = name.replace("'", "\\'")
-        return f"[?(@.name=='{escaped}')]"
+        return name_filter(name)
 
     def _build_subtype(section, section_path):
         """Build a monster_family subtype that references section abilities.

@@ -344,7 +344,6 @@ def _build_choose_skill_selection(text):
     if not m:
         return None
     ability = m.group(1).strip().title()
-    escaped = ability.replace("\\", "\\\\").replace("'", "\\'")
     return [
         {
             "target": "$.interaction_abilities",
@@ -361,7 +360,7 @@ def _build_choose_skill_selection(text):
                         "effects": [
                             {
                                 "operation": "add_items",
-                                "source": f"$.abilities[?(@.name=='{escaped}')]",
+                                "source": f"$.abilities{name_filter(ability)}",
                                 "target": "$.interaction_abilities",
                             }
                         ],
@@ -421,6 +420,12 @@ def _build_effects(text, category, source_name, adjustments=None, links=None, ab
 
 
 _ABILITIES_FALLBACK_TARGET = CATEGORY_TARGETS["automatic"]
+
+
+def name_filter(name, field="name"):
+    """JSONPath filter selecting the item whose `field` equals `name`."""
+    escaped = name.replace("\\", "\\\\").replace("'", "\\'")
+    return f"[?(@.{field}=='{escaped}')]"
 
 
 # Choose-from pool phrasings -> (min, max) bounds; max None = pool size.
@@ -487,12 +492,11 @@ def _build_ability_effects(abilities, text=None):
         name = ability.get("name")
         assert name, f"Ability missing required 'name' field: {ability!r}"
         target = ability_target(ability)
-        escaped = name.replace("\\", "\\\\").replace("'", "\\'")
         effects.append(
             {
                 "target": target,
                 "operation": "add_items",
-                "source": f"$.changes[*].abilities[?(@.name=='{escaped}')]",
+                "source": f"$.changes[*].abilities{name_filter(name)}",
                 "names": [name],
             }
         )
