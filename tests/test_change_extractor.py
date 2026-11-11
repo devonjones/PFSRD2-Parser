@@ -59,6 +59,17 @@ class TestCategorizeChangeText:
     def test_unknown(self):
         assert _categorize_change_text("random nonsense text") == "unknown"
 
+    def test_choice_pool_without_following(self):
+        # Primeval Cryptid: no "following", so only choice_bounds sees the pool
+        text = "Primeval cryptids gain two abilities from the list below."
+        assert _categorize_change_text(text) == "abilities"
+        raw = {"text": text, "abilities": [{"name": n} for n in ("Stench", "Shockwave", "X")]}
+        enriched, _ = enrich_change(json.dumps(raw), "Primeval Cryptid")
+        (effect,) = json.loads(enriched)["effects"]
+        assert effect["operation"] == "select"
+        sel = effect["selection"]
+        assert (sel["min"], sel["max"], len(sel["options"])) == (2, 3, 3)
+
     def test_empty_string(self):
         assert _categorize_change_text("") == "unknown"
 
