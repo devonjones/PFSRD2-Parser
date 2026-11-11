@@ -244,7 +244,47 @@ def test_number_words(word, n):
 
 def test_below_start_must_name_the_start_level():
     text = "deals 1d12 acid damage per 3 levels of the zombie (or 1d6 acid damage below level 4)."
-    assert "below_start" not in extract_level_scaling(text, "1d12")
+    with pytest.raises(AssertionError, match="below level 4"):
+        extract_level_scaling(text, "1d12")
+
+
+@pytest.mark.parametrize(
+    "text, formula",
+    [
+        ("deals 1d6 damage per level", None),
+        ("deals 1d6 damage per level", ""),
+        ("", "1d6"),
+        # a flat bonus is not dice (Strikes' "+1" damage adjustments)
+        ("It increases to 2d6 at 9th level.", "+1"),
+    ],
+)
+def test_nothing_to_scale_is_none(text, formula):
+    assert extract_level_scaling(text, formula) is None
+
+
+def test_ritual_level_is_not_creature_level():
+    assert extract_level_scaling("takes 1d6 damage per level of the ritual", "1d6") is None
+    # ...but the creature's own level still reads, even when "ability" follows
+    got = extract_level_scaling(
+        "takes 1d6 damage per level of the creature using this ability", "1d6"
+    )
+    assert got["per_levels"] == 1
+
+
+def test_steps_stay_in_their_sentence_and_in_level_order():
+    text = (
+        "deals 1d6 damage. It increases to 3d6 at 15th level and 2d6 at 9th level. "
+        "A separate 4d6 at 20th level blast is another ability."
+    )
+    got = extract_level_scaling(text, "1d6")
+    assert got["steps"] == [{"min_level": 9, "formula": "2d6"}, {"min_level": 15, "formula": "3d6"}]
+    assert formula_at_level("1d6", got, 16) == "3d6"
+
+
+def test_additive_scaling_on_other_dice_is_rejected():
+    scaling = {"increment": "1d6", "per_levels": 2, "start_level": 2, "additive": True}
+    with pytest.raises(AssertionError):
+        formula_at_level("1d8", scaling, 4)
 
 
 def test_additive_keeps_the_base_modifier_and_signed_modifiers_parse():

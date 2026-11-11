@@ -40,7 +40,7 @@ _RATE = re.compile(
     + _DICE
     + r"(?:\s+[\w ]{0,25}?damage)?\s+(?:per (?:"
     + _COUNT
-    + r" )?levels?(?! of the [\w ]*?(?:spell|ability|ritual))|for every "
+    + r" )?levels?(?! of the (?:\w+ )?(?:spell|ability|ritual)\b)|for every "
     + _COUNT
     + r" levels)",
     re.I,
@@ -80,11 +80,14 @@ def _steps(text, formula):
     intro = _STEP_INTRO.search(text)
     if not intro or _die(_norm(intro.group(1))) != _die(formula):
         return None
-    steps = [
-        {"min_level": int(m.group(2)), "formula": _norm(m.group(1))}
-        for m in _STEP.finditer(text, intro.start())
-        if _die(_norm(m.group(1))) == _die(formula)
-    ]
+    steps = sorted(
+        (
+            {"min_level": int(m.group(2)), "formula": _norm(m.group(1))}
+            for m in _STEP.finditer(text, intro.start(), intro.end())
+            if _die(_norm(m.group(1))) == _die(formula)
+        ),
+        key=lambda step: step["min_level"],
+    )
     # A level-keyed "increases to" sentence we cannot read is a phrasing to
     # teach the reader, not damage to keep at its base dice.
     assert steps or not re.search(
@@ -113,7 +116,10 @@ def _increment(text, formula):
         if minimum:
             out["minimum"] = _norm(minimum.group(1))
         below = _BELOW.search(text, m.end(), m.end() + 60)
-        if below and int(below.group(2)) == per:
+        if below:
+            assert (
+                int(below.group(2)) == per
+            ), f"below level {below.group(2)} is not the start {per}"
             out["below_start"] = _norm(below.group(1))
         return out
     return None
