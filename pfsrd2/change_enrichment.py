@@ -15,11 +15,13 @@ offline enrichment pipeline, not in the parser.
 
 import json
 
+from pfsrd2.change_extraction import CITES_TABLE
 from pfsrd2.change_identity import change_to_raw_json, compute_change_hash
 from pfsrd2.sql.enrichment import (
     fetch_change_by_hash,
     get_enrichment_db_connection,
     insert_change_record,
+    mark_change_stale,
 )
 
 # Fields that enrichment adds to a change object
@@ -77,18 +79,37 @@ def _process_changes(curs, changes, source_name, source_type, adjustments=None):
         identity_hash = compute_change_hash(source_name, source_type, text)
         # Include adjustments context in raw_json so enrichment can use them
         store_obj = dict(change)
-        if adjustments:
+        # Families attach the table only to changes citing it: legacy and
+        # remastered pages share change records and Ravener's two tables
+        # differ (90 vs 80 HP), so attaching it everywhere would re-stale the
+        # shared records each parse. Templates ("based on its level") keep it
+        # on every change and share no records across editions.
+        if adjustments and (source_type != "monster_family" or CITES_TABLE.search(text)):
             store_obj["_adjustments"] = adjustments
         raw_json = change_to_raw_json(store_obj)
 
         existing = fetch_change_by_hash(curs, identity_hash)
-        if existing:
+        if existing and _adjustments_changed(existing, store_obj):
+            # The table is outside the identity hash, so a newly extracted
+            # (or errata'd) table would never reach the record otherwise.
+            # Human-verified records are left alone: enrichment skips them,
+            # so staling one would only stop its merge for good.
+            # Nothing current to merge until pf2_enrich_changes runs.
+            mark_change_stale(curs, existing["change_id"], raw_json)
+        elif existing:
             # If enriched and not stale, merge enrichment back
             if existing["enriched_json"] and not existing["stale"]:
                 _merge_enrichment(change, existing["enriched_json"])
         else:
             # New change — insert raw record
             insert_change_record(curs, source_name, source_type, identity_hash, raw_json)
+
+
+def _adjustments_changed(existing, store_obj):
+    if existing["human_verified"]:
+        return False
+    old = json.loads(existing["raw_json"]).get("_adjustments")
+    return old != store_obj.get("_adjustments")
 
 
 def _merge_enrichment(change, enriched_json_str):

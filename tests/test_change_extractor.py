@@ -752,6 +752,12 @@ class TestLevelTextToConditional:
         result = _level_text_to_conditional("9\u201413")
         assert result == "$.creature_type.level >= 9 && $.creature_type.level <= 13"
 
+    @pytest.mark.parametrize("text", ["15 or higher", "21 or greater", "15 or more"])
+    def test_or_higher(self, text):
+        """Legacy vampire/ravener rows; these fell through to '== N'."""
+        num = text.split()[0]
+        assert _level_text_to_conditional(text) == f"$.creature_type.level >= {num}"
+
 
 class TestExtractNamesFromText:
     def test_simple_list(self):
@@ -1392,3 +1398,161 @@ class TestChooseSkillSelection:
     def test_plain_ability_grant_unaffected(self):
         effects = _build_effects("- Add the following abilities.", "abilities", "Catfolk")
         assert effects[0]["operation"] == "add_items"
+
+
+class TestTableDefenseEffects:
+    """Family defense changes valued 'as indicated in the table'."""
+
+    VAMPIRE = [
+        {"starting_level": "3-4", "hp_decrease": "-20", "fast_healing/resistance": "5"},
+        {"starting_level": "15+", "hp_decrease": "-60", "fast_healing/resistance": "15"},
+    ]
+    RAVENER = [
+        {"starting_level": "13-20", "hp_increase": "50", "weakness": "15"},
+        {"starting_level": "21 or greater", "hp_increase": "80", "weakness": "20"},
+    ]
+
+    def _enrich(self, text, adjustments):
+        out, _ = enrich_change(json.dumps({"text": text, "_adjustments": adjustments}), "X")
+        return json.loads(out)
+
+    def _items(self, effects, target_suffix):
+        return [
+            (e["conditional"], e["item"]["name"], e["item"]["value"])
+            for e in effects
+            if e["target"].endswith(target_suffix)
+        ]
+
+    def test_vampire_fast_healing_and_resistance(self):
+        text = (
+            "- The vampire gains fast healing and resistance to physical damage "
+            "(except silver) as indicated in the table. These abilities are the "
+            "reason the vampire has fewer HP."
+        )
+        effects = self._enrich(text, self.VAMPIRE)["effects"]
+        low = "$.creature_type.level >= 3 && $.creature_type.level <= 4"
+        high = "$.creature_type.level >= 15"
+        assert self._items(effects, "automatic_abilities") == [
+            (low, "Fast Healing", 5),
+            (high, "Fast Healing", 15),
+        ]
+        assert self._items(effects, "resistances") == [
+            (low, "physical", 5),
+            (high, "physical", 15),
+        ]
+        mods = [m["name"] for m in effects[2]["item"]["modifiers"]]
+        assert mods == ["except silver"]
+        # "fewer HP" is flavour, not an HP change
+        assert not [e for e in effects if e["target"].endswith(".hp")]
+
+    def test_worm_that_walks_paired_weaknesses(self):
+        text = (
+            "- The worm that walks gains fast healing, resistance to physical damage, "
+            "and weakness to area damage and splash damage as indicated in the table."
+        )
+        effects = self._enrich(text, self.VAMPIRE[:1])["effects"]
+        assert [n for _, n, _ in self._items(effects, "weaknesses")] == [
+            "area damage",
+            "splash damage",
+        ]
+        assert self._items(effects, "resistances")[0][1:] == ("physical", 5)
+
+    def test_werecreature_weakness_name_drops_table_phrase(self):
+        text = "- The creature gains weakness to silver as shown on the table."
+        table = [{"starting_level": "4 or lower", "hp_increase": "+25", "weakness_to_silver": "5"}]
+        effects = self._enrich(text, table)["effects"]
+        assert self._items(effects, "weaknesses") == [("$.creature_type.level <= 4", "silver", 5)]
+
+    @pytest.mark.parametrize("wrap", ["<li>{}</li>", "- {}"])
+    def test_werecreature_hp_line_is_hit_points(self, wrap):
+        """The DB holds the parser's <li> HTML; the data holds markdown."""
+        text = wrap.format(
+            "Increase its HP by the amount shown on the table. This HP increase is "
+            "more than typical in order to compensate for the creature's weakness to silver."
+        )
+        assert _categorize_change_text(text) == "hit_points"
+
+    def test_ravener_weakness_and_hp(self):
+        text = "- They gain weakness to holy damage and more HP (see below)."
+        effects = self._enrich(text, self.RAVENER)["effects"]
+        assert self._items(effects, "weaknesses") == [
+            ("$.creature_type.level >= 13 && $.creature_type.level <= 20", "holy", 15),
+            ("$.creature_type.level >= 21", "holy", 20),
+        ]
+        assert [e["value"] for e in effects if e["target"].endswith(".hp")] == [50, 80]
+
+    def test_strigoi_bare_except_and_all_prefix(self):
+        text = (
+            "- The strigoi gains fast healing and resistance to all physical damage "
+            "except from silver weapons or weapons that shed bright light (such as "
+            "one with a *light* spell) based on the table below."
+        )
+        effects = self._enrich(text, self.VAMPIRE[:1])["effects"]
+        res = [e["item"] for e in effects if e["target"].endswith("resistances")]
+        assert [(r["name"], r["value"]) for r in res] == [("all physical", 5)]
+        assert [m["name"] for m in res[0]["modifiers"]] == [
+            "except silver weapons or weapons that shed bright light"
+        ]
+
+    @pytest.mark.parametrize("verb", ["reduce", "decrease"])
+    def test_hp_clause_reduce_is_negative(self, verb):
+        text = f"- It gains weakness to fire and {verb} its HP (see below)."
+        effects = self._enrich(text, self.RAVENER)["effects"]
+        assert [e["value"] for e in effects if e["target"].endswith(".hp")] == [-50, -80]
+
+    def test_named_column_beats_first_column(self):
+        """Ravener-style table: the weakness column is chosen over an
+        unrelated earlier column."""
+        table = [{"starting_level": "13-20", "fast_healing": "99", "weakness": "15"}]
+        effects = self._enrich("- It gains weakness to holy damage (see below).", table)
+        assert self._items(effects["effects"], "weaknesses")[0][2] == 15
+
+    @pytest.mark.parametrize(
+        "lead",
+        ["Reduce its HP", "Decrease their Hit Points", "Increase the creature's HP"],
+    )
+    def test_table_hp_lead_variants(self, lead):
+        text = f"<li>{lead} as shown on the table, offsetting its weakness to fire.</li>"
+        assert _categorize_change_text(text) == "hit_points"
+
+    def test_level_key_and_negative_cell(self):
+        """Template-style 'level' column; a '-5' cell is still a value of 5."""
+        table = [{"level": "3 or lower", "weakness": "-5"}]
+        effects = self._enrich("- It gains weakness to holy damage (see below).", table)
+        assert self._items(effects["effects"], "weaknesses") == [
+            ("$.creature_type.level <= 3", "holy", 5)
+        ]
+
+    @pytest.mark.parametrize(
+        "category,target",
+        [("weaknesses", "weaknesses"), ("resistances", "resistances")],
+    )
+    def test_defense_dispatch_by_category(self, category, target):
+        text = "- Add weakness to fire and resistance to cold."
+        effects = _build_effects(text, category, "X")
+        assert {e["target"].rsplit(".", 1)[1] for e in effects} == {target}
+
+    def test_row_without_level_fails_loudly(self):
+        with pytest.raises(AssertionError, match="without a level"):
+            self._enrich("- It gains weakness to holy damage (see below).", [{"weakness": "5"}])
+
+    def test_table_citing_change_with_nothing_to_value_fails_loudly(self):
+        with pytest.raises(AssertionError, match="no effects"):
+            _build_effects(
+                "- Its resistances work as shown on the table.",
+                "resistances",
+                "X",
+                self.VAMPIRE,
+            )
+
+    def test_already_valued_effects_keep_their_path(self):
+        """Frostbound's 'value dependent on level (see table below)' is
+        already valued by the weakness builder; the table path stays out."""
+        text = (
+            "- Add a resistance to cold and a weakness to fire, value dependent on "
+            "the creature's level (see table below)."
+        )
+        table = [{"level": "3 or lower", "resistance/weakness": "3"}]
+        effects = _build_effects(text, "weaknesses", "X", table)
+        assert effects == change_extractor._build_weakness_effects(text, table)
+        assert effects  # and that path does value it

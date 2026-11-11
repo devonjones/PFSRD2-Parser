@@ -147,6 +147,11 @@ def has_name(tag, name):
     return bool(hasattr(tag, "name") and tag.name == name)
 
 
+def normalize_dashes(text):
+    """Normalize en-dash/em-dash to ASCII hyphen for numeric parsing."""
+    return text.replace("\u2013", "-").replace("\u2014", "-")
+
+
 def get_text(detail):
     return "".join(detail.findAll(text=True))
 

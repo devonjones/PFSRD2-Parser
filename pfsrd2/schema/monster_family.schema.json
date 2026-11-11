@@ -198,6 +198,22 @@
       ],
       "type": "object"
     },
+    "adjustment": {
+      "additionalProperties": true,
+      "properties": {
+        "subtype": {
+          "enum": [
+            "adjustment"
+          ]
+        },
+        "type": {
+          "enum": [
+            "stat_block_section"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "affliction_stage": {
       "additionalProperties": false,
       "properties": {
@@ -821,6 +837,13 @@
           "additionalItems": false,
           "items": {
             "$ref": "#/definitions/ability"
+          },
+          "type": "array"
+        },
+        "adjustments": {
+          "additionalItems": false,
+          "items": {
+            "$ref": "#/definitions/adjustment"
           },
           "type": "array"
         },

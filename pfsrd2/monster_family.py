@@ -7,7 +7,11 @@ from bs4 import BeautifulSoup, Tag
 
 from pfsrd2.ability_enrichment import template_ability_enrichment_pass
 from pfsrd2.change_enrichment import change_enrichment_pass
-from pfsrd2.change_extraction import collect_ability_nodes, parse_change
+from pfsrd2.change_extraction import (
+    collect_ability_nodes,
+    parse_adjustments_table,
+    parse_change,
+)
 from pfsrd2.equivalents import equivalent_link_pass
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.prose_changes import _prose_changes_for_line
@@ -30,7 +34,7 @@ from universal.universal import (
     restructure_pass,
     source_pass,
 )
-from universal.utils import get_text, remove_empty_fields, strip_block_tags
+from universal.utils import get_text, normalize_dashes, remove_empty_fields, strip_block_tags
 
 
 def parse_monster_family(filename, options):
@@ -62,7 +66,9 @@ def parse_monster_family(filename, options):
     aon_pass(struct, basename)
     restructure_pass(struct, "monster_family", find_monster_family)
     _consolidate_creation_changes(struct)
+    _extract_level_table_pass(struct)
     change_enrichment_pass(struct, "monster_family")
+    _level_changes_last(struct)
     remove_empty_sections_pass(struct)
     game_id_pass(struct)
     equivalent_link_pass(struct)
@@ -72,7 +78,7 @@ def parse_monster_family(filename, options):
     license_pass(struct)
     license_consolidation_pass(struct)
     strip_block_tags(struct)
-    universal_markdown_pass(struct, struct["name"], "", fxn_valid_tags=_valid_tags)
+    _markdown_pass(struct)
     template_ability_enrichment_pass(struct)
     remove_empty_fields(struct)
     _strip_image_links(struct)
@@ -408,6 +414,66 @@ def _consolidate_creation_changes(struct):
         mf["changes"] = all_changes
     if subtypes:
         mf["subtypes"] = subtypes
+
+
+def _markdown_pass(struct):
+    # Effect conditionals are JSONPath; "level <= 4" would otherwise go
+    # through markdownify and come out as "creature\_type".
+    universal_markdown_pass(
+        struct, struct["name"], "", fxn_valid_tags=_valid_tags, skip_keys={"conditional"}
+    )
+
+
+def _extract_level_table_pass(struct):
+    """Copy the family's Starting Level table into monster_family.adjustments.
+
+    Families like vampire and werecreature size HP, fast healing, resistance
+    and weakness by the creature's starting level. The table stays in the
+    section text for display; the structured copy is what change enrichment
+    reads to emit level-conditional effects. It usually sits in the creation
+    section, but strigoi keeps it in a section of its own, so search them all.
+    """
+    tables = []
+
+    def _walk(sections):
+        for section in sections:
+            bs = BeautifulSoup(section.get("text", ""), "html.parser")
+            for table in bs.find_all("table"):
+                first = table.find(["td", "th"])
+                if first and get_text(first).strip().lower().startswith("starting level"):
+                    tables.append(parse_adjustments_table(str(table)))
+            _walk(section.get("sections", []))
+
+    _walk(struct.get("sections", []))
+    if not tables:
+        return
+    assert len(tables) == 1, f"{struct['name']}: {len(tables)} starting-level tables"
+    adjustments = tables[0]
+    assert adjustments, f"{struct['name']}: starting-level table has no rows"
+    # Legacy and remastered pages of one family share change records (same
+    # name, same text), so '3–4' and '3-4' must agree or the shared record
+    # would go stale on every parse.
+    for adj in adjustments:
+        for key, value in adj.items():
+            if key not in ("type", "subtype"):
+                adj[key] = normalize_dashes(value)
+    struct["monster_family"]["adjustments"] = adjustments
+
+
+def _level_changes_last(struct):
+    """Apply 'Increase the creature's level' after the table-driven changes.
+
+    Table rows key on the *starting* level, and the engine evaluates each
+    conditional against the creature as patched so far. Family pages put
+    the level change first, so left in place it would shift every row by
+    the level increase. Only families with a level table are reordered.
+    """
+    mf = struct["monster_family"]
+    if not mf.get("adjustments") or not mf.get("changes"):
+        return
+    changes = mf["changes"]
+    level = [c for c in changes if c.get("change_category") == "level"]
+    mf["changes"] = [c for c in changes if c.get("change_category") != "level"] + level
 
 
 def _extract_image(details):
