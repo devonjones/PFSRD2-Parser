@@ -202,6 +202,9 @@
           "enum": [
             "stat_block_section"
           ]
+        },
+        "level_scaling": {
+          "$ref": "#/definitions/level_scaling"
         }
       },
       "required": [
@@ -503,6 +506,80 @@
         "$ref": "#/definitions/abstract_trait"
       },
       "type": "array"
+    },
+    "level_scaling": {
+      "type": "object",
+      "description": "How the damage formula grows with the creature's level, as printed in the ability text. Either steps (explicit thresholds: the formula from min_level up) or an increment (damage = (base if additive else nothing) + k * increment, where k counts start_level, start_level + per_levels, ... reached; minimum and below_start are printed floors).",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "stat_block_section"
+          ]
+        },
+        "subtype": {
+          "enum": [
+            "level_scaling"
+          ]
+        },
+        "steps": {
+          "type": "array",
+          "additionalItems": false,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "min_level": {
+                "type": "integer"
+              },
+              "formula": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "min_level",
+              "formula"
+            ]
+          }
+        },
+        "increment": {
+          "type": "string"
+        },
+        "per_levels": {
+          "type": "integer"
+        },
+        "start_level": {
+          "type": "integer"
+        },
+        "additive": {
+          "type": "boolean"
+        },
+        "minimum": {
+          "type": "string"
+        },
+        "below_start": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "subtype"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "steps"
+          ]
+        },
+        {
+          "required": [
+            "increment",
+            "per_levels",
+            "start_level",
+            "additive"
+          ]
+        }
+      ]
     }
   },
   "properties": {
