@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(script_dir, "..", "lib"))
 
 from pfsrd2.enrichment.change_extractor import (
     ENRICHMENT_VERSION,
+    ChangeReviewError,
     TraitLookupError,
     enrich_change,
 )
@@ -94,10 +95,12 @@ def main():
                 continue
             try:
                 enriched_json, method = enrich_change(record["raw_json"], record["source_name"])
-            except TraitLookupError as exc:
-                # Upstream extraction produced a non-trait name ("Revulsion");
-                # distinct reason so triage doesn't conflate it with regex gaps.
-                mark_change_needs_review(curs, record["change_id"], f"unknown_trait: {exc}")
+            except ChangeReviewError as exc:
+                # Upstream extraction produced a non-trait name ("Revulsion"),
+                # or a form the effect model cannot express; distinct reasons
+                # so triage doesn't conflate them with regex gaps.
+                kind = "unknown_trait" if isinstance(exc, TraitLookupError) else "unmodelled"
+                mark_change_needs_review(curs, record["change_id"], f"{kind}: {exc}")
                 unknown_count += 1
                 continue
             if enriched_json:

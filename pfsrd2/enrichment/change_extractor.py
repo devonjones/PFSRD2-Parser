@@ -63,6 +63,9 @@ def _get_creature_types():
     return _CREATURE_TYPES_CACHE
 
 
+_BADGE = "$.creature_type.traits"
+
+
 def _trait_target(name):
     """Return the correct JSON path target for a trait name.
 
@@ -76,15 +79,26 @@ def _trait_target(name):
     """
     if name.lower() in _get_creature_types():
         return "$.creature_type.creature_types"
-    return "$.creature_type.traits"
+    return _BADGE
 
 
-class TraitLookupError(Exception):
+class ChangeReviewError(Exception):
+    """Change text the extractor recognises but cannot encode safely. The
+    record is marked needs_review instead of shipping a wrong effect."""
+
+
+class TraitLookupError(ChangeReviewError):
     """A badge-array add names a trait the traits DB does not know.
 
     Usually means upstream extraction produced a sentence fragment
     ("Revulsion", "Condition") rather than a real trait — the change is
     marked needs_review instead of shipping a display-crashing badge."""
+
+
+class UnmodelledChangeError(ChangeReviewError):
+    """A recognised form the effect model cannot express: a condition that is
+    not one trait ("is a growing plant", "is not an animal"), or a
+    conditional rarity add."""
 
 
 _TRAIT_ITEM_CACHE = {}
@@ -154,7 +168,7 @@ def _trait_effect(name, operation):
     Removes match by name everywhere. Adds to the badge array must carry
     the full canonical trait object (see _trait_item)."""
     tgt = _trait_target(name)
-    if operation == "add_item" and tgt == "$.creature_type.traits":
+    if operation == "add_item" and tgt == _BADGE:
         return {"target": tgt, "operation": "add_item", "item": _trait_item(name)}
     return {"target": tgt, "operation": operation, "name": name}
 
@@ -686,10 +700,10 @@ def _trait_mention(t, name):
 
 
 def _trait_operation(t, name):
-    """add_item or remove_item from the verb nearest before the trait's first
-    mention. One verb for the whole change inverted mixed sentences: sporeborn
-    "gains the fungus ... traits ... Remove any traits that represent its
-    life" removed every trait it gains (PFSRD2-Parser-rx0c)."""
+    """add_item or remove_item from the verb nearest before the trait's
+    mention (see _trait_mention). One verb for the whole change inverted mixed
+    sentences: sporeborn "gains the fungus ... traits ... Remove any traits
+    that represent its life" removed every trait it gains (PFSRD2-Parser-rx0c)."""
     m = _trait_mention(t, name)
     verbs = _TRAIT_VERB.findall(t[: m.start()] if m else t)
     if verbs and verbs[-1].startswith(("lose", "remove")):
@@ -697,25 +711,51 @@ def _trait_operation(t, name):
     return "add_item"
 
 
-def _trait_clause_condition(t, name):
-    """'If the creature was an animal, it loses the animal trait and gains
-    the beast trait': both effects apply only to a creature with the named
-    type. Returns an engine conditional on that trait's presence, or None."""
+_IF_CLAUSE = re.compile(r"\s*-?\s*if (?:the (?:base )?creature|it) (?:was|is|has) ([^,.]*),")
+
+
+def _trait_gate(t, name):
+    """(is_gate_subject, conditional) for a trait inside an "If the creature
+    was an X, ..." sentence. The trait named in the condition itself is the
+    gate, not an effect ("If the creature has the aquatic trait, remove it").
+    A trait after the comma is gated on the condition's trait being present.
+    A condition that is not exactly one known trait raises, so the record is
+    reviewed instead of shipping an ungated or mis-gated effect."""
     m = _trait_mention(t, name)
     if not m:
-        return None
-    sentence_start = max(t.rfind(". ", 0, m.start()), -1) + 1
-    cm = re.match(
-        r"\s*-?\s*if (?:the (?:base )?creature|it) (?:was|is|has) (?:an? |the )?(\w+)",
-        t[sentence_start : m.start()],
-    )
+        return False, None
+    start = t.rfind(". ", 0, m.start()) + 1 if ". " in t[: m.start()] else 0
+    cm = _IF_CLAUSE.match(t, start)
     if not cm:
-        return None
-    gate = cm.group(1).title()
+        return False, None
+    if m.start() < cm.end():
+        return True, None
+    phrase = cm.group(1).strip()
+    gate = re.sub(r" traits?$", "", re.sub(r"^(?:an?|the) ", "", phrase))
+    if not re.fullmatch(r"[a-z-]+", gate) or gate == "not":
+        raise UnmodelledChangeError(f"condition {phrase!r} is not one trait")
+    gate = gate.title()
     tgt = _trait_target(gate)
+    if tgt == _BADGE:
+        _trait_item(gate)  # TraitLookupError when it is no trait at all
     # creature_types holds strings; the badge array holds trait objects
     match = "@" if tgt.endswith("creature_types") else "@.name"
-    return f"{tgt}[?({match}=='{gate}')] != null"
+    return False, f"{tgt}[?({match}=='{gate}')] != null"
+
+
+def _collect_trait_names(t, trait_links):
+    """Trait names from Traits links first, then the regex, deduplicated."""
+    names = []
+    for name in [
+        l.get("name", "").strip().title() for l in trait_links
+    ] + _extract_trait_names_regex(t):
+        if name and name.lower() not in {n.lower() for n in names}:
+            names.append(name)
+    # "Increase the creature's rarity to uncommon if it was common": rarity
+    # words there are rarity steps, not traits to add or remove.
+    if "rarity" in t:
+        names = [n for n in names if n.lower() not in _RARITY_TRAITS]
+    return names
 
 
 def _build_trait_effects(text, links=None):
@@ -767,23 +807,7 @@ def _build_trait_effects(text, links=None):
 
     if not effects and ("add" in t or "gain" in t):
         # Collect all trait names from links + regex
-        all_trait_names = []
-        extracted_names = set()
-        if trait_links:
-            for link in trait_links:
-                name = link.get("name", "").strip().title()
-                if name:
-                    all_trait_names.append(name)
-                    extracted_names.add(name.lower())
-        regex_names = _extract_trait_names_regex(t)
-        for name in regex_names:
-            if name.lower() not in extracted_names:
-                all_trait_names.append(name)
-                extracted_names.add(name.lower())
-        # "Increase the creature's rarity to uncommon if it was common":
-        # rarity words there are rarity steps, not traits to add or remove.
-        if "rarity" in t:
-            all_trait_names = [n for n in all_trait_names if n.lower() not in _RARITY_TRAITS]
+        all_trait_names = _collect_trait_names(t, trait_links)
 
         # Classify each trait as mandatory, optional, or choice
         optional_traits, choice_traits = _classify_optional_traits(t, all_trait_names)
@@ -808,8 +832,10 @@ def _build_trait_effects(text, links=None):
                     }
                 )
             else:
+                is_gate, cond = _trait_gate(t, nl)
+                if is_gate:
+                    continue
                 eff = _trait_effect(name, _trait_operation(t, nl))
-                cond = _trait_clause_condition(t, nl)
                 if cond:
                     eff["conditional"] = cond
                 effects.append(eff)
@@ -850,8 +876,6 @@ def _build_trait_effects(text, links=None):
             }
         )
 
-    rarity_step = "rarity" in t and re.search(r"\b(?:increase|raise)", t)
-
     m = re.search(r"replace the (.+?) traits? with the$", t)
     if m and not effects:
         for trait in re.split(r"\s+and\s+|,\s*", m.group(1)):
@@ -890,19 +914,22 @@ def _build_trait_effects(text, links=None):
         effects.append(_trait_effect(new_name, "add_item"))
 
     effects = canonicalize_trait_effects(effects)
-    if rarity_step:
-        # first, so the engine's Uncommon->Rare swap group is seen before
-        # the badge add group (Beast) and a Common creature steps only once
+    if "rarity" in t and re.search(r"\b(?:increase|raise)", t):
+        # first: the engine runs target+operation groups in first-seen
+        # order, and the Uncommon->Rare swap must run before any badge add
+        # group, or a Common creature steps twice
         effects = _raise_rarity() + effects
     return _gated_removals_last(effects)
 
 
 _RARITY_ORDER = ("Uncommon", "Rare", "Unique")
-_BADGE = "$.creature_type.traits"
 
 
 def _badge_is(name, present=True):
     return f"{_BADGE}[?(@.name=='{name}')] {'!=' if present else '=='} null"
+
+
+_NO_RARITY_BADGE = " && ".join(_badge_is(r, False) for r in _RARITY_ORDER)
 
 
 def _set_rarity(rarity):
@@ -910,7 +937,7 @@ def _set_rarity(rarity):
     rarity twice: the $.creature_type.rarity string and a badge (none for
     Common), and the engine syncs neither, so both are written here. Engine
     conditionals compare numbers and nulls only, so every test is on badge
-    presence, never on the rarity string (pfsrd2-api, 2026-11-11)."""
+    presence, never on the rarity string."""
     rank = _RARITY_ORDER.index(rarity)
     effects = [
         {
@@ -926,7 +953,7 @@ def _set_rarity(rarity):
             # no rarity badge at all: a lower one is swapped above and a
             # higher one stays, so this holds in whichever order the engine's
             # target+operation groups run
-            "conditional": " && ".join(_badge_is(r, False) for r in _RARITY_ORDER),
+            "conditional": _NO_RARITY_BADGE,
             "target": _BADGE,
             "item": _trait_item(rarity),
         }
@@ -946,8 +973,7 @@ def _raise_rarity():
     """'Increase the creature's rarity to uncommon if it was common or rare if
     it was uncommon': Uncommon becomes Rare, Common becomes Uncommon, and Rare
     or Unique stay. The badge swap runs before the add so a creature steps
-    once, and the string replaces form a first-match chain keyed on the new
-    badge."""
+    once, and the string replaces key off the new badge."""
     return [
         {
             "operation": "replace",
@@ -956,7 +982,7 @@ def _raise_rarity():
         },
         {
             "operation": "add_item",
-            "conditional": " && ".join(_badge_is(r, False) for r in _RARITY_ORDER),
+            "conditional": _NO_RARITY_BADGE,
             "target": _BADGE,
             "item": _trait_item("Uncommon"),
         },
@@ -982,13 +1008,12 @@ def _rarity_effects(effects):
     for eff in effects:
         name = (eff.get("item") or {}).get("name", "")
         if eff["operation"] == "add_item" and eff["target"] == _BADGE and name in _RARITY_ORDER:
-            expanded = _set_rarity(name)
-            if eff.get("conditional") == expanded[-2]["conditional"]:
+            if eff.get("conditional") == _NO_RARITY_BADGE:
                 out.append(eff)
                 continue
             if eff.get("conditional"):
-                raise ValueError(f"conditional rarity add is not modelled: {eff}")
-            out.extend(expanded)
+                raise UnmodelledChangeError(f"conditional rarity add: {eff['conditional']}")
+            out.extend(_set_rarity(name))
         else:
             out.append(eff)
     return out
@@ -1024,7 +1049,7 @@ def canonicalize_trait_effects(effects):
     for eff in effects:
         if (
             eff.get("operation") == "add_item"
-            and eff.get("target") == "$.creature_type.traits"
+            and eff.get("target") == _BADGE
             and eff.get("name")
             and not eff.get("item")
         ):
@@ -1036,7 +1061,7 @@ def canonicalize_trait_effects(effects):
     badge_adds = {
         (e.get("item") or {}).get("name", "").lower()
         for e in upgraded
-        if e.get("operation") == "add_item" and e.get("target") == "$.creature_type.traits"
+        if e.get("operation") == "add_item" and e.get("target") == _BADGE
     }
     for eff in upgraded:
         mirrored.append(eff)
@@ -1047,7 +1072,7 @@ def canonicalize_trait_effects(effects):
             and eff["name"].lower() not in badge_adds
         ):
             mirror = {
-                "target": "$.creature_type.traits",
+                "target": _BADGE,
                 "operation": "add_item",
                 "item": _trait_item(eff["name"]),
             }
@@ -1075,7 +1100,7 @@ def _mirror_creature_type_removals(effects):
     badge_removes = {
         str(e.get("name", "")).lower()
         for e in effects
-        if e.get("operation") == "remove_item" and e.get("target") == "$.creature_type.traits"
+        if e.get("operation") == "remove_item" and e.get("target") == _BADGE
     }
     for eff in effects:
         mirrored.append(eff)
@@ -1087,7 +1112,7 @@ def _mirror_creature_type_removals(effects):
             mirror = {
                 "name": eff["name"],
                 "operation": "remove_item",
-                "target": "$.creature_type.traits",
+                "target": _BADGE,
             }
             if "conditional" in eff:
                 mirror["conditional"] = eff["conditional"]

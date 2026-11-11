@@ -228,6 +228,12 @@ def _badge_adds(effects):
     ]
 
 
+def _links(*names):
+    return [
+        {"type": "link", "name": n, "game-obj": "Traits", "aonid": i} for i, n in enumerate(names)
+    ]
+
+
 class TestBuildTraitEffects:
     def test_add_multiple_traits(self):
         effects = _build_trait_effects("Add the ghost, spirit, and undead traits.")
@@ -464,6 +470,109 @@ class TestBuildTraitEffects:
         once = change_extractor.canonicalize_trait_effects(plain)
         assert [e for e in once if e["target"] == "$.creature_type.rarity"]
         assert change_extractor.canonicalize_trait_effects(once) == once
+
+    @pytest.mark.parametrize(
+        "text, name, op",
+        [
+            ("remove the undead trait.", "undead", "remove_item"),
+            ("it has the ghost trait.", "ghost", "add_item"),
+            ("all of them have the cold trait.", "cold", "add_item"),
+            ("it gains the beast trait, then loses the animal trait.", "animal", "remove_item"),
+            ("it gains the beast trait, then loses the animal trait.", "beast", "add_item"),
+            # no "the X trait" list: falls back to the first mention
+            ("the creature loses fire immunity", "fire", "remove_item"),
+        ],
+    )
+    def test_operation_follows_nearest_verb(self, text, name, op):
+        assert change_extractor._trait_operation(text, name) == op
+
+    def test_gate_reads_it_is_form(self):
+        effects = _build_trait_effects("If it is a plant, it gains the wood trait.", _links("wood"))
+        wood = [e for e in _type_adds(effects) if e["name"] == "Wood"]
+        assert wood[0]["conditional"] == "$.creature_type.creature_types[?(@=='Plant')] != null"
+
+    def test_gate_on_badge_trait_filters_by_name(self):
+        """A gate trait that is not a creature type lives in the badge array,
+        whose elements are objects: the filter reads @.name."""
+        effects = _build_trait_effects(
+            "If the creature has the cold trait, it gains the water trait."
+        )
+        water = [e for e in _type_adds(effects) if e["name"] == "Water"]
+        assert water[0]["conditional"] == "$.creature_type.traits[?(@.name=='Cold')] != null"
+
+    def test_trait_named_in_the_condition_is_not_an_effect(self):
+        """Amphibious: "If the creature has the aquatic trait, remove it" must
+        not ADD the aquatic trait it tests for."""
+        effects = _build_trait_effects(
+            "Add the amphibious trait. If the creature has the aquatic trait, remove it."
+        )
+        assert "Aquatic" not in {e.get("name") for e in _type_adds(effects)}
+        assert {e["name"] for e in effects if e["operation"] == "remove_item"} == {"Aquatic"}
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Add the wood trait. If the creature is a growing plant, you can also add the plant trait.",
+            "If the creature is not an animal, it gains the beast trait.",
+            "If the creature was a humanoid or animal, it gains the beast trait.",
+        ],
+    )
+    def test_condition_that_is_not_one_trait_goes_to_review(self, text):
+        with pytest.raises(change_extractor.UnmodelledChangeError):
+            _build_trait_effects(text, _links("wood", "plant", "beast"))
+
+    def test_gated_badge_removal_runs_before_type_removal(self):
+        """The badge removal's gate reads the type list, so the type-list
+        removal must come after it or the Animal badge survives."""
+        effects = _build_trait_effects(
+            "If the creature was an animal, it loses the animal trait and gains the beast trait.",
+            _links("animal", "beast"),
+        )
+        removes = [e["target"] for e in effects if e["operation"] == "remove_item"]
+        assert removes == ["$.creature_type.traits", "$.creature_type.creature_types"]
+
+    def test_rarity_raise_runs_before_other_badge_adds(self):
+        """The engine runs target+operation groups in first-seen order, so the
+        Uncommon->Rare swap must precede the Beast badge add or a Common
+        creature steps twice."""
+        effects = _build_trait_effects(
+            "Increase the creature's rarity to uncommon if it was common or rare if it "
+            "was uncommon. If the creature was an animal, it loses the animal trait and "
+            "gains the beast trait."
+        )
+        assert effects[0]["operation"] == "replace"
+        assert effects[0]["target"] == "$.creature_type.traits[?(@.name=='Uncommon')]"
+
+    def test_rarity_mentioned_without_increase_does_not_step(self):
+        effects = _build_trait_effects("Its rarity does not change; it gains the beast trait.")
+        assert not [e for e in effects if e["target"] == "$.creature_type.rarity"]
+
+    @pytest.mark.parametrize(
+        "rarity, swapped",
+        [("Uncommon", []), ("Rare", ["Uncommon"]), ("Unique", ["Uncommon", "Rare"])],
+    )
+    def test_set_rarity_swaps_only_lower_badges(self, rarity, swapped):
+        effects = change_extractor._set_rarity(rarity)
+        swaps = [e["target"] for e in effects if e["target"].startswith("$.creature_type.traits[")]
+        assert swaps == [f"$.creature_type.traits[?(@.name=='{r}')]" for r in swapped]
+        assert effects[-1] == {
+            "operation": "replace",
+            "conditional": f"$.creature_type.traits[?(@.name=='{rarity}')] != null",
+            "target": "$.creature_type.rarity",
+            "value": rarity,
+        }
+
+    def test_conditional_rarity_add_goes_to_review(self):
+        gated = [
+            {
+                "operation": "add_item",
+                "target": "$.creature_type.traits",
+                "conditional": "$.creature_type.level >= 5",
+                "item": {"name": "Rare"},
+            }
+        ]
+        with pytest.raises(change_extractor.ChangeReviewError):
+            change_extractor.canonicalize_trait_effects(gated)
 
     def test_non_trait_links_ignored(self):
         """Links with game-obj != Traits should not be extracted as traits."""
