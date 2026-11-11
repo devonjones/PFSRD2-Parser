@@ -21,6 +21,7 @@ from pfsrd2.ability_identity import compute_identity_hash
 from pfsrd2.ability_placement import (
     CATEGORY_TARGETS,
     DEFAULT_TARGET,
+    _enrichment_conn,
     ability_target,
     deterministic_ability_category,
     lookup_ability_categories,
@@ -220,6 +221,32 @@ class TestAbilityTarget:
         # exactly one test in the repo — this one.
         with pytest.raises(AssertionError, match="missing required 'name'"):
             ability_target({"action_type": {"name": "Reaction"}})
+
+
+class TestEnrichmentConn:
+    class _Conn:
+        closed = 0
+
+        def close(self):
+            self.closed += 1
+
+    def test_it_closes_only_the_connection_it_opened(self, monkeypatch):
+        opened = self._Conn()
+        monkeypatch.setattr("pfsrd2.ability_placement.get_enrichment_db_connection", lambda: opened)
+        with _enrichment_conn(None) as conn:
+            assert conn is opened
+        assert opened.closed == 1
+        with pytest.raises(RuntimeError), _enrichment_conn(None):
+            raise RuntimeError("boom")
+        assert opened.closed == 2
+
+    def test_a_callers_connection_stays_open(self):
+        theirs = self._Conn()
+        with _enrichment_conn(theirs) as conn:
+            assert conn is theirs
+        with pytest.raises(RuntimeError), _enrichment_conn(theirs):
+            raise RuntimeError("boom")
+        assert theirs.closed == 0
 
 
 class TestRecordedAbilityCategory:
