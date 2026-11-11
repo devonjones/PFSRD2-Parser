@@ -180,22 +180,25 @@ def _placements(change):
     loop), so those replaces ride inside the option as an effects bundle.
     """
     out = {}
-
-    def place(name, target, sink):
-        assert name not in out, f"ability {name!r} is placed twice in one change"
-        out[name] = (target, sink)
-
     for effect in change.get("effects", []):
-        if effect["operation"] == "add_items":
-            for name in effect.get("names", []):
-                place(name, effect["target"], change["effects"].extend)
-        elif effect["operation"] == "select":
-            options = effect["selection"].get("options", [])
-            for k, option in enumerate(options):
-                if option.get("operation") == "add_items":
-                    for name in option.get("names", []):
-                        place(name, option["target"], _bundler(options, k))
+        for add, sink in _add_items_with_sinks(effect, change["effects"]):
+            for name in add.get("names", []):
+                assert name not in out, f"ability {name!r} is placed twice in one change"
+                out[name] = (add["target"], sink)
     return out
+
+
+def _add_items_with_sinks(effect, change_effects):
+    if effect["operation"] == "add_items":
+        return [(effect, change_effects.extend)]
+    if effect["operation"] != "select":
+        return []
+    options = effect["selection"].get("options", [])
+    return [
+        (option, _bundler(options, k))
+        for k, option in enumerate(options)
+        if option.get("operation") == "add_items"
+    ]
 
 
 def _bundler(options, k):

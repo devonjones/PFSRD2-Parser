@@ -535,10 +535,17 @@ def _annotate_level_scaling(ability):
     }
     if floors:
         ability["damage"] = [
-            dmg
-            for dmg in ability["damage"]
-            if "level_scaling" in dmg or dmg.get("formula") not in floors
+            dmg for dmg in ability["damage"] if not _is_floor_echo(dmg, floors, text)
         ]
+
+
+def _is_floor_echo(dmg, floors, text):
+    """A typeless entry whose dice appear in the text only inside "(minimum …)"."""
+    formula = dmg.get("formula")
+    if "level_scaling" in dmg or "damage_type" in dmg or formula not in floors:
+        return False
+    outside = re.sub(r"\(minimum [^)]*\)", "", text)
+    return not re.search(rf"\b{re.escape(formula)}\b", outside)
 
 
 def _apply_uma_from_db(ability, main_curs, edition=None):

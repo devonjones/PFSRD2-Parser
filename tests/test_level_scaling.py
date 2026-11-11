@@ -1,7 +1,9 @@
 """Level-scaled damage, one case per phrasing found in templates and families."""
 
+import ast
 import inspect
 import json
+import textwrap
 
 import pytest
 
@@ -211,6 +213,22 @@ def test_merge_reads_the_effect_field_and_drops_the_floor_entry():
     # extracted as a damage entry, which would apply as extra damage
     (rate,) = _merged({"name": "Shockwave", "effect": SHOCKWAVE}, _damage("1d6"), _damage("2d6"))
     assert rate["level_scaling"]["minimum"] == "2d6"
+
+
+@pytest.mark.parametrize(
+    "text, other",
+    [
+        # unrelated damage on the same ability
+        (SHOCKWAVE + " It also takes 1d4 fire damage.", _damage("1d4", damage_type="fire")),
+        # the floor's dice also appear outside the parenthetical
+        (SHOCKWAVE + " A creature that falls prone takes 2d6 damage.", _damage("2d6")),
+        # a typed entry is real damage, not the floor's echo
+        (SHOCKWAVE, _damage("2d6", damage_type="fire")),
+    ],
+)
+def test_the_floor_drop_keeps_real_damage(text, other):
+    rate, kept = _merged({"name": "Shockwave", "effect": text}, _damage("1d6"), other)
+    assert "level_scaling" in rate and kept == other
 
 
 def test_a_floor_equal_to_the_base_keeps_the_base_entry():
@@ -477,10 +495,17 @@ def test_the_pass_reaches_subtypes():
     "module", [monster_template.parse_monster_template, monster_family.parse_monster_family]
 )
 def test_parsers_run_the_pass_after_ability_enrichment(module):
-    # a full parse needs the enrichment DBs, which CI lacks; pin the wiring
-    source = inspect.getsource(module)
-    enrich = source.index("template_ability_enrichment_pass(struct)")
-    assert source.index("level_scaling_effects_pass(struct[") > enrich
+    # a full parse needs the enrichment DBs, which CI lacks; pin the wiring:
+    # both are unconditional top-level calls, enrichment first
+    (fn,) = ast.parse(textwrap.dedent(inspect.getsource(module))).body
+    lines = {
+        stmt.value.func.id: stmt.lineno
+        for stmt in fn.body
+        if isinstance(stmt, ast.Expr)
+        and isinstance(stmt.value, ast.Call)
+        and isinstance(stmt.value.func, ast.Name)
+    }
+    assert lines["template_ability_enrichment_pass"] < lines["level_scaling_effects_pass"]
 
 
 @pytest.mark.parametrize(
