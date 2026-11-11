@@ -1748,7 +1748,7 @@ def _hp_effects_from_adjustments(adjustments, sign):
     """Convert adjustments table rows into HP effects with conditionals."""
     effects = []
     for adj in adjustments:
-        level_text = adj.get("starting_level", adj.get("level", ""))
+        level_text = _adjustment_level(adj)
         skip_keys = {"type", "subtype", "starting_level", "level"}
         # Prefer HP-specific columns over others (e.g., resistances)
         hp_keys = [k for k in adj if k not in skip_keys and "hp" in k.lower()]

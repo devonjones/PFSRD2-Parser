@@ -27,13 +27,6 @@ from pfsrd2.sql.enrichment import (
 # Fields that enrichment adds to a change object
 ENRICHMENT_FIELDS = ("change_category", "effects")
 
-# A family change reads the starting-level table only when it says so.
-# Families attach the table narrowly: their legacy and remastered pages
-# share change records, and Ravener's two tables differ (90 vs 80 HP), so
-# attaching it to every change would re-stale the shared records each parse.
-# Templates keep the table on every change; their wording ("based on its
-# level") is looser and they share no records across editions.
-
 
 def change_enrichment_pass(struct, source_type):
     """Populate enrichment DB and merge enriched data for change objects.
@@ -86,6 +79,11 @@ def _process_changes(curs, changes, source_name, source_type, adjustments=None):
         identity_hash = compute_change_hash(source_name, source_type, text)
         # Include adjustments context in raw_json so enrichment can use them
         store_obj = dict(change)
+        # Families attach the table only to changes citing it: legacy and
+        # remastered pages share change records and Ravener's two tables
+        # differ (90 vs 80 HP), so attaching it everywhere would re-stale the
+        # shared records each parse. Templates ("based on its level") keep it
+        # on every change and share no records across editions.
         if adjustments and (source_type != "monster_family" or CITES_TABLE.search(text)):
             store_obj["_adjustments"] = adjustments
         raw_json = change_to_raw_json(store_obj)

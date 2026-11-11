@@ -102,7 +102,6 @@ def _extract_abilities_from_li(li):
     return abilities
 
 
-# A change that reads a family's starting-level table says so.
 CITES_TABLE = re.compile(r"\btable\b|\(see below\)", re.I)
 
 

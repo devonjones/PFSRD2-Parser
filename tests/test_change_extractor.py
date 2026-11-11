@@ -1494,8 +1494,9 @@ class TestTableDefenseEffects:
             "except silver weapons or weapons that shed bright light"
         ]
 
-    def test_hp_clause_reduce_is_negative(self):
-        text = "- It gains weakness to fire and reduce its HP (see below)."
+    @pytest.mark.parametrize("verb", ["reduce", "decrease"])
+    def test_hp_clause_reduce_is_negative(self, verb):
+        text = f"- It gains weakness to fire and {verb} its HP (see below)."
         effects = self._enrich(text, self.RAVENER)["effects"]
         assert [e["value"] for e in effects if e["target"].endswith(".hp")] == [-50, -80]
 
@@ -1513,6 +1514,23 @@ class TestTableDefenseEffects:
     def test_table_hp_lead_variants(self, lead):
         text = f"<li>{lead} as shown on the table, offsetting its weakness to fire.</li>"
         assert _categorize_change_text(text) == "hit_points"
+
+    def test_level_key_and_negative_cell(self):
+        """Template-style 'level' column; a '-5' cell is still a value of 5."""
+        table = [{"level": "3 or lower", "weakness": "-5"}]
+        effects = self._enrich("- It gains weakness to holy damage (see below).", table)
+        assert self._items(effects["effects"], "weaknesses") == [
+            ("$.creature_type.level <= 3", "holy", 5)
+        ]
+
+    @pytest.mark.parametrize(
+        "category,target",
+        [("weaknesses", "weaknesses"), ("resistances", "resistances")],
+    )
+    def test_defense_dispatch_by_category(self, category, target):
+        text = "- Add weakness to fire and resistance to cold."
+        effects = _build_effects(text, category, "X")
+        assert {e["target"].rsplit(".", 1)[1] for e in effects} == {target}
 
     def test_row_without_level_fails_loudly(self):
         with pytest.raises(AssertionError, match="without a level"):

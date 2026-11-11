@@ -456,7 +456,7 @@ def _extract_level_table_pass(struct):
     for adj in adjustments:
         for key, value in adj.items():
             if key not in ("type", "subtype"):
-                adj[key] = normalize_dashes(value).strip()
+                adj[key] = normalize_dashes(value)
     struct["monster_family"]["adjustments"] = adjustments
 
 
