@@ -13,6 +13,7 @@ from pfsrd2.change_extraction import (
     parse_change,
 )
 from pfsrd2.enrichment.change_extractor import choice_bounds
+from pfsrd2.enrichment.level_scaling import level_scaling_effects_pass
 from pfsrd2.equivalents import equivalent_link_pass
 from pfsrd2.license import license_consolidation_pass, license_pass
 from pfsrd2.prose_changes import prose_changes_from_text
@@ -84,6 +85,7 @@ def parse_monster_template(filename, options):
     change_enrichment_pass(struct, "monster_template")
     reorder_changes_pass(struct)
     template_ability_enrichment_pass(struct)
+    level_scaling_effects_pass(struct["monster_template"])
     remove_empty_fields(struct)
     if not options.skip_schema:
         struct["schema_version"] = 1.0

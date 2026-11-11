@@ -16,6 +16,8 @@ Two shapes:
 
 import re
 
+from pfsrd2.enrichment.change_extractor import name_filter
+
 _ORD = r"(\d+)(?:st|nd|rd|th)"
 _DICE = r"(\d+d\d+(?:\s*[+-]\s*\d+)?)"
 _WORDS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6}
@@ -147,13 +149,112 @@ def formula_at_level(formula, scaling, level):
     start, per = scaling["start_level"], scaling["per_levels"]
     k = 0 if level < start else (level - start) // per + 1
     if k == 0:
-        return scaling.get("below_start", formula)
-    n, die, mod = _parse(scaling["increment"])
-    n, mod = n * k, mod * k
-    if scaling["additive"]:
-        bn, bdie, bmod = _parse(formula)
-        assert bdie == die, (formula, scaling)
-        n, mod = n + bn, mod + bmod
+        n, die, mod = _parse(scaling.get("below_start", formula))
+    else:
+        n, die, mod = _parse(scaling["increment"])
+        n, mod = n * k, mod * k
+        if scaling["additive"]:
+            bn, bdie, bmod = _parse(formula)
+            assert bdie == die, (formula, scaling)
+            n, mod = n + bn, mod + bmod
+    # the printed floor holds at every level, below the first step included
     if "minimum" in scaling:
         n = max(n, _parse(scaling["minimum"])[0])
     return _fmt(n, die, mod)
+
+
+# Starting levels the bands cover; the first and last bands are open-ended.
+_MIN_LEVEL, _MAX_LEVEL = -1, 25
+# The engine wraps an ability placed here in an offensive_action, so the
+# ability's fields sit under .ability.
+_WRAPPED = {"$.offense.offensive_actions"}
+_LEVEL = "$.creature_type.level"
+
+
+def _placements(change):
+    """Ability name -> add_items target, including options inside selects."""
+    out = {}
+    for effect in change.get("effects", []):
+        options = (
+            effect["selection"].get("options", []) if effect["operation"] == "select" else [effect]
+        )
+        for option in options:
+            if isinstance(option, dict) and option.get("operation") == "add_items":
+                for name in option.get("names", []):
+                    out[name] = option["target"]
+    return out
+
+
+def _level_gained_after(changes, index):
+    """Levels the creature gains from level changes that run after `index`.
+
+    Scaling text means the creature's final level, but a conditional sees the
+    level at the moment it runs: templates change the level before their
+    abilities, families change it last.
+    """
+    return sum(
+        effect["value"]
+        for change in changes[index + 1 :]
+        if change.get("change_category") == "level"
+        for effect in change.get("effects", [])
+        if effect.get("target") == _LEVEL and effect.get("operation") == "adjustment"
+    )
+
+
+def _bands(formula, scaling, delta):
+    """[lo, hi, formula] runs of starting level, base-formula runs dropped."""
+    bands = []
+    for level in range(_MIN_LEVEL, _MAX_LEVEL + 1):
+        at = formula_at_level(formula, scaling, level + delta)
+        if bands and bands[-1][2] == at:
+            bands[-1][1] = level
+        else:
+            bands.append([level, level, at])
+    return [band for band in bands if band[2] != formula]
+
+
+def _conditional(lo, hi):
+    parts = []
+    if lo > _MIN_LEVEL:
+        parts.append(f"{_LEVEL} >= {lo}")
+    if hi < _MAX_LEVEL:
+        parts.append(f"{_LEVEL} <= {hi}")
+    return " && ".join(parts)
+
+
+def _replaces(target, name, formula, scaling, delta):
+    path = target + name_filter(name) + (".ability" if target in _WRAPPED else "")
+    path += ".damage" + name_filter(formula, "formula") + ".formula"
+    return [
+        {"operation": "replace", "target": path, "value": at, "conditional": _conditional(lo, hi)}
+        for lo, hi, at in _bands(formula, scaling, delta)
+    ]
+
+
+def level_scaling_effects(changes):
+    """Append per-level-band replace effects for scaled ability damage.
+
+    PFSRD2-Parser-9vah: an applied template must carry the damage for the
+    creature's level, not the base dice. The engine resolves no numeric
+    index, so each target filters on the ability name and base formula.
+    """
+    for index, change in enumerate(changes):
+        placed = _placements(change)
+        delta = _level_gained_after(changes, index)
+        for ability in change.get("abilities", []):
+            for dmg in ability.get("damage", []):
+                scaling = dmg.get("level_scaling")
+                if not scaling:
+                    continue
+                name = ability["name"]
+                assert name in placed, f"scaled ability {name!r} has no add_items placement"
+                change["effects"].extend(
+                    _replaces(placed[name], name, dmg["formula"], scaling, delta)
+                )
+
+
+def level_scaling_effects_pass(obj):
+    """Run level_scaling_effects over a template/family and its subtypes."""
+    level_scaling_effects(obj.get("changes", []))
+    for subtype in obj.get("subtypes", []):
+        level_scaling_effects_pass(subtype)
