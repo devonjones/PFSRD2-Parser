@@ -224,11 +224,19 @@ def test_merge_reads_the_effect_field_and_drops_the_floor_entry():
         (SHOCKWAVE + " A creature that falls prone takes 2d6 damage.", _damage("2d6")),
         # a typed entry is real damage, not the floor's echo
         (SHOCKWAVE, _damage("2d6", damage_type="fire")),
+        # typeless dice that are not the floor
+        (SHOCKWAVE, _damage("3d6")),
     ],
 )
 def test_the_floor_drop_keeps_real_damage(text, other):
     rate, kept = _merged({"name": "Shockwave", "effect": text}, _damage("1d6"), other)
     assert "level_scaling" in rate and kept == other
+
+
+def test_a_longer_formula_does_not_hide_the_floor_echo():
+    text = SHOCKWAVE + " A creature that falls prone takes 12d6 damage."
+    (rate,) = _merged({"name": "Shockwave", "effect": text}, _damage("1d6"), _damage("2d6"))
+    assert rate["level_scaling"]["minimum"] == "2d6"
 
 
 def test_a_floor_equal_to_the_base_keeps_the_base_entry():
