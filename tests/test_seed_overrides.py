@@ -4,6 +4,7 @@ import pytest
 
 from pfsrd2.ability_enrichment import ENRICHMENT_FIELDS
 from pfsrd2.change_identity import compute_change_hash
+from pfsrd2.enrichment import change_extractor, overrides
 from pfsrd2.enrichment.change_extractor import ENRICHMENT_VERSION
 from pfsrd2.enrichment.overrides import (
     _ABILITY_FIELDS,
@@ -89,8 +90,6 @@ class TestSeedChangeOverrides:
     def test_unknown_trait_is_a_miss_unless_the_traits_db_is_empty(
         self, db, monkeypatch, db_empty, seeded_count
     ):
-        from pfsrd2.enrichment import change_extractor, overrides
-
         def unknown(name):
             raise change_extractor.TraitLookupError(name)
 

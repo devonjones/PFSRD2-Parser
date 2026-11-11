@@ -508,6 +508,7 @@ class TestBuildTraitEffects:
             "If the creature has the cold trait, it gains the water trait.", _links("cold", "water")
         )
         assert {e["name"] for e in _type_adds(effects)} == {"Water"}
+        assert {e["item"]["name"] for e in _badge_adds(effects)} == {"Water"}
 
     def test_unknown_badge_gate_goes_to_review(self, monkeypatch):
         def unknown(name):
