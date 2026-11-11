@@ -2832,7 +2832,7 @@
     },
     "level_scaling": {
       "type": "object",
-      "description": "How the damage formula grows with the creature's level, as printed in the ability text. Either steps (explicit thresholds: the formula from min_level up) or an increment (damage = (base if additive else nothing) + k * increment, where k counts start_level, start_level + per_levels, ... reached; minimum and below_start are printed floors).",
+      "description": "How the damage formula grows with the creature's level, as printed in the ability text. Either steps (explicit thresholds: the formula from min_level up) or an increment (damage = (base if additive else nothing) + k * increment, where k counts start_level, start_level + per_levels, ... reached). minimum is a printed floor on the dice count; below_start is the printed formula used below start_level.",
       "additionalProperties": false,
       "properties": {
         "type": {

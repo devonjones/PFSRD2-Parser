@@ -520,8 +520,8 @@ def _annotate_level_scaling(ability):
     re-running regex enrichment would overwrite LLM-extracted fields.
     """
     text = f"{ability.get('text', '')} {ability.get('effect', '')}"
-    for dmg in ability.get("damage") or []:
-        if isinstance(dmg, dict) and "level_scaling" not in dmg:
+    for dmg in ability.get("damage", []):
+        if "level_scaling" not in dmg:
             scaling = extract_level_scaling(text, dmg.get("formula"))
             if scaling:
                 dmg["level_scaling"] = scaling

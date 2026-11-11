@@ -1,7 +1,10 @@
 """Level-scaled damage, one case per phrasing found in templates and families."""
 
+import json
+
 import pytest
 
+from pfsrd2.ability_enrichment import _merge_enrichment
 from pfsrd2.enrichment.level_scaling import extract_level_scaling, formula_at_level
 
 POWER_SURGE = (
@@ -166,27 +169,95 @@ def test_steps_resolve_by_level():
         "deals 1d6 fire damage plus 1d8 for every 3 levels.",
         # spell heightening, not creature level
         "deals 1d6 fire damage, plus 1d6 per spell level above 1st.",
+        # the level of something else (skelm's Seize Prayer, a counteracted ability)
+        "each take 1d6 mental damage per level of the triggering spell",
+        "dealing 1d6 force damage per level of the ability she counteracted",
     ],
 )
 def test_no_scaling_is_none(text):
     assert extract_level_scaling(text, "1d6") is None
 
 
+def _damage(formula, **extra):
+    return {"type": "stat_block_section", "subtype": "attack_damage", "formula": formula, **extra}
+
+
+def _merged(ability, *damage):
+    _merge_enrichment(ability, json.dumps({"damage": list(damage)}))
+    return ability["damage"]
+
+
 def test_merge_marks_scaling_on_enriched_damage():
-    import json
-
-    from pfsrd2.ability_enrichment import _merge_enrichment
-
-    ability = {"name": "Power Surge", "text": POWER_SURGE}
-    _merge_enrichment(
-        ability,
-        json.dumps(
-            {
-                "damage": [
-                    {"type": "stat_block_section", "subtype": "attack_damage", "formula": "1d6"}
-                ]
-            }
-        ),
-    )
-    (dmg,) = ability["damage"]
+    (dmg,) = _merged({"name": "Power Surge", "text": POWER_SURGE}, _damage("1d6"))
     assert [s["min_level"] for s in dmg["level_scaling"]["steps"]] == [9, 15, 18]
+
+
+SHOCKWAVE = (
+    "Creatures on the ground within 30 feet of the primeval cryptid take 1d6 bludgeoning "
+    "damage per level of the primeval cryptid (minimum 2d6 damage), with a basic Reflex save."
+)
+
+
+def test_merge_reads_the_effect_field_and_leaves_the_minimum_entry_alone():
+    # Shockwave's text is in `effect`; its "(minimum 2d6 damage)" also becomes
+    # a damage entry, which is a floor, not a second scaling formula.
+    rate, floor = _merged(
+        {"name": "Shockwave", "effect": SHOCKWAVE}, _damage("1d6"), _damage("2d6")
+    )
+    assert rate["level_scaling"]["minimum"] == "2d6"
+    assert "level_scaling" not in floor
+
+
+def test_merge_keeps_an_existing_level_scaling():
+    kept = {"type": "stat_block_section", "subtype": "level_scaling", "steps": []}
+    (dmg,) = _merged(
+        {"name": "Power Surge", "text": POWER_SURGE}, _damage("1d6", level_scaling=kept)
+    )
+    assert dmg["level_scaling"] == kept
+
+
+def test_steps_only_after_the_intro_and_only_for_this_die():
+    early = "deals 1d6 damage, 2d6 at 3rd level of fury. It increases to 2d6 at 9th level."
+    assert extract_level_scaling(early, "1d6")["steps"] == [{"min_level": 9, "formula": "2d6"}]
+    assert extract_level_scaling(POWER_SURGE, "1d8") is None
+    mixed = "deals 1d6 damage. It increases to 2d6 at 9th level and 3d8 at 15th level."
+    assert extract_level_scaling(mixed, "1d6")["steps"] == [{"min_level": 9, "formula": "2d6"}]
+
+
+def test_an_unread_level_keyed_increase_fails_loudly():
+    with pytest.raises(AssertionError, match="unread level scaling"):
+        extract_level_scaling("increases to 2d6 when the creature reaches level 9.", "1d6")
+
+
+def test_thereafter_needs_this_entrys_dice():
+    text = "deals 1d6 fire. The damage increases by 1d8 at 3rd level and every 2 levels thereafter."
+    assert extract_level_scaling(text, "1d6") is None
+
+
+@pytest.mark.parametrize(
+    "word, n", [("two", 2), ("three", 3), ("four", 4), ("five", 5), ("six", 6)]
+)
+def test_number_words(word, n):
+    got = extract_level_scaling(f"plus an additional 1d6 for every {word} levels", "1d6")
+    assert got["per_levels"] == n
+
+
+def test_below_start_must_name_the_start_level():
+    text = "deals 1d12 acid damage per 3 levels of the zombie (or 1d6 acid damage below level 4)."
+    assert "below_start" not in extract_level_scaling(text, "1d12")
+
+
+def test_additive_keeps_the_base_modifier_and_signed_modifiers_parse():
+    s = extract_level_scaling(
+        "deals 1d6+2 damage plus an additional 1d6+2 for every 3 levels", "1d6+2"
+    )
+    assert formula_at_level("1d6+2", s, 6) == "3d6+6"
+    s = extract_level_scaling("deals 1d6-1 damage for every 2 levels", "1d6-1")
+    assert formula_at_level("1d6-1", s, 4) == "2d6-2"
+
+
+def test_a_spaced_modifier_is_normalised():
+    s = extract_level_scaling(
+        "an antler attack that deals 1d6 + 2 damage for every 3 levels", "1d6+2"
+    )
+    assert s["increment"] == "1d6+2"
